@@ -20,7 +20,7 @@ cp .env.example .env  # adjust if needed
 # 4. run + verify
 .venv/Scripts/python scripts/serve_and_probe.py   # or: uvicorn app.main:app --port 8000
 .venv/Scripts/python scripts/verify_api.py        # one-shot smoke test
-.venv/Scripts/python -m pytest tests/ -q          # 64 tests
+.venv/Scripts/python -m pytest tests/ -q          # 106 tests
 ```
 
 ## Layout
@@ -28,13 +28,14 @@ cp .env.example .env  # adjust if needed
 ```
 app/
   api/          # HTTP layer (request/response models, thin)
-  core/         # config, db session mgmt, exceptions, security (JWT)
+  core/         # config, db session mgmt, exceptions, security (JWT), rate_limit
   models/       # SQLAlchemy 2.0 declarative models (Users, Drivers, Deposits,
                 #   Orders, LedgerEntry append-only, OtpCodes)
-  services/     # domain logic — fare_calculator.py (TDD'd, tariff-versioned)
+  services/     # domain logic — fare_calculator.py (TDD'd, tariff-versioned),
+                #   order/grab (SETNX), ledger, otp, geo dispatch, trip hub
 alembic/        # async migrations (include_object filter guards postgis tables)
 scripts/        # dev helpers (serve_and_probe, verify_api, stop_server)
-tests/          # pytest — unit (fares) + API contract + JWT
+tests/          # pytest — unit (fares) + module tests + WS streaming
 ```
 
 ## Fare engine (verified sources)
@@ -50,10 +51,26 @@ tests/          # pytest — unit (fares) + API contract + JWT
 Every estimate embeds `tariff_version` (`meter:2024-07-14;tolls:2025-09-21`) so
 historical orders stay auditable.
 
-## Roadmap (next modules)
+## Modules (all live)
 
-1. **Module A** — WhatsApp OTP auth + driver KYC state machine (`PENDING_KYC → …`)
-2. **Module B** — Redis GeoHash broadcast + `SETNX` atomic order grabbing + WebSocket
-3. **Module C** — deposit vault ops + weekly settlement job (ledger already append-only)
-4. **Module D** — driver location streaming (3–5s) + FCM/WhatsApp fallback
-5. Security middleware: Redis-backed rate limiting on auth/order endpoints
+- **A — Auth & KYC**: WhatsApp OTP (sha256-stored, TTL, cooldown, 5 attempts),
+  JWT HS256; driver KYC `PENDING_KYC → DEPOSIT_REQUIRED → ACTIVE → SUSPENDED/TERMINATED`.
+- **B — Orders & dispatch**: fare snapshot frozen into `fare_json` at creation;
+  Redis `GEOSEARCH` nearby broadcast; `SETNX` atomic grab (exactly-once, 6-way
+  concurrency tested); lifecycle `BROADCASTING → ACCEPTED → DRIVER_ARRIVED →
+  IN_TRIP → COMPLETED/CANCELLED`; $50 no-show penalty (negative ledger = arrears).
+- **C-mini — Ledger**: append-only `ledger_entries` with `balance_after` chain;
+  HKD 500 deposit grant gates activation.
+- **D — Live tracking**: `WS /ws/trip/{order_id}?token=…` (passenger subscribes,
+  assigned driver pushes; driver status re-checked per tick); ticks persist to
+  PostGIS, fan out via Redis Pub/Sub (`realtaxi:trip:{order_id}`); REST snapshot
+  `GET /api/v1/trips/{order_id}/location` for reconnects; drivers receive direct
+  acks (no self-echo).
+- **Rate limiting**: Redis fixed-window counters (order creation capped per user
+  → 429; namespace `realtaxi:`).
+
+## Roadmap (next)
+
+1. Weekly settlement job (ledger ready; cron + service-fee deduction entries)
+2. FCM/WhatsApp production providers (env-driven stubs already in place)
+3. Nginx TLS + deploy packaging

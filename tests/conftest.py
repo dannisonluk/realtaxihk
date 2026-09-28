@@ -1,11 +1,131 @@
-"""Shared fixtures. Uses fakes for DB/Redis so the API layer is testable
-without infrastructure (unit-level); integration tests come with docker."""
+"""Shared fixtures.
+
+Two tiers:
+- `client`: TestClient backed by a REAL per-test Postgres database
+  (cloned from a session-start template) — full SQL semantics without
+  per-test schema churn. Requires the realtaxi-db container running.
+- `db_session`: async session on its own per-test database, for
+  service-level tests.
+
+Legacy unit tests (fare engine, error format, JWT) never touch the DB
+and run unchanged on this fixture set.
+"""
+import asyncio
+import uuid
+
+import asyncpg
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
+
+from app.core.config import get_settings
+from app.models import Base
+
+TEMPLATE_DB = "realtaxihk_test_tpl"
+
+
+def _admin_dsn() -> str:
+    s = get_settings()
+    return (
+        f"postgresql://{s.postgres_user}:{s.postgres_password}"
+        f"@{s.postgres_host}:{s.postgres_port}/postgres"
+    )
+
+
+def _db_url(name: str) -> str:
+    s = get_settings()
+    return (
+        f"postgresql+asyncpg://{s.postgres_user}:{s.postgres_password}"
+        f"@{s.postgres_host}:{s.postgres_port}/{name}"
+    )
+
+
+async def _ensure_template() -> None:
+    """Fresh template DB with full schema — rebuilt once per pytest session."""
+    conn = await asyncpg.connect(dsn=_admin_dsn())
+    try:
+        exists = await conn.fetchval(
+            "SELECT 1 FROM pg_database WHERE datname = $1", TEMPLATE_DB
+        )
+        if exists:
+            await conn.execute(f'DROP DATABASE "{TEMPLATE_DB}" WITH (FORCE)')
+        await conn.execute(f'CREATE DATABASE "{TEMPLATE_DB}"')
+    finally:
+        await conn.close()
+    engine = create_async_engine(_db_url(TEMPLATE_DB), poolclass=NullPool)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+            await conn.run_sync(Base.metadata.create_all)
+    finally:
+        await engine.dispose()
+
+
+async def _create_test_db(name: str) -> None:
+    conn = await asyncpg.connect(dsn=_admin_dsn())
+    try:
+        await conn.execute(f'CREATE DATABASE "{name}" TEMPLATE "{TEMPLATE_DB}"')
+    finally:
+        await conn.close()
+
+
+async def _drop_test_db(name: str) -> None:
+    conn = await asyncpg.connect(dsn=_admin_dsn())
+    try:
+        await conn.execute(f'DROP DATABASE "{name}" WITH (FORCE)')
+    finally:
+        await conn.close()
+
+
+def pytest_configure(config):
+    asyncio.run(_ensure_template())
 
 
 @pytest.fixture()
 def client() -> TestClient:
+    """App wired to a fresh per-test database (one engine for the whole test)."""
+    from app.core.db import get_session, get_session_factory
     from app.main import create_app
 
-    return TestClient(create_app())
+    dbname = f"realtaxihk_t_{uuid.uuid4().hex[:10]}"
+    asyncio.run(_create_test_db(dbname))
+    engine = create_async_engine(_db_url(dbname), poolclass=NullPool)
+    factory = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+
+    async def _gen():
+        async with factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    try:
+        app = create_app()
+        app.dependency_overrides[get_session] = _gen
+        app.dependency_overrides[get_session_factory] = lambda: factory
+        with TestClient(app) as tc:
+            tc.db_url = _db_url(dbname)      # service-level concurrency tests
+            tc.db_factory = factory
+            yield tc
+    finally:
+        asyncio.run(engine.dispose())
+        asyncio.run(_drop_test_db(dbname))
+
+
+@pytest.fixture()
+async def db_session():
+    dbname = f"realtaxihk_t_{uuid.uuid4().hex[:10]}"
+    await _create_test_db(dbname)
+    engine = create_async_engine(_db_url(dbname), poolclass=NullPool)
+    try:
+        maker = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+        async with maker() as session:
+            yield session
+            await session.commit()
+    finally:
+        await engine.dispose()
+        await _drop_test_db(dbname)
