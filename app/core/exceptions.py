@@ -1,0 +1,69 @@
+"""Standardized error payloads: { code, message, details }."""
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Any
+
+from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+
+class BusinessRuleError(ValueError):
+    """Domain rule violation surfaced as HTTP 400."""
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.message = message
+        self.details = details or {}
+
+
+def _error(code: str, message: str, details: Any = None) -> dict:
+    return {"code": code, "message": message, "details": details or {}}
+
+
+def register_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(RequestValidationError)
+    async def on_validation_error(request: Request, exc: RequestValidationError):
+        return JSONResponse(
+            status_code=422,
+            content=_error(
+                "VALIDATION_ERROR",
+                "Request validation failed.",
+                {
+                    "errors": jsonable_encoder(
+                        exc.errors(), custom_encoder={Decimal: str}
+                    )
+                },
+            ),
+        )
+
+    @app.exception_handler(BusinessRuleError)
+    async def on_business_rule(request: Request, exc: BusinessRuleError):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=_error("BUSINESS_RULE_VIOLATION", exc.message, exc.details),
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def on_http_exception(request: Request, exc: StarletteHTTPException):
+        code_map = {
+            status.HTTP_404_NOT_FOUND: "NOT_FOUND",
+            status.HTTP_401_UNAUTHORIZED: "UNAUTHORIZED",
+            status.HTTP_403_FORBIDDEN: "FORBIDDEN",
+            status.HTTP_409_CONFLICT: "CONFLICT",
+            status.HTTP_429_TOO_MANY_REQUESTS: "RATE_LIMITED",
+        }
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=_error(code_map.get(exc.status_code, "HTTP_ERROR"), str(exc.detail)),
+        )
+
+    @app.exception_handler(Exception)
+    async def on_unexpected(request: Request, exc: Exception):
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=_error("INTERNAL_ERROR", "Internal server error."),
+        )
