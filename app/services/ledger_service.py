@@ -51,6 +51,19 @@ def reference_for_weekly(driver_profile_id, period: str) -> str:
     return f"weekly:{driver_profile_id}:{period}"
 
 
+def reference_for_fleet_weekly(fleet_id, period: str, driver_profile_id) -> str:
+    """A fleet member's weekly fee.
+
+    A distinct prefix from `weekly:` on purpose. The two are charged by
+    different jobs, and a shared namespace would let the platform-wide run and
+    the fleet run collide — either silently swallowing a charge (if they agreed)
+    or double-charging a fleet member (if they did not). The fleet id is in the
+    reference so a driver's fleet history is reconstructible from the ledger
+    alone.
+    """
+    return f"fleet:{fleet_id}:{period}:{driver_profile_id}"
+
+
 def reference_for_refund(refund_id) -> str:
     return f"refund:{refund_id}"
 

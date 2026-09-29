@@ -28,6 +28,8 @@ from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.drivers import router as drivers_router
 from app.api.fare import router as fare_router
+from app.api.fleets import admin_router as admin_fleets_router
+from app.api.fleets import router as fleets_router
 from app.api.orders import router as orders_router
 from app.api.tracking import router as tracking_router
 from app.api.trips import router as trips_router
@@ -164,6 +166,8 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(drivers_router)
     app.include_router(admin_router)
+    app.include_router(fleets_router)
+    app.include_router(admin_fleets_router)
     app.include_router(orders_router)
     app.include_router(tracking_router)
     app.include_router(trips_router)

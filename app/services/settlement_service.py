@@ -16,6 +16,10 @@ checked whether *a* row held the reference and, if so, counted the driver as
 while the settlement report looked perfectly healthy. Now the pre-check compares
 entry_type and amount: a mismatch is reported as `tampered` and logged at
 CRITICAL, which is the difference between a silent revenue leak and an alert.
+
+Fleet members are excluded from this run — they are billed by
+`FleetSettlementService` at their fleet's discounted rate, under the separate
+`fleet:` reference namespace. See `app/services/fleet_service.py`.
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.exceptions import BusinessRuleError
@@ -32,6 +36,8 @@ from app.models import (
     DriverDeposit,
     DriverProfile,
     DriverStatus,
+    FleetMembership,
+    FleetMemberStatus,
     LedgerEntry,
     LedgerEntryType,
 )
@@ -71,12 +77,41 @@ class SettlementService:
         async with self.session_factory() as session:
             # Only ACTIVE drivers trade: PENDING_KYC / DEPOSIT_REQUIRED have no
             # account to charge, and SUSPENDED / TERMINATED are not on the road.
+            #
+            # Drivers on an active fleet roster are excluded. They are billed by
+            # `FleetSettlementService` at their fleet's discounted rate, under a
+            # different ledger reference (`fleet:…` vs `weekly:…`) — so
+            # idempotency would NOT protect them here, and running both jobs over
+            # the same driver would simply charge them twice. The two services
+            # are coupled: changing either means checking the other.
+            fleet_managed = select(FleetMembership.driver_profile_id).where(
+                FleetMembership.status == FleetMemberStatus.ACTIVE
+            )
             driver_ids = list(
                 (
                     await session.execute(
-                        select(DriverProfile.id).where(DriverProfile.status == DriverStatus.ACTIVE)
+                        select(DriverProfile.id).where(
+                            DriverProfile.status == DriverStatus.ACTIVE,
+                            DriverProfile.id.not_in(fleet_managed),
+                        )
                     )
                 ).scalars()
+            )
+            fleet_managed_count = int(
+                (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(FleetMembership)
+                        .join(
+                            DriverProfile,
+                            DriverProfile.id == FleetMembership.driver_profile_id,
+                        )
+                        .where(
+                            FleetMembership.status == FleetMemberStatus.ACTIVE,
+                            DriverProfile.status == DriverStatus.ACTIVE,
+                        )
+                    )
+                ).scalar_one()
             )
 
         charged = skipped = failed = tampered = 0
@@ -160,6 +195,7 @@ class SettlementService:
             "period": period,
             "fee_hkd": str(fee),
             "eligible_drivers": len(driver_ids),
+            "fleet_managed": fleet_managed_count,
             "charged": charged,
             "skipped": skipped,
             "failed": failed,
