@@ -110,18 +110,34 @@ Live socket close codes: `4401` unauthenticated, `4403` forbidden, `4404` unknow
 
 ## Configuration
 
-`.env.example` documents every knob. Prod safety rail: with `APP_ENV=prod`, the app
-**refuses to boot** if `JWT_SECRET_KEY` or `POSTGRES_PASSWORD` still hold dev defaults
-(`scripts/prod_boot_drill.py` verifies this).
+`.env.example` documents every knob. The config layer is **fail-closed**:
 
-Key groups: DB/Redis connection, JWT + token lifetimes, OTP limits, background-job
-intervals + retention windows, WS heartbeat, external providers (WhatsApp / FCM /
-Google Maps — providers fail closed when unconfigured), Sentry/Prometheus (optional).
+- `APP_ENV` has **no default** and is whitelisted (`dev` | `test` | `prod`). Unset, or
+  a value like `production`/`PROD`, is a startup error — the old `app_env = "dev"`
+  default turned any host without a `.env` into a dev-mode server that returned a fixed
+  OTP code in the response body.
+- `JWT_SECRET_KEY` has no default and must carry real entropy (≥ 32 characters and
+  ≥ 8 distinct characters — `"x" * 64` is rejected). Generate with `openssl rand -hex 32`.
+- With `APP_ENV=prod` the app **refuses to boot** if the JWT secret or
+  `POSTGRES_PASSWORD` still hold dev defaults, or if `ALLOW_DEV_OTP` is set.
+- The deterministic dev OTP (`123456`, echoed in the response) needs **both** a non-prod
+  env and an explicit `ALLOW_DEV_OTP=true`. It is never available in prod.
+- `TRUSTED_PROXY_COUNT` controls how `X-Forwarded-For` is read (`0` = ignore it
+  entirely, `1` = trust one nginx hop). A client-supplied prefix can never set its own
+  source address.
+- `METRICS_TOKEN` must be set for `/metrics` to be mounted at all.
+
+(`scripts/prod_boot_drill.py` verifies the prod rails.)
+
+Key groups: DB/Redis connection, JWT + token lifetimes, OTP limits, request-body and
+WebSocket caps, background-job intervals + retention windows, security headers,
+external providers (WhatsApp / FCM / Google Maps — providers fail closed when
+unconfigured), Sentry/Prometheus (optional).
 
 ## Tests & CI
 
 ```bash
-.venv/Scripts/python -m pytest -q        # 120 tests; needs db+redis containers up
+.venv/Scripts/python -m pytest -q        # needs db+redis containers up
 ```
 
 - 93 test functions over 9 files: fare unit tests, per-module API tests, WS streaming,

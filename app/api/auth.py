@@ -3,9 +3,22 @@
 PDPO: phones masked in output. P1-2: OTP requests are rate-limited per IP and
 globally (cost cap). P1-5: login returns access + refresh; /auth/refresh
 rotates; /auth/logout revokes everything for the caller.
+
+Security (SEC-07/08/17/18):
+- the client address is derived from the RIGHT of X-Forwarded-For, and only when
+  a trusted proxy is configured — a client-supplied prefix cannot forge its IP;
+- the platform-wide OTP ceiling is a *signal* that tightens the per-phone budget
+  and alerts, never a shared counter that one attacker can use to lock everyone
+  out of the platform;
+- a replayed refresh token revokes the whole token family AND the user's access
+  tokens (via the revocation epoch);
+- logout revokes access tokens too, not just refresh tokens.
 """
 
 from __future__ import annotations
+
+import contextlib
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -17,11 +30,17 @@ from app.core.deps import Principal, require_active_user
 from app.core.exceptions import BusinessRuleError
 from app.core.masking import mask_phone
 from app.core.security import create_access_token
+from app.core.token_revocation import revoke_user_tokens
 from app.models import User, UserRole
 from app.services.otp_service import OtpService
 from app.services.refresh_service import RefreshService
 
+logger = logging.getLogger("realtaxihk.auth")
+
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+_VERIFY_IP_RATE_LIMIT = 60
+_VERIFY_IP_WINDOW_S = 60
 
 
 class OtpRequestIn(BaseModel):
@@ -46,11 +65,37 @@ def _user_out(user) -> dict:
 
 
 def _client_ip(request: Request) -> str:
-    """First hop of X-Forwarded-For when behind the reverse proxy (nginx sets it)."""
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()
+    """Resolve the caller's address without trusting client-supplied headers.
+
+    SEC-07: the previous implementation took `x_forwarded_for.split(",")[0]` —
+    the LEFTMOST element, which is exactly the part an attacker controls. nginx's
+    `$proxy_add_x_forwarded_for` *appends* the real peer, so even a correct
+    deployment left the attacker-controlled prefix in position 0 and every IP
+    rate limit was bypassable by rotating the header.
+
+    Now: X-Forwarded-For is ignored entirely unless `TRUSTED_PROXY_COUNT > 0`,
+    and when it is read we count hops from the RIGHT — `[-trusted]` is the peer
+    as seen by the outermost trusted proxy, which no client can forge.
+    """
+    settings = get_settings()
+    if settings.trusted_proxy_count > 0:
+        fwd = request.headers.get("x-forwarded-for")
+        if fwd:
+            hops = [h.strip() for h in fwd.split(",") if h.strip()]
+            if hops:
+                idx = max(0, len(hops) - settings.trusted_proxy_count)
+                return hops[idx]
     return request.client.host if request.client else "unknown"
+
+
+async def _revoke_access_tokens(request: Request, user_id) -> None:
+    """Set the user's revocation epoch so every issued access token dies."""
+    redis = request.app.state.redis_factory()
+    try:
+        await revoke_user_tokens(redis, user_id)
+    finally:
+        with contextlib.suppress(Exception):
+            await redis.aclose()
 
 
 @router.post("/otp/request")
@@ -62,12 +107,44 @@ async def otp_request(
     settings = get_settings()
     limiter = request.app.state.rate_limiter
     ip = _client_ip(request)
+
     if not await limiter.allow(
         f"otp:ip:{ip}", settings.otp_ip_rate_limit, settings.otp_ip_window_s
     ):
         raise HTTPException(status_code=429, detail="too many OTP requests from this address")
-    if not await limiter.allow("otp:global:hourly", settings.otp_global_hourly_limit, 3600):
-        raise HTTPException(status_code=429, detail="OTP volume cap reached, try again later")
+
+    # SEC-08: platform-wide volume is monitored and used to DEGRADE, not to gate.
+    # The old code 429'd everyone once a single shared counter hit the cap, so one
+    # attacker with 500 requests could lock the entire user base out of login.
+    global_count = await limiter.count("otp:global:hourly", 3600)
+    if global_count > settings.otp_global_hourly_hard_limit:
+        logger.critical(
+            "OTP volume %d exceeded HARD ceiling %d — shedding load",
+            global_count,
+            settings.otp_global_hourly_hard_limit,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="OTP service is temporarily unavailable, please retry later",
+            headers={"Retry-After": "600"},
+        )
+
+    phone_limit = settings.otp_phone_rate_limit
+    if global_count > settings.otp_global_hourly_limit:
+        # Alert + tighten the per-number budget instead of denying everyone.
+        logger.critical(
+            "OTP volume %d over soft cap %d — degrading per-phone limit to %d",
+            global_count,
+            settings.otp_global_hourly_limit,
+            settings.otp_phone_rate_limit_strict,
+        )
+        phone_limit = settings.otp_phone_rate_limit_strict
+
+    if not await limiter.allow(
+        f"otp:phone:{payload.phone_e164}", phone_limit, settings.otp_phone_window_s
+    ):
+        raise HTTPException(status_code=429, detail="too many OTP requests for this number")
+
     try:
         result = await OtpService(session).request_otp(payload.phone_e164)
     except ValueError as exc:
@@ -76,7 +153,17 @@ async def otp_request(
 
 
 @router.post("/otp/verify")
-async def otp_verify(payload: OtpVerifyIn, session: AsyncSession = Depends(get_session)):
+async def otp_verify(
+    payload: OtpVerifyIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    limiter = request.app.state.rate_limiter
+    if not await limiter.allow(
+        f"otp:verify:ip:{_client_ip(request)}", _VERIFY_IP_RATE_LIMIT, _VERIFY_IP_WINDOW_S
+    ):
+        raise HTTPException(status_code=429, detail="too many verification attempts")
+
     try:
         auth = await OtpService(session).verify_otp(payload.phone_e164, payload.code)
     except ValueError as exc:
@@ -93,28 +180,53 @@ async def otp_verify(payload: OtpVerifyIn, session: AsyncSession = Depends(get_s
 
 
 @router.post("/refresh")
-async def refresh_tokens(payload: RefreshIn, session: AsyncSession = Depends(get_session)):
-    result = await RefreshService(session).rotate(payload.refresh_token)
-    if result is None:
+async def refresh_tokens(
+    payload: RefreshIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    outcome = await RefreshService(session).rotate(payload.refresh_token)
+
+    if outcome.reused:
+        # SEC-17: a rotated token came back. Assume it was stolen — kill the whole
+        # family (refresh tokens) and every access token the user holds.
+        # Commit explicitly: raising below unwinds the request-scoped session, and
+        # `get_session` rolls back on exception — without this the family
+        # revocation would be discarded and the attacker's token would survive.
+        await session.commit()
+        logger.critical(
+            "refresh token replay detected for user %s — revoking all sessions", outcome.user_id
+        )
+        await _revoke_access_tokens(request, outcome.user_id)
+        raise HTTPException(
+            status_code=401, detail="refresh token reuse detected — all sessions revoked"
+        )
+
+    if outcome.new_refresh is None or outcome.user_id is None:
         raise HTTPException(status_code=401, detail="invalid or expired refresh token")
-    user_id, new_refresh = result
-    user = await session.get(User, user_id)
+
+    user = await session.get(User, outcome.user_id)
     if user is None or not user.is_active:
         raise HTTPException(status_code=403, detail="account disabled")
     token = create_access_token({"sub": str(user.id), "role": user.role.value})
     return {
         "access_token": token,
         "token_type": "bearer",
-        "refresh_token": new_refresh,
+        "refresh_token": outcome.new_refresh,
         "user": _user_out(user),
     }
 
 
 @router.post("/logout")
 async def logout(
-    user: Principal = Depends(require_active_user), session: AsyncSession = Depends(get_session)
+    request: Request,
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
 ):
     revoked = await RefreshService(session).revoke_all_for_user(user.id)
+    # SEC-18: also invalidate the access token the caller is holding (and any
+    # other one already issued to this user), not just the refresh tokens.
+    await _revoke_access_tokens(request, user.id)
     return {"ok": True, "revoked": revoked}
 
 

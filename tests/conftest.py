@@ -12,7 +12,24 @@ and run unchanged on this fixture set.
 """
 
 import asyncio
+import os
 import uuid
+
+# Test-process defaults, seeded before any app module is imported.
+#
+# `Settings` is deliberately fail-closed (SEC-01~05): APP_ENV has no default and
+# JWT_SECRET_KEY is required with an entropy check. A developer or CI runner with
+# no `.env` must still be able to run the suite, so supply the same values the
+# local `.env` carries. `setdefault` keeps real environment variables (CI, or a
+# developer's own `.env`-exported values) authoritative.
+os.environ.setdefault("APP_ENV", "dev")
+# The deterministic dev OTP is behind an explicit switch now; the suite asserts on
+# `dev_code` throughout, so it has to be on here.
+os.environ.setdefault("ALLOW_DEV_OTP", "true")
+os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-not-for-prod-0f3a9c7e1b5d2846")
+# Connection details are deliberately NOT defaulted here: they are environment
+# specific (ports differ between the local stack and CI) and belong in `.env` or
+# in the CI job's env block. Guessing them would mask a real misconfiguration.
 
 import asyncpg
 import pytest

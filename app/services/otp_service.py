@@ -4,12 +4,19 @@ Security properties:
 - codes stored as sha256(phone:code) — plaintext never persisted;
 - max 5 attempts per code, then the code is dead even if correct;
 - resend cooldown prevents OTP-flooding a phone number;
+- comparison is constant-time (SEC-28);
 - PDPO: expired/consumed codes are short-lived rows (purge job later).
+
+SEC-02: the deterministic dev code is reachable ONLY when `ALLOW_DEV_OTP` is
+explicitly enabled AND the env is dev/test (`settings.dev_otp_enabled`). It is
+never returned in the response body unless that same switch is on, so an
+unconfigured production host cannot leak a usable code to the caller.
 """
 
 from __future__ import annotations
 
 import hashlib
+import hmac
 import re
 import secrets
 from datetime import UTC, datetime, timedelta
@@ -25,7 +32,7 @@ from app.services.notify import get_whatsapp_provider
 _PHONE_RE = re.compile(r"^\+852\d{8}$")
 _MAX_ATTEMPTS = 5
 _RESEND_COOLDOWN_S = 60
-_DEV_CODE = "123456"  # deterministic in dev for tests; prod uses random codes
+_DEV_CODE = "123456"  # only used when settings.dev_otp_enabled is explicitly True
 
 
 def _hash_code(phone_e164: str, code: str) -> str:
@@ -43,7 +50,7 @@ class AuthResult:
 
 
 class OtpService:
-    _last_code: str  # dev convenience for tests (never returned in prod)
+    _last_code: str  # dev convenience for tests (never returned unless dev_otp_enabled)
 
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -72,7 +79,8 @@ class OtpService:
             )
 
         settings = get_settings()
-        code = _DEV_CODE if settings.app_env == "dev" else f"{secrets.randbelow(10**6):06d}"
+        dev_mode = settings.dev_otp_enabled
+        code = _DEV_CODE if dev_mode else f"{secrets.randbelow(10**6):06d}"
         self._last_code = code
         otp = OtpCode(
             phone_e164=phone_e164,
@@ -85,7 +93,7 @@ class OtpService:
         await get_whatsapp_provider().send_otp(phone_e164, code)
 
         result: dict = {"sent": True, "expires_in": ttl_seconds}
-        if settings.app_env == "dev":
+        if dev_mode:
             result["dev_code"] = code
         return result
 
@@ -114,7 +122,9 @@ class OtpService:
         if _now() >= otp.expires_at:
             raise BusinessRuleError("OTP expired")
 
-        if otp.code_hash != _hash_code(phone_e164, code):
+        # SEC-28: constant-time compare so the response latency does not leak how
+        # many leading hex characters of the stored hash matched.
+        if not hmac.compare_digest(otp.code_hash, _hash_code(phone_e164, code)):
             otp.attempts += 1
             await self.session.flush()
             raise BusinessRuleError(

@@ -53,11 +53,19 @@ jobs:
       - name: Run full test suite
         env:
           APP_ENV: dev
-          POSTGRES_HOST: localhost
+          # The dev OTP (fixed 123456, echoed in the response) is behind an explicit
+          # switch now — tests need it, production must never set it.
+          ALLOW_DEV_OTP: "true"
+          # 127.0.0.1 rather than localhost: localhost also resolves to ::1, and
+          # the service containers are published on IPv4 only. On a Linux runner
+          # the ::1 attempt is refused instantly, but pinning the family removes
+          # the ambiguity (and matches the app's own default).
+          POSTGRES_HOST: 127.0.0.1
           POSTGRES_PORT: "5432"
           POSTGRES_USER: realtaxi
           POSTGRES_PASSWORD: realtaxi-ci
           POSTGRES_DB: realtaxihk
-          REDIS_URL: redis://localhost:6379/0
-          JWT_SECRET_KEY: ci-only-secret-not-for-prod
+          REDIS_URL: redis://127.0.0.1:6379/0
+          # Must satisfy the entropy check (>= 32 chars, >= 8 distinct characters).
+          JWT_SECRET_KEY: ci-only-secret-not-for-prod-4f8a2c9e1b7d3065aa4e
         run: uv run pytest -q
