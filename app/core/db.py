@@ -1,4 +1,11 @@
-"""Async engine/session management + Redis client factory."""
+"""Async engine/session management + Redis client factory.
+
+P2-7 NOTE: a process-wide Redis singleton was tried and REVERTED. Each
+TestClient (and, in general, each event loop) must own its own redis-py
+asyncio client: pooled connections bind to the loop that created them, and a
+shared client reused across loops fails/hangs unpredictably. Production runs a
+single loop, so one client per redis_factory() call costs nothing extra there.
+"""
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
@@ -10,6 +17,7 @@ from app.core.config import get_settings
 
 _engine = None
 _session_factory = None
+_redis_client: Redis | None = None
 
 
 def get_engine():
@@ -48,7 +56,13 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 def get_redis() -> Redis:
+    """Fresh client per call (decode_responses). Loop-safe by construction."""
     return Redis.from_url(get_settings().redis_url, decode_responses=True)
+
+
+async def close_redis() -> None:
+    """Kept for lifespan symmetry — nothing to close with per-call clients."""
+    return None
 
 
 async def dispose_engine() -> None:

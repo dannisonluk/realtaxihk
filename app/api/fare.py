@@ -30,7 +30,7 @@ class FareEstimateRequest(BaseModel):
     animals: int = Field(default=0, ge=0, le=5)
     advance_booking: bool = False
     discount_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100)
-    tip: Decimal = Field(default=Decimal("0"), ge=0)
+    tip: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("500"))  # B3: cap
 
     @field_validator("distance_km", "waiting_min", "discount_percent", "tip")
     @classmethod

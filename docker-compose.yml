@@ -10,6 +10,7 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-realtaxi} -d ${POSTGRES_DB:-realtaxihk}"]
       interval: 5s
@@ -21,6 +22,7 @@ services:
     container_name: realtaxi-redis
     ports:
       - "${REDIS_PORT:-6379}:6379"
+    restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redisdata:/data
@@ -33,6 +35,7 @@ services:
   api:
     build: .
     container_name: realtaxi-api
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
@@ -45,7 +48,10 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY in .env}
     ports:
       - "${APP_PORT:-8000}:8000"
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    # P0-6: apply migrations before serving (compose up == deploy-safe).
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
 volumes:
   pgdata:

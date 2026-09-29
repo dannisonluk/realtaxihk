@@ -1,12 +1,20 @@
-"""Admin API: KYC review queue + decisions + deposit grants. ADMIN enforced."""
+"""Admin API: KYC review queue + decisions + deposit grants. ADMIN enforced.
+
+Hardening: require_admin now re-reads the live user row (P0-3). Deposit grants
+are idempotent when the client supplies `reference` (P1-7): a retried grant
+replays the original entry instead of double-crediting. Driver listing is
+paginated (P1-8).
+"""
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
@@ -35,13 +43,20 @@ _DECISION_TARGET = {
 @router.get("/drivers")
 async def list_drivers(
     status_filter: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
     admin: Principal = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
     q = select(DriverProfile).order_by(DriverProfile.created_at)
     if status_filter:
         q = q.where(DriverProfile.status == DriverStatus(status_filter))
-    rows = (await session.execute(q)).scalars().all()
+    rows = (
+        (await session.execute(q.limit(limit).offset(offset))).scalars().all()
+    )
+    total = (
+        await session.execute(select(func.count()).select_from(DriverProfile))
+    ).scalar_one()
     return {
         "items": [
             {
@@ -52,7 +67,10 @@ async def list_drivers(
                 "vehicle_reg_mark": dp.vehicle_reg_mark,
             }
             for dp in rows
-        ]
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
     }
 
 
@@ -78,6 +96,8 @@ async def review_driver(
 class DepositGrantIn(BaseModel):
     amount_hkd: Decimal = Field(gt=0, le=100000)
     note: str = ""
+    # P1-7 idempotency: client-supplied key; a retry with the same key replays.
+    reference: str | None = Field(default=None, max_length=120)
 
 
 @router.post("/drivers/{driver_id}/deposit/grant")
@@ -91,6 +111,7 @@ async def grant_deposit(
     if dp is None:
         raise HTTPException(status_code=404, detail="driver not found")
 
+    reference = payload.reference or f"grant:{dp.id}:{uuid.uuid4().hex}"
     deposit = await LedgerService.ensure_deposit_row(session, dp)
     entry = await LedgerService(session).append(
         driver_profile_id=dp.id,
@@ -98,6 +119,7 @@ async def grant_deposit(
         amount_hkd=payload.amount_hkd,
         note=payload.note or "admin deposit grant",
         created_by=admin.id,
+        reference=reference,
     )
 
     # Fulfilment activates the driver (DEPOSIT_REQUIRED -> ACTIVE).
@@ -110,4 +132,5 @@ async def grant_deposit(
         "driver_status": dp.status.value,
         "balance_hkd": money_str(Decimal(entry.balance_after_hkd)),
         "is_fulfilled": deposit.is_fulfilled,
+        "reference": entry.reference,
     }

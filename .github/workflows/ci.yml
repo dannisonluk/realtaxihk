@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: realtaxi
+          POSTGRES_PASSWORD: realtaxi-ci
+          POSTGRES_DB: realtaxihk
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U realtaxi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run full test suite
+        env:
+          APP_ENV: dev
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5432"
+          POSTGRES_USER: realtaxi
+          POSTGRES_PASSWORD: realtaxi-ci
+          POSTGRES_DB: realtaxihk
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET_KEY: ci-only-secret-not-for-prod
+        run: uv run pytest -q

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.money import money_str
 from app.models import Order, OrderStatus, UserRole
-from app.services.fare_calculator import TaxiType, calculate_fare
+from app.services.fare_calculator import TaxiType, Tunnel, calculate_fare
 from app.services.state_machine import assert_order_transition
 
 
@@ -20,7 +20,7 @@ def _point_wkt(lat: float, lng: float) -> str:
     return f"POINT({lng} {lat})"
 
 
-def fare_snapshot(bd) -> dict:
+def fare_snapshot(bd, tunnels: list[str] | None = None, crosses_harbour: bool = False) -> dict:
     return {
         "meter_fare": money_str(bd.meter_fare),
         "meter_after_discount": money_str(bd.meter_after_discount),
@@ -28,6 +28,8 @@ def fare_snapshot(bd) -> dict:
         "tip": money_str(bd.tip),
         "total_fare": money_str(bd.total_fare),
         "discount_percent": str(bd.discount_percent),
+        "tunnels": list(tunnels or []),
+        "crosses_harbour": crosses_harbour,
         "tariff_version": bd.tariff_version,
         "is_estimate": True,
         "disclaimer_en": bd.disclaimer_en,
@@ -53,12 +55,17 @@ class OrderService:
             taxi_type=TaxiType(payload.taxi_type),
             distance_km=Decimal(payload.distance_km),
             waiting_min=Decimal(payload.waiting_min),
-            tunnels=[],
-            crosses_harbour=False,
+            tunnels=[Tunnel(t) for t in payload.tunnels],
+            crosses_harbour=payload.crosses_harbour,
+            pickup_at_cross_harbour_stand=payload.pickup_at_cross_harbour_stand,
             discount_percent=Decimal(payload.discount_percent),
             tip=Decimal(payload.tip),
         )
-        snapshot = fare_snapshot(bd)
+        snapshot = fare_snapshot(
+            bd,
+            tunnels=list(payload.tunnels),
+            crosses_harbour=payload.crosses_harbour,
+        )
         order = Order(
             passenger_id=passenger_user_id,
             status=OrderStatus.BROADCASTING,

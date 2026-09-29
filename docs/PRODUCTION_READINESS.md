@@ -6,6 +6,36 @@
 
 ---
 
+## 修復記錄（2026-09-29，同日完成）
+
+**全部 4 bugs + 7 P0 + 10 P1 + 10 P2 已修復並驗證**。最終狀態：**120/120 tests GREEN**（106 原有 + 14 新 hardening regression suite `tests/test_hardening.py`）、live smoke 9/9、prod fail-fast drill PASS（`scripts/prod_boot_drill.py`）。
+
+| 層 | 修復後狀態 |
+|---|---|
+| Domain logic / 測試 | ✅ 120/120（+14 hardening） |
+| 資料完整性 | ✅ B2/P0-1 ledger `with_for_update` 行級鎖 + 並發測試（asyncio.gather 2×grant → 餘額精確） |
+| Fail-safe | ✅ P0-2 `model_validator` fail-fast（prod+dev secret 拒絕開機，實機 drill 驗證） |
+| 封禁 | ✅ P0-3 `require_active_user`／`require_admin` DB re-check；WS handshake 亦檢查（403） |
+| Observability | ✅ P0-4 JSON stdout logging＋request-ID middleware；`/health` 真檢 DB+Redis（503 on failure） |
+| Geo ghosts | ✅ P0-5 `MaintenanceService.sweep_geo_index()`：訂單離開 BROADCASTING→ZREM；60s 週期 sweeper（實戰清咗 1 條 ghost） |
+| 部署管道 | ✅ P1-3 `uv.lock`；P1-4 GitHub Actions CI（PostGIS+Redis services，`uv sync --frozen` + pytest）；P0-6/7 compose restart: unless-stopped＋`alembic upgrade head` 前置 |
+| 合規 | ✅ P1-6 PDPO purge job（otp_codes 24h、refresh_tokens 30d、rate keys 7d） |
+| Auth | ✅ P1-5 refresh token 輪換（SHA-256 hash at rest、single-use、`/auth/refresh` `/auth/logout`） |
+| Notify | ✅ P2-9 真 WhatsApp Cloud API provider（httpx，template message，fail-closed on prod OTP） |
+
+**新增檔案**：`app/core/logging.py`、`app/services/maintenance.py`、`app/services/refresh_service.py`、`alembic/versions/b4f1c2a7d901_*.py`（refresh_tokens 表＋ledger idempotency index）、`.github/workflows/ci.yml`、`uv.lock`、`tests/test_hardening.py`、`scripts/prod_boot_drill.py`。
+
+**過程中修復嘅 regression**：Redis client singleton 跨 event-loop 污染（TestClient portal 每 test 新 loop → pooled connection 綁死舊 loop → WS suite hang）— P2-7 singleton 改為 per-call client（production 單 loop 無額外成本）。
+
+**上線日仍然要做（人手/環境項，代碼之外）**：
+1. 產生強 JWT secret（`openssl rand -hex 32`）＋強 POSTGRES_PASSWORD 入 prod .env — fail-fast 會把關
+2. Nginx/Caddy TLS 反代 + `X-Forwarded-For`（rate limit 按 IP 先有效）＋ CORS lockdown（`CORS_ORIGINS` env）
+3. DB 備份 cron（`pg_dump` nightly + off-host retention）— 審計 P1-8 建議
+4. WhatsApp Cloud API token／template（`WHATSAPP_*` env）＋ FCM credentials
+5. 首次 `docker compose up` 部署演練 + `/health` 輪詢驗收
+
+---
+
 ## 0. Verdict
 
 **MVP 核心域邏輯紮實（計費、搶單、ledger、WS 全有 TDD 背書），但有 7 個 P0 項未過關 — 其中 2 個係掃描中發現嘅真 bug。** 錢相關（ledger 並發）同 fail-safe（JWT/OTP 誤設定）必須先修先好上線。

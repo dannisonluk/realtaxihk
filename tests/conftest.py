@@ -59,6 +59,13 @@ async def _ensure_template() -> None:
         async with engine.begin() as conn:
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
             await conn.run_sync(Base.metadata.create_all)
+            # realtaxihk_admin_seed: the fixed admin UUID used by *_admin_token()
+            # helpers now passes require_admin's live-DB re-check (P0-3).
+            await conn.execute(text(
+                "INSERT INTO users (id, phone_e164, role, is_active, created_at) "
+                "VALUES ('00000000-0000-0000-0000-0000000000aa', '+85200000000', "
+                "'ADMIN', true, now()) ON CONFLICT (id) DO NOTHING"
+            ))
     finally:
         await engine.dispose()
 
@@ -83,6 +90,26 @@ def pytest_configure(config):
     asyncio.run(_ensure_template())
 
 
+def _clear_rate_limits() -> None:
+    """P1-2 isolation: OTP/order rate-limit counters must not leak across tests.
+
+    Uses a throwaway Redis client (not the app singleton) so no event-loop
+    state is shared with the TestClient portal.
+    """
+    import redis.asyncio as aioredis
+
+    async def _inner():
+        r = aioredis.from_url(get_settings().redis_url, decode_responses=True)
+        try:
+            keys = [k async for k in r.scan_iter(match="rl:*")]
+            if keys:
+                await r.delete(*keys)
+        finally:
+            await r.aclose()
+
+    asyncio.run(_inner())
+
+
 @pytest.fixture()
 def client() -> TestClient:
     """App wired to a fresh per-test database (one engine for the whole test)."""
@@ -103,6 +130,7 @@ def client() -> TestClient:
                 await session.rollback()
                 raise
 
+    _clear_rate_limits()
     try:
         app = create_app()
         app.dependency_overrides[get_session] = _gen

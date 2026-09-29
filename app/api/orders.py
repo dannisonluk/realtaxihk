@@ -1,4 +1,13 @@
-"""Order API: create (fare snapshot), grab, lifecycle transitions, cancel."""
+"""Order API: create (fare snapshot), grab, lifecycle, cancel, detail, history.
+
+Hardening wave (docs/PRODUCTION_READINESS.md):
+- P0-3 all user-facing routes run require_active_user (deactivation is live);
+- B3  tip capped (Numeric(10,2) overflow guard);
+- P1-10 order snapshots now carry route tolls (tunnels/crosses_harbour);
+- P2-1 GET /{order_id} (participants) + GET "" history (passenger/driver view);
+- P2-10 nearby degrades to an empty page when Redis is down (fail-open
+  dispatch), never 500s the driver's map.
+"""
 from __future__ import annotations
 
 import uuid
@@ -10,16 +19,16 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
-from app.core.db import get_redis, get_session, get_session_factory
-from app.core.deps import Principal, get_current_user
-from app.core.rate_limit import RateLimiter
+from app.core.deps import Principal, require_active_user
+from app.core.db import get_session, get_session_factory
+from app.core.exceptions import BusinessRuleError
 from app.models import (
     DriverProfile,
     DriverStatus,
     LedgerEntryType,
     Order,
     OrderStatus,
+    UserRole,
 )
 from app.services.geo_service import GeoService
 from app.services.grab_service import GrabService
@@ -31,10 +40,6 @@ router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
 
 _ORDER_RATE_LIMIT = 5  # per 60s per passenger
 _ORDER_WINDOW_S = 60
-
-
-def _rate_limiter(request: Request) -> RateLimiter:
-    return request.app.state.rate_limiter
 
 
 def _redis(request: Request):
@@ -52,7 +57,11 @@ class OrderCreateIn(BaseModel):
     waiting_min: Decimal = Field(default=Decimal("0"), ge=0, le=600)
     taxi_type: str = Field(pattern=r"^(URBAN|NT|LANTAU)$")
     discount_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100)
-    tip: Decimal = Field(default=Decimal("0"), ge=0)
+    tip: Decimal = Field(default=Decimal("0"), ge=0, le=10000)  # B3: Numeric(10,2) guard
+    # P1-10: route tolls join the snapshot (previously hard-coded empty).
+    tunnels: list[str] = Field(default_factory=list)
+    crosses_harbour: bool = False
+    pickup_at_cross_harbour_stand: bool = False
 
     @field_validator("distance_km", "waiting_min", "discount_percent", "tip")
     @classmethod
@@ -91,28 +100,40 @@ async def _driver_profile_of(session: AsyncSession, user_id) -> DriverProfile | 
 async def create_order(
     payload: OrderCreateIn,
     request: Request,
-    user: Principal = Depends(get_current_user),
+    user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
-    rds=Depends(_redis),
 ):
-    limiter: RateLimiter = request.app.state.rate_limiter
+    limiter = request.app.state.rate_limiter
     if not await limiter.allow(f"order:create:{user.id}", _ORDER_RATE_LIMIT, _ORDER_WINDOW_S):
         raise HTTPException(status_code=429, detail="too many orders, slow down")
-    order = await OrderService(session).create(user.id, payload)
-    await GeoService(rds).index_order(str(order.id), payload.pickup_lat, payload.pickup_lng)
+    try:
+        order = await OrderService(session).create(user.id, payload)
+    except ValueError as exc:
+        raise BusinessRuleError(str(exc)) from exc
+    await GeoService(request.app.state.redis_factory()).index_order(
+        str(order.id), payload.pickup_lat, payload.pickup_lng
+    )
     return order_out(order)
 
 
 @router.get("/nearby")
 async def nearby_orders(
+    request: Request,
     lat: Annotated[float, Query(ge=22.1, le=22.6)],
     lng: Annotated[float, Query(ge=113.8, le=114.5)],
     radius_km: Annotated[float, Query(ge=0.5, le=10)] = 3.0,
-    user: Principal = Depends(get_current_user),
+    user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
-    rds=Depends(_redis),
 ):
-    ids = await GeoService(rds).nearby_order_ids(lat, lng, radius_km)
+    import logging
+
+    try:
+        ids = await GeoService(request.app.state.redis_factory()).nearby_order_ids(
+            lat, lng, radius_km
+        )
+    except Exception:  # P2-10: Redis down -> fail-open dispatch, not a 500
+        logging.getLogger("realtaxihk.orders").exception("nearby: geo index unavailable")
+        return {"items": [], "degraded": True}
     if not ids:
         return {"items": []}
     orders = (
@@ -126,13 +147,59 @@ async def nearby_orders(
     return {"items": [order_out(by_id[i]) for i in ids if i in by_id]}
 
 
+@router.get("")
+async def my_orders(
+    role: Annotated[str, Query(pattern=r"^(passenger|driver)$")] = "passenger",
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    before_id: uuid.UUID | None = Query(default=None),
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """P2-1: order history (newest first, keyset via before_id)."""
+    q = (
+        select(Order)
+        .order_by(Order.created_at.desc(), Order.id.desc())
+        .limit(limit)
+    )
+    if role == "driver":
+        profile = await _driver_profile_of(session, user.id)
+        if profile is None:
+            return {"items": []}
+        q = q.where(Order.driver_id == profile.id)
+    else:
+        q = q.where(Order.passenger_id == user.id)
+    if before_id is not None:
+        anchor = await session.get(Order, before_id)
+        if anchor is not None:
+            q = q.where((Order.created_at, Order.id) < (anchor.created_at, anchor.id))
+    rows = (await session.execute(q)).scalars().all()
+    return {"items": [order_out(o) for o in rows]}
+
+
+@router.get("/{order_id}")
+async def order_detail(
+    order_id: str,
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """P2-1: participants (or admin) can read one order."""
+    order = await _get_order(session, order_id)
+    profile = await _driver_profile_of(session, user.id)
+    is_party = order.passenger_id == user.id or (
+        profile is not None and order.driver_id == profile.id
+    )
+    if not is_party and user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="not a party of this order")
+    return order_out(order)
+
+
 @router.post("/{order_id}/grab")
 async def grab_order(
     order_id: str,
-    user: Principal = Depends(get_current_user),
+    user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
     factory=Depends(get_session_factory),
-    redis=Depends(get_redis),
+    redis=Depends(_redis),
 ):
     profile = await _driver_profile_of(session, user.id)
     if profile is None or profile.status != DriverStatus.ACTIVE:
@@ -161,7 +228,7 @@ async def _assigned_driver_guard(
 @router.post("/{order_id}/arrive")
 async def order_arrive(
     order_id: str,
-    user: Principal = Depends(get_current_user),
+    user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
     order = await _get_order(session, order_id)
@@ -173,7 +240,7 @@ async def order_arrive(
 @router.post("/{order_id}/start")
 async def order_start(
     order_id: str,
-    user: Principal = Depends(get_current_user),
+    user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
     order = await _get_order(session, order_id)
@@ -185,7 +252,7 @@ async def order_start(
 @router.post("/{order_id}/complete")
 async def order_complete(
     order_id: str,
-    user: Principal = Depends(get_current_user),
+    user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
     order = await _get_order(session, order_id)
@@ -199,7 +266,7 @@ async def order_cancel(
     order_id: str,
     payload: CancelIn,
     request: Request,
-    user: Principal = Depends(get_current_user),
+    user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
     order = await _get_order(session, order_id)
@@ -219,6 +286,8 @@ async def order_cancel(
         OrderStatus.ACCEPTED,
         OrderStatus.DRIVER_ARRIVED,
     ):
+        from app.core.config import get_settings
+
         penalty = Decimal(get_settings().no_show_penalty_hkd)
         await LedgerService(session).append(
             driver_profile_id=profile.id,

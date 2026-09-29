@@ -5,6 +5,8 @@ idempotent per tick. WebSocket streaming lands with Module D.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -40,7 +42,7 @@ async def upsert_location(
         raise HTTPException(status_code=403, detail="only ACTIVE drivers can stream location")
 
     profile.current_location = f"POINT({payload.lng} {payload.lat})"
-    profile.last_location_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    profile.last_location_at = datetime.now(timezone.utc)
     profile.is_online = payload.online
     await session.flush()
 
