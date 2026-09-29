@@ -9,6 +9,21 @@ Two tiers:
 
 Legacy unit tests (fare engine, error format, JWT) never touch the DB
 and run unchanged on this fixture set.
+
+OTP codes
+---------
+The API never returns the code (SEC-02), so `otp_inbox` installs a test double
+at the notify seam and records what the app actually sent. That is a stronger
+assertion than reading a `dev_code` field out of the response: it proves the
+code reached the notification layer, and it lets the suite run with the dev-OTP
+switch OFF, i.e. against a random code exactly like production.
+
+Admin identity
+--------------
+The template DB seeds one ADMIN so the `_admin_token()` helpers survive
+`require_admin`'s live-DB re-check. The id is RANDOM per session — a fixed,
+well-known admin UUID is a skeleton key: identical in every deployment, and
+anyone able to forge a token would already know which `sub` to use.
 """
 
 import asyncio
@@ -23,10 +38,14 @@ import uuid
 # local `.env` carries. `setdefault` keeps real environment variables (CI, or a
 # developer's own `.env`-exported values) authoritative.
 os.environ.setdefault("APP_ENV", "dev")
-# The deterministic dev OTP is behind an explicit switch now; the suite asserts on
-# `dev_code` throughout, so it has to be on here.
-os.environ.setdefault("ALLOW_DEV_OTP", "true")
 os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-not-for-prod-0f3a9c7e1b5d2846")
+# ALLOW_DEV_OTP is forced OFF, not merely left unset. A developer's `.env` sets
+# it to true so manual logins work without WhatsApp credentials, and
+# pydantic-settings reads `.env` — so leaving it alone means the suite silently
+# runs with the dev rail on, which is NOT the configuration production runs.
+# An explicit environment variable outranks `.env`, hence the assignment.
+os.environ["ALLOW_DEV_OTP"] = "false"
+#
 # Connection details are deliberately NOT defaulted here: they are environment
 # specific (ports differ between the local stack and CI) and belong in `.env` or
 # in the CI job's env block. Guessing them would mask a real misconfiguration.
@@ -42,6 +61,11 @@ from app.core.config import get_settings
 from app.models import Base
 
 TEMPLATE_DB = "realtaxihk_test_tpl"
+
+# Seeded into the template DB, so every per-test clone already has one admin.
+# Random per session — see the module docstring.
+ADMIN_ID = str(uuid.uuid4())
+ADMIN_PHONE = "+85200000000"
 
 
 def _admin_dsn() -> str:
@@ -75,14 +99,14 @@ async def _ensure_template() -> None:
         async with engine.begin() as conn:
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
             await conn.run_sync(Base.metadata.create_all)
-            # realtaxihk_admin_seed: the fixed admin UUID used by *_admin_token()
-            # helpers now passes require_admin's live-DB re-check (P0-3).
+            # The admin every *_admin_token() helper signs for. Random id, one
+            # per session — see the module docstring.
             await conn.execute(
                 text(
                     "INSERT INTO users (id, phone_e164, role, is_active, created_at) "
-                    "VALUES ('00000000-0000-0000-0000-0000000000aa', '+85200000000', "
-                    "'ADMIN', true, now()) ON CONFLICT (id) DO NOTHING"
-                )
+                    "VALUES (:id, :phone, 'ADMIN', true, now()) ON CONFLICT (id) DO NOTHING"
+                ),
+                {"id": ADMIN_ID, "phone": ADMIN_PHONE},
             )
     finally:
         await engine.dispose()
@@ -143,8 +167,38 @@ def _clear_rate_limits() -> None:
     asyncio.run(_inner())
 
 
+class _CapturingWhatsAppProvider:
+    """Records OTP codes instead of sending them (see the module docstring)."""
+
+    def __init__(self, sink: dict[str, str]):
+        self.sink = sink
+
+    async def send_otp(self, phone_e164: str, code: str) -> None:
+        self.sink[phone_e164] = code
+
+    async def send_trip_update(self, phone_e164: str, message: str) -> None:
+        return None
+
+
+@pytest.fixture(autouse=True)
+def otp_inbox(monkeypatch) -> dict[str, str]:
+    """The code most recently sent to each phone, keyed by E.164 phone.
+
+    `otp_service` calls `get_whatsapp_provider()` through its own module global,
+    so that is the name to patch — patching `app.services.notify` would leave
+    the already-bound reference in place.
+    """
+    from app.services import otp_service
+
+    sink: dict[str, str] = {}
+    monkeypatch.setattr(
+        otp_service, "get_whatsapp_provider", lambda: _CapturingWhatsAppProvider(sink)
+    )
+    return sink
+
+
 @pytest.fixture()
-def client() -> TestClient:
+def client(otp_inbox) -> TestClient:
     """App wired to a fresh per-test database (one engine for the whole test)."""
     from app.core.db import get_session, get_session_factory
     from app.main import create_app
@@ -171,6 +225,7 @@ def client() -> TestClient:
         with TestClient(app) as tc:
             tc.db_url = _db_url(dbname)  # service-level concurrency tests
             tc.db_factory = factory
+            tc.otp_inbox = otp_inbox  # helpers read the code the app really sent
             yield tc
     finally:
         asyncio.run(engine.dispose())

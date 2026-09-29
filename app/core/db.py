@@ -1,14 +1,24 @@
-"""Async engine/session management + Redis client factory.
+"""Async engine/session management + Redis client access.
 
-P2-7 NOTE: a process-wide Redis singleton was tried and REVERTED. Each
-TestClient (and, in general, each event loop) must own its own redis-py
-asyncio client: pooled connections bind to the loop that created them, and a
-shared client reused across loops fails/hangs unpredictably. Production runs a
-single loop, so one client per redis_factory() call costs nothing extra there.
+P2-7 NOTE: a single process-wide Redis client was tried and REVERTED. redis-py
+asyncio clients bind pooled connections to the event loop that created them, so
+a client reused across loops fails or hangs unpredictably. `get_redis()` therefore
+caches **one client per running loop**: production runs a single loop and gets a
+single client for the app's lifetime, while the test suite — where every
+TestClient runs its own portal loop — still gets correct isolation.
+
+That is the property the previous "fresh client per call" version was buying, at
+the cost of opening and closing a Redis socket on every call. The cache keeps the
+property and drops the churn. The map is weak-keyed on the loop, so a loop that
+goes away takes its client with it instead of leaking.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import threading
+import weakref
 from collections.abc import AsyncGenerator
 
 from redis.asyncio import Redis
@@ -18,7 +28,11 @@ from app.core.config import get_settings
 
 _engine = None
 _session_factory = None
-_redis_client: Redis | None = None
+
+_redis_clients: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, Redis] = (
+    weakref.WeakKeyDictionary()
+)
+_redis_lock = threading.Lock()
 
 
 def get_engine():
@@ -55,13 +69,32 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 def get_redis() -> Redis:
-    """Fresh client per call (decode_responses). Loop-safe by construction."""
-    return Redis.from_url(get_settings().redis_url, decode_responses=True)
+    """The Redis client for the running event loop (decode_responses).
+
+    One client per loop, created on first use and reused after that. Called
+    outside a running loop (import-time wiring) it returns a fresh client, which
+    is what the old per-call version did everywhere.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return Redis.from_url(get_settings().redis_url, decode_responses=True)
+    with _redis_lock:
+        client = _redis_clients.get(loop)
+        if client is None:
+            client = Redis.from_url(get_settings().redis_url, decode_responses=True)
+            _redis_clients[loop] = client
+        return client
 
 
 async def close_redis() -> None:
-    """Kept for lifespan symmetry — nothing to close with per-call clients."""
-    return None
+    """Close every cached client (normally exactly one) and forget them."""
+    with _redis_lock:
+        clients = list(_redis_clients.values())
+        _redis_clients.clear()
+    for client in clients:
+        with contextlib.suppress(Exception):
+            await client.aclose()
 
 
 async def dispose_engine() -> None:

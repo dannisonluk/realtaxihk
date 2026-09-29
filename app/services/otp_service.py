@@ -7,10 +7,16 @@ Security properties:
 - comparison is constant-time (SEC-28);
 - PDPO: expired/consumed codes are short-lived rows (purge job later).
 
-SEC-02: the deterministic dev code is reachable ONLY when `ALLOW_DEV_OTP` is
-explicitly enabled AND the env is dev/test (`settings.dev_otp_enabled`). It is
-never returned in the response body unless that same switch is on, so an
-unconfigured production host cannot leak a usable code to the caller.
+SEC-02: the code is NEVER returned in the response body, in any environment.
+It used to be echoed as `dev_code` whenever `ALLOW_DEV_OTP` was on, which handed
+a usable OTP to whoever called `/otp/request` — the response goes to the
+attacker, so the OTP stopped proving anything. Test harnesses read the code at
+the notify seam instead (tests/conftest.py), so nothing needs the echo.
+
+What remains is only the *determinism*: `ALLOW_DEV_OTP` (dev/test only, rejected
+outright when APP_ENV=prod) makes the code a fixed constant so an out-of-process
+harness — which cannot install a test double — has a way to log in. That switch
+is fail-closed and never reachable in production; the echo was not.
 """
 
 from __future__ import annotations
@@ -50,8 +56,6 @@ class AuthResult:
 
 
 class OtpService:
-    _last_code: str  # dev convenience for tests (never returned unless dev_otp_enabled)
-
     def __init__(self, session: AsyncSession):
         self.session = session
 
@@ -81,7 +85,6 @@ class OtpService:
         settings = get_settings()
         dev_mode = settings.dev_otp_enabled
         code = _DEV_CODE if dev_mode else f"{secrets.randbelow(10**6):06d}"
-        self._last_code = code
         otp = OtpCode(
             phone_e164=phone_e164,
             code_hash=_hash_code(phone_e164, code),
@@ -92,10 +95,9 @@ class OtpService:
 
         await get_whatsapp_provider().send_otp(phone_e164, code)
 
-        result: dict = {"sent": True, "expires_in": ttl_seconds}
-        if dev_mode:
-            result["dev_code"] = code
-        return result
+        # SEC-02: no `dev_code` echo. The code leaves this function exactly once,
+        # through the notification provider. See the module docstring.
+        return {"sent": True, "expires_in": ttl_seconds}
 
     async def verify_otp(self, phone_e164: str, code: str) -> AuthResult:
         if not _PHONE_RE.fullmatch(phone_e164 or ""):

@@ -12,6 +12,7 @@ import asyncio
 from decimal import Decimal
 
 import pytest
+from conftest import ADMIN_ID
 
 # --------------------------------------------------------------------------- #
 # helpers
@@ -21,9 +22,10 @@ import pytest
 def _mk_user_token(client, phone: str) -> str:
     r = client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
     assert r.status_code == 200, r.text
+    # SEC-02: the code is never in the response; read it at the notify seam.
     r = client.post(
         "/api/v1/auth/otp/verify",
-        json={"phone_e164": phone, "code": r.json()["dev_code"]},
+        json={"phone_e164": phone, "code": client.otp_inbox[phone]},
     )
     assert r.status_code == 200, r.text
     return r.json()["access_token"]
@@ -32,10 +34,7 @@ def _mk_user_token(client, phone: str) -> str:
 def _admin_headers() -> dict:
     from app.core.security import create_access_token
 
-    return {
-        "Authorization": "Bearer "
-        + create_access_token({"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"})
-    }
+    return {"Authorization": "Bearer " + create_access_token({"sub": ADMIN_ID, "role": "ADMIN"})}
 
 
 def _h(token: str) -> dict:
@@ -361,7 +360,7 @@ class TestRefundDecision:
         assert r.status_code == 200, r.text
         assert r.json()["status"] == "APPROVED"
         assert r.json()["decision_note"] == "bank transfer sent"
-        assert r.json()["decided_by"] == "00000000-0000-0000-0000-0000000000aa"
+        assert r.json()["decided_by"] == ADMIN_ID
 
         dep = _deposit(client, active_driver["token"])
         assert dep["balance_hkd"] == "0.0"
@@ -568,7 +567,7 @@ class TestRefundConcurrency:
 
         rid = _request_refund(client, active_driver["token"]).json()["id"]
         factory = client.db_factory
-        admin_id = "00000000-0000-0000-0000-0000000000aa"
+        admin_id = ADMIN_ID
 
         async def decide():
             async with factory() as s:

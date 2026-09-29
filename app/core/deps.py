@@ -60,9 +60,9 @@ async def assert_not_revoked(request: Request, principal: Principal) -> None:
     """SEC-18: reject an access token issued before the user's revocation epoch.
 
     This runs on the hot path of every authenticated request, so it uses the
-    app-lifetime client on `app.state.auth_redis`. The `redis_factory()` pattern
-    (fresh client per call) would open and close a socket per request — pure
-    churn on a path that is already one Redis GET.
+    app-lifetime client on `app.state.auth_redis`. Calling `redis_factory()`
+    directly would have been one client (and one socket) per request — pure
+    churn on a path that is already a single Redis GET.
     """
     revoked = await is_token_revoked(
         request.app.state.auth_redis, principal.id, principal.issued_at

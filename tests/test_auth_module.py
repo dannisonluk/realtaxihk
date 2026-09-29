@@ -3,6 +3,7 @@
 import re
 
 import pytest
+from conftest import ADMIN_ID
 
 from app.core.security import create_access_token
 
@@ -20,41 +21,44 @@ class TestMasking:
 
 
 class TestOtpService:
-    async def test_request_and_verify_roundtrip(self, db_session):
+    async def test_request_and_verify_roundtrip(self, db_session, otp_inbox):
         from app.services.otp_service import OtpService
 
         svc = OtpService(db_session)
         result = await svc.request_otp("+85291234567")
         assert result["sent"] is True
-        # dev env returns the code for testing
-        assert re.fullmatch(r"\d{6}", result["dev_code"])
+        # SEC-02: the code is never echoed in the response — not even in dev.
+        # The suite reads it at the notify seam, where the app actually sends it.
+        assert "dev_code" not in result
+        code = otp_inbox["+85291234567"]
+        assert re.fullmatch(r"\d{6}", code)
 
-        auth = await svc.verify_otp("+85291234567", result["dev_code"])
+        auth = await svc.verify_otp("+85291234567", code)
         assert auth.user.phone_e164 == "+85291234567"
         assert auth.created is True
         assert auth.user.role.value == "PASSENGER"
 
-    async def test_wrong_code_rejected_and_attempts_counted(self, db_session):
+    async def test_wrong_code_rejected_and_attempts_counted(self, db_session, otp_inbox):
         from app.core.exceptions import BusinessRuleError
         from app.services.otp_service import OtpService
 
         svc = OtpService(db_session)
-        result = await svc.request_otp("+85291234567")
+        await svc.request_otp("+85291234567")
         for _ in range(5):
             with pytest.raises(BusinessRuleError):
                 await svc.verify_otp("+85291234567", "000000")
         # after max attempts the code is dead even if correct
         with pytest.raises(BusinessRuleError):
-            await svc.verify_otp("+85291234567", result["dev_code"])
+            await svc.verify_otp("+85291234567", otp_inbox["+85291234567"])
 
-    async def test_expired_code_rejected(self, db_session):
+    async def test_expired_code_rejected(self, db_session, otp_inbox):
         from app.core.exceptions import BusinessRuleError
         from app.services.otp_service import OtpService
 
         svc = OtpService(db_session)
         await svc.request_otp("+85291234567", ttl_seconds=-1)
         with pytest.raises(BusinessRuleError):
-            await svc.verify_otp("+85291234567", svc._last_code)
+            await svc.verify_otp("+85291234567", otp_inbox["+85291234567"])
 
     async def test_invalid_phone_format_rejected(self, db_session):
         from app.services.otp_service import OtpService
@@ -79,11 +83,12 @@ class TestAuthApi:
     def test_request_verify_me_flow(self, client):
         r = client.post("/api/v1/auth/otp/request", json={"phone_e164": "+85291234567"})
         assert r.status_code == 200
-        code = r.json()["dev_code"]
+        # SEC-02: no code in the response, in any environment.
+        assert "dev_code" not in r.json()
 
         r = client.post(
             "/api/v1/auth/otp/verify",
-            json={"phone_e164": "+85291234567", "code": code},
+            json={"phone_e164": "+85291234567", "code": client.otp_inbox["+85291234567"]},
         )
         assert r.status_code == 200
         token = r.json()["access_token"]
@@ -112,9 +117,11 @@ class TestAuthApi:
 
 class TestDriverKycApi:
     def _new_user_token(self, client, phone: str) -> str:
-        r = client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
-        code = r.json()["dev_code"]
-        r = client.post("/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": code})
+        client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
+        r = client.post(
+            "/api/v1/auth/otp/verify",
+            json={"phone_e164": phone, "code": client.otp_inbox[phone]},
+        )
         return r.json()["access_token"]
 
     def test_register_driver_pending_kyc(self, client):
@@ -135,9 +142,7 @@ class TestDriverKycApi:
 
     def test_admin_review_approve_flow(self, client):
 
-        admin_token = create_access_token(
-            {"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"}
-        )
+        admin_token = create_access_token({"sub": ADMIN_ID, "role": "ADMIN"})
         token = self._new_user_token(client, "+85291230002")
         r = client.post(
             "/api/v1/drivers/register",

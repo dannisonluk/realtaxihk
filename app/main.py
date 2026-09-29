@@ -135,11 +135,16 @@ def create_app() -> FastAPI:
                 await close_redis()
             # Close the long-lived Redis clients (rate limiter + maintenance + WS hub).
             # Otherwise the loop dying logs an asyncio connection_lost() ERROR.
+            # Deduped by identity: `get_redis()` caches per loop, so these holders
+            # now share one client.
+            closed: set[int] = set()
             for holder in ("rate_limiter", "maintenance", "trip_hub", "auth_redis"):
                 obj = getattr(app.state, holder, None)
-                if obj is not None:
-                    with contextlib.suppress(Exception):
-                        await obj.aclose()
+                if obj is None or id(obj) in closed:
+                    continue
+                closed.add(id(obj))
+                with contextlib.suppress(Exception):
+                    await obj.aclose()
             with contextlib.suppress(Exception):
                 from app.core.db import dispose_engine
 
@@ -177,11 +182,10 @@ def create_app() -> FastAPI:
     app.state.redis_factory = get_redis
     app.state.rate_limiter = RateLimiter(get_redis(), namespace="realtaxi:")
     # SEC-18: the revocation check sits on the hot path of EVERY authenticated
-    # request. `get_redis()` is documented as a fresh client per call, which is
-    # right for one-shot callers but wrong here: it opened (and closed) a socket
-    # per request. Measured cost of one connection on this machine was 2s before
-    # the 127.0.0.1 fix and ~3ms after — but even at 3ms it is pure churn. One
-    # client for the app's lifetime, closed with the others on shutdown.
+    # request. It used to call `get_redis()` per request, which opened a socket
+    # each time (measured at 2s before the 127.0.0.1 fix, ~3ms after — churn
+    # either way). `get_redis()` now caches per event loop, so this is the same
+    # client the rest of the app uses, closed with the others on shutdown.
     app.state.auth_redis = get_redis()
     app.state.maintenance = MaintenanceService(get_session_factory(), get_redis())
     app.state.settlement = SettlementService(get_session_factory())
@@ -206,12 +210,9 @@ def create_app() -> FastAPI:
         except Exception:
             logger.exception("health: db check failed")
         try:
-            redis = get_redis()
-            try:
-                await redis.ping()
-            finally:
-                with contextlib.suppress(Exception):
-                    await redis.aclose()
+            # The client is cached per loop and closed at shutdown; closing it
+            # here would disconnect it on every readiness probe.
+            await get_redis().ping()
             checks["redis"] = True
         except Exception:
             logger.exception("health: redis check failed")

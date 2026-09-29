@@ -6,6 +6,7 @@ Run:  .venv/Scripts/python.exe scripts/security_probe.py
 import asyncio
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -29,6 +30,14 @@ LOGDIR = Path(tempfile.mkdtemp(prefix="realtaxi-probe-logs-"))
 RUN = int(time.time()) % 9000  # unique phones/XFF per run -> probe is re-runnable
 _IPN = [0]
 
+# The API never echoes the OTP (SEC-02). This probe runs out-of-process, so it
+# cannot install a test double at the notify seam; it opts into the dev rail
+# instead (ALLOW_DEV_OTP below), which makes the code this constant.
+DEV_OTP_CODE = "123456"
+# Filled by provision_admin(). Never a constant — see that function.
+ADMIN_UUID = ""
+ADMIN_PHONE = ""
+
 
 def _fresh_ip():
     """A new claimed client IP per call (also demonstrates the SEC-07 bypass)."""
@@ -50,7 +59,43 @@ BASE_ENV = {
     "POSTGRES_DB": S.postgres_db,
     "REDIS_URL": S.redis_url,
     "JWT_SECRET_KEY": S.jwt_secret_key,
+    # The dev rail, so mk_token() has a code to log in with. Never echoed.
+    "ALLOW_DEV_OTP": "true",
 }
+
+
+def _admin_cli(*args):
+    return subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "create_admin.py"), *args],
+        capture_output=True,
+        check=False,
+        text=True,
+        cwd=str(ROOT),
+    )
+
+
+def provision_admin():
+    """Create the ADMIN row this probe needs, through the supported CLI.
+
+    `require_admin` re-reads the `users` row, so a forged ADMIN token is
+    worthless without a matching row. That row used to be a fixed UUID planted
+    in the dev database by hand — which made this probe, in effect, its only
+    justification. Creating it here with `scripts/create_admin.py` removes that
+    circularity and exercises the P2-11 bootstrap path for real.
+    """
+    global ADMIN_UUID, ADMIN_PHONE
+    ADMIN_PHONE = f"+8529{RUN:04d}001"
+    res = _admin_cli("--phone", ADMIN_PHONE, "--yes")
+    m = re.search(r"id\s*=\s*([0-9a-f-]{36})", res.stdout)
+    if res.returncode != 0 or not m:
+        raise RuntimeError(f"create_admin failed: {res.stdout}{res.stderr}")
+    ADMIN_UUID = m.group(1)
+
+
+def deprovision_admin():
+    """Demote the probe's admin so the dev DB is left as it was found."""
+    if ADMIN_PHONE:
+        _admin_cli("--phone", ADMIN_PHONE, "--revoke", "--yes")
 
 
 def record(tag, title, proven, detail):
@@ -182,12 +227,14 @@ def mk_token(phone):
     h = {"X-Forwarded-For": _fresh_ip()}
     st, b, _, _ = req("POST", "/api/v1/auth/otp/request", {"phone_e164": phone}, headers=h)
     assert st == 200, f"otp request {st} {b}"
-    code = b.get("dev_code") or "123456"
+    # SEC-02: the response never carries the code. This probe boots the server
+    # with ALLOW_DEV_OTP=true itself, so it already knows the value.
+    assert "dev_code" not in b, f"the OTP was echoed back in the response: {b}"
     st, b2, _, _ = req(
-        "POST", "/api/v1/auth/otp/verify", {"phone_e164": phone, "code": code}, headers=h
+        "POST", "/api/v1/auth/otp/verify", {"phone_e164": phone, "code": DEV_OTP_CODE}, headers=h
     )
     assert st == 200, f"otp verify {st} {b2}"
-    return b2["access_token"], b2["user"]["id"], b.get("dev_code")
+    return b2["access_token"], b2["user"]["id"]
 
 
 # --------------------------------------------------------------------------- #
@@ -278,7 +325,8 @@ def check_a():
 
             forged = pyjwt.encode(
                 {
-                    "sub": "00000000-0000-0000-0000-0000000000aa",
+                    # The probe's OWN admin (provision_admin), not a planted one.
+                    "sub": ADMIN_UUID,
                     "role": "ADMIN",
                     "iat": int(time.time()),
                     "exp": int(time.time()) + 3600,
@@ -426,7 +474,7 @@ def check_c():
         )
 
         # Same uncapped list, but persisted and echoed back on the orders path.
-        token, _uid, _ = mk_token(f"+8529555{RUN:04d}")
+        token, _uid = mk_token(f"+8529555{RUN:04d}")
         big_tunnels = ["cross_harbour"] * 200_000
         st, order, t, size = req(
             "POST",
@@ -473,7 +521,7 @@ def check_d():
     proc, up = boot({"APP_ENV": "dev"}, "sec_d.log")
     try:
         assert up
-        token, user_id, _ = mk_token(f"+8529444{RUN:04d}")
+        token, user_id = mk_token(f"+8529444{RUN:04d}")
         st, prof, _, _ = req(
             "POST",
             "/api/v1/drivers/register",
@@ -555,10 +603,17 @@ def main():
     print("realtaxihk security probe — verified against a live uvicorn + Postgres")
     print("=" * 74)
     want = sys.argv[1].lower() if len(sys.argv) > 1 else "all"
-    for name, fn in (("a", check_a), ("b", check_b), ("c", check_c), ("d", check_d)):
-        if want in ("all", name):
-            reset_rate_limit_buckets()
-            fn()
+    # SEC-05 needs a real ADMIN row to sign for. Create one through the supported
+    # CLI (random UUID) instead of assuming a hand-planted row exists.
+    provision_admin()
+    print(f"provisioned admin {ADMIN_PHONE} ({ADMIN_UUID})")
+    try:
+        for name, fn in (("a", check_a), ("b", check_b), ("c", check_c), ("d", check_d)):
+            if want in ("all", name):
+                reset_rate_limit_buckets()
+                fn()
+    finally:
+        deprovision_admin()
     print("\n" + "=" * 74)
     proven = [f for f in FINDINGS if f[2]]
     print(f"PROVEN: {len(proven)} of {len(FINDINGS)}")

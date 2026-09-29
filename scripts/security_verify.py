@@ -9,17 +9,26 @@ it only creates throwaway users/orders, and never mutates existing data.
 Probe fixes (2026-09-29, third pass):
 - phones must match `^\\+852\\d{8}$`; `f"+8529{RUN:04d}1"` produced only 6 digits
   and every login silently 422'd, which is why SEC-17/18 reported "could not log in";
-- the SEC-04~05 control expected 403 for a live-secret ADMIN token, but
-  `00000000-0000-0000-0000-0000000000aa` IS the seeded admin, so 200 is correct.
-  The control is now an explicit A/B: identical claims, only the signing key differs;
+- the SEC-04~05 control expected 403 for a live-secret ADMIN token, but the admin
+  it signed for did not exist, so 200 was wrong for a different reason. The control
+  is now an explicit A/B: identical claims, only the signing key differs;
 - SEC-09's 100k-tunnel payload is >1 MB, so the body cap answers 413 before the
   validator runs. Added a sub-cap payload (120 KB) that isolates the validator.
+
+Fourth pass (this one) — the probe stopped depending on a planted admin row:
+- the ADMIN is created at startup with `scripts/create_admin.py` (random UUID) and
+  revoked on the way out, instead of being a fixed well-known UUID that had been
+  hand-written into the dev database. That fixed id was a skeleton key identical
+  in every deployment, and this probe was its only justification;
+- the OTP comes from the dev rail (`ALLOW_DEV_OTP=true`, phase 1 only), not from
+  the response body — the response no longer carries it (SEC-02).
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -43,7 +52,14 @@ SCRATCH = Path(tempfile.mkdtemp(prefix="realtaxi-verify-"))
 RUN = int(time.time()) % 9000
 OLD_COMMITTED_SECRET = "dev-only-secret-change-in-prod-0123456789abcdef-0123456789abcdef"
 PROBE_SECRET = "probe-only-secret-4a7c2e9f1b6d3058aa71"
-ADMIN_UUID = "00000000-0000-0000-0000-0000000000aa"
+# Phase 1 boots with ALLOW_DEV_OTP=true. This probe is out-of-process, so it
+# cannot install a test double at the notify seam the way the pytest suite does;
+# the dev rail is how it obtains a code to log in with. The API still never
+# echoes it — that is exactly what SEC-01~03 asserts.
+DEV_OTP_CODE = "123456"
+# Provisioned at startup, never a constant. See the module docstring.
+ADMIN_UUID = ""
+ADMIN_PHONE = ""
 
 RESULTS: list[tuple[str, str, bool, str]] = []
 
@@ -57,6 +73,40 @@ def check(tag: str, title: str, passed: bool, detail: str) -> None:
 def phone(n: int) -> str:
     """A valid +852 number: 8 digits after the country code."""
     return f"+8529{RUN:04d}{n:03d}"
+
+
+def _admin_cli(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "create_admin.py"), *args],
+        capture_output=True,
+        check=False,
+        text=True,
+        cwd=str(ROOT),
+    )
+
+
+def provision_admin() -> None:
+    """Create the ADMIN row this probe needs, through the supported CLI.
+
+    `require_admin` re-reads the `users` row, so a forged ADMIN token is
+    worthless without a matching row. That row used to be a fixed UUID planted
+    in the dev database by hand — which made this probe, in effect, its only
+    justification. Creating it here with `scripts/create_admin.py` removes that
+    circularity and exercises the P2-11 bootstrap path for real.
+    """
+    global ADMIN_UUID, ADMIN_PHONE
+    ADMIN_PHONE = phone(0)
+    res = _admin_cli("--phone", ADMIN_PHONE, "--yes")
+    m = re.search(r"id\s*=\s*([0-9a-f-]{36})", res.stdout)
+    if res.returncode != 0 or not m:
+        raise RuntimeError(f"create_admin failed: {res.stdout}{res.stderr}")
+    ADMIN_UUID = m.group(1)
+
+
+def deprovision_admin() -> None:
+    """Demote the probe's admin so the dev DB is left as it was found."""
+    if ADMIN_PHONE:
+        _admin_cli("--phone", ADMIN_PHONE, "--revoke", "--yes")
 
 
 def port_free() -> bool:
@@ -162,12 +212,11 @@ def forge(secret: str, role: str = "ADMIN") -> str:
 
 
 def login(p: str) -> dict | None:
+    """Log in with the dev-rail code — phase 1 boots with ALLOW_DEV_OTP=true."""
     st, body, _, _ = req("POST", "/api/v1/auth/otp/request", {"phone_e164": p})
-    if st != 200 or "dev_code" not in body:
+    if st != 200:
         return None
-    st, body, _, _ = req(
-        "POST", "/api/v1/auth/otp/verify", {"phone_e164": p, "code": body["dev_code"]}
-    )
+    st, body, _, _ = req("POST", "/api/v1/auth/otp/verify", {"phone_e164": p, "code": DEV_OTP_CODE})
     return body if st == 200 else None
 
 
@@ -207,6 +256,17 @@ def phase_dev_otp_on() -> None:
             "/health no longer advertises the environment",
             st == 200 and "env" not in body,
             f"status={st} body_keys={sorted(body)}",
+        )
+
+        # SEC-01~03, the hard case: even with the dev rail explicitly ON, the
+        # code must not come back over HTTP. That echo was the whole hole — the
+        # response went to whoever asked, so the OTP proved nothing.
+        st, body, _, _ = req("POST", "/api/v1/auth/otp/request", {"phone_e164": phone(3)})
+        check(
+            "SEC-01~03",
+            "ALLOW_DEV_OTP makes the code deterministic but never echoes it",
+            st == 200 and "dev_code" not in body,
+            f"ALLOW_DEV_OTP=true, status={st}, body_keys={sorted(body)}",
         )
 
         # SEC-24
@@ -342,7 +402,7 @@ def phase_dev_otp_off() -> None:
         st, body, _, _ = req("POST", "/api/v1/auth/otp/request", {"phone_e164": phone(9)})
         check(
             "SEC-01~03",
-            "no dev_code is returned unless ALLOW_DEV_OTP is explicitly on",
+            "the OTP is never echoed, even with ALLOW_DEV_OTP unset",
             st == 200 and "dev_code" not in body,
             f"status={st} body_keys={sorted(body)}",
         )
@@ -357,6 +417,10 @@ def main() -> int:
         print("port 8000 is busy — stop the running server first")
         return 2
     try:
+        # SEC-04~05 needs a real ADMIN row to sign for; create one through the
+        # supported CLI rather than assuming a planted row exists.
+        provision_admin()
+        print(f"provisioned admin {ADMIN_PHONE} ({ADMIN_UUID})")
         # SEC-07's check deliberately exhausts the per-IP OTP bucket, and that
         # bucket lives in Redis — it survives the server restart between phases.
         # So the phase that needs one clean OTP request must run first.
@@ -365,6 +429,8 @@ def main() -> int:
     except RuntimeError as exc:
         print(f"probe aborted: {exc}")
         return 2
+    finally:
+        deprovision_admin()
 
     failed = [r for r in RESULTS if not r[2]]
     print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} checks passed")

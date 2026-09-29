@@ -18,21 +18,21 @@ from app.core.config import Settings
 def _mk_user_token(client: TestClient, phone: str) -> str:
     r = client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
     assert r.status_code == 200, r.text
+    # SEC-02: the code is never in the response; read it at the notify seam.
     r = client.post(
         "/api/v1/auth/otp/verify",
-        json={"phone_e164": phone, "code": r.json()["dev_code"]},
+        json={"phone_e164": phone, "code": client.otp_inbox[phone]},
     )
     assert r.status_code == 200, r.text
     return r.json()["access_token"]
 
 
 def _admin_headers() -> dict:
+    from conftest import ADMIN_ID
+
     from app.core.security import create_access_token
 
-    return {
-        "Authorization": "Bearer "
-        + create_access_token({"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"})
-    }
+    return {"Authorization": "Bearer " + create_access_token({"sub": ADMIN_ID, "role": "ADMIN"})}
 
 
 _ORDER = {
@@ -253,10 +253,10 @@ class TestP1AuthRotation:
     def test_refresh_rotates_and_old_token_dies(self, client):
         """P1-5: refresh rotation - old token single-use."""
         phone = f"+85253{uuid.uuid4().int % 1000000:06d}"
-        r = client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
+        client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
         r = client.post(
             "/api/v1/auth/otp/verify",
-            json={"phone_e164": phone, "code": r.json()["dev_code"]},
+            json={"phone_e164": phone, "code": client.otp_inbox[phone]},
         )
         body = r.json()
         assert body["refresh_token"]

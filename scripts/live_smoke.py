@@ -1,6 +1,13 @@
-"""End-to-end live smoke: boot uvicorn, exercise Modules A/B/C/D, self-terminate."""
+"""End-to-end live smoke: boot uvicorn, exercise Modules A/B/C/D, self-terminate.
+
+The API never returns the OTP (SEC-02), so this harness opts into the dev rail
+explicitly: `ALLOW_DEV_OTP=true` makes the code the fixed constant below. That
+is this script's own choice, not a production concession — `allow_dev_otp` is
+rejected outright when APP_ENV=prod, and the code is never echoed back.
+"""
 
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -9,6 +16,7 @@ import urllib.request
 
 BASE = "http://127.0.0.1:8000"
 TOKEN = None
+DEV_OTP_CODE = "123456"  # requires ALLOW_DEV_OTP=true in the server environment
 
 
 def req(method, path, body=None, auth=False, token=None):
@@ -41,6 +49,7 @@ assert port_free, "port 8000 occupied — stop other servers first"
 # (uvicorn trusts it from 127.0.0.1 by default, which made IP limits spoofable).
 proc = subprocess.Popen(
     [sys.executable, "-m", "uvicorn", "app.main:app", "--port", "8000", "--no-proxy-headers"],
+    env={**os.environ, "ALLOW_DEV_OTP": "true"},
     stdout=subprocess.DEVNULL,
     stderr=subprocess.DEVNULL,
 )
@@ -82,10 +91,10 @@ try:
     # 3. passenger OTP login (rotating number: live DB has 60s resend cooldown)
     phone = f"+852{61000000 + int(time.time()) % 1000000}"
     st, body = req("POST", "/api/v1/auth/otp/request", {"phone_e164": phone})
-    print(f"otp request: {st} dev_code={body.get('dev_code') is not None}")
-    assert st == 200
-    code = body["dev_code"]
-    st, body = req("POST", "/api/v1/auth/otp/verify", {"phone_e164": phone, "code": code})
+    print(f"otp request: {st} dev_code_echoed={'dev_code' in body}")
+    # SEC-02: the code must never come back over HTTP, even with the dev rail on.
+    assert st == 200 and "dev_code" not in body, body
+    st, body = req("POST", "/api/v1/auth/otp/verify", {"phone_e164": phone, "code": DEV_OTP_CODE})
     print(f"otp verify: {st}")
     assert st == 200
     TOKEN = body["access_token"]
@@ -116,8 +125,10 @@ try:
     # 5. driver flow: register -> KYC approve -> deposit -> ACTIVE -> nearby
     drv_phone = f"+852{92000000 + int(time.time()) % 100000}"
     st, body = req("POST", "/api/v1/auth/otp/request", {"phone_e164": drv_phone})
-    drv_code = body["dev_code"]
-    st, body = req("POST", "/api/v1/auth/otp/verify", {"phone_e164": drv_phone, "code": drv_code})
+    assert st == 200 and "dev_code" not in body, body
+    st, body = req(
+        "POST", "/api/v1/auth/otp/verify", {"phone_e164": drv_phone, "code": DEV_OTP_CODE}
+    )
     print(f"driver otp verify: {st}")
     assert st == 200
     driver_token = body["access_token"]

@@ -4,17 +4,20 @@ import pytest
 
 
 def _mk_user_token(client, phone: str) -> str:
-    r = client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
+    client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
+    # SEC-02: the code is never in the response; read it at the notify seam.
     r = client.post(
-        "/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": r.json()["dev_code"]}
+        "/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": client.otp_inbox[phone]}
     )
     return r.json()["access_token"]
 
 
 def _admin_token() -> str:
+    from conftest import ADMIN_ID
+
     from app.core.security import create_access_token
 
-    return create_access_token({"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"})
+    return create_access_token({"sub": ADMIN_ID, "role": "ADMIN"})
 
 
 @pytest.fixture()

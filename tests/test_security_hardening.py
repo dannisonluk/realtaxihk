@@ -27,8 +27,10 @@ def _phone() -> str:
 def _login(client, phone: str) -> dict:
     r = client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
     assert r.status_code == 200, r.text
-    code = r.json()["dev_code"]
-    r = client.post("/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": code})
+    # SEC-02: the code is never in the response; read it at the notify seam.
+    r = client.post(
+        "/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": client.otp_inbox[phone]}
+    )
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -79,8 +81,9 @@ class TestConfigFailClosed:
             Settings(_env_file=None, app_env="dev", jwt_secret_key="x" * 64)
 
     def test_dev_otp_needs_the_explicit_switch(self, monkeypatch):
-        # The test process sets ALLOW_DEV_OTP=true (the suite asserts on dev_code
-        # throughout); clear it so "switch off" is actually exercised.
+        # The suite does NOT set ALLOW_DEV_OTP (it reads codes from the notify
+        # seam), so "switch off" is already the ambient state; clear it anyway
+        # to keep the assertion independent of the developer's own environment.
         monkeypatch.delenv("ALLOW_DEV_OTP", raising=False)
         on = Settings(
             _env_file=None, app_env="dev", jwt_secret_key=_STRONG_SECRET, allow_dev_otp=True
@@ -546,3 +549,89 @@ class TestProxyHeaderTrust:
         assert trusted.get_trusted_client_address("203.0.113.7")[0] == "203.0.113.7"
         # And a value that is not a trusted host is not silently accepted as one.
         assert "203.0.113.7" not in trusted
+
+
+# --------------------------------------------------------------------------- #
+# SEC-02 (third round) — the OTP must never come back over HTTP
+# --------------------------------------------------------------------------- #
+class TestOtpIsNeverEchoed:
+    """The code used to be returned as `dev_code` whenever ALLOW_DEV_OTP was on.
+
+    The response goes to the caller, so that made the OTP prove nothing — the
+    whole point of a second factor is that the requester does not learn it. The
+    suite reads codes from the notify seam instead (`otp_inbox`), which is also a
+    stronger assertion: it proves the code reached the notification layer, which
+    a response-body check cannot.
+    """
+
+    def test_otp_request_returns_no_code(self, client):
+        r = client.post("/api/v1/auth/otp/request", json={"phone_e164": _phone()})
+        assert r.status_code == 200
+        assert set(r.json()) == {"sent", "expires_in"}, (
+            "the OTP response must carry no code — a caller who receives it can "
+            "complete the very login it is supposed to be proving"
+        )
+        assert "123456" not in r.text
+
+    def test_the_code_still_reaches_the_notify_layer(self, client):
+        """Not merely "no code in the response" — the code must actually be sent,
+        otherwise the fix would be indistinguishable from a broken OTP."""
+        phone = _phone()
+        client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
+        code = client.otp_inbox[phone]
+        assert len(code) == 6 and code.isdigit()
+        r = client.post("/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": code})
+        assert r.status_code == 200
+
+    def test_the_code_is_random_not_a_constant(self, client):
+        """The suite no longer sets ALLOW_DEV_OTP, so codes must be random."""
+        codes = set()
+        for _ in range(3):
+            phone = _phone()
+            client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
+            codes.add(client.otp_inbox[phone])
+        assert len(codes) == 3, f"OTP codes repeated across phones: {codes}"
+
+
+# --------------------------------------------------------------------------- #
+# P2-7 (third round) — one Redis client per event loop, not per call
+# --------------------------------------------------------------------------- #
+class TestRedisClientCaching:
+    """`get_redis()` used to return a brand-new client on every call — a design
+    the module docstring justified by test-loop safety, at the cost of opening a
+    Redis socket per request on paths that include the auth hot path.
+
+    It now caches one client per running loop, which keeps the test isolation and
+    removes the churn. These pin both halves of that trade.
+    """
+
+    def test_same_loop_returns_the_same_client(self):
+        import asyncio
+
+        from app.core.db import get_redis
+
+        async def run():
+            return get_redis() is get_redis()
+
+        assert asyncio.run(run()) is True
+
+    def test_a_different_loop_gets_a_different_client(self):
+        import asyncio
+
+        from app.core.db import get_redis
+
+        async def run():
+            return get_redis()
+
+        first = asyncio.run(run())
+        second = asyncio.run(run())
+        assert first is not second, (
+            "a redis-py asyncio client binds pooled connections to the loop that "
+            "created it, so it must never be handed to a second loop"
+        )
+
+    def test_outside_a_loop_gets_a_fresh_client(self):
+        """Import-time wiring has no running loop to key on."""
+        from app.core.db import get_redis
+
+        assert get_redis() is not get_redis()

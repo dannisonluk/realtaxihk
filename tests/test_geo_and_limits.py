@@ -2,20 +2,21 @@
 
 
 def _mk_user_token(client, phone_expr: str) -> str:
-    r = client.post("/api/v1/auth/otp/request", json={"phone_e164": phone_expr})
+    client.post("/api/v1/auth/otp/request", json={"phone_e164": phone_expr})
+    # SEC-02: the code is never in the response; read it at the notify seam.
     r = client.post(
-        "/api/v1/auth/otp/verify", json={"phone_e164": phone_expr, "code": r.json()["dev_code"]}
+        "/api/v1/auth/otp/verify",
+        json={"phone_e164": phone_expr, "code": client.otp_inbox[phone_expr]},
     )
     return r.json()["access_token"]
 
 
 def _admin_headers() -> dict:
+    from conftest import ADMIN_ID
+
     from app.core.security import create_access_token
 
-    return {
-        "Authorization": "Bearer "
-        + create_access_token({"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"})
-    }
+    return {"Authorization": "Bearer " + create_access_token({"sub": ADMIN_ID, "role": "ADMIN"})}
 
 
 def _mk_active_driver(client, phone_expr: str):
