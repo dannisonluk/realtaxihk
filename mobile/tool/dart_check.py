@@ -56,6 +56,7 @@ Exit code 0 = no errors, 1 = errors found, 2 = harness failure.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import queue
@@ -269,7 +270,7 @@ def main() -> int:
     parser.add_argument("root", nargs="?", default=".", help="project root (default: .)")
     parser.add_argument("files", nargs="*", help="specific files (default: all of lib/test/tool)")
     parser.add_argument("--settle", type=float, default=90.0, help="max seconds to wait per batch")
-    parser.add_argument("--batch", type=int, default=6, help="documents to open at once (default 6)")
+    parser.add_argument("--batch", type=int, default=6, help="docs to open at once (default 6)")
     parser.add_argument("-v", "--verbose", action="store_true", help="dump server stderr")
     parser.add_argument("--dump", action="store_true", help="dump the raw LSP stream")
     args = parser.parse_args()
@@ -287,7 +288,7 @@ def main() -> int:
     try:
         server.start()
         diags = server.analyze(files, args.settle, args.batch)
-    except Exception as exc:  # noqa: BLE001 - a harness failure, reported as such
+    except Exception as exc:  # a harness failure, reported as such
         print(f"harness failure: {type(exc).__name__}: {exc}", file=sys.stderr)
         for line in server.stderr_lines[-20:]:
             print(f"  server: {line}", file=sys.stderr)
@@ -301,10 +302,8 @@ def main() -> int:
         if not items:
             continue
         rel = uri.replace("file:///", "").replace("/", os.sep)
-        try:
+        with contextlib.suppress(ValueError):
             rel = os.path.relpath(rel, root)
-        except ValueError:
-            pass
         for d in items:
             sev = SEVERITY.get(d.get("severity", 1), "?")
             line = d["range"]["start"]["line"] + 1
