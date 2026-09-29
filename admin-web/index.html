@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <!--
+      An internal admin console. `noindex` is not a security control, but it keeps
+      the console out of search results if it is ever reachable from a wider
+      network than intended.
+    -->
+    <meta name="robots" content="noindex, nofollow" />
+    <title>RealTaxi HK  ·  管理後台</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!--
+      The app is a hash-routed SPA: `#/kyc`, `#/fleets/<id>`. Hash routing rather
+      than History API routing because this is served as static files with no
+      rewrite rule — a deep link to `/fleets/<id>` would 404 before the app ever
+      loaded.
+
+      There is no server-side templating and no `innerHTML` with server data: see
+      `js/dom.js`. Driver notes, fleet names and contact details are all
+      attacker-controlled strings, and this console renders them.
+    -->
+    <div id="app" class="app" aria-live="polite"></div>
+
+    <noscript>
+      <p class="noscript">此管理後台需要 JavaScript。</p>
+    </noscript>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

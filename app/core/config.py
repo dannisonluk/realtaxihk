@@ -43,7 +43,21 @@ class Settings(BaseSettings):
     app_env: str = ""
     app_host: str = "0.0.0.0"
     app_port: int = 8000
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:8081"]
+    # Local dev origins for the admin console (`admin-web/`). Both spellings of
+    # loopback are listed because a CORS origin is matched as a literal string:
+    # `http://127.0.0.1:8081` and `http://localhost:8081` are different origins,
+    # and listing only one makes the console fail every request with an opaque
+    # browser error and nothing in the server log.
+    #
+    # 127.0.0.1 is the spelling used everywhere else in this file, deliberately —
+    # see the Postgres note below — so the console's own instructions and its
+    # serve script both use it.
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8081",
+        "http://127.0.0.1:8081",
+    ]
     log_level: str = "INFO"
 
     # 127.0.0.1, never "localhost". On Windows, `localhost` resolves to BOTH
