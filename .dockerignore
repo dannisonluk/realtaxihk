@@ -1,0 +1,36 @@
+# SEC-20: keep secrets and local state out of the build context.
+#
+# There was no .dockerignore at all, so `docker build .` shipped the whole tree —
+# including `.env` (the real JWT secret and the database password), `.git`, and
+# `.venv` — to the Docker daemon. The Dockerfile used explicit COPY paths so the
+# secret was not baked into the image *that time*, but any future `COPY . .`
+# would have published it. Context hygiene is not something to leave to luck.
+.git
+.github
+.gitattributes
+.venv
+venv
+env
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.tmp
+.coverage
+htmlcov
+dist
+build
+*.log
+
+# Secrets — never in the image. .env.example is documentation, so it stays.
+.env
+.env.*
+!.env.example
+
+# Not needed at runtime.
+tests
+scripts
+docs
+.workbuddy-ai

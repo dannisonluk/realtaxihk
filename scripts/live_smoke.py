@@ -37,8 +37,10 @@ print(f"port 8000 free: {port_free}")
 assert port_free, "port 8000 occupied — stop other servers first"
 
 # 1. boot uvicorn
+# SEC-31: --no-proxy-headers so X-Forwarded-For cannot rewrite the client address
+# (uvicorn trusts it from 127.0.0.1 by default, which made IP limits spoofable).
 proc = subprocess.Popen(
-    [sys.executable, "-m", "uvicorn", "app.main:app", "--port", "8000"],
+    [sys.executable, "-m", "uvicorn", "app.main:app", "--port", "8000", "--no-proxy-headers"],
     stdout=subprocess.DEVNULL,
     stderr=subprocess.DEVNULL,
 )

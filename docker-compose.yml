@@ -4,10 +4,13 @@ services:
     container_name: realtaxi-db
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-realtaxi}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-realtaxihk}
+    # SEC-06: bind to loopback only. Publishing 5432 to 0.0.0.0 put the database
+    # on the public internet; the api reaches it over the compose network by
+    # service name and never needs a host port at all.
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
@@ -20,17 +23,31 @@ services:
   redis:
     image: redis:7-alpine
     container_name: realtaxi-redis
+    # SEC-06: Redis is not a cache here — it holds the rate-limit counters, the
+    # grab locks and the Pub/Sub channels the live map trusts. Unauthenticated and
+    # reachable from the internet it was, in effect, an unauthenticated API:
+    # a live check injected a fake driver position, pinned a grab lock so an order
+    # could never be taken, and rewrote the rate-limit keys.
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      - --protected-mode
+      - "yes"
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
 
   api:
     build: .
@@ -42,16 +59,40 @@ services:
       redis:
         condition: service_healthy
     environment:
+      # Hard-coded, not `${APP_ENV:-prod}`: this file IS the production deploy
+      # path, and letting a stray local `.env` downgrade it to dev would serve the
+      # fixed dev OTP on a public host. Overriding it is a deliberate act.
       APP_ENV: prod
       POSTGRES_HOST: db
-      REDIS_URL: redis://redis:6379/0
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-realtaxi}
+      # SEC-19: without this the container fell back to the dev password
+      # `change-me-dev`, which the prod validator rejects — so the documented
+      # deploy path crash-looped. The api could never start.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-realtaxihk}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/0
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY in .env}
+      # SEC-07: how many trusted proxies sit in front of the app. Leave 0 when
+      # the api is exposed directly; set 1 when nginx terminates TLS in front.
+      TRUSTED_PROXY_COUNT: ${TRUSTED_PROXY_COUNT:-0}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["https://realtaxihk.com"]}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+    # SEC-31 + SEC-19: bind to loopback by default. This file already assumes the
+    # API sits behind a TLS terminator (no nginx service here, TLS is "the reverse
+    # proxy's job"), so publishing on 0.0.0.0 handed anyone on the network a
+    # direct, un-proxied path to the API — and any IP-based control they hit
+    # would see the Docker gateway, not the client. Set APP_BIND_IP=0.0.0.0 only
+    # when the proxy really is off-host.
     ports:
-      - "${APP_PORT:-8000}:8000"
+      - "${APP_BIND_IP:-127.0.0.1}:${APP_PORT:-8000}:8000"
     # P0-6: apply migrations before serving (compose up == deploy-safe).
+    # SEC-31: `--no-proxy-headers` — see the Dockerfile. uvicorn trusts
+    # X-Forwarded-For from 127.0.0.1 by default and would overwrite the client
+    # address before the app ever sees it, silently defeating SEC-07.
     command: >
       sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-proxy-headers"
 
 volumes:
   pgdata:
