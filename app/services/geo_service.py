@@ -3,23 +3,22 @@
 Index lifecycle mirrors order state:
 - BROADCASTING  -> indexed (GEOADD)
 - grabbed/cancelled -> removed (ZREM, idempotent)
+
+SEC-25: the parallel `geo:drivers:online` index is gone. It was written on every
+location tick and **never read by any code path**, and nothing ever expired it —
+a live check found 37 stale members from drivers that had long since gone
+offline. Online state already lives on `driver_profiles.is_online`, which is
+queried from the database and cannot go stale independently.
 """
 
 from __future__ import annotations
 
 GEO_ORDERS_KEY = "geo:orders:active"
-GEO_DRIVERS_KEY = "geo:drivers:online"
 
 
 class GeoService:
     def __init__(self, redis):
         self.redis = redis
-
-    async def index_driver(self, driver_profile_id: str, lat: float, lng: float) -> None:
-        await self.redis.geoadd(GEO_DRIVERS_KEY, (lng, lat, str(driver_profile_id)))
-
-    async def remove_driver(self, driver_profile_id: str) -> None:
-        await self.redis.zrem(GEO_DRIVERS_KEY, str(driver_profile_id))
 
     async def index_order(self, order_id: str, lat: float, lng: float) -> None:
         await self.redis.geoadd(GEO_ORDERS_KEY, (lng, lat, str(order_id)))

@@ -23,7 +23,7 @@ from app.core.db import get_session, get_session_factory
 from app.core.deps import Principal, require_admin
 from app.core.money import money_str
 from app.models import DriverProfile, DriverStatus, LedgerEntryType, RefundRequest, RefundStatus
-from app.services.ledger_service import LedgerService
+from app.services.ledger_service import LedgerService, reference_for_grant
 from app.services.refund_service import RefundService
 from app.services.settlement_service import SettlementService
 from app.services.state_machine import assert_driver_transition
@@ -97,6 +97,8 @@ class DepositGrantIn(BaseModel):
     amount_hkd: Decimal = Field(gt=0, le=100000)
     note: str = ""
     # P1-7 idempotency: client-supplied key; a retry with the same key replays.
+    # SEC-13: it is namespaced server-side (see reference_for_grant) and never
+    # used verbatim as the ledger reference.
     reference: str | None = Field(default=None, max_length=120)
 
 
@@ -111,7 +113,10 @@ async def grant_deposit(
     if dp is None:
         raise HTTPException(status_code=404, detail="driver not found")
 
-    reference = payload.reference or f"grant:{dp.id}:{uuid.uuid4().hex}"
+    # SEC-13: the client key is namespaced under `grant:<driver>:` so it can never
+    # be crafted to collide with a settlement (`weekly:`) or refund (`refund:`)
+    # reference. Retry-idempotency for the caller is preserved.
+    reference = reference_for_grant(dp.id, payload.reference)
     deposit = await LedgerService.ensure_deposit_row(session, dp)
     entry = await LedgerService(session).append(
         driver_profile_id=dp.id,

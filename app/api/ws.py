@@ -9,7 +9,8 @@ Authority rules:
   per tick (a suspended driver cannot keep streaming);
 - everyone else: denied at handshake (4403).
 
-Close codes: 4401 unauthenticated, 4403 forbidden, 4404 unknown order.
+Close codes: 4401 unauthenticated, 4403 forbidden, 4404 unknown order,
+4408 connection cap reached.
 
 Protocol:
 - driver sends {"lat": float, "lng": float} → receives {"type":"ack"} per
@@ -17,6 +18,16 @@ Protocol:
 - subscriber pump delivers {"type":"location"} ticks and lifecycle events;
 - the driver's own pump does NOT echo location ticks (direct ack instead),
   so the driver socket sees exactly one reply per sent tick.
+
+Security (SEC-14/16/18/30):
+- authorization completes BEFORE `accept()`, so an unauthenticated client never
+  gets a 101 upgrade or a server-side socket/task;
+- one shared `TripHub` (single Redis client) serves every socket, plus per-user
+  and global connection caps, so one account cannot exhaust Redis's `maxclients`;
+- inbound ticks are throttled per connection (DB write + Pub/Sub publish per tick);
+- the heartbeat runs on its own timer, so an idle connection is pinged and a dead
+  one is detected — previously the ping only fired while messages were arriving,
+  which is exactly when it is not needed.
 """
 
 from __future__ import annotations
@@ -24,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import time
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
@@ -33,12 +45,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.db import get_session, get_session_factory
 from app.core.deps import principal_from_token
+from app.core.token_revocation import is_token_revoked
 from app.models import DriverProfile, DriverStatus, Order, User
-from app.services.trip_service import TripHub
 
 router = APIRouter(tags=["ws"])
 
 WS_HK_BOUNDS = ((22.1, 22.6), (113.8, 114.5))
+
+# Close codes
+WS_UNAUTHENTICATED = 4401
+WS_FORBIDDEN = 4403
+WS_UNKNOWN_ORDER = 4404
+WS_CAPACITY = 4408
 
 
 @router.websocket("/ws/trip/{order_id}")
@@ -48,27 +66,39 @@ async def trip_socket(
     session: AsyncSession = Depends(get_session),
     factory=Depends(get_session_factory),
 ):
+    settings = get_settings()
+
+    # --- SEC-14: authorize first, accept second. Everything below this block
+    # runs before the 101 upgrade, so a rejected client holds no server socket.
     token = ws.query_params.get("token")
-    await ws.accept()
     if not token:
-        await ws.close(code=4401)
+        await ws.close(code=WS_UNAUTHENTICATED)
         return
     try:
         user = principal_from_token(token)
     except HTTPException:
-        await ws.close(code=4401)
+        await ws.close(code=WS_UNAUTHENTICATED)
         return
-    ws.state.user_id = user.id
+
+    # SEC-18: a revoked access token must not open a live channel either.
+    with contextlib.suppress(Exception):
+        redis = ws.app.state.redis_factory()
+        try:
+            if await is_token_revoked(redis, user.id, user.issued_at):
+                await ws.close(code=WS_UNAUTHENTICATED)
+                return
+        finally:
+            await redis.aclose()
 
     # --- resolve party (request-scoped session, one read) ---
     try:
         oid = uuid.UUID(order_id)
     except ValueError:
-        await ws.close(code=4404)
+        await ws.close(code=WS_UNKNOWN_ORDER)
         return
     order = await session.get(Order, oid)
     if order is None:
-        await ws.close(code=4404)
+        await ws.close(code=WS_UNKNOWN_ORDER)
         return
     order_id_str = str(order.id)
     is_passenger = order.passenger_id == user.id
@@ -86,33 +116,67 @@ async def trip_socket(
         and driver_id_on_order == profile_id
     )
     if not (is_passenger or is_driver):
-        await ws.close(code=4403)
+        await ws.close(code=WS_FORBIDDEN)
         return
 
     # P0-3: a deactivated account must not keep a live socket. One PK read;
     # a suspended driver re-checks per tick (DRIVER_NOT_ACTIVE).
     db_user = await session.get(User, user.id)
     if db_user is None or not db_user.is_active:
-        await ws.close(code=4403)
+        await ws.close(code=WS_FORBIDDEN)
         return
     party_kind = "driver" if is_driver else "passenger"
 
-    hub = TripHub(ws.app.state.redis_factory)
+    # SEC-14: per-user and global caps, enforced before the upgrade.
+    registry = ws.app.state.ws_registry
+    if not await registry.acquire(user.id):
+        await ws.close(code=WS_CAPACITY)
+        return
+
+    await ws.accept()
+    ws.state.user_id = user.id
+
+    hub = ws.app.state.trip_hub
+    send_lock = asyncio.Lock()
+    activity = {"at": time.monotonic()}
+    # SEC-16: token bucket. Each tick is a DB UPDATE + commit + a Redis publish, so
+    # the sustained rate is capped — but a small burst is allowed, because a driver
+    # app that reconnects legitimately replays a few queued ticks at once.
+    burst = max(1, settings.ws_tick_burst)
+    rate = max(1, settings.ws_ticks_per_second)
+    bucket = {"tokens": float(burst), "at": time.monotonic()}
+
+    def allow_tick() -> bool:
+        now = time.monotonic()
+        bucket["tokens"] = min(burst, bucket["tokens"] + (now - bucket["at"]) * rate)
+        bucket["at"] = now
+        if bucket["tokens"] < 1:
+            return False
+        bucket["tokens"] -= 1
+        return True
+
+    async def send(payload: dict) -> None:
+        async with send_lock:
+            await ws.send_text(json.dumps(payload))
+            activity["at"] = time.monotonic()
 
     async def handle_push(raw: str) -> None:
         if party_kind != "driver":
-            await ws.send_text(json.dumps({"type": "error", "code": "READ_ONLY"}))
+            await send({"type": "error", "code": "READ_ONLY"})
+            return
+        if not allow_tick():
+            await send({"type": "error", "code": "RATE_LIMITED"})
             return
         # fresh session per tick: no cross-tick transaction state
         try:
             data = json.loads(raw)
             lat, lng = float(data["lat"]), float(data["lng"])
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-            await ws.send_text(json.dumps({"type": "error", "code": "BAD_MESSAGE"}))
+            await send({"type": "error", "code": "BAD_MESSAGE"})
             return
         (lat_lo, lat_hi), (lng_lo, lng_hi) = WS_HK_BOUNDS
         if not (lat_lo <= lat <= lat_hi and lng_lo <= lng <= lng_hi):
-            await ws.send_text(json.dumps({"type": "error", "code": "BAD_LOCATION"}))
+            await send({"type": "error", "code": "BAD_LOCATION"})
             return
         async with factory() as ops:
             row = (
@@ -123,35 +187,54 @@ async def trip_socket(
                 )
             ).first()
             if row is None or row.status != DriverStatus.ACTIVE:
-                await ws.send_text(json.dumps({"type": "error", "code": "DRIVER_NOT_ACTIVE"}))
+                await send({"type": "error", "code": "DRIVER_NOT_ACTIVE"})
                 return
             await hub.record_tick(ops, order_id_str, row.id, lat, lng)
-        await ws.send_text(json.dumps({"type": "ack", "lat": lat, "lng": lng}))
+        await send({"type": "ack", "lat": lat, "lng": lng})
 
     async def reader() -> None:
         while True:
             raw = await ws.receive_text()
+            activity["at"] = time.monotonic()
             await handle_push(raw)
 
-    heartbeat_s = get_settings().ws_heartbeat_s
+    heartbeat_s = max(1, settings.ws_heartbeat_s)
 
-    async def pump() -> None:
-        last_ping = asyncio.get_event_loop().time()
+    async def heartbeat() -> None:
+        """SEC-30: ping on a timer, independent of inbound traffic."""
+        while True:
+            await asyncio.sleep(heartbeat_s)
+            await send({"type": "ping", "ts": time.time()})
+
+    async def subscriber() -> None:
         async for message in hub.subscribe(order_id_str):
             if party_kind == "driver" and message.get("type") == "location":
                 continue  # drivers get direct acks; no self-echo
-            await ws.send_text(json.dumps(message))
-            now = asyncio.get_event_loop().time()
-            if now - last_ping >= heartbeat_s:
-                await ws.send_text(json.dumps({"type": "ping", "ts": now}))
-                last_ping = now
+            await send(message)
 
-    pump_task = asyncio.create_task(pump())
+    async def watchdog() -> None:
+        """SEC-14: reap a connection with no traffic in either direction."""
+        while True:
+            await asyncio.sleep(min(heartbeat_s, max(1, settings.ws_idle_timeout_s // 2)))
+            if time.monotonic() - activity["at"] > settings.ws_idle_timeout_s:
+                with contextlib.suppress(Exception):
+                    await ws.close(code=1001)
+                return
+
+    tasks = [
+        asyncio.create_task(heartbeat(), name="ws_heartbeat"),
+        asyncio.create_task(subscriber(), name="ws_subscriber"),
+        asyncio.create_task(watchdog(), name="ws_watchdog"),
+    ]
     try:
         await reader()
     except WebSocketDisconnect:
         pass
+    except Exception:
+        with contextlib.suppress(Exception):
+            await ws.close(code=1011)
     finally:
-        pump_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await pump_task
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await registry.release(user.id)

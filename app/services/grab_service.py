@@ -1,9 +1,20 @@
-"""Atomic order grabbing — Redis SETNX lock serializes concurrent grabs.
+"""Atomic order grabbing — the database is the arbiter, Redis is an optimisation.
 
-Winner:   SETNX lock -> DB transition BROADCASTING->ACCEPTED -> release lock.
-Losers:   SETNX fails -> return False (API maps to 409 CONFLICT).
+Winner:   Redis SETNX lock -> conditional UPDATE ... WHERE status='BROADCASTING'
+          -> rowcount 1 -> commit -> release lock.
+Losers:   SETNX fails, or the conditional UPDATE matches no row -> return False
+          (API maps to 409 CONFLICT).
 Crashes:  lock TTL (15s) auto-expires; release is token-checked via Lua so a
           slow winner never deletes a successor's lock.
+
+SEC-06: the Redis lock key is `lock:grab:{order_id}` — fully predictable from the
+order id, so anyone able to reach Redis could hold it forever and make the order
+ungrabbable (the live check proved it: `SET lock:grab:<id> attacker NX PX 15000`
+succeeded). The exposure itself is fixed at the infrastructure layer (Redis is no
+longer published to 0.0.0.0 and now requires a password), but a predictable key
+must not be the only thing preventing a double assignment. The conditional UPDATE
+below makes correctness independent of Redis: if two drivers ever slip past the
+lock, the second UPDATE matches zero rows and loses.
 """
 
 from __future__ import annotations
@@ -11,7 +22,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.models import DriverProfile, DriverStatus, Order, OrderStatus
 from app.services.state_machine import assert_order_transition
@@ -61,9 +72,20 @@ class GrabService:
                 ):
                     return False
                 assert_order_transition(order.status, OrderStatus.ACCEPTED)
-                order.status = OrderStatus.ACCEPTED
-                order.driver_id = profile.id
-                order.accepted_at = datetime.now(UTC)
+                # Conditional UPDATE: only a BROADCASTING row can be claimed, so
+                # the database itself enforces single-assignment.
+                result = await session.execute(
+                    update(Order)
+                    .where(Order.id == order.id, Order.status == OrderStatus.BROADCASTING)
+                    .values(
+                        status=OrderStatus.ACCEPTED,
+                        driver_id=profile.id,
+                        accepted_at=datetime.now(UTC),
+                    )
+                )
+                if (result.rowcount or 0) != 1:
+                    await session.rollback()
+                    return False
                 await session.commit()
             await self.redis.zrem("geo:orders:active", str(order_id))
         finally:

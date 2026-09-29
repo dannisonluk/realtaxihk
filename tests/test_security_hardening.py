@@ -1,0 +1,548 @@
+"""Regression tests for the network security audit (docs/SECURITY_AUDIT.md).
+
+Each class pins one finding so it cannot silently come back. These are
+behavioural tests, not code-shape tests: they assert the exploit no longer works
+(or the safe path now does), which is what the audit proved with live probes.
+"""
+
+from __future__ import annotations
+
+import uuid
+from decimal import Decimal
+
+import pytest
+from pydantic import ValidationError
+
+from app.core.config import Settings
+from app.core.exceptions import BusinessRuleError
+
+# A secret that satisfies the entropy check (>= 32 chars, >= 8 distinct chars).
+_STRONG_SECRET = "Zx9q7Lm2Wp4Rt6Yk8Bn3Vc5Hj1Sd0Fg6"
+
+
+def _phone() -> str:
+    return f"+8529{uuid.uuid4().int % 10**7:07d}"
+
+
+def _login(client, phone: str) -> dict:
+    r = client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
+    assert r.status_code == 200, r.text
+    code = r.json()["dev_code"]
+    r = client.post("/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": code})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+# --------------------------------------------------------------------------- #
+# SEC-01~05 — config must fail closed
+# --------------------------------------------------------------------------- #
+class TestConfigFailClosed:
+    def test_missing_app_env_refuses_to_boot(self, monkeypatch):
+        """SEC-01: no default. An unset APP_ENV used to mean app_env='dev', which
+        served a fixed OTP code in the response on a host with no .env."""
+        monkeypatch.delenv("APP_ENV", raising=False)
+        with pytest.raises(ValidationError, match="APP_ENV is not set"):
+            Settings(_env_file=None, jwt_secret_key=_STRONG_SECRET)
+
+    def test_non_whitelisted_app_env_rejected(self):
+        """SEC-04: `== 'prod'` let 'production'/'PROD'/'staging' skip prod checks."""
+        with pytest.raises(ValidationError, match="must be one of"):
+            Settings(_env_file=None, app_env="production", jwt_secret_key=_STRONG_SECRET)
+
+    def test_prod_rejects_dev_jwt_secret(self):
+        with pytest.raises(ValidationError, match="JWT_SECRET_KEY"):
+            Settings(
+                _env_file=None,
+                app_env="prod",
+                jwt_secret_key="dev-only-secret-change-in-prod-0123456789abcdef",
+                postgres_password="a-real-password",
+            )
+
+    def test_prod_rejects_dev_otp_switch(self):
+        """SEC-02: the dev OTP shortcut is not a prod option."""
+        with pytest.raises(ValidationError, match="ALLOW_DEV_OTP"):
+            Settings(
+                _env_file=None,
+                app_env="prod",
+                jwt_secret_key=_STRONG_SECRET,
+                postgres_password="a-real-password",
+                allow_dev_otp=True,
+            )
+
+    def test_short_secret_rejected(self):
+        with pytest.raises(ValidationError, match="at least"):
+            Settings(_env_file=None, app_env="dev", jwt_secret_key="abc123")
+
+    def test_low_entropy_secret_rejected(self):
+        """Length alone is not entropy: 64 identical characters is one guess."""
+        with pytest.raises(ValidationError, match="entropy"):
+            Settings(_env_file=None, app_env="dev", jwt_secret_key="x" * 64)
+
+    def test_dev_otp_needs_the_explicit_switch(self, monkeypatch):
+        # The test process sets ALLOW_DEV_OTP=true (the suite asserts on dev_code
+        # throughout); clear it so "switch off" is actually exercised.
+        monkeypatch.delenv("ALLOW_DEV_OTP", raising=False)
+        on = Settings(
+            _env_file=None, app_env="dev", jwt_secret_key=_STRONG_SECRET, allow_dev_otp=True
+        )
+        off = Settings(_env_file=None, app_env="dev", jwt_secret_key=_STRONG_SECRET)
+        assert on.dev_otp_enabled is True
+        assert off.dev_otp_enabled is False
+
+
+# --------------------------------------------------------------------------- #
+# SEC-07 — X-Forwarded-For must not be client-controlled
+# --------------------------------------------------------------------------- #
+class TestForwardedFor:
+    def test_rotating_xff_does_not_reset_the_ip_bucket(self, client):
+        """With no trusted proxy configured the header is ignored entirely, so
+        rotating it cannot mint a fresh rate-limit bucket per request."""
+        from app.core.config import get_settings
+
+        limit = get_settings().otp_ip_rate_limit
+        statuses = [
+            client.post(
+                "/api/v1/auth/otp/request",
+                json={"phone_e164": _phone()},
+                headers={"X-Forwarded-For": f"203.0.113.{i}"},
+            ).status_code
+            for i in range(limit + 3)
+        ]
+        assert statuses.count(429) >= 3, statuses
+
+    def test_rightmost_hop_is_used_when_a_proxy_is_trusted(self, client, monkeypatch):
+        """With one trusted hop, the last element is the peer nginx actually saw."""
+        from app.api.auth import _client_ip
+
+        class _Req:
+            def __init__(self):
+                self.headers = {"x-forwarded-for": "1.2.3.4, 5.6.7.8, 9.9.9.9"}
+                self.client = type("C", (), {"host": "10.0.0.1"})()
+
+        monkeypatch.setattr(
+            "app.api.auth.get_settings",
+            lambda: Settings(
+                _env_file=None,
+                app_env="dev",
+                jwt_secret_key=_STRONG_SECRET,
+                trusted_proxy_count=1,
+            ),
+        )
+        assert _client_ip(_Req()) == "9.9.9.9"
+
+
+# --------------------------------------------------------------------------- #
+# SEC-08 — no single shared OTP counter may lock the whole platform
+# --------------------------------------------------------------------------- #
+class TestOtpGlobalCap:
+    def test_crossing_the_soft_cap_does_not_lock_the_platform(self, client, monkeypatch):
+        """SEC-08: the old code gated on a single shared key, so once the cap was
+        crossed EVERY user got 429 — a one-attacker login DoS. With the cap at 2,
+        the third distinct number is now still served (the counter only tightens
+        the per-phone budget)."""
+        from app.core.config import get_settings
+
+        s = get_settings()
+        monkeypatch.setattr(s, "otp_global_hourly_limit", 2, raising=False)
+        monkeypatch.setattr(s, "otp_global_hourly_hard_limit", 5000, raising=False)
+        monkeypatch.setattr(s, "otp_phone_rate_limit_strict", 1, raising=False)
+        monkeypatch.setattr(s, "otp_ip_rate_limit", 100, raising=False)
+
+        statuses = [
+            client.post("/api/v1/auth/otp/request", json={"phone_e164": _phone()}).status_code
+            for _ in range(3)
+        ]
+        # Under the old shared-counter gate the third call returned 429.
+        assert statuses == [200, 200, 200], statuses
+
+    def test_hard_ceiling_sheds_load_with_503(self, client, monkeypatch):
+        """Past the hard ceiling we shed load explicitly (503), not with a 429 that
+        reads like "you personally are rate-limited"."""
+        from app.core.config import get_settings
+
+        s = get_settings()
+        monkeypatch.setattr(s, "otp_global_hourly_hard_limit", 0, raising=False)
+        r = client.post("/api/v1/auth/otp/request", json={"phone_e164": _phone()})
+        assert r.status_code == 503
+        assert r.json()["code"] == "SERVICE_UNAVAILABLE"
+
+
+# --------------------------------------------------------------------------- #
+# SEC-09~11 — input size caps
+# --------------------------------------------------------------------------- #
+class TestInputCaps:
+    def test_too_many_tunnels_rejected(self, client):
+        r = client.post(
+            "/api/v1/fare/estimate",
+            json={
+                "taxi_type": "URBAN",
+                "distance_km": "5",
+                "tunnels": ["cross_harbour"] * 9,
+            },
+        )
+        assert r.status_code == 422
+
+    def test_oversized_body_rejected_before_parsing(self, client):
+        """SEC-10: a 63 MB body used to be accepted (HTTP 200)."""
+        from app.core.config import get_settings
+
+        padding = "x" * (get_settings().max_request_body_bytes + 4096)
+        r = client.post(
+            "/api/v1/fare/estimate",
+            json={"taxi_type": "URBAN", "distance_km": "5", "pickup_address": padding},
+        )
+        assert r.status_code == 413
+        assert r.json()["code"] == "PAYLOAD_TOO_LARGE"
+
+    def test_normal_body_still_accepted(self, client):
+        r = client.post("/api/v1/fare/estimate", json={"taxi_type": "URBAN", "distance_km": "5"})
+        assert r.status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# SEC-12 — every non-public /api/v1 route must enforce live account state
+# --------------------------------------------------------------------------- #
+_PUBLIC_PATHS = {
+    "/api/v1/fare/estimate",
+    "/api/v1/auth/otp/request",
+    "/api/v1/auth/otp/verify",
+    "/api/v1/auth/refresh",
+}
+
+
+def _iter_api_routes(app):
+    """Yield every APIRoute, including those behind `include_router`.
+
+    This FastAPI version (0.141) inserts a lazy `_IncludedRouter` wrapper instead
+    of copying the router's routes onto the app, so a plain walk of `app.routes`
+    finds nothing. The wrapper keeps the source router on `original_router`.
+    """
+    from fastapi.routing import APIRoute
+
+    seen: set[int] = set()
+    stack = list(app.routes)
+    while stack:
+        route = stack.pop()
+        if id(route) in seen:
+            continue
+        seen.add(id(route))
+        if isinstance(route, APIRoute):
+            yield route
+            continue
+        for attr in ("routes", "original_router", "router"):
+            child = getattr(route, attr, None)
+            if child is None:
+                continue
+            nested = getattr(child, "routes", None)
+            if nested:
+                stack.extend(nested)
+            elif isinstance(child, APIRoute):
+                stack.append(child)
+
+
+def _dependency_names(route) -> set[str]:
+    names: set[str] = set()
+
+    def walk(dep) -> None:
+        call = getattr(dep, "call", None)
+        if call is not None:
+            names.add(getattr(call, "__name__", str(call)))
+        for sub in getattr(dep, "dependencies", ()) or ():
+            walk(sub)
+
+    walk(route.dependant)
+    return names
+
+
+class TestRouteAuthzCoverage:
+    def test_all_non_public_api_routes_require_live_account_state(self, client):
+        """SEC-12: 6 routes used JWT-only auth, so a disabled account kept working.
+        This walks the real route table so a new route cannot reintroduce the gap."""
+        from app.main import create_app
+
+        app = create_app()
+        offenders = []
+        checked = 0
+        for route in _iter_api_routes(app):
+            if not route.path.startswith("/api/v1"):
+                continue
+            if route.path in _PUBLIC_PATHS:
+                continue
+            checked += 1
+            deps = _dependency_names(route)
+            if not ({"require_active_user", "require_admin"} & deps):
+                offenders.append(f"{sorted(route.methods)} {route.path}")
+        assert checked >= 15, f"route discovery looks wrong (only found {checked})"
+        assert offenders == [], f"routes missing a live-state guard: {offenders}"
+
+
+# --------------------------------------------------------------------------- #
+# SEC-13 — ledger reference collisions must not silently no-op a charge
+# --------------------------------------------------------------------------- #
+class TestLedgerReferenceIntegrity:
+    async def _driver_with_deposit(self, db_session, balance="500"):
+        from app.models import DriverDeposit, DriverProfile, DriverStatus, User, UserRole
+
+        user = User(phone_e164=_phone(), role=UserRole.PASSENGER)
+        db_session.add(user)
+        await db_session.flush()
+        profile = DriverProfile(
+            user_id=user.id,
+            hk_id_last4="0000",
+            taxi_driver_plate_no="TD90001",
+            vehicle_reg_mark="ZZ9001",
+            taxi_type="URBAN",
+            status=DriverStatus.ACTIVE,
+        )
+        db_session.add(profile)
+        await db_session.flush()
+        db_session.add(
+            DriverDeposit(
+                driver_profile_id=profile.id,
+                balance_hkd=Decimal(balance),
+                held_hkd=Decimal("0"),
+                required_hkd=Decimal("500"),
+            )
+        )
+        await db_session.flush()
+        return profile
+
+    async def test_planted_reference_cannot_swallow_the_weekly_fee(self, db_session):
+        """The exact SEC-13 attack: pre-plant `weekly:{driver}:{period}` carrying a
+        different entry_type/amount, then let settlement run. Previously append()
+        returned that row verbatim, the run reported `skipped`, and the HK$200 fee
+        was silently never collected."""
+        from sqlalchemy import select
+
+        from app.models import DriverDeposit, LedgerEntryType
+        from app.services.ledger_service import LedgerService, reference_for_weekly
+
+        profile = await self._driver_with_deposit(db_session)
+        svc = LedgerService(db_session)
+        reference = reference_for_weekly(profile.id, "2099-W03")
+
+        # The plant: a HK$1 top-up wearing the settlement's reference.
+        await svc.append(
+            driver_profile_id=profile.id,
+            entry_type=LedgerEntryType.DEPOSIT_TOPUP,
+            amount_hkd=Decimal("1"),
+            reference=reference,
+        )
+        await db_session.flush()
+
+        # The real charge now refuses instead of silently no-opping.
+        with pytest.raises(BusinessRuleError, match="already used"):
+            await svc.append(
+                driver_profile_id=profile.id,
+                entry_type=LedgerEntryType.WEEKLY_FEE_DEDUCTION,
+                amount_hkd=Decimal("-200"),
+                reference=reference,
+            )
+
+        deposit = (
+            (
+                await db_session.execute(
+                    select(DriverDeposit).where(DriverDeposit.driver_profile_id == profile.id)
+                )
+            )
+            .scalars()
+            .first()
+        )
+        # Only the planted +1 applied; the fee was rejected, not silently dropped.
+        assert Decimal(deposit.balance_hkd) == Decimal("501")
+
+    async def test_genuine_replay_still_returns_the_same_entry(self, db_session):
+        """Idempotency must survive the SEC-13 fix: same reference, same
+        entry_type, same amount -> replay the original, do not double-charge."""
+        from app.models import LedgerEntryType
+        from app.services.ledger_service import LedgerService
+
+        profile = await self._driver_with_deposit(db_session)
+        svc = LedgerService(db_session)
+        reference = f"grant:{profile.id}:retry-1"
+
+        first = await svc.append(
+            driver_profile_id=profile.id,
+            entry_type=LedgerEntryType.DEPOSIT_TOPUP,
+            amount_hkd=Decimal("500"),
+            reference=reference,
+        )
+        again = await svc.append(
+            driver_profile_id=profile.id,
+            entry_type=LedgerEntryType.DEPOSIT_TOPUP,
+            amount_hkd=Decimal("500"),
+            reference=reference,
+        )
+        assert first.id == again.id
+
+    async def test_grant_reference_is_namespaced_server_side(self):
+        """SEC-13: a client-supplied key can never be shaped like another
+        service's reference."""
+        from app.services.ledger_service import reference_for_grant
+
+        ref = reference_for_grant("driver-1", "weekly:driver-1:2099-W03")
+        assert ref.startswith("grant:driver-1:")
+        assert not ref.startswith("weekly:")
+
+
+# --------------------------------------------------------------------------- #
+# SEC-17/18 — token lifecycle
+# --------------------------------------------------------------------------- #
+class TestTokenLifecycle:
+    def test_replayed_refresh_token_revokes_the_whole_family(self, client):
+        """SEC-17: a rotated token coming back means the family is compromised."""
+        tokens = _login(client, _phone())
+        r = client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+        assert r.status_code == 200, r.text
+        second = r.json()["refresh_token"]
+
+        replay = client.post(
+            "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+        )
+        assert replay.status_code == 401
+        assert "reuse" in replay.json()["message"]
+
+        # The successor token is dead too — the family was revoked.
+        after = client.post("/api/v1/auth/refresh", json={"refresh_token": second})
+        assert after.status_code == 401
+
+    def test_logout_invalidates_the_access_token(self, client):
+        """SEC-18: logout used to leave the access token usable until expiry."""
+        tokens = _login(client, _phone())
+        headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+        assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+
+        assert client.post("/api/v1/auth/logout", headers=headers).status_code == 200
+
+        after = client.get("/api/v1/auth/me", headers=headers)
+        assert after.status_code == 401
+        assert "revoked" in after.json()["message"]
+
+    def test_access_token_lifetime_is_short(self):
+        from app.core.config import get_settings
+
+        assert get_settings().access_token_expire_minutes <= 30
+
+
+# --------------------------------------------------------------------------- #
+# SEC-23/24 — response hygiene
+# --------------------------------------------------------------------------- #
+class TestResponseHygiene:
+    def test_health_does_not_leak_the_environment(self, client):
+        """SEC-23: `env: dev` told an attacker which fixed OTP to try."""
+        body = client.get("/health").json()
+        assert "env" not in body
+        assert body["status"] in ("ok", "degraded")
+
+    def test_security_headers_present(self, client):
+        r = client.get("/api/v1/auth/me")
+        assert r.headers.get("x-content-type-options") == "nosniff"
+        assert r.headers.get("x-frame-options") == "DENY"
+        assert r.headers.get("referrer-policy") == "no-referrer"
+        assert "content-security-policy" in r.headers
+
+    def test_hsts_only_in_prod(self, client):
+        """HSTS on localhost would pin the developer's browser to HTTPS."""
+        assert "strict-transport-security" not in client.get("/health").headers
+
+
+# --------------------------------------------------------------------------- #
+# SEC-26 — keyset cursor must not be a cross-tenant oracle
+# --------------------------------------------------------------------------- #
+class TestCursorScoping:
+    def test_foreign_before_id_is_not_an_existence_oracle(self, client):
+        owner = _login(client, _phone())
+        other = _login(client, _phone())
+        created = client.post(
+            "/api/v1/orders",
+            headers={"Authorization": f"Bearer {owner['access_token']}"},
+            json={
+                "pickup_lat": 22.284,
+                "pickup_lng": 114.158,
+                "dropoff_lat": 22.315,
+                "dropoff_lng": 114.219,
+                "pickup_address": "Statue Square, Central",
+                "dropoff_address": "Harbour North, North Point",
+                "distance_km": "4.2",
+                "taxi_type": "URBAN",
+            },
+        )
+        assert created.status_code == 201, created.text
+        order_id = created.json()["id"]
+
+        r = client.get(
+            "/api/v1/orders",
+            params={"before_id": order_id},
+            headers={"Authorization": f"Bearer {other['access_token']}"},
+        )
+        assert r.status_code == 404
+
+        # The owner can still page with their own cursor.
+        ok = client.get(
+            "/api/v1/orders",
+            params={"before_id": order_id},
+            headers={"Authorization": f"Bearer {owner['access_token']}"},
+        )
+        assert ok.status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# SEC-31 — the ASGI server must not re-trust X-Forwarded-For below the app
+# --------------------------------------------------------------------------- #
+class TestProxyHeaderTrust:
+    """Found while re-running the post-fix attack probe: SEC-07 was fixed in the
+    app, but uvicorn put it back.
+
+    uvicorn's ProxyHeadersMiddleware is ON by default with
+    `forwarded_allow_ips=127.0.0.1`, and it overwrites `scope["client"]` with the
+    client-supplied X-Forwarded-For. That happens BELOW the application, so
+    `_client_ip()` receives an already-spoofed address and its
+    `TRUSTED_PROXY_COUNT == 0` guard never gets a chance to reject it. Measured:
+    `POST /otp/request` with `X-Forwarded-For: 198.51.100.78` created the
+    rate-limit bucket `rl:realtaxi:otp:ip:198.51.100.78` — a fresh bucket per
+    request, i.e. no IP limit at all.
+
+    This is a launch-configuration defect, so the regression test asserts on the
+    launch configuration. An in-process TestClient test cannot catch it, because
+    TestClient does not run uvicorn's middleware.
+    """
+
+    def _launch_files(self):
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent.parent
+        return [
+            root / "Dockerfile",
+            root / "docker-compose.yml",
+            *sorted((root / "scripts").glob("*.py")),
+        ]
+
+    def test_every_uvicorn_launch_point_disables_proxy_headers(self):
+        offenders = []
+        for path in self._launch_files():
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8")
+            if "app.main:app" not in text:
+                continue  # not a launch point
+            if "--no-proxy-headers" in text or "proxy_headers=False" in text:
+                continue
+            offenders.append(path.name)
+        assert offenders == [], (
+            "these files launch the app without disabling uvicorn's proxy headers, so "
+            f"X-Forwarded-For can spoof the client IP below the app: {offenders}"
+        )
+
+    def test_premise_uvicorn_trusts_the_header_from_loopback(self):
+        """Pins the premise, so the reason for the flag stays verifiable rather
+        than becoming folklore. If uvicorn changes this, re-check SEC-31."""
+        ph = pytest.importorskip("uvicorn.middleware.proxy_headers")
+        cls = getattr(ph, "_TrustedHosts", None)
+        if cls is None:  # pragma: no cover — uvicorn internals moved
+            pytest.skip("uvicorn internals changed — re-verify SEC-31 by hand")
+        trusted = cls("127.0.0.1")
+        assert "127.0.0.1" in trusted
+        # A single attacker-supplied value is returned verbatim.
+        assert trusted.get_trusted_client_address("203.0.113.7")[0] == "203.0.113.7"
+        # And a value that is not a trusted host is not silently accepted as one.
+        assert "203.0.113.7" not in trusted

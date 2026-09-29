@@ -28,12 +28,20 @@ def _error(code: str, message: str, details: Any = None) -> dict:
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(RequestValidationError)
     async def on_validation_error(request: Request, exc: RequestValidationError):
+        # SEC-09: pydantic attaches the offending value as `input` on every error,
+        # and echoing it made a failed request cost as much to answer as it did to
+        # send — 20k bogus `tunnels` came back as a 100 KB body, and the unbounded
+        # version of exactly this was the 32.8 MB response SEC-09 is about. It also
+        # reflected caller-supplied values straight back out, which is how a bad
+        # payload containing a credential ends up in a response and in every log
+        # that records one. Clients use `type` / `loc` / `msg`; keep those.
+        errors = [{k: v for k, v in err.items() if k != "input"} for err in exc.errors()]
         return JSONResponse(
             status_code=422,
             content=_error(
                 "VALIDATION_ERROR",
                 "Request validation failed.",
-                {"errors": jsonable_encoder(exc.errors(), custom_encoder={Decimal: str})},
+                {"errors": jsonable_encoder(errors, custom_encoder={Decimal: str})},
             ),
         )
 
@@ -47,15 +55,22 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(StarletteHTTPException)
     async def on_http_exception(request: Request, exc: StarletteHTTPException):
         code_map = {
+            status.HTTP_400_BAD_REQUEST: "BAD_REQUEST",
             status.HTTP_404_NOT_FOUND: "NOT_FOUND",
             status.HTTP_401_UNAUTHORIZED: "UNAUTHORIZED",
             status.HTTP_403_FORBIDDEN: "FORBIDDEN",
             status.HTTP_409_CONFLICT: "CONFLICT",
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE: "PAYLOAD_TOO_LARGE",
             status.HTTP_429_TOO_MANY_REQUESTS: "RATE_LIMITED",
+            status.HTTP_503_SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
         }
+        # SEC: `WWW-Authenticate` and `Retry-After` are part of the contract for
+        # 401/429/503 — dropping them makes clients (and load balancers) behave
+        # worse than the status code alone implies.
         return JSONResponse(
             status_code=exc.status_code,
             content=_error(code_map.get(exc.status_code, "HTTP_ERROR"), str(exc.detail)),
+            headers=getattr(exc, "headers", None),
         )
 
     @app.exception_handler(Exception)

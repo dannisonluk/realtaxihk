@@ -9,6 +9,13 @@ Idempotency is per ISO week. The ledger reference is
 partial UNIQUE index — so running the job twice (a retry after a crash, an
 overlapping scheduler, or an operator triggering it by hand) charges each driver
 exactly once per week.
+
+SEC-13: "already charged" is now verified, not assumed. Previously the run only
+checked whether *a* row held the reference and, if so, counted the driver as
+`skipped` — so a planted row with that reference made the HK$200 fee vanish
+while the settlement report looked perfectly healthy. Now the pre-check compares
+entry_type and amount: a mismatch is reported as `tampered` and logged at
+CRITICAL, which is the difference between a silent revenue leak and an alert.
 """
 
 from __future__ import annotations
@@ -28,7 +35,7 @@ from app.models import (
     LedgerEntry,
     LedgerEntryType,
 )
-from app.services.ledger_service import LedgerService
+from app.services.ledger_service import LedgerService, reference_for_weekly
 
 logger = logging.getLogger("realtaxihk.settlement")
 
@@ -72,22 +79,38 @@ class SettlementService:
                 ).scalars()
             )
 
-        charged = skipped = failed = 0
+        charged = skipped = failed = tampered = 0
         for driver_id in driver_ids:
-            reference = f"weekly:{driver_id}:{period}"
+            reference = reference_for_weekly(driver_id, period)
             try:
                 async with self.session_factory() as session:
-                    already = (
+                    existing = (
                         (
                             await session.execute(
-                                select(LedgerEntry.id).where(LedgerEntry.reference == reference)
+                                select(LedgerEntry).where(LedgerEntry.reference == reference)
                             )
                         )
                         .scalars()
                         .first()
                     )
-                    if already is not None:
-                        skipped += 1
+                    if existing is not None:
+                        if (
+                            existing.entry_type == LedgerEntryType.WEEKLY_FEE_DEDUCTION
+                            and Decimal(existing.amount_hkd) == -fee
+                        ):
+                            skipped += 1
+                        else:
+                            # SEC-13: the reference is held by something that is NOT
+                            # this week's fee. Do not treat it as "already charged".
+                            logger.critical(
+                                "weekly settlement: reference %s held by %s/%s — fee NOT "
+                                "collected for driver %s",
+                                reference,
+                                existing.entry_type.value,
+                                existing.amount_hkd,
+                                driver_id,
+                            )
+                            tampered += 1
                         continue
 
                     deposit = (
@@ -124,13 +147,14 @@ class SettlementService:
                 logger.exception("weekly settlement failed for driver %s", driver_id)
                 failed += 1
 
-        if charged or failed:
+        if charged or failed or tampered:
             logger.info(
-                "weekly settlement %s: charged=%d skipped=%d failed=%d",
+                "weekly settlement %s: charged=%d skipped=%d failed=%d tampered=%d",
                 period,
                 charged,
                 skipped,
                 failed,
+                tampered,
             )
         return {
             "period": period,
@@ -139,4 +163,5 @@ class SettlementService:
             "charged": charged,
             "skipped": skipped,
             "failed": failed,
+            "tampered": tampered,
         }

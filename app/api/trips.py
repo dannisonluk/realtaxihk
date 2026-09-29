@@ -3,6 +3,12 @@
 GET /api/v1/trips/{order_id}/location — participants only (passenger owner
 or assigned driver). Reads the driver's latest persisted PostGIS point via
 ST_AsText (raw SQL, avoids Geography deserialization quirks).
+
+Security:
+- SEC-12 the route runs `require_active_user` (was JWT-signature only);
+- SEC-27 the response identifies the driver by *profile* id. It used to return
+  the driver's account UUID — the `sub` claim of their JWTs — which is an
+  unnecessary identifier to hand to a passenger.
 """
 
 from __future__ import annotations
@@ -14,7 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
-from app.core.deps import Principal, get_current_user
+from app.core.deps import Principal, require_active_user
 
 router = APIRouter(prefix="/api/v1/trips", tags=["trips"])
 
@@ -22,7 +28,7 @@ router = APIRouter(prefix="/api/v1/trips", tags=["trips"])
 @router.get("/{order_id}/location")
 async def trip_location(
     order_id: str,
-    user: Principal = Depends(get_current_user),
+    user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
     try:
@@ -50,8 +56,10 @@ async def trip_location(
     ).first()
     if row is None:
         raise HTTPException(status_code=404, detail="order not found")
-    passenger_id, _driver_id, status, driver_user_id, wkt = row
+    passenger_id, driver_profile_id, status, driver_user_id, wkt = row
 
+    # Party check uses the driver's account id, but that id never leaves the
+    # server — only the profile id is returned below.
     is_participant = passenger_id == user.id or (
         driver_user_id is not None and driver_user_id == user.id
     )
@@ -66,7 +74,7 @@ async def trip_location(
     return {
         "order_id": str(oid),
         "status": status_val,
-        "driver_id": str(driver_user_id) if driver_user_id is not None else None,
+        "driver_profile_id": str(driver_profile_id) if driver_profile_id is not None else None,
         "lat": lat,
         "lng": lng,
     }

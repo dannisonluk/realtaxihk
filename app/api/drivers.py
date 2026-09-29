@@ -1,4 +1,10 @@
-"""Driver self-service API: registration (enters PENDING_KYC), profile view."""
+"""Driver self-service API: registration (enters PENDING_KYC), profile view.
+
+SEC-12: every route here runs `require_active_user`. The module previously mixed
+`get_current_user` (JWT signature only) with `require_active_user` (live DB
+`is_active` check), so a disabled account kept reading its ledger and refund
+state for the remaining lifetime of its access token.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.db import get_session
-from app.core.deps import Principal, get_current_user, require_active_user
+from app.core.deps import Principal, require_active_user
 from app.models import DriverDeposit, DriverProfile, DriverStatus, LedgerEntry, RefundRequest
 from app.services.refund_service import RefundService
 
@@ -60,7 +66,7 @@ async def _get_profile(session: AsyncSession, user_id) -> DriverProfile | None:
 @router.post("/register", status_code=201)
 async def register_driver(
     payload: DriverRegisterIn,
-    user: Principal = Depends(get_current_user),
+    user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
     if await _get_profile(session, user.id) is not None:
@@ -80,7 +86,7 @@ async def register_driver(
 
 @router.get("/me")
 async def my_driver_profile(
-    user: Principal = Depends(get_current_user),
+    user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
     profile = await _get_profile(session, user.id)
@@ -106,7 +112,7 @@ async def my_driver_profile(
 async def my_ledger(
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
     after_id: Annotated[int | None, Query(ge=0)] = None,
-    user: Principal = Depends(get_current_user),
+    user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
     """P1-8: keyset-paginated statement, ascending by id.
@@ -187,7 +193,7 @@ async def request_refund(
 
 @router.get("/me/refund")
 async def my_refund(
-    user: Principal = Depends(get_current_user),
+    user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
     """The driver's most recent refund request (null if they never filed one)."""

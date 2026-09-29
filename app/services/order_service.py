@@ -52,11 +52,17 @@ class OrderService:
         self.session = session
 
     async def create(self, passenger_user_id, payload) -> Order:
+        # Validate + canonicalise first: SEC-11 — the snapshot stores the deduped
+        # set of valid tunnel codes, never the raw caller-supplied list. The raw
+        # list used to be written through verbatim, so an order could carry
+        # megabytes of junk into fare_json and re-send it on every list call.
+        tunnel_enums = [Tunnel(t) for t in payload.tunnels]
+        canonical_tunnels = sorted({t.value for t in tunnel_enums})
         bd = calculate_fare(
             taxi_type=TaxiType(payload.taxi_type),
             distance_km=Decimal(payload.distance_km),
             waiting_min=Decimal(payload.waiting_min),
-            tunnels=[Tunnel(t) for t in payload.tunnels],
+            tunnels=tunnel_enums,
             crosses_harbour=payload.crosses_harbour,
             pickup_at_cross_harbour_stand=payload.pickup_at_cross_harbour_stand,
             discount_percent=Decimal(payload.discount_percent),
@@ -64,7 +70,7 @@ class OrderService:
         )
         snapshot = fare_snapshot(
             bd,
-            tunnels=list(payload.tunnels),
+            tunnels=canonical_tunnels,
             crosses_harbour=payload.crosses_harbour,
         )
         order = Order(

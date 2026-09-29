@@ -104,6 +104,12 @@ class MaintenanceService:
                     await self.redis.zrem(GEO_ORDERS_KEY, *ghosts)
                     removed_ghosts = len(ghosts)
 
+            # SEC-25: retire the legacy write-only driver index. Writes stopped
+            # with the tracking fix; this removes whatever a previous deploy left
+            # behind so Redis is not carrying unbounded stale members forever.
+            with contextlib.suppress(Exception):
+                await self.redis.delete("geo:drivers:online")
+
         if auto_cancelled or removed_ghosts:
             logger.info(
                 "geo sweep: auto_cancelled=%d removed_ghosts=%d",

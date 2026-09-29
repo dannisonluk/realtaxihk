@@ -88,24 +88,29 @@ def _ws_url(client, path: str, token: str) -> str:
 
 class TestWsAuth:
     def test_ws_requires_token(self, client):
+        """SEC-14: authorization completes BEFORE the 101 upgrade, so an
+        unauthenticated client is rejected outright rather than being handed a
+        live socket and a task on the server."""
+        from starlette.websockets import WebSocketDisconnect
+
         oid = _mk_broadcasting_order(client, _mk_user_token(client, "+85260000011"))
-        ws = client.websocket_connect(f"ws://testserver/ws/trip/{oid}")
-        ws.__enter__()
-        try:
-            msg = ws.receive()
-        finally:
-            ws.__exit__(None, None, None)
-        assert msg["type"] == "websocket.close" and msg["code"] == 4401
+        with (
+            pytest.raises(WebSocketDisconnect) as exc,
+            client.websocket_connect(f"ws://testserver/ws/trip/{oid}"),
+        ):
+            pass
+        assert exc.value.code == 4401
 
     def test_ws_rejects_bad_token(self, client):
+        from starlette.websockets import WebSocketDisconnect
+
         oid = _mk_broadcasting_order(client, _mk_user_token(client, "+85260000012"))
-        ws = client.websocket_connect(_ws_url(client, f"/ws/trip/{oid}", "junk.token.here"))
-        ws.__enter__()
-        try:
-            msg = ws.receive()
-        finally:
-            ws.__exit__(None, None, None)
-        assert msg["type"] == "websocket.close" and msg["code"] == 4401
+        with (
+            pytest.raises(WebSocketDisconnect) as exc,
+            client.websocket_connect(_ws_url(client, f"/ws/trip/{oid}", "junk.token.here")),
+        ):
+            pass
+        assert exc.value.code == 4401
 
 
 class TestWsStreaming:
@@ -208,7 +213,10 @@ class TestWsStreaming:
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["lat"] == pytest.approx(22.285)
-        assert body["driver_id"] == drv["user_id"]
+        # SEC-27: the snapshot identifies the driver by profile id, never by the
+        # account UUID that signs their tokens.
+        assert body["driver_profile_id"] == drv["driver_id"]
+        assert body["driver_profile_id"] != drv["user_id"]
 
     def test_snapshot_requires_participant(self, client):
         pax = _mk_user_token(client, "+85260000051")

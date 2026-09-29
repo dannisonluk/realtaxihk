@@ -7,10 +7,28 @@ Concurrency (P0-1): the deposit row is SELECT ... FOR UPDATE — concurrent
 appends serialize on the row lock, so a lost balance update is impossible.
 Idempotency (P1-7): a non-null `reference` replays the original entry instead
 of double-crediting; a DB partial UNIQUE index on reference backstops races.
+
+SEC-13 — reference namespaces are OWNED BY THE SERVER:
+The old contract accepted a caller-supplied `reference` and, on a hit, returned
+the existing row **verbatim without checking it matched the requested
+entry_type or amount**. Because `weekly:{driver}:{period}` and `refund:{id}`
+shared one flat namespace, anyone who could write a ledger row (an admin, or an
+attacker holding a forged admin token) could pre-plant
+`weekly:<driver>:2099-W03`, after which the real settlement run saw "already
+charged", skipped the driver, and silently never collected the HK$200 fee —
+reported as an ordinary `skipped`. The same trick made a refund reach APPROVED
+with no REFUND debit at all.
+
+Two defences now:
+1. `append()` refuses a reference hit whose entry_type or amount differs from
+   what the caller asked for, so a collision can never silently no-op a charge;
+2. every reference is minted by the helpers below, each with a distinct prefix,
+   so cross-purpose collisions are not expressible in the first place.
 """
 
 from __future__ import annotations
 
+import uuid
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -19,6 +37,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BusinessRuleError
 from app.models import DriverDeposit, DriverProfile, LedgerEntry, LedgerEntryType
+
+
+def reference_for_grant(driver_profile_id, client_key: str | None = None) -> str:
+    """Admin deposit grant. `client_key` preserves retry-idempotency for the
+    caller, but it is namespaced under `grant:<driver>:` so it can never be made
+    to collide with a settlement or refund reference."""
+    suffix = client_key or uuid.uuid4().hex
+    return f"grant:{driver_profile_id}:{suffix}"
+
+
+def reference_for_weekly(driver_profile_id, period: str) -> str:
+    return f"weekly:{driver_profile_id}:{period}"
+
+
+def reference_for_refund(refund_id) -> str:
+    return f"refund:{refund_id}"
 
 
 class LedgerService:
@@ -41,7 +75,9 @@ class LedgerService:
 
         session = self.session
 
-        # Idempotent replay: same reference -> return the original entry.
+        # Idempotent replay: same reference -> the SAME entry, or an error.
+        # SEC-13: returning an arbitrary existing row here is what let a planted
+        # reference silently swallow a charge.
         if reference:
             existing = (
                 (
@@ -53,6 +89,17 @@ class LedgerService:
                 .first()
             )
             if existing is not None:
+                if existing.entry_type != entry_type or Decimal(existing.amount_hkd) != amount:
+                    raise BusinessRuleError(
+                        "ledger reference already used for a different entry",
+                        {
+                            "reference": reference,
+                            "existing_entry_type": existing.entry_type.value,
+                            "existing_amount_hkd": str(Decimal(existing.amount_hkd)),
+                            "requested_entry_type": entry_type.value,
+                            "requested_amount_hkd": str(amount),
+                        },
+                    )
                 return existing
 
         # Row lock: serialize concurrent appends for this driver (P0-1).

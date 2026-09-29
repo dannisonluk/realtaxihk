@@ -214,7 +214,11 @@ class RefundService:
             # Release-then-debit keeps the ledger chain exact: append() derives
             # balance_after from the live balance, so the money must be back in
             # `balance_hkd` before the REFUND entry is written.
-            await LedgerService(self.session).append(
+            # SEC-13: assert the entry we got back IS this refund's debit. Before
+            # the append()-level check, a pre-planted `refund:{id}` reference made
+            # this return someone else's row, so the refund reached APPROVED and
+            # the driver TERMINATED with no money ever leaving the balance.
+            entry = await LedgerService(self.session).append(
                 driver_profile_id=refund.driver_profile_id,
                 entry_type=LedgerEntryType.REFUND,
                 amount_hkd=-amount,
@@ -222,6 +226,16 @@ class RefundService:
                 created_by=admin_id,
                 reference=f"refund:{refund.id}",
             )
+            if entry.entry_type != LedgerEntryType.REFUND or Decimal(entry.amount_hkd) != -amount:
+                raise BusinessRuleError(
+                    "refund ledger entry does not match this refund — approval aborted",
+                    {
+                        "reference": f"refund:{refund.id}",
+                        "entry_type": entry.entry_type.value,
+                        "amount_hkd": str(Decimal(entry.amount_hkd)),
+                        "expected_amount_hkd": str(-amount),
+                    },
+                )
             refund.status = RefundStatus.APPROVED
             # Paying out is terminal. Skip the transition if an admin already
             # terminated the driver — the end state is the same.

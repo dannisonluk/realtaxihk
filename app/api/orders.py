@@ -7,6 +7,14 @@ Hardening wave (docs/PRODUCTION_READINESS.md):
 - P2-1 GET /{order_id} (participants) + GET "" history (passenger/driver view);
 - P2-10 nearby degrades to an empty page when Redis is down (fail-open
   dispatch), never 500s the driver's map.
+
+Security wave (docs/SECURITY_AUDIT.md):
+- SEC-09 `tunnels` is capped at the 8 real tunnel values. Unbounded, it was both
+  a response-amplification vector (100k invalid entries echoed back as 32.8 MB)
+  and a storage/egress one (a 200k-entry order wrote 3.4 MB of fare_json that
+  every subsequent list call re-sent);
+- SEC-26 the `before_id` keyset cursor is scoped to the caller's own orders, so
+  it can no longer be used to probe whether an arbitrary order id exists.
 """
 
 from __future__ import annotations
@@ -41,6 +49,9 @@ router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
 
 _ORDER_RATE_LIMIT = 5  # per 60s per passenger
 _ORDER_WINDOW_S = 60
+# There are exactly 8 tunnels in the fare engine's Tunnel enum; anything beyond
+# that is either a mistake or an attack.
+_MAX_TUNNELS = 8
 
 
 def _redis(request: Request):
@@ -60,9 +71,23 @@ class OrderCreateIn(BaseModel):
     discount_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     tip: Decimal = Field(default=Decimal("0"), ge=0, le=10000)  # B3: Numeric(10,2) guard
     # P1-10: route tolls join the snapshot (previously hard-coded empty).
-    tunnels: list[str] = Field(default_factory=list)
+    # SEC-09: bounded — see _MAX_TUNNELS.
+    tunnels: list[str] = Field(default_factory=list, max_length=_MAX_TUNNELS)
     crosses_harbour: bool = False
     pickup_at_cross_harbour_stand: bool = False
+
+    @field_validator("tunnels", mode="before")
+    @classmethod
+    def cap_tunnels(cls, v):
+        """Reject an over-long tunnel list before item validation (SEC-09).
+
+        See the identical guard in `app/api/fare.py`: a `before` validator turns an
+        oversized request into a single small error instead of one error object per
+        element.
+        """
+        if isinstance(v, (list, tuple)) and len(v) > _MAX_TUNNELS:
+            raise ValueError(f"at most {_MAX_TUNNELS} tunnels may be listed")
+        return v
 
     @field_validator("distance_km", "waiting_min", "discount_percent", "tip")
     @classmethod
@@ -160,19 +185,33 @@ async def my_orders(
     user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """P2-1: order history (newest first, keyset via before_id)."""
+    """P2-1: order history (newest first, keyset via before_id).
+
+    SEC-26: the cursor is resolved inside the caller's own scope. Looking the
+    anchor up by id alone turned `before_id` into an existence/timestamp oracle
+    for arbitrary orders belonging to other users.
+    """
     q = select(Order).order_by(Order.created_at.desc(), Order.id.desc()).limit(limit)
     if role == "driver":
         profile = await _driver_profile_of(session, user.id)
         if profile is None:
             return {"items": []}
-        q = q.where(Order.driver_id == profile.id)
+        scope = Order.driver_id == profile.id
     else:
-        q = q.where(Order.passenger_id == user.id)
+        scope = Order.passenger_id == user.id
+    q = q.where(scope)
+
     if before_id is not None:
-        anchor = await session.get(Order, before_id)
-        if anchor is not None:
-            q = q.where((Order.created_at, Order.id) < (anchor.created_at, anchor.id))
+        anchor = (
+            await session.execute(
+                select(Order.created_at, Order.id).where(Order.id == before_id, scope)
+            )
+        ).first()
+        if anchor is None:
+            # Not the caller's order (or nonexistent) — indistinguishable by design.
+            raise HTTPException(status_code=404, detail="cursor not found")
+        q = q.where((Order.created_at, Order.id) < (anchor[0], anchor[1]))
+
     rows = (await session.execute(q)).scalars().all()
     return {"items": [order_out(o) for o in rows]}
 

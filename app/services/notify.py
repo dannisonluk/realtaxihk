@@ -112,7 +112,10 @@ class FcmProvider:
 
 class DevFcmProvider(FcmProvider):
     async def push(self, device_token: str, title: str, body: str) -> None:
-        logger.info("[FCM:dev] %s / %s -> token=%s…", title, body, device_token[:8])
+        # SEC-29: the token prefix used to be logged. A device token is a
+        # credential — anyone holding it can push to that device — so log its
+        # presence, not any part of its value.
+        logger.info("[FCM:dev] %s / %s -> token=<redacted len=%d>", title, body, len(device_token))
 
 
 def get_whatsapp_provider() -> WhatsAppProvider:

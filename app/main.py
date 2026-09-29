@@ -5,6 +5,13 @@ Hardening wave (docs/PRODUCTION_READINESS.md):
 - P0-5/P1-6 background jobs: geo sweeper + PDPO purge loops (asyncio tasks,
   cancelled cleanly on shutdown — no leaked engine).
 - P2-4/P2-8: Sentry init when SENTRY_DSN set; /metrics when PROMETHEUS_ENABLED.
+
+Security wave (docs/SECURITY_AUDIT.md):
+- SEC-09~11 body-size cap middleware;
+- SEC-22 /metrics requires a bearer-style token and is not mounted without one;
+- SEC-23 /health no longer advertises the environment;
+- SEC-24 security headers on every response;
+- SEC-14 one shared TripHub/Redis client for all sockets instead of one per socket.
 """
 
 from __future__ import annotations
@@ -27,6 +34,11 @@ from app.api.trips import router as trips_router
 from app.api.ws import router as ws_router
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
+from app.core.middleware import (
+    BodySizeLimitMiddleware,
+    SecurityHeadersMiddleware,
+    TokenGuardMiddleware,
+)
 
 logger = logging.getLogger("realtaxihk.main")
 
@@ -121,9 +133,9 @@ def create_app() -> FastAPI:
                 from app.core.db import close_redis
 
                 await close_redis()
-            # Close the long-lived Redis clients (rate limiter + maintenance).
+            # Close the long-lived Redis clients (rate limiter + maintenance + WS hub).
             # Otherwise the loop dying logs an asyncio connection_lost() ERROR.
-            for holder in ("rate_limiter", "maintenance"):
+            for holder in ("rate_limiter", "maintenance", "trip_hub", "auth_redis"):
                 obj = getattr(app.state, holder, None)
                 if obj is not None:
                     with contextlib.suppress(Exception):
@@ -142,13 +154,6 @@ def create_app() -> FastAPI:
             "(Cap. 374D compliant fare estimates)."
         ),
     )
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type"],
-    )
     register_exception_handlers(app)
     app.include_router(fare_router)
     app.include_router(auth_router)
@@ -164,14 +169,30 @@ def create_app() -> FastAPI:
     from app.core.rate_limit import RateLimiter
     from app.services.maintenance import MaintenanceService
     from app.services.settlement_service import SettlementService
+    from app.services.trip_service import ConnectionRegistry, TripHub
 
     configure_logging(settings.log_level)
     attach_request_logging(app)
 
     app.state.redis_factory = get_redis
     app.state.rate_limiter = RateLimiter(get_redis(), namespace="realtaxi:")
+    # SEC-18: the revocation check sits on the hot path of EVERY authenticated
+    # request. `get_redis()` is documented as a fresh client per call, which is
+    # right for one-shot callers but wrong here: it opened (and closed) a socket
+    # per request. Measured cost of one connection on this machine was 2s before
+    # the 127.0.0.1 fix and ~3ms after — but even at 3ms it is pure churn. One
+    # client for the app's lifetime, closed with the others on shutdown.
+    app.state.auth_redis = get_redis()
     app.state.maintenance = MaintenanceService(get_session_factory(), get_redis())
     app.state.settlement = SettlementService(get_session_factory())
+    # SEC-14: ONE hub holding ONE Redis client. Previously each socket built its
+    # own client + pubsub, so a single account could push Redis's client count
+    # toward `maxclients` and take the whole platform down with it.
+    app.state.trip_hub = TripHub(get_redis())
+    app.state.ws_registry = ConnectionRegistry(
+        max_per_user=settings.ws_max_connections_per_user,
+        max_total=settings.ws_max_connections_total,
+    )
 
     @app.get("/health", tags=["ops"])
     async def health(response: Response) -> dict:
@@ -186,7 +207,11 @@ def create_app() -> FastAPI:
             logger.exception("health: db check failed")
         try:
             redis = get_redis()
-            await redis.ping()
+            try:
+                await redis.ping()
+            finally:
+                with contextlib.suppress(Exception):
+                    await redis.aclose()
             checks["redis"] = True
         except Exception:
             logger.exception("health: redis check failed")
@@ -196,20 +221,48 @@ def create_app() -> FastAPI:
             # acts on. Answering 200 with a "degraded" body keeps traffic
             # flowing to a node whose DB/Redis is gone.
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        # SEC-23: the environment is NOT advertised. `env: dev` told an attacker
+        # exactly which fixed OTP code to try (SEC-01).
         return {
             "status": "ok" if ok else "degraded",
-            "env": settings.app_env,
             "checks": checks,
         }
 
-    # P2-8: optional Prometheus metrics.
+    # P2-8 + SEC-22: optional Prometheus metrics, token-gated. Not mounted at all
+    # without a token — an unauthenticated /metrics leaks route shapes, traffic
+    # volumes and error rates to anyone who can reach the port.
     if settings.prometheus_enabled:
-        try:
-            from prometheus_client import make_asgi_app
+        if not settings.metrics_token:
+            logger.warning(
+                "PROMETHEUS_ENABLED=true but METRICS_TOKEN is empty — /metrics NOT mounted"
+            )
+        else:
+            try:
+                from prometheus_client import make_asgi_app
 
-            app.mount("/metrics", make_asgi_app())
-        except ImportError:  # pragma: no cover
-            logger.warning("prometheus_enabled=true but prometheus-client not installed")
+                app.mount("/metrics", TokenGuardMiddleware(make_asgi_app(), settings.metrics_token))
+            except ImportError:  # pragma: no cover
+                logger.warning("prometheus_enabled=true but prometheus-client not installed")
+
+    # Middleware order (last added = outermost):
+    #   CORS -> SecurityHeaders -> BodySizeLimit -> routes
+    # CORS is outermost so even a 413 from the body cap carries CORS headers;
+    # SecurityHeaders sits outside the body cap so the 413 gets hardened too.
+    if settings.max_request_body_bytes > 0:
+        app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
+    if settings.security_headers_enabled:
+        app.add_middleware(
+            SecurityHeadersMiddleware,
+            hsts_max_age_s=settings.hsts_max_age_s,
+            enable_hsts=settings.app_env == "prod",
+        )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 
     return app
 

@@ -1,7 +1,16 @@
-"""Driver location tracking: PostGIS upsert + online GEO index (Redis).
+"""Driver location tracking: PostGIS upsert.
 
-The driver app calls this every 3-5s while online; the endpoint is
-idempotent per tick. WebSocket streaming lands with Module D.
+The driver app calls this every 3-5s while online; the endpoint is idempotent
+per tick. WebSocket streaming lands with Module D.
+
+Security:
+- SEC-12 the route runs `require_active_user`, so a disabled account stops
+  streaming immediately instead of for the remainder of its token lifetime;
+- SEC-15 it is rate-limited per driver — each call is a PostGIS UPDATE and was
+  previously unbounded;
+- SEC-25 the write-only `geo:drivers:online` Redis index is gone. Nothing ever
+  read it, nothing ever expired it, and it grew without bound (37 stale members
+  in a live check). Online state already lives on `driver_profiles.is_online`.
 """
 
 from __future__ import annotations
@@ -13,10 +22,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.db import get_session
-from app.core.deps import Principal, get_current_user
+from app.core.deps import Principal, require_active_user
 from app.models import DriverProfile, DriverStatus
-from app.services.geo_service import GeoService
 
 router = APIRouter(prefix="/api/v1/driver", tags=["driver"])
 
@@ -31,9 +40,18 @@ class LocationIn(BaseModel):
 async def upsert_location(
     payload: LocationIn,
     request: Request,
-    user: Principal = Depends(get_current_user),
+    user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
+    settings = get_settings()
+    limiter = request.app.state.rate_limiter
+    if not await limiter.allow(
+        f"driver:location:{user.id}",
+        settings.driver_location_rate_limit,
+        settings.driver_location_window_s,
+    ):
+        raise HTTPException(status_code=429, detail="location updates are too frequent")
+
     profile = (
         (await session.execute(select(DriverProfile).where(DriverProfile.user_id == user.id)))
         .scalars()
@@ -46,10 +64,4 @@ async def upsert_location(
     profile.last_location_at = datetime.now(UTC)
     profile.is_online = payload.online
     await session.flush()
-
-    geo = GeoService(request.app.state.redis_factory())
-    if payload.online:
-        await geo.index_driver(str(profile.id), payload.lat, payload.lng)
-    else:
-        await geo.remove_driver(str(profile.id))
     return {"ok": True}
