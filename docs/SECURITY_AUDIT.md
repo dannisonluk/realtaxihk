@@ -49,7 +49,7 @@
 
 | ID | 狀態 | 修復位置 |
 |---|---|---|
-| SEC-01~03 | ✅ | `core/config.py`（`app_env` 必填 + 白名單）、`otp_service.py`（`dev_otp_enabled`）、`ALLOW_DEV_OTP` 開關 |
+| SEC-01~03 | ✅ | `core/config.py`（`app_env` 必填 + 白名單）、`otp_service.py`（**`dev_code` 回吐已完全移除**；`ALLOW_DEV_OTP` 只剩「令驗證碼固定」一個作用，而且 prod 開唔到 — 見 §0.4） |
 | SEC-04~05 | ✅ | `core/config.py`（移除 hardcode secret；必填 + 熵檢查；`iss/aud` 待辦見下） |
 | SEC-06 | ✅ | `docker-compose.yml`（`127.0.0.1` + `requirepass`）、`grab_service.py`（DB 條件式 UPDATE 仲裁） |
 | SEC-07 | ✅ | `api/auth.py::_client_ip`（取最右可信跳數）、`api/fare.py`、`TRUSTED_PROXY_COUNT` |
@@ -134,6 +134,13 @@ redis-py 量連接建立成本）：
 
 **修法**：`app.state.auth_redis` 一個 app 生命週期的 client，與 `rate_limiter` /
 `maintenance` / `trip_hub` 一同在 lifespan 關閉；`deps.py` 改用它。
+
+**後續（第三輪）**：以上只修好 SEC-18 那一條路徑。`get_redis()` 本身「每次呼叫回一個
+新 client」的契約，是為了避開「跨 event-loop 重用」而設 —— 亦即一個**為了測試方便而
+留在 production 的設計**。現已改為 **per-loop cache**（`db.py`，`WeakKeyDictionary`
+keyed on the running loop）：production 單 loop 共用一個 client，測試每個 TestClient
+loop 各自一個。`orders.py` / `ws.py` / `auth.py` 幾個 `request.app.state.redis_factory()`
+呼叫點因此一併受益，不再每個 request 開一條 socket。詳見 §0.4。
 
 ### P-03（既有，非本次引入）rate-limit 測試對「牆上時鐘」有依賴
 
@@ -232,6 +239,79 @@ SSRF、以及 Docker 下 `FORWARDED_ALLOW_IPS` 被設成 `*` 的常見誤配）�
 
 ---
 
+## 0.4 只為方便 testing 而存在的問題（第三輪：審計與清除）
+
+### 判斷依據
+
+判準只有一條：**把測試拿掉，這段代碼還需不需要存在？**
+
+要把三類分清楚：
+
+1. **真正的 production 缺陷** —— 測試只是把它暴露出來，修法在 production。
+2. **測試專用的讓步（test-driven concession）** —— 代碼本身是為了遷就測試工具的
+   限制而寫成一個較差的形狀。特徵：production 沒有真實呼叫者；代碼或註釋自己
+   說明「為了測試」；移除它需要的是**另一種測試方法**，而不是修 production 邏輯。
+3. **合法的 dev/test rail** —— 只在非 prod 生效、prod 開唔到，而且是**環境選擇**
+   而非測試需要。
+
+逐項核對之後，屬第 2 類的有四項：
+
+| # | 項目 | 為何判定為 test-driven | 替代測試方法 |
+|---|---|---|---|
+| T-1 | `tests/conftest.py` 種入**固定** ADMIN UUID `00000000-…-aa`，兩支 probe 硬編同一個值 | 這個 UUID 在 `app/` 與 `alembic/` **完全沒有出現**，唯一作用是讓 `*_admin_token()` 過 `require_admin` 的 live-row 覆核。它還被手動種入 dev DB —— 即一把跨環境共用的「萬用鎖匙」：任何人只要能偽造 token，就已經知道要用哪個 `sub` | 新增 production 支援路徑 `scripts/create_admin.py`（**隨機** UUID）；conftest 改為**每 session 隨機**一個 admin id；兩支 probe 開機時自己用 CLI 建立、結束時 `--revoke` |
+| T-2 | `/otp/request` 在 `ALLOW_DEV_OTP` 開啟時回吐 `dev_code` | 回應體是交給**請求者**的。測試要拿驗證碼，就令 production 多了一條「誰問就給誰」的路徑 —— 而驗證碼的意義正在於不可以這樣 | pytest 改在 **notify seam** 裝 test double（`otp_inbox` fixture patch `otp_service.get_whatsapp_provider`）；out-of-process 的 probe 自行開 `ALLOW_DEV_OTP` 並使用已知常數。**回吐路徑整條刪除** |
+| T-3 | `OtpService._last_code` | 宣告了，但只有 `tests/test_auth_module.py:57` 讀，production 零讀者 | 同一測試改用 `otp_inbox`。**欄位刪除** |
+| T-4 | `get_redis()` 每次呼叫回一個新 client（`db.py` docstring 自述「為咗 TestClient 每個 loop 一個 client」） | 註釋自己講明理由係測試工具（TestClient 的 portal loop）；後果是 production 每個 request 開一條 Redis socket，而 SEC-18 的 revocation check 就在熱路徑上 | 改為 **per-loop cache**（`WeakKeyDictionary` keyed on running loop）：同時滿足「production 一個 client」與「測試每個 loop 一個」 |
+
+**不屬第 2 類（保留，理由寫在代碼內）**：
+- `ALLOW_DEV_OTP` 令驗證碼變成固定常數。它在 `app_env == "prod"` 時直接被
+  `config.py` reject，而回吐已移除，所以呼叫者拿不到；out-of-process 的 probe
+  沒有 test double 可用，需要這個 rail。屬第 3 類。
+- `notify.py` 按 `app_env` 揀 provider、`conftest.py` 提供 `APP_ENV` / `JWT_SECRET_KEY`
+  預設值 —— 環境選擇，不是測試讓步。
+
+### 處理範圍
+
+**production 代碼**（4 檔）：
+- `app/services/otp_service.py` — 刪 `dev_code` 回吐、刪 `_last_code`，改 docstring。
+- `app/core/db.py` — `get_redis()` 改 per-loop cache；`close_redis()` 真正關閉。
+- `app/main.py` — `/health` 不再關共用 client；lifespan 關閉清單按 identity 去重；
+  `auth_redis` 註釋更新。
+- `app/core/deps.py` — 註釋更新。
+
+**新增**：`scripts/create_admin.py` —— P2-11 的 bootstrap 路徑，同時是 T-1 的替代方法。
+
+**測試**（9 檔）：`tests/conftest.py`（`otp_inbox` fixture、隨機 `ADMIN_ID`、不再設
+`ALLOW_DEV_OTP`）＋ 8 個 test module 改讀 notify seam 與隨機 admin id。
+
+**腳本**（3 支）：`security_verify.py` / `security_probe.py` 自行 provision／revoke
+admin；`live_smoke.py` 自行開 dev rail。
+
+**文檔**：本節 ＋ `PRODUCTION_READINESS.md`（P1-8 / P2-7 / P2-9 / P2-11 更正）。
+
+### 最終結果
+
+```
+pytest                                180 passed in 66.82s   （ALLOW_DEV_OTP 未設）
+ruff check . / ruff format --check .  clean, 60 files
+scripts/prod_boot_drill.py            7/7
+scripts/security_verify.py            11/11
+scripts/security_probe.py all         PROVEN 1/10（唯一一項是 SEC-06 負向對照）
+scripts/create_admin.py --list        no ADMIN rows（probe 用完自己 revoke 咗）
+```
+
+三項可獨立覆核的性質：
+
+1. **測試不再依賴任何 OTP 讓步** —— conftest 不再設 `ALLOW_DEV_OTP`，180 個測試在
+   「隨機驗證碼 + 零回吐」的配置下全綠。
+2. **固定 admin UUID 已從代碼庫消失** —— 在 `app/`、`alembic/`、`tests/`、`scripts/`
+   全部零命中；dev DB 亦無 ADMIN row。
+3. **P2-11 由「上線阻塞」變成有實測的 CLI** —— 兩支 probe 每次執行都真的走
+   `create_admin.py` 建立 admin（隨機 UUID，例如 `e01c3752-070d-44b1-b5e3-9270e8933aca`），
+   用完 `--revoke`。這同時是 T-1 的替代測試方法與 P2-11 的回歸測試。
+
+---
+
 ## 1. Critical — 可直接完全接管平台
 
 ### SEC-01~03：`APP_ENV` 的 fail-safe 方向反了 → 任意帳號登入
@@ -261,8 +341,8 @@ POST /otp/verify code=123456 -> 200，回傳可用 access_token + refresh_token
 **修復**（必須做，且要 fail-closed）：
 1. 反轉預設：`app_env` 必須**明確**設定才接受；未設或非白名單值 → **拒絕啟動**。
 2. 白名單化而非等值比較：`if self.app_env not in ("dev","test","prod"): raise`。
-3. `dev_code` 的洩漏條件由 `app_env == "dev"` 改為**同時**要求一個獨立的顯式開關（如 `ALLOW_DEV_OTP=true`），且該開關在 `app_env == "prod"` 時強制為 False。
-4. `_DEV_CODE` 常數應只存在於 test 路徑（例如由 fixture 注入），不要放在生產 import 的模組裡。
+3. ~~`dev_code` 的洩漏條件由 `app_env == "dev"` 改為**同時**要求一個獨立的顯式開關（如 `ALLOW_DEV_OTP=true`）~~ → **做到底**：回吐本身已整條移除。`ALLOW_DEV_OTP` 只剩「令驗證碼固定」的作用，prod 開唔到。
+4. ~~`_DEV_CODE` 常數應只存在於 test 路徑（例如由 fixture 注入）~~ → **pytest 已完全不依賴它**（改讀 notify seam 的 `otp_inbox`）。`_DEV_CODE` 仍留在 `otp_service.py`，但只有 out-of-process 的 probe 在自行開啟 `ALLOW_DEV_OTP` 時才用得到。詳見 §0.4。
 
 ### SEC-04~05：prod 檢查太窄 → 可偽造 ADMIN JWT
 
@@ -517,7 +597,7 @@ redis maxclients = 10000
 ## 6. 建議修復次序
 
 **立即（上線前必須，全部會導致平台被接管）**
-1. SEC-01~05：`app_env` 白名單 + fail-closed；移除 hardcode JWT secret 並**輪換**；`dev_code` 加獨立開關。
+1. SEC-01~05：`app_env` 白名單 + fail-closed；移除 hardcode JWT secret 並**輪換**；`dev_code` 回吐**整條移除**（見 §0.4）。
 2. SEC-06：db/redis **不再發佈到 0.0.0.0**；Redis 設 `requirepass`。
 3. SEC-13：`reference` 改由伺服器產生 + `append()` 比對 `entry_type`/`amount`。
 4. SEC-07：`X-Forwarded-For` 改由最右取可信跳數。
@@ -545,5 +625,17 @@ redis maxclients = 10000
 ```
 
 腳本會自行以受控環境變數啟動 uvicorn（並在「無 `.env`」情境下從一個**空 tempdir** 啟動以模擬 Docker image），逐項輸出 `VULNERABLE` / `not reproduced`，並在最後列出已證實清單。所有測試均為非破壞性（只建立一次性測試用戶與訂單），Redis 的注入測試只發佈到不存在的 order channel 並即時清理。
+
+修復之後的驗證（同樣是對真實運行的 server 重跑）：
+
+```bash
+.venv/Scripts/python.exe scripts/security_verify.py   # 11 項，期望 11/11
+.venv/Scripts/python.exe scripts/prod_boot_drill.py   # 7 個開機情境，期望 7/7
+.venv/Scripts/python.exe -m pytest -q                 # 180 個測試
+```
+
+兩支 probe 開機時都會用 `scripts/create_admin.py` **自行建立**一個隨機 UUID 的 ADMIN，
+結束時 `--revoke`，所以它們不再依賴任何預先種入的帳號 —— 這同時是 P2-11 那個 CLI 的
+實測回歸（見 §0.4）。
 
 **注意**：`scripts/security_probe.py` 會建立測試用戶與訂單。若要對生產環境重跑，請先改為只讀檢查（移除 B、C、D 的寫入部分）。

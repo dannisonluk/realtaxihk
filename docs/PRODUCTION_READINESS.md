@@ -25,14 +25,15 @@
 
 **新增檔案**：`app/core/logging.py`、`app/services/maintenance.py`、`app/services/refresh_service.py`、`alembic/versions/b4f1c2a7d901_*.py`（refresh_tokens 表＋ledger idempotency index）、`.github/workflows/ci.yml`、`uv.lock`、`tests/test_hardening.py`、`scripts/prod_boot_drill.py`。
 
-**過程中修復嘅 regression**：Redis client singleton 跨 event-loop 污染（TestClient portal 每 test 新 loop → pooled connection 綁死舊 loop → WS suite hang）— P2-7 singleton 改為 per-call client（production 單 loop 無額外成本）。
+**過程中修復嘅 regression**：Redis client singleton 跨 event-loop 污染（TestClient portal 每 test 新 loop → pooled connection 綁死舊 loop → WS suite hang）。P2-7 一度改為 **per-call client**，但咁樣每次 request 都開一條新 Redis socket（SEC-18 嘅 revocation check 就係熱路徑）。現已改為 **per-loop cache**（`db.py`，`WeakKeyDictionary` keyed on the running loop）：production 單 loop 得一個 client，測試每個 TestClient loop 各自一個，兩邊都啱，亦冇 socket churn。
 
 **上線日仍然要做（人手/環境項，代碼之外）**：
 1. 產生強 JWT secret（`openssl rand -hex 32`）＋強 POSTGRES_PASSWORD 入 prod .env — fail-fast 會把關
 2. Nginx/Caddy TLS 反代 + `X-Forwarded-For`（rate limit 按 IP 先有效）＋ CORS lockdown（`CORS_ORIGINS` env）
-3. DB 備份 cron（`pg_dump` nightly + off-host retention）— 審計 P1-8 建議
+3. DB 備份 cron（`pg_dump` nightly + off-host retention）
 4. WhatsApp Cloud API token／template（`WHATSAPP_*` env）＋ FCM credentials
 5. 首次 `docker compose up` 部署演練 + `/health` 輪詢驗收
+6. 用 `scripts/create_admin.py --phone +852XXXXXXXX` 建立第一個 ADMIN（見 P2-11）
 
 ---
 
@@ -170,10 +171,9 @@ JWT 2 小時（`config.py:25`）、無 refresh token。的士 trip 夠用，但�
 `admin.py:83-113`：network retry → double-credit。Ledger append 冇 `reference` 唯一約束（`models/__init__.py:214` `reference` 欄位存在但無 UNIQUE）。
 **修法**：grant 時 client 提供冪等鍵入 `reference` + DB partial unique index；撞鍵回原 entry。
 
-### P1-8. Pagination 缺失
-- `drivers.py:108-114` `/me/ledger` 全量 `.all()` — 一個司機幾年後幾千行。
-- `admin.py:41-44` `/admin/drivers` 全量。
-**修法**：keyset pagination（ledger `id > cursor LIMIT 100`）。
+### P1-8. Pagination 缺失 — ✅ 已修
+- ~~`drivers.py:108-114` `/me/ledger` 全量 `.all()`~~ → `drivers.py:111-136` keyset（`after_id` + `limit`）。
+- ~~`admin.py:41-44` `/admin/drivers` 全量~~ → `admin.py:58,188` `.limit(limit).offset(offset)`。
 
 ### P1-9. WS 無 heartbeat
 `ws.py:123-132` 純被動。NAT/負載均衡 idle timeout（通常 60-300s）會靜靜地斷閒置連線，乘客張 map 凍結。
@@ -195,11 +195,11 @@ JWT 2 小時（`config.py:25`）、無 refresh token。的士 trip 夠用，但�
 | P2-4 | Metrics（Prometheus）+ 錯誤追蹤（Sentry） | 而家連 5xx 都只會喺 uvicorn stderr |
 | P2-5 | Load test（WS tick 吞吐、SETNX 競爭） | 無任何基準數據 |
 | P2-6 | Ledger 防篡改 hash chain / 對帳 job | `balance_after` 鏈已可核數；加 running-hash 係升級 |
-| P2-7 | 多 worker / 多 instance 壓測 | Pub/Sub 已 Redis-backed，理論 OK；`get_redis()` per-call 建新 client（`db.py:50-51`、`trip_service.py:34`）高頻 publish 時要 pooling |
+| P2-7 | 多 worker / 多 instance 壓測 | Pub/Sub 已 Redis-backed，理論 OK。~~`get_redis()` per-call 建新 client（`db.py:50-51`、`trip_service.py:34`）高頻 publish 時要 pooling~~ → 已改為 **per-loop cache**（`db.py`），production 單 loop 共用一個 client。**仍未做**：真正嘅多 worker 壓測 |
 | P2-8 | Redis 驅逐策略聲明 | geo/rl keys 無 maxmemory 政策；上雲時設 `maxmemory-policy allkeys-lru` 之外嘅方案（rl keys 有 TTL ✓、geo keys 無 TTL — 見 P0-5） |
-| P2-9 | OTP/WhatsApp provider 實測 | `notify.py:33-40` `WhatsAppCloudProvider` 係 `NotImplementedError` stub；`.env.example:28-30` 欄位已備但 `config.py` 無對應 Settings（靠 `extra="ignore"` 靜默吞）— 接線時要加 config 欄位 |
+| P2-9 | ~~OTP/WhatsApp provider 實測~~ **✅ 已實作** | `notify.py:38-102` `WhatsAppCloudProvider` 已用 httpx 實作（template message 或 plain text，4xx 會 raise）；`config.py:130-134` 已有 `whatsapp_business_token`／`whatsapp_phone_number_id`／`whatsapp_api_version`／`whatsapp_otp_template`／`fcm_credentials_json`。prod 缺憑證時 fail-closed raise。**仍未做**：FCM v1 推送（要 service-account RS256 JWT） |
 | P2-10 | 降級開關（kill switches） | 派單/rate limit 任何一環 Redis 故障時嘅行為未定義（宜 fail-open 派單、fail-closed ledger 操作，寫明） |
-| P2-11 | **首個 ADMIN bootstrap 路徑（上線阻塞）** | `00000000-0000-0000-0000-0000000000aa` 只存在於 `tests/conftest.py` 的 template DB；生產／dev DB 無任何建立 ADMIN 的方法，等於**冇人可以批 KYC 或退款**。需加 CLI（如 `scripts/create_admin.py`）或 alembic data migration |
+| P2-11 | ~~**首個 ADMIN bootstrap 路徑（上線阻塞）**~~ **✅ 已修** | 新增 `scripts/create_admin.py`（`--list` / `--phone` / `--revoke` / `--yes`）。**UUID 係即場 `uuid.uuid4()` 生成，唔再用固定值** — 原本 `00000000-0000-0000-0000-0000000000aa` 只存在於 `tests/conftest.py` 的 template DB，而且被手動種入 dev DB，等於一把「萬用鎖匙」。`APP_ENV=prod` 要 `--yes` 先會執行，而且一定會先印 target DB。promote 唔會追溯舊 token（`require_admin` 會比對 live row），新 admin 要重新登入 |
 
 ---
 
