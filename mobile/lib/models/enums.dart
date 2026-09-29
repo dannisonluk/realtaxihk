@@ -128,6 +128,74 @@ enum RefundStatus {
   };
 }
 
+/// A fleet (的士車隊) is a **licensed operator** — the Transport Department
+/// grants the licence, so `SUSPENDED` and `DISSOLVED` are operator states set by
+/// an admin, never something a driver can cause.
+enum FleetStatus {
+  active('ACTIVE'),
+  suspended('SUSPENDED'),
+  dissolved('DISSOLVED');
+
+  const FleetStatus(this.wire);
+
+  final String wire;
+
+  static FleetStatus fromWire(String value) =>
+      _decode(values, (FleetStatus v) => v.wire, value, 'FleetStatus');
+
+  /// Only an ACTIVE fleet is settled; a suspended one is not dispatching, so it
+  /// is not billing.
+  bool get isBillable => this == FleetStatus.active;
+
+  String get labelZh => switch (this) {
+    FleetStatus.active => '營運中',
+    FleetStatus.suspended => '已停權',
+    FleetStatus.dissolved => '已解散',
+  };
+}
+
+enum FleetMemberRole {
+  owner('OWNER'),
+  manager('MANAGER'),
+  member('MEMBER');
+
+  const FleetMemberRole(this.wire);
+
+  final String wire;
+
+  static FleetMemberRole fromWire(String value) =>
+      _decode(values, (FleetMemberRole v) => v.wire, value, 'FleetMemberRole');
+
+  /// Administrative rights *within the fleet*, not on the platform. A fleet
+  /// manager is still an ordinary driver to every other endpoint.
+  bool get isAdmin => this == FleetMemberRole.owner || this == FleetMemberRole.manager;
+
+  String get labelZh => switch (this) {
+    FleetMemberRole.owner => '車主',
+    FleetMemberRole.manager => '管理員',
+    FleetMemberRole.member => '成員',
+  };
+}
+
+/// Roster state. A driver taken off the roster is `REMOVED`, not deleted — the
+/// row survives so the week in which they left stays reconstructible.
+enum FleetMemberStatus {
+  active('ACTIVE'),
+  removed('REMOVED');
+
+  const FleetMemberStatus(this.wire);
+
+  final String wire;
+
+  static FleetMemberStatus fromWire(String value) =>
+      _decode(values, (FleetMemberStatus v) => v.wire, value, 'FleetMemberStatus');
+
+  String get labelZh => switch (this) {
+    FleetMemberStatus.active => '在隊',
+    FleetMemberStatus.removed => '已離隊',
+  };
+}
+
 /// `URBAN` = 市區的士 (red), `NT` = 新界的士 (green), `LANTAU` = 大嶼山的士 (blue).
 enum TaxiType {
   urban('URBAN'),

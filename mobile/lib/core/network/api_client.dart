@@ -98,6 +98,43 @@ class ApiClient {
     ),
   );
 
+  /// `PATCH` — the partial-update verb the admin routes use.
+  ///
+  /// Distinct from [post] because the server does: `PATCH /admin/fleets/{id}`
+  /// only touches the fields present in the body, so sending the full object
+  /// would be a different (and destructive) operation.
+  Future<Map<String, dynamic>> patch(
+    String path, {
+    Object? data,
+    Map<String, dynamic>? query,
+    bool authenticated = true,
+  }) => _send<Map<String, dynamic>>(
+    () => _dio.patch<dynamic>(
+      path,
+      data: data,
+      queryParameters: query,
+      options: Options(extra: <String, dynamic>{_kSkipAuth: !authenticated}),
+    ),
+  );
+
+  /// `DELETE`. Returns a body, because the routes that use it do: removing a
+  /// fleet member answers with the membership row it just marked `REMOVED`
+  /// rather than a 204, so the caller can render the new state without a
+  /// follow-up read.
+  Future<Map<String, dynamic>> delete(
+    String path, {
+    Object? data,
+    Map<String, dynamic>? query,
+    bool authenticated = true,
+  }) => _send<Map<String, dynamic>>(
+    () => _dio.delete<dynamic>(
+      path,
+      data: data,
+      queryParameters: query,
+      options: Options(extra: <String, dynamic>{_kSkipAuth: !authenticated}),
+    ),
+  );
+
   Future<void> close() async {
     _dio.close(force: true);
     _refreshDio.close(force: true);

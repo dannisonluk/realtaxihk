@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "period": "2026-W45",
+      "fee_hkd": "150.00",
+      "discount_percent": "25.00",
+      "member_count": 1,
+      "charged": 1,
+      "skipped": 0,
+      "failed": 0,
+      "tampered": 0,
+      "collected_hkd": "150.00",
+      "created_at": "2026-09-29T13:08:16.207441+00:00"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 {
-  "id": "9df41483-36c9-4756-b2fc-2a43ad353bf5",
+  "id": "f16ccdbc-7018-41a2-8b12-e717e36f7e51",
   "status": "COMPLETED",
   "taxi_type": "URBAN",
   "fare": {
@@ -33,6 +33,6 @@
     "meter_after_discount": "75.2"
   },
   "estimated_total_hkd": "130.2",
-  "completed_at": "2026-09-29T12:39:53.144119+00:00",
-  "created_at": "2026-09-29T12:39:52.787071+00:00"
+  "completed_at": "2026-09-29T13:08:15.996984+00:00",
+  "created_at": "2026-09-29T13:08:15.668206+00:00"
 }

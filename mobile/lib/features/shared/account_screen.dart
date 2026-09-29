@@ -165,6 +165,17 @@ class _DriverSection extends ConsumerWidget {
           ),
         ),
         const Divider(height: 24),
+        // Fleet membership is separate from driver status: a driver can be on a
+        // roster while their own profile is not yet ACTIVE (they are rostered but
+        // not billable). So this is offered whenever a profile exists, not only
+        // when they can drive.
+        ListTile(
+          leading: const Icon(Icons.groups_outlined),
+          title: const Text('我的車隊'),
+          subtitle: const Text('名單、每週車隊收費與結算紀錄'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push(Routes.driverFleet),
+        ),
         if (canDrive)
           ListTile(
             leading: const Icon(Icons.drive_eta_outlined),

@@ -1,0 +1,10 @@
+{
+  "period": "2026-W46",
+  "fee_hkd": "200",
+  "eligible_drivers": 7,
+  "fleet_managed": 1,
+  "charged": 0,
+  "skipped": 7,
+  "failed": 0,
+  "tampered": 0
+}

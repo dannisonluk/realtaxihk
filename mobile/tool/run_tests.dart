@@ -28,6 +28,7 @@ import 'package:realtaxi_mobile/models/auth.dart';
 import 'package:realtaxi_mobile/models/admin.dart';
 import 'package:realtaxi_mobile/models/driver.dart';
 import 'package:realtaxi_mobile/models/enums.dart';
+import 'package:realtaxi_mobile/models/fleet.dart';
 import 'package:realtaxi_mobile/models/ledger.dart';
 import 'package:realtaxi_mobile/models/order.dart';
 import 'package:realtaxi_mobile/models/refund.dart';
@@ -123,6 +124,7 @@ void main() {
   _tripEventTests();
   _paginationTests();
   _modelTests();
+  _fleetTests();
   _routingTests();
 
   print('');
@@ -685,19 +687,36 @@ void _modelTests() {
     });
 
     test('a settlement run flags an anomaly only on failure or tampering', () {
-      SettlementRun run(int failed, int tampered) => SettlementRun.fromJson(<String, dynamic>{
-        'period': '2026-W40',
-        'fee_hkd': '200',
-        'eligible_drivers': 8,
-        'charged': 1,
-        'skipped': 7,
-        'failed': failed,
-        'tampered': tampered,
-      });
+      SettlementRun run(int failed, int tampered, {int fleetManaged = 0}) =>
+          SettlementRun.fromJson(<String, dynamic>{
+            'period': '2026-W40',
+            'fee_hkd': '200',
+            'eligible_drivers': 8,
+            'fleet_managed': fleetManaged,
+            'charged': 1,
+            'skipped': 7,
+            'failed': failed,
+            'tampered': tampered,
+          });
       expectFalse(run(0, 0).hasAnomaly);
       expectTrue(run(1, 0).hasAnomaly);
       expectTrue(run(0, 1).hasAnomaly);
       expect(run(0, 0).feeHkd.display, '200');
+      // `fleet_managed` is required, not defaulted: the server always sends it,
+      // and defaulting to 0 would render "no fleet members were excluded" for a
+      // response that simply omitted the field.
+      expectThrows(
+        () => SettlementRun.fromJson(<String, dynamic>{
+          'period': '2026-W40',
+          'fee_hkd': '200',
+          'eligible_drivers': 8,
+          'charged': 1,
+          'skipped': 7,
+          'failed': 0,
+          'tampered': 0,
+        }),
+        contains: 'fleet_managed',
+      );
     });
 
     test('a trip snapshot has no fix until the driver ticks', () {
@@ -740,6 +759,260 @@ void _modelTests() {
       expectTrue(AuthSession.createdFromJson(<String, dynamic>{'created': true}));
       // `/auth/refresh` omits it entirely.
       expectFalse(AuthSession.createdFromJson(<String, dynamic>{}));
+    });
+  });
+}
+
+Map<String, dynamic> _fleetJson({
+  String discount = '25.00',
+  String status = 'ACTIVE',
+  int? memberCount = 1,
+}) => <String, dynamic>{
+  'id': '8f05f4a9-3fbd-4694-95f7-99cf34935465',
+  'name': '星群的士',
+  'license_no': 'FLEET-STAR-001',
+  'status': status,
+  'weekly_fee_discount_percent': discount,
+  'contact_name': '陳先生',
+  'contact_phone': '+85222334455',
+  'note': null,
+  'created_at': '2026-09-29T13:04:19.004241+00:00',
+  'member_count': ?memberCount,
+};
+
+Map<String, dynamic> _memberJson({
+  String memberStatus = 'ACTIVE',
+  String driverStatus = 'ACTIVE',
+  String role = 'MEMBER',
+  String id = 'bda4c5be-f2f7-4f8b-b9d4-f0171d6635a8',
+}) => <String, dynamic>{
+  'driver_profile_id': id,
+  'taxi_type': 'URBAN',
+  'driver_status': driverStatus,
+  'member_role': role,
+  'status': memberStatus,
+  'joined_at': '2026-09-29T13:04:19.046048+00:00',
+  'left_at': memberStatus == 'REMOVED' ? '2026-10-06T13:04:19.046048+00:00' : null,
+};
+
+void _fleetTests() {
+  group('fleets', () {
+    test('renders the discount without inventing precision', () {
+      // The create route echoes the request ("25"), the read routes come back
+      // from a Numeric column ("25.00"). Both must read as 25%.
+      expect(Fleet.fromJson(_fleetJson(discount: '25')).discountLabel, '25%');
+      expect(Fleet.fromJson(_fleetJson(discount: '25.00')).discountLabel, '25%');
+      expect(Fleet.fromJson(_fleetJson(discount: '0')).discountLabel, '0%');
+      // A genuine half percent keeps its digit.
+      expect(Fleet.fromJson(_fleetJson(discount: '12.50')).discountLabel, '12.5%');
+      expect(Fleet.fromJson(_fleetJson(discount: '33.33')).discountLabel, '33.3%');
+    });
+
+    test('a 100% discount is a full discount, not a parse failure', () {
+      final Fleet free = Fleet.fromJson(_fleetJson(discount: '100'));
+      expectTrue(free.isFullyDiscounted);
+      expectFalse(Fleet.fromJson(_fleetJson(discount: '99.99')).isFullyDiscounted);
+    });
+
+    test('only an ACTIVE fleet is billable', () {
+      expectTrue(FleetStatus.active.isBillable);
+      expectFalse(FleetStatus.suspended.isBillable);
+      expectFalse(FleetStatus.dissolved.isBillable);
+      // A suspended operator is not dispatching, so it is not billing.
+      final Fleet suspended = Fleet.fromJson(_fleetJson(status: 'SUSPENDED'));
+      expect(suspended.status, FleetStatus.suspended);
+      expectFalse(suspended.status.isBillable);
+    });
+
+    test('an unknown fleet status fails loudly', () {
+      expectThrows(
+        () => FleetStatus.fromWire('ARCHIVED'),
+        contains: 'FleetStatus',
+        reason: 'a new server state must not be silently mapped',
+      );
+    });
+
+    test('member_count is optional, because not every route sends it', () {
+      final Fleet without = Fleet.fromJson(_fleetJson(memberCount: null));
+      expect(without.memberCount, null);
+      expect(Fleet.fromJson(_fleetJson(memberCount: 3)).memberCount, 3);
+    });
+
+    test('a driver on no roster is data, not an error', () {
+      final MyFleet none = MyFleet.fromJson(<String, dynamic>{'fleet': null, 'membership': null});
+      expectFalse(none.isMember);
+      expect(none.fleet, null);
+      expect(none.membership, null);
+    });
+
+    test('a member reads their fleet and role', () {
+      final MyFleet mine = MyFleet.fromJson(<String, dynamic>{
+        'fleet': _fleetJson(),
+        'membership': <String, dynamic>{
+          'member_role': 'MANAGER',
+          'joined_at': '2026-09-29T13:04:19.046048+00:00',
+        },
+      });
+      expectTrue(mine.isMember);
+      expect(mine.fleet!.name, '星群的士');
+      expect(mine.membership!.memberRole, FleetMemberRole.manager);
+      expectTrue(mine.membership!.memberRole.isAdmin);
+      expectFalse(FleetMemberRole.member.isAdmin);
+      expectTrue(mine.membership!.joinedAt != null);
+    });
+
+    test('a member is billable only when both statuses are ACTIVE', () {
+      // Rostered and funded.
+      expectTrue(FleetMember.fromJson(_memberJson()).isBillable);
+      // Rostered but still in KYC — no deposit account to debit.
+      expectFalse(FleetMember.fromJson(_memberJson(driverStatus: 'PENDING_KYC')).isBillable);
+      // Suspended driver.
+      expectFalse(FleetMember.fromJson(_memberJson(driverStatus: 'SUSPENDED')).isBillable);
+      // Taken off the roster.
+      final FleetMember left = FleetMember.fromJson(_memberJson(memberStatus: 'REMOVED'));
+      expectFalse(left.isBillable);
+      expect(left.status, FleetMemberStatus.removed);
+      expectTrue(left.leftAt != null);
+    });
+
+    test('shortId tails the profile id, and survives a short one', () {
+      final FleetMember member = FleetMember.fromJson(_memberJson());
+      expect(member.shortId, '…1d6635a8');
+      final FleetMember tiny = FleetMember.fromJson(_memberJson(id: 'abc123'));
+      expect(tiny.shortId, 'abc123');
+    });
+
+    test('a live run carries the gross fee and no timestamp', () {
+      final FleetSettlementRun run = FleetSettlementRun.fromJson(<String, dynamic>{
+        'fleet_id': '8f05f4a9-3fbd-4694-95f7-99cf34935465',
+        'fleet_name': '星群的士',
+        'period': '2026-W45',
+        'gross_fee_hkd': '200',
+        'discount_percent': '25.00',
+        'fee_hkd': '150.00',
+        'member_count': 1,
+        'charged': 1,
+        'skipped': 0,
+        'failed': 0,
+        'tampered': 0,
+        'collected_hkd': '150.00',
+      });
+      expect(run.grossFeeHkd!.canonical, '200');
+      expect(run.feeHkd.canonical, '150.00');
+      expect(run.createdAt, null);
+      expect(run.discountSaving!.canonical, '50.0');
+      expectFalse(run.hasAnomaly);
+    });
+
+    test('a stored row has a timestamp and no gross fee', () {
+      final FleetSettlementRun run = FleetSettlementRun.fromJson(<String, dynamic>{
+        'period': '2026-W45',
+        'fee_hkd': '150.00',
+        'discount_percent': '25.00',
+        'member_count': 1,
+        'charged': 1,
+        'skipped': 0,
+        'failed': 0,
+        'tampered': 0,
+        'collected_hkd': '150.00',
+        'created_at': '2026-09-29T13:04:19.161114+00:00',
+      });
+      expect(run.grossFeeHkd, null);
+      // The saving is underivable without the gross, so the UI must hide the
+      // line rather than print HK$0.
+      expect(run.discountSaving, null);
+      expectTrue(run.createdAt != null);
+    });
+
+    test('a tampered or failed run is flagged', () {
+      FleetSettlementRun run({int tampered = 0, int failed = 0}) =>
+          FleetSettlementRun.fromJson(<String, dynamic>{
+            'period': '2026-W45',
+            'fee_hkd': '150.00',
+            'discount_percent': '25.00',
+            'member_count': 4,
+            'charged': 2,
+            'skipped': 0,
+            'failed': failed,
+            'tampered': tampered,
+            'collected_hkd': '300.00',
+          });
+      expectFalse(run().hasAnomaly);
+      expectTrue(run(tampered: 1).hasAnomaly);
+      expectTrue(run(failed: 1).hasAnomaly);
+    });
+
+    test('a zero-collection week reports 0.00, not 0', () {
+      // The server quantises `collected_hkd` to the cent so a fully discounted
+      // week does not render differently from a partial one.
+      final FleetSettlementRun run = FleetSettlementRun.fromJson(<String, dynamic>{
+        'period': '2026-W45',
+        'fee_hkd': '0.00',
+        'discount_percent': '100.00',
+        'member_count': 2,
+        'charged': 0,
+        'skipped': 2,
+        'failed': 0,
+        'tampered': 0,
+        'collected_hkd': '0.00',
+      });
+      expect(run.collectedHkd.fixed, '0.00');
+      expect(run.feeHkd.fixed, '0.00');
+    });
+
+    test('the `{items}` wrapper decodes a roster and a history', () {
+      final List<FleetMember> roster = FleetList<FleetMember>.fromJson(<String, dynamic>{
+        'items': <Object?>[_memberJson(), _memberJson(role: 'OWNER')],
+      }, FleetMember.fromJson).items;
+      expect(roster.length, 2);
+      expect(roster[1].memberRole, FleetMemberRole.owner);
+      // Neither route pages, so a bare `{items}` is the whole contract.
+      final List<FleetSettlementRun> history = FleetList<FleetSettlementRun>.fromJson(
+        <String, dynamic>{
+          'items': <Object?>[
+            <String, dynamic>{
+              'period': '2026-W45',
+              'fee_hkd': '150.00',
+              'discount_percent': '25.00',
+              'member_count': 1,
+              'charged': 1,
+              'skipped': 0,
+              'failed': 0,
+              'tampered': 0,
+              'collected_hkd': '150.00',
+            },
+          ],
+        },
+        FleetSettlementRun.fromJson,
+      ).items;
+      expect(history.length, 1);
+    });
+
+    test('the platform run reports the drivers it left to the fleets', () {
+      final SettlementRun run = SettlementRun.fromJson(<String, dynamic>{
+        'period': '2026-W46',
+        'fee_hkd': '200',
+        'eligible_drivers': 7,
+        'fleet_managed': 1,
+        'charged': 1,
+        'skipped': 6,
+        'failed': 0,
+        'tampered': 0,
+      });
+      expect(run.fleetManaged, 1);
+      expect(run.eligibleDrivers, 7);
+      // A run with no fleet members must still parse the counter as zero.
+      final SettlementRun plain = SettlementRun.fromJson(<String, dynamic>{
+        'period': '2026-W40',
+        'fee_hkd': '200',
+        'eligible_drivers': 8,
+        'fleet_managed': 0,
+        'charged': 1,
+        'skipped': 7,
+        'failed': 0,
+        'tampered': 0,
+      });
+      expect(plain.fleetManaged, 0);
     });
   });
 }

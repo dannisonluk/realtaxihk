@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/admin/admin_fleet_detail_screen.dart';
+import '../features/admin/admin_fleets_screen.dart';
 import '../features/admin/admin_kyc_screen.dart';
 import '../features/admin/admin_refunds_screen.dart';
 import '../features/admin/admin_screen.dart';
@@ -13,6 +15,7 @@ import '../features/driver/driver_earnings_screen.dart';
 import '../features/driver/driver_jobs_screen.dart';
 import '../features/driver/driver_onboarding_screen.dart';
 import '../features/driver/driver_screen.dart';
+import '../features/fleet/fleet_screen.dart';
 import '../features/passenger/passenger_screen.dart';
 import '../features/passenger/request_ride_screen.dart';
 import '../features/passenger/trip_history_screen.dart';
@@ -123,6 +126,13 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
         builder: (BuildContext context, GoRouterState state) =>
             DriverActiveTripScreen(orderId: state.pathParameters['orderId']!),
       ),
+      GoRoute(
+        // Read-only, so it sits outside the shell: a driver dips in to check
+        // their roster and fee, then comes back.
+        path: Routes.driverFleet,
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (BuildContext context, GoRouterState state) => const FleetScreen(),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (BuildContext context, GoRouterState state, StatefulNavigationShell shell) =>
             DriverScreen(shell: shell),
@@ -183,6 +193,23 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
                 path: Routes.adminSettlement,
                 builder: (BuildContext context, GoRouterState state) =>
                     const AdminSettlementScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: <RouteBase>[
+              GoRoute(
+                path: Routes.adminFleets,
+                builder: (BuildContext context, GoRouterState state) => const AdminFleetsScreen(),
+                routes: <RouteBase>[
+                  // Nested inside the branch so the bottom bar stays put while
+                  // working through a fleet's roster and settlement.
+                  GoRoute(
+                    path: ':fleetId',
+                    builder: (BuildContext context, GoRouterState state) =>
+                        AdminFleetDetailScreen(fleetId: state.pathParameters['fleetId']!),
+                  ),
+                ],
               ),
             ],
           ),

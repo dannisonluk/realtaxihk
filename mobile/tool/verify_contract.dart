@@ -40,6 +40,7 @@ import 'package:realtaxi_mobile/models/auth.dart';
 import 'package:realtaxi_mobile/models/driver.dart';
 import 'package:realtaxi_mobile/models/enums.dart';
 import 'package:realtaxi_mobile/models/fare.dart';
+import 'package:realtaxi_mobile/models/fleet.dart';
 import 'package:realtaxi_mobile/models/ledger.dart';
 import 'package:realtaxi_mobile/models/order.dart';
 import 'package:realtaxi_mobile/models/refund.dart';
@@ -91,6 +92,75 @@ Order _order(Object? body, {required OrderStatus status}) {
   final Order order = Order.fromJson(asMap(body, 'order'));
   _expect(order.status == status, 'expected status ${status.wire}, got ${order.status.wire}');
   return order;
+}
+
+/// One roster row, plus the omission the server makes on purpose.
+FleetMember _rosterRow(Object? body, {required FleetMemberRole expectedRole}) {
+  final Map<String, dynamic> m = asMap(body, 'member');
+  // `_member_out` in `app/api/fleets.py` deliberately drops the driver's
+  // identity documents: an operator needs to know *who is on the roster*, not to
+  // read back what the driver supplied to the platform. Adding any of these to
+  // the model would be undoing a deliberate decision, so it is asserted here.
+  for (final String forbidden in <String>[
+    'hk_id_last4',
+    'taxi_driver_plate_no',
+    'vehicle_reg_mark',
+    'user_id',
+  ]) {
+    _expect(
+      !m.containsKey(forbidden),
+      'the roster row must not expose $forbidden — see app/api/fleets.py::_member_out',
+    );
+  }
+  final FleetMember member = FleetMember.fromJson(m);
+  _expect(
+    member.memberRole == expectedRole,
+    'expected ${expectedRole.wire}, got ${member.memberRole.wire}',
+  );
+  _expect(member.status == FleetMemberStatus.active, 'expected an ACTIVE roster row');
+  _expect(member.leftAt == null, 'an ACTIVE row has no left_at');
+  // The only handle the wire gives us; it must be the profile id's tail.
+  _expect(
+    member.driverProfileId.endsWith(member.shortId.replaceFirst('…', '')),
+    'shortId should be the tail of the profile id: ${member.shortId}',
+  );
+  return member;
+}
+
+/// A `{items}` roster.
+String _roster(Object? body) {
+  final List<FleetMember> members = FleetList<FleetMember>.fromJson(
+    asMap(body, 'body'),
+    FleetMember.fromJson,
+  ).items;
+  _expect(members.isNotEmpty, 'the fixture roster should not be empty');
+  for (final FleetMember member in members) {
+    _expect(member.driverProfileId.isNotEmpty, 'a roster row needs a driver_profile_id');
+  }
+  final FleetMember first = members.first;
+  _expect(first.isBillable, 'the fixture member is ACTIVE and funded, so billable');
+  return 'items=${members.length} first=${first.shortId} ${first.taxiType.wire} '
+      'role=${first.memberRole.wire} billable=${first.isBillable}';
+}
+
+/// A `{items}` settlement history, newest week first.
+String _settlementHistory(Object? body) {
+  final List<FleetSettlementRun> runs = FleetList<FleetSettlementRun>.fromJson(
+    asMap(body, 'body'),
+    FleetSettlementRun.fromJson,
+  ).items;
+  _expect(runs.isNotEmpty, 'the fixture settlement history should not be empty');
+  final FleetSettlementRun run = runs.first;
+  // A *stored* row: `created_at` is present, `gross_fee_hkd` is not (it is never
+  // stored), so the saving cannot be derived from history — only from the live
+  // run. The model must survive both shapes.
+  _expect(run.createdAt != null, 'a stored settlement row should carry created_at');
+  _expect(run.grossFeeHkd == null, 'a stored row has no gross_fee_hkd to report');
+  _expect(run.discountSaving == null, 'the saving is underivable without the gross');
+  _expect(run.feeHkd.asDouble == 150, 'the stored per-member fee should be 150');
+  _expect(run.collectedHkd.asDouble == 150, 'collected should match the single member');
+  return 'items=${runs.length} period=${run.period} fee=${run.feeHkd.hkd} '
+      'collected=${run.collectedHkd.hkd} gross=absent anomaly=${run.hasAnomaly}';
 }
 
 // ---------------------------------------------------------------------------
@@ -393,8 +463,114 @@ final Map<String, Decoder> _decoders = <String, Decoder>{
     _rawIsString(body, 'fee_hkd');
     final Money fee = Money.parse(asMap(body, 'body')['fee_hkd']);
     _expect(fee.asDouble == 200, 'fee should be 200, got ${fee.asDouble}');
+    // This run happened *before* the fixture fleet existed, so nobody was
+    // excluded — the counter is present and zero. The non-zero case is pinned by
+    // `admin_settlement_fleet_managed` below.
+    _expect(run.fleetManaged == 0, 'expected no fleet members yet, got ${run.fleetManaged}');
     return 'period=${run.period} fee=${run.feeHkd.hkd} charged=${run.charged} '
-        'skipped=${run.skipped} anomaly=${run.hasAnomaly}';
+        'skipped=${run.skipped} anomaly=${run.hasAnomaly} fleet=${run.fleetManaged}';
+  },
+
+  // ---- fleets -------------------------------------------------------------
+  'fleet_created': (Object? body) {
+    // The 201 echoes the *request* Decimal, so this one is "25", not "25.00" —
+    // while `fleet_detail` below reads the same field back out of the database
+    // and gets "25.00". The model must accept both, which is why the discount is
+    // kept as a string rather than parsed into a number at the edge.
+    _rawIsString(body, 'weekly_fee_discount_percent');
+    final Fleet fleet = Fleet.fromJson(asMap(body, 'body'));
+    _expect(fleet.status == FleetStatus.active, 'a new fleet is ACTIVE, got ${fleet.status.wire}');
+    _expect(fleet.memberCount == 0, 'a new fleet has no members, got ${fleet.memberCount}');
+    _expect(!fleet.isFullyDiscounted, 'a 25% discount is not a full discount');
+    return '${fleet.status.wire} ${fleet.licenseNo} discount=${fleet.discountLabel} '
+        'members=${fleet.memberCount}';
+  },
+  'admin_fleets': (Object? body) {
+    final Map<String, dynamic> m = asMap(body, 'body');
+    // A `{items, total, limit, offset}` page — unlike the roster and settlement
+    // routes, which send a bare `{items}`.
+    _expect(m.containsKey('total'), 'the fleet register should page: ${m.keys.toList()}');
+    final List<Fleet> items = FleetList<Fleet>.fromJson(m, Fleet.fromJson).items;
+    _expect(items.isNotEmpty, 'the register should hold the fleet just created');
+    // Read back from the database, so the decimal is the stored form.
+    _expect(
+      items.first.weeklyFeeDiscountPercent.contains('.'),
+      'the stored discount should be a quantised decimal string, got '
+      '${items.first.weeklyFeeDiscountPercent}',
+    );
+    return 'items=${items.length} total=${asInt(m['total'], 'total')} '
+        'first=${items.first.name} discount=${items.first.discountLabel}';
+  },
+  'admin_fleet_member_added': (Object? body) {
+    final FleetMember member = _rosterRow(body, expectedRole: FleetMemberRole.member);
+    return 'added=${member.shortId} role=${member.memberRole.wire} '
+        'driver=${member.driverStatus.wire} billable=${member.isBillable}';
+  },
+  'admin_fleet_members': (Object? body) => _roster(body),
+  'fleet_members': (Object? body) => _roster(body),
+  'fleet_me': (Object? body) {
+    final MyFleet mine = MyFleet.fromJson(asMap(body, 'body'));
+    _expect(mine.isMember, 'the fixture driver is on a roster');
+    _expect(
+      mine.membership?.memberRole == FleetMemberRole.member,
+      'expected MEMBER, got ${mine.membership?.memberRole}',
+    );
+    _expect(mine.membership?.joinedAt != null, 'a roster row should carry joined_at');
+    final Fleet fleet = mine.fleet!;
+    _expect(fleet.memberCount == 1, 'expected one member, got ${fleet.memberCount}');
+    // "25.00" out of the database must render as "25%", not "25.0%".
+    _expect(fleet.discountLabel == '25%', 'expected 25%, got ${fleet.discountLabel}');
+    return '${fleet.name} role=${mine.membership!.memberRole.wire} '
+        'discount=${fleet.discountLabel} members=${fleet.memberCount}';
+  },
+  'fleet_me_none': (Object? body) {
+    final MyFleet mine = MyFleet.fromJson(asMap(body, 'body'));
+    // "Not in a fleet" is a normal state, not a 404 — the model must not throw
+    // and the screen must branch on it.
+    _expect(!mine.isMember, 'a driver on no roster should report no fleet');
+    _expect(mine.fleet == null && mine.membership == null, 'both fields should be null');
+    return 'fleet=null membership=null isMember=${mine.isMember}';
+  },
+  'fleet_detail': (Object? body) {
+    _rawIsString(body, 'weekly_fee_discount_percent');
+    final Fleet fleet = Fleet.fromJson(asMap(body, 'body'));
+    _expect(fleet.contactName != null, 'the fixture fleet has a contact');
+    return '${fleet.name} ${fleet.licenseNo} status=${fleet.status.wire} '
+        'billable=${fleet.status.isBillable} contact=${fleet.contactName}';
+  },
+  'admin_fleet_settlement_run': (Object? body) {
+    final FleetSettlementRun run = FleetSettlementRun.fromJson(asMap(body, 'body'));
+    // The live run: gross is present, created_at is not (the row it upserted is
+    // not read back).
+    _expect(run.grossFeeHkd != null, 'the live run should report gross_fee_hkd');
+    _expect(run.createdAt == null, 'the live run should not carry created_at');
+    _expect(run.grossFeeHkd!.asDouble == 200, 'gross should be the platform fee, 200');
+    _expect(run.feeHkd.asDouble == 150, '25% off 200 is 150, got ${run.feeHkd.canonical}');
+    _expect(run.charged == 1, 'expected one member charged, got ${run.charged}');
+    _expect(run.collectedHkd.asDouble == 150, 'collected should be 150');
+    _expect(!run.hasAnomaly, 'a clean run must not report an anomaly');
+    _expect(
+      run.discountSaving!.asDouble == 50,
+      'the discount should save 50, got ${run.discountSaving!.canonical}',
+    );
+    return 'period=${run.period} gross=${run.grossFeeHkd!.hkd} fee=${run.feeHkd.hkd} '
+        'saved=${run.discountSaving!.hkd} charged=${run.charged} created=absent';
+  },
+  'admin_fleet_settlement': (Object? body) => _settlementHistory(body),
+  'fleet_settlement': (Object? body) => _settlementHistory(body),
+  'admin_settlement_fleet_managed': (Object? body) {
+    final SettlementRun run = SettlementRun.fromJson(asMap(body, 'body'));
+    // The billing boundary, as a fixture: the platform-wide run now excludes the
+    // rostered driver and says how many it left to the fleets. Without this the
+    // exclusion would be invisible, and a driver could be charged twice — the
+    // two jobs write different ledger references, so idempotency does not
+    // protect anyone across them.
+    _expect(
+      run.fleetManaged >= 1,
+      'the platform run should report the excluded fleet member, got ${run.fleetManaged}',
+    );
+    return 'period=${run.period} eligible=${run.eligibleDrivers} charged=${run.charged} '
+        'fleet_managed=${run.fleetManaged}';
   },
 
   // ---- websocket ----------------------------------------------------------

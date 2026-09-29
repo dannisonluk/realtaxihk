@@ -102,6 +102,31 @@ around. Each is documented at the call site.
 * **`OrderCreateIn` cannot express a baggage or animal surcharge**, so a quote
   including one is not reproducible in the order snapshot. The request screen
   offers only the fields that survive.
+* **Fleet members are excluded from the platform-wide weekly run.** Two billing
+  jobs can reach the same driver — `SettlementService.run_weekly` charges every
+  ACTIVE driver the flat fee, `FleetSettlementService` charges a fleet's members
+  the discounted rate — and they write *different* ledger references
+  (`weekly:…` vs `fleet:…`), so idempotency does not protect a driver across
+  them. The platform run therefore skips anyone on an active roster and reports
+  how many (`fleet_managed`, surfaced on the admin settlement screen). Adding a
+  driver to a fleet changes which job bills them from the next settlement, and
+  that is the intended behaviour, not a bug to work around.
+* **A fleet is created by an admin, never by a driver.** HK fleets are licensed
+  operators, so there is no self-service "create my fleet" route and no invite
+  flow. The driver-facing surface is read-only.
+* **`GET /fleets/*` answers 404, not 403, for someone else's fleet** — so the
+  routes cannot be used to enumerate which fleets exist. The client must treat a
+  404 there as "not yours", not as "does not exist".
+* **A fleet settlement has two response shapes.** The live run
+  (`POST …/settlement/run`) returns `gross_fee_hkd` and no `created_at`; a stored
+  history row (`GET …/settlement`) returns `created_at` and no `gross_fee_hkd`.
+  `FleetSettlementRun` therefore has both nullable, and `discountSaving` is null
+  on a history row — the screen hides the line rather than printing `HK$0`.
+* **The roster row deliberately omits identity documents.** No HK ID fragment,
+  driver's licence number or vehicle registration — an operator needs to know
+  *who is on the roster*, not to read back what the driver supplied to the
+  platform. `tool/verify_contract.dart` asserts the absence, so adding one to the
+  model would fail the check rather than quietly widen what an operator sees.
 
 ## Configuration
 
@@ -163,9 +188,14 @@ then log in with any `+852` number and the code `123456`.
 dart --packages=.dart_tool/package_config.json tool/run_tests.dart
 ```
 
-77 assertions over the code with no Flutter dependency: money and date
+92 assertions over the code with no Flutter dependency: money and date
 formatting, the wire decoders, the enums, the error envelope, websocket frames,
-pagination, the models, and the router redirect rules.
+pagination, the models (including the fleet shapes), and the router redirect
+rules.
+
+Formatting is `dart format --line-length 100` — the flag matters, the repo is
+written at 100 columns and the tool defaults to 80, which would reformat every
+file in the tree.
 
 Not `package:test`, because neither `flutter test` nor `dart test` can start
 here — both go through `dartdev`, which is what trips the pipe bug. `tool/run_tests.dart`
@@ -188,7 +218,8 @@ lib/
   data/       repositories — one per API area, thin over ApiClient
   state/      Riverpod providers and the auth controller
   router/     go_router configuration and the role redirect
-  features/   screens, grouped by role, plus shared widgets
+  features/   screens, grouped by role (`passenger/`, `driver/`, `admin/`,
+              `fleet/`), plus shared widgets
 tool/
   dart_check.py        type-check via LSP (see above)
   run_tests.dart       unit tests for the pure code

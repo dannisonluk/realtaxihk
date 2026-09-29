@@ -106,6 +106,7 @@ class SettlementRun {
     required this.skipped,
     required this.failed,
     required this.tampered,
+    required this.fleetManaged,
   });
 
   factory SettlementRun.fromJson(Map<String, dynamic> json) => SettlementRun(
@@ -116,16 +117,34 @@ class SettlementRun {
     skipped: asInt(json['skipped'], 'settlement.skipped'),
     failed: asInt(json['failed'], 'settlement.failed'),
     tampered: asInt(json['tampered'], 'settlement.tampered'),
+    fleetManaged: asInt(json['fleet_managed'], 'settlement.fleet_managed'),
   );
 
   /// ISO week key, e.g. `2026-W38`.
   final String period;
   final Money feeHkd;
+
+  /// ACTIVE drivers the platform run considered — i.e. after fleet members were
+  /// excluded. See [fleetManaged].
   final int eligibleDrivers;
+
   final int charged;
   final int skipped;
   final int failed;
   final int tampered;
+
+  /// ACTIVE drivers **excluded** from this run because they are on a fleet's
+  /// active roster, and are therefore billed by that fleet's own settlement at
+  /// the discounted rate instead.
+  ///
+  /// Required rather than defaulted to zero: the server always sends it, and
+  /// defaulting would render "no fleet members were excluded" for a response
+  /// that simply omitted the field — the exact silence this counter exists to
+  /// break. The exclusion is the fix for a double-charge hazard (the two jobs
+  /// write different ledger references, so idempotency does not protect a driver
+  /// across them), so a number here that disagrees with the fleets' own runs is
+  /// the first sign something is wrong.
+  final int fleetManaged;
 
   bool get hasAnomaly => failed > 0 || tampered > 0;
 }

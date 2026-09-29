@@ -28,9 +28,14 @@ abstract final class Routes {
   static const String driverEarnings = '/driver/earnings';
   static const String driverActiveTrip = '/driver/active';
 
+  /// The driver's own fleet (的士車隊), if they are on a roster. Pushed on the
+  /// root navigator from the account screen, like onboarding.
+  static const String driverFleet = '/driver/fleet';
+
   static const String adminKyc = '/admin/kyc';
   static const String adminRefunds = '/admin/refunds';
   static const String adminSettlement = '/admin/settlement';
+  static const String adminFleets = '/admin/fleets';
   static const String adminAccount = '/admin/account';
 }
 

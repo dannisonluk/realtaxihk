@@ -101,10 +101,21 @@ class _AdminSettlementScreenState extends ConsumerState<AdminSettlementScreen> {
                     const SizedBox(height: 12),
                     DetailRow(label: '服務費', valueWidget: MoneyText(run.feeHkd)),
                     DetailRow(label: '合資格司機', value: '${run.eligibleDrivers}'),
+                    DetailRow(label: '車隊成員（未收費）', value: '${run.fleetManaged}'),
                     DetailRow(label: '已收費', value: '${run.charged}'),
                     DetailRow(label: '略過（已收過）', value: '${run.skipped}'),
                     DetailRow(label: '失敗', value: '${run.failed}'),
                     DetailRow(label: '帳目異常', value: '${run.tampered}'),
+                    if (run.fleetManaged > 0) ...<Widget>[
+                      const SizedBox(height: 12),
+                      Text(
+                        '車隊成員由所屬車隊的結算以折扣價收費，因此不在此次劃一收費之內，'
+                        '避免同一週被收費兩次。',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                     if (run.tampered > 0) ...<Widget>[
                       const SizedBox(height: 12),
                       Text(

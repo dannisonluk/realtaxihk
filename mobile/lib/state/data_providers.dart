@@ -5,6 +5,7 @@ import '../data/driver_repository.dart';
 import '../models/admin.dart';
 import '../models/driver.dart';
 import '../models/enums.dart';
+import '../models/fleet.dart';
 import '../models/ledger.dart';
 import '../models/order.dart';
 import '../models/refund.dart';
@@ -99,4 +100,33 @@ final adminDriversProvider = FutureProvider.family<Paged<AdminDriverRow>, Driver
 /// Admin: the refund queue, filtered by status.
 final adminRefundsProvider = FutureProvider.family<Paged<RefundRequest>, RefundStatus?>(
   (Ref ref, RefundStatus? status) => ref.watch(adminRepositoryProvider).refunds(status: status),
+);
+
+// --------------------------------------------------------------------------- //
+// fleets
+// --------------------------------------------------------------------------- //
+
+/// The caller's fleet, or a null pair when they are not on a roster.
+///
+/// Not a 404 — "not in a fleet" is the common state, so `GET /fleets/me`
+/// answers `{"fleet": null, "membership": null}` and this resolves to data.
+final FutureProvider<MyFleet> myFleetProvider = FutureProvider<MyFleet>(
+  (Ref ref) => ref.watch(fleetRepositoryProvider).myFleet(),
+);
+
+/// One fleet's roster. Read by both surfaces: a member sees their own fleet's
+/// roster, an admin sees any fleet's.
+final fleetMembersProvider = FutureProvider.family<List<FleetMember>, String>(
+  (Ref ref, String fleetId) => ref.watch(fleetRepositoryProvider).members(fleetId),
+);
+
+/// One fleet's settlement history, newest week first.
+final fleetSettlementProvider = FutureProvider.family<List<FleetSettlementRun>, String>(
+  (Ref ref, String fleetId) => ref.watch(fleetRepositoryProvider).settlementHistory(fleetId),
+);
+
+/// Admin: the fleet register, filtered by operator status.
+final adminFleetsProvider = FutureProvider.family<List<Fleet>, FleetStatus?>(
+  (Ref ref, FleetStatus? status) async =>
+      (await ref.watch(fleetRepositoryProvider).listFleets(status: status)).items,
 );

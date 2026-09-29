@@ -8,6 +8,7 @@ import '../data/admin_repository.dart';
 import '../data/auth_repository.dart';
 import '../data/driver_repository.dart';
 import '../data/fare_repository.dart';
+import '../data/fleet_repository.dart';
 import '../data/order_repository.dart';
 import '../data/trip_repository.dart';
 import '../models/auth.dart';
@@ -44,6 +45,10 @@ final Provider<DriverRepository> driverRepositoryProvider = Provider<DriverRepos
 
 final Provider<AdminRepository> adminRepositoryProvider = Provider<AdminRepository>(
   (Ref ref) => AdminRepository(ref.watch(apiClientProvider)),
+);
+
+final Provider<FleetRepository> fleetRepositoryProvider = Provider<FleetRepository>(
+  (Ref ref) => FleetRepository(ref.watch(apiClientProvider)),
 );
 
 final Provider<TripRepository> tripRepositoryProvider = Provider<TripRepository>(

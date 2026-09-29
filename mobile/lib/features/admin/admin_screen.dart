@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// Admin console shell: KYC queue, refund queue, settlement, account.
+/// Admin console shell: KYC queue, refund queue, settlement, fleets, account.
 ///
 /// The account tab is its own branch rather than a link to the passenger one:
 /// `_redirect` in `app_router.dart` bounces an admin out of `/passenger/**`,
@@ -35,6 +35,11 @@ class AdminScreen extends StatelessWidget {
             icon: Icon(Icons.calculate_outlined),
             selectedIcon: Icon(Icons.calculate),
             label: '結算',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.groups_outlined),
+            selectedIcon: Icon(Icons.groups),
+            label: '車隊',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),
