@@ -3,8 +3,8 @@
 **審計日期**：2026-09-29
 **審計範圍**：`app/`（FastAPI 後端）、`docker-compose.yml`、`Dockerfile`、依賴、Redis/Postgres 暴露面
 **方法**：靜態審閱 + **對真實運行的 uvicorn + Postgres + Redis 實測攻擊**（非只讀代碼）
-**驗證腳本**：`.tmp/security_probe.py`（可重跑：`.venv/Scripts/python.exe .tmp/security_probe.py [a|b|c|d|all]`）
-**本輪未修改任何應用代碼**（`git status` clean）
+**驗證腳本**：`.tmp/security_probe.py`（找出漏洞，可重跑）、`.tmp/security_verify.py`（修復後重跑攻擊）、`scripts/prod_boot_drill.py`、`tests/test_security_hardening.py`
+**審計輪次**：第一輪只讀審計（未改任何應用代碼）；第二輪修復 30 項，見 §0.1。
 
 ---
 
@@ -37,6 +37,197 @@
 | SEC-28 | 🟢 Low | OTP 比對用 `!=` 非 constant-time（有 5 次上限，實際難利用，但應改 `hmac.compare_digest`） | 代碼確認 |
 | SEC-29 | 🟢 Low | `DevFcmProvider` 把 device token 前 8 字寫入 log | 代碼確認 |
 | SEC-30 | 🟢 Low | WS `pump()` 的心跳只在收到訊息時才發 → 文件寫的 idle keep-alive 實際無效 | 代碼確認 |
+| **SEC-31** | 🟠 **High** | **修完 SEC-07 之後才發現**：uvicorn 的 `ProxyHeadersMiddleware` 預設開啟且 `forwarded_allow_ips=127.0.0.1`，會用客戶端自己送的 `X-Forwarded-For` 改寫 `scope["client"]` —— 在**應用層之下**把 SEC-07 整個還原 | ✅ 已證明（Redis bucket 實測） |
+
+---
+
+## 0.1 修復狀態（2026-09-29 第二輪）
+
+30 項全部修復。驗證方式：`scripts/prod_boot_drill.py`（7 個真實開機情境）、
+`tests/test_security_hardening.py`（25 個回歸測試）、`.tmp/security_verify.py`
+（對真實運行的 server 重跑攻擊）。**下表每一項都有對應測試或實測。**
+
+| ID | 狀態 | 修復位置 |
+|---|---|---|
+| SEC-01~03 | ✅ | `core/config.py`（`app_env` 必填 + 白名單）、`otp_service.py`（`dev_otp_enabled`）、`ALLOW_DEV_OTP` 開關 |
+| SEC-04~05 | ✅ | `core/config.py`（移除 hardcode secret；必填 + 熵檢查；`iss/aud` 待辦見下） |
+| SEC-06 | ✅ | `docker-compose.yml`（`127.0.0.1` + `requirepass`）、`grab_service.py`（DB 條件式 UPDATE 仲裁） |
+| SEC-07 | ✅ | `api/auth.py::_client_ip`（取最右可信跳數）、`api/fare.py`、`TRUSTED_PROXY_COUNT` |
+| SEC-08 | ✅ | `api/auth.py`（soft cap → 降級；hard cap → 503）、per-phone 限流 |
+| SEC-09~11 | ✅ | `api/orders.py`、`api/fare.py`（`before` validator + `max_length`）、`core/middleware.py`、`order_service.py`（去重） |
+| SEC-12 | ✅ | `drivers.py`／`tracking.py`／`trips.py` 改用 `require_active_user` + 反射式回歸測試 |
+| SEC-13 | ✅ | `ledger_service.py`（比對 entry_type/amount + 命名空間 helper）、`admin.py`、`settlement_service.py`（`tampered` 計數）、`refund_service.py`（出款斷言） |
+| SEC-14 | ✅ | `ws.py`（`accept()` 前完成授權）、`trip_service.py`（共用 hub + `ConnectionRegistry`） |
+| SEC-15 | ✅ | `api/fare.py`、`api/tracking.py` 加限流 |
+| SEC-16 | ✅ | `ws.py` token bucket（`ws_ticks_per_second` + `ws_tick_burst`） |
+| SEC-17 | ✅ | `refresh_service.py`（`RotateOutcome.reused` + family 撤銷）、`api/auth.py` |
+| SEC-18 | ✅ | `core/token_revocation.py`（per-user epoch）、`api/auth.py` logout、access token 縮至 15 分鐘 |
+| SEC-19 | ✅ | `docker-compose.yml`（補 `POSTGRES_PASSWORD`；`APP_ENV` 硬編 `prod`） |
+| SEC-20 | ✅ | `.dockerignore`（新增） |
+| SEC-21 | ✅ | `Dockerfile`（`uv sync --frozen --no-dev`） |
+| SEC-22 | ✅ | `main.py` + `core/middleware.py::TokenGuardMiddleware`（無 token 則不掛載） |
+| SEC-23 | ✅ | `main.py` `/health` 移除 `env` |
+| SEC-24 | ✅ | `core/middleware.py::SecurityHeadersMiddleware` |
+| SEC-25 | ✅ | `geo_service.py`（移除只寫索引）、`maintenance.py`（清理遺留 key）、`tracking.py` |
+| SEC-26 | ✅ | `api/orders.py`（`before_id` 限定在呼叫者自己的訂單範圍） |
+| SEC-27 | ✅ | `api/trips.py` 改回 `driver_profile_id`；`trip_service.trip_snapshot` 同步 |
+| SEC-28 | ✅ | `otp_service.py` 改用 `hmac.compare_digest` |
+| SEC-29 | ✅ | `notify.py`（只記錄長度，不記錄內容） |
+| SEC-30 | ✅ | `ws.py` 心跳改為獨立 task（不再只在收到訊息時才 ping） |
+| **SEC-31** | ✅ | `Dockerfile` / `docker-compose.yml` / `scripts/*.py` 全部加 `--no-proxy-headers`；`tests/test_security_hardening.py::TestProxyHeaderTrust` 鎖住啟動設定 |
+
+### 兩處刻意偏離原建議（附理由）
+
+1. **SEC-13 第 3 點（`UNIQUE(reference, entry_type)`）沒有照做。**
+   現有索引是 `UNIQUE(reference) WHERE reference IS NOT NULL`，**比建議的更嚴格**：
+   它連「同一 reference、不同 entry_type」都禁止。改成複合索引反而會放寬。真正的
+   漏洞核心（`append()` 命中時不比對就直接回傳舊 entry）已在服務層修好，加上
+   reference 改由伺服器分命名空間產生，跨用途碰撞已無法表達。保留原索引。
+2. **SEC-18 的 deny-list 用 per-user epoch 而非 per-token `jti` 黑名單，且 Redis
+   故障時 fail-open。** 理由：epoch 一個 key 就能撤銷該用戶所有 access token，
+   不需逐 token 記帳或清理；而 fail-closed 會令一次 Redis 抖動變成全平台登入中斷
+   ——比「已撤銷的 token 多活最多 15 分鐘」更差。短到期時間是後備。
+
+### 尚未做（非本次 30 項範圍，建議下一輪）
+
+- JWT 加 `iss` / `aud` claim 並在 `decode` 時驗證（SEC-04 修復清單第 3 點）——
+  需要簽發端與驗證端同步改，且現時只有自家簽發，無跨服務驗證需求。
+- `docker-compose.yml` 的 `CORS_ORIGINS` 預設已改為真域名，但仍應由部署環境明確覆寫。
+
+---
+
+## 0.2 修復期間發現的效能／可用性問題（已一併修好）
+
+這兩項不在原本 30 項之內，是在「跑真實測試」時撞出來的——正好說明只讀代碼審計的極限。
+
+### P-01 `localhost` 的 IPv6 回退：每個新連線 2 秒
+
+`POSTGRES_HOST=localhost` / `REDIS_URL=redis://localhost:...`。在 Windows 上
+`localhost` 同時解析出 `::1` 與 `127.0.0.1`，而 Docker 發佈的埠**只有 IPv4**。
+連 `::1:15433` 時 SYN 被**靜默丟棄**（不是 refuse），要等 ~2 秒逾時才回退 IPv4。
+
+實測（`.tmp/host_probe.py`）：
+
+| 目標 | 結果 |
+|---|---|
+| `connect 127.0.0.1:15433` | **1ms** |
+| `connect [::1]:15433` | `ConnectionRefusedError` 但**耗時 2034ms** |
+| `asyncpg connect + SELECT 1` | **2095ms → 25ms** |
+| `redis PING` | **2058ms → 3ms** |
+| `app get_session_factory()` 首次 | **2131ms → 60ms** |
+
+因為多條代碼路徑都是「每次呼叫開一個新連線」，這變成**每個 HTTP 請求 4~6 秒**。
+
+**修法**：`core/config.py` 預設改 `127.0.0.1`；`.env` / `.env.example` / CI 同步。
+`docker-compose.yml` 不受影響（服務間用 service name `db` / `redis`）。
+
+**連帶效果**：`tests/test_geo_and_limits.py::TestRateLimiter::test_order_creation_rate_limited`
+原本是**會間歇性失敗的**（見下），修好後穩定通過。
+
+### P-02 SEC-18 把「每次請求開一個 Redis 連線」放上了熱路徑
+
+第一輪修 SEC-18 時，`assert_not_revoked()` 用了 `request.app.state.redis_factory()`——
+而 `get_redis()` 的契約就是「每次呼叫回一個新 client」。結果**每一個已認證請求**
+都要開／關一條 Redis socket。修好 P-01 之後單次成本由 2s 降到 3ms，但仍是純浪費，
+而且在高併發下是 fd／連線數耗盡的放大器（可用性風險，不只效能）。
+
+**修法**：`app.state.auth_redis` 一個 app 生命週期的 client，與 `rate_limiter` /
+`maintenance` / `trip_hub` 一同在 lifespan 關閉；`deps.py` 改用它。
+
+### P-03（既有，非本次引入）rate-limit 測試對「牆上時鐘」有依賴
+
+`test_order_creation_rate_limited` 用**固定視窗**限流（`int(time.time()) // 60`）。
+原本每個請求 4~6 秒 → 6 個請求橫跨 25~37 秒 → 有 ~40~60% 機率跨過分鐘邊界，
+**counter 歸零 → 第 6 個請求仍然 201 → 斷言失敗**。
+
+已用 `git worktree` 在**未修復的 HEAD（64dacce）**上重跑確認：同樣失敗（4.1s/請求）。
+所以這是**既有的 flaky test**，不是本次改動造成。P-01 修好後 6 個請求只需 0.42 秒，
+跨視窗機率降到可忽略。
+
+---
+
+## 0.3 SEC-31：SEC-07 在應用層之下被還原（修完 30 項之後才發現）
+
+這一項是**重跑修復後攻擊探針時撞出來的**——如果只信「測試全綠 + 代碼已改」就會漏掉。
+
+### 現象
+
+`SEC-07` 的檢查在探針裡一直 FAIL：16 個請求、16 個不同 XFF → **0 × 429**。
+
+直查 Redis 見到：
+
+```
+rl:realtaxi:otp:ip:203.0.113.0  = 2
+rl:realtaxi:otp:ip:203.0.113.1  = 2
+...
+rl:realtaxi:otp:ip:127.0.0.1    = 3
+```
+
+**XFF 的值直接變成了限流 key。** 但 `_client_ip()` 明明有 `TRUSTED_PROXY_COUNT > 0` 的
+護欄，而該 server 的 `trusted_proxy_count` 確認是 `0`（用 `env -i` 重現子進程環境核實）。
+
+### 根因：uvicorn 自己就在改寫 client
+
+`uvicorn 0.54.0` 的 `ProxyHeadersMiddleware` **預設啟用**，`forwarded_allow_ips` 預設
+`127.0.0.1`。它在 ASGI 層做：
+
+```python
+if client_host in self.trusted_hosts:          # 127.0.0.1 在預設信任名單內
+    ...
+    host, port = self.trusted_hosts.get_trusted_client_address(x_forwarded_for)
+    scope["client"] = (host, port)             # ← 覆寫成客戶端送的值
+```
+
+而 `get_trusted_client_address()` 對單一值的 XFF 是**原樣回傳**（多值時由右往左找第一個
+不在信任名單的）。所以任何 TCP peer 是 `127.0.0.1` 的呼叫者（本機反代、同機任何進程、
+SSRF、以及 Docker 下 `FORWARDED_ALLOW_IPS` 被設成 `*` 的常見誤配）都可以自選 IP。
+
+**`_client_ip()` 收到的是已經被污染的 `request.client.host`**，護欄根本沒機會執行。
+`TRUSTED_PROXY_COUNT=0` 在這一刻是裝飾品。
+
+### 實測（`.tmp/xff_experiment.py`）
+
+| 啟動方式 | 送 `X-Forwarded-For: 198.51.100.78` 之後 |
+|---|---|
+| 預設（proxy headers **開**） | 新增 bucket `rl:realtaxi:otp:ip:198.51.100.78` → **每個請求一個新 bucket = 完全無限流** |
+| 加 `--no-proxy-headers` | **沒有**新 bucket，請求落在 `127.0.0.1` |
+
+修好後探針：`16 個請求、16 個不同 XFF -> 8 × 429`（前 8 個通過、之後全 429），
+且**與 XFF 完全無關**。
+
+### 修法
+
+1. 所有 uvicorn 啟動點加 `--no-proxy-headers`：`Dockerfile`、`docker-compose.yml`
+   （`api` 的 command）、`scripts/live_smoke.py`、`scripts/serve_and_probe.py`
+   （`uvicorn.Config(..., proxy_headers=False)` 與 CLI 兩處）。
+2. 信任決策**只留在應用層** `_client_ip()` + `TRUSTED_PROXY_COUNT` 一處。兩層都改寫
+   client IP 正是這個漏洞能藏住的原因。
+3. 回歸測試：`tests/test_security_hardening.py::TestProxyHeaderTrust`
+   - `test_every_uvicorn_launch_point_disables_proxy_headers` —— 掃 Dockerfile /
+     compose / `scripts/*.py`，任何啟動 `app.main:app` 的檔案都必須關掉 proxy headers；
+   - `test_premise_uvicorn_trusts_the_header_from_loopback` —— 用 uvicorn 的
+     `_TrustedHosts` 釘住「前提」，免得理由變成傳說（uvicorn 改了內部實作就會跳過並提醒重驗）。
+   
+   **注意**：這件事用 in-process `TestClient` **測不出來** —— TestClient 不會經過
+   uvicorn 的中介層。所以回歸測試必須驗啟動設定。
+
+### 順帶修正的文件錯誤
+
+本報告 SEC-07 的「修復」第 3 點原本寫「最好在 uvicorn 用 `--proxy-headers
+--forwarded-allow-ips=<nginx IP>`，讓框架自己處理」——**方向相反，已撤回並更正**。
+那正是令 SEC-31 存在的配置。
+
+### 順帶修好的殘留：422 回應體回吐請求內容
+
+驗證 SEC-09 時發現，pydantic v2 會在每個 error 物件上附 `input`（原始輸入），
+`exceptions.py` 原樣 `jsonable_encoder` 回吐。結果：
+
+- 20,000 個非法 `tunnels`（120 KB 請求）→ **100,219 bytes** 回應；
+- 不只是放大（1:1），還會把**呼叫者送的內容原樣彈回**——一個含憑證的壞 payload
+  會出現在回應裡，以及任何記錄 response body 的日誌裡。
+
+修法：`RequestValidationError` handler 丟棄 `input` 欄位（保留 `type` / `loc` / `msg`）。
+修後同一個請求 → **209 bytes**。100k 版本本來就已由 1 MB body cap 以 413 擋下（113 bytes）。
 
 ---
 
@@ -188,7 +379,11 @@ if fwd:
 **修復**：
 1. 由**最右**往左數，跳過已知可信代理層數（例如 `TRUSTED_PROXY_COUNT=1` → 取 `parts[-1]`）。
 2. 或用 nginx 的 `X-Real-IP` / `Forwarded` header，並在應用層只信任來自已知代理網段的來源。
-3. 最好：在 uvicorn 用 `--proxy-headers --forwarded-allow-ips=<nginx IP>`，讓框架自己處理。
+3. ~~在 uvicorn 用 `--proxy-headers --forwarded-allow-ips=<nginx IP>`，讓框架自己處理。~~
+   **這一條第一輪寫錯了，已撤回** —— 見 §0.3 / SEC-31：uvicorn 的 proxy headers **預設就是開的**
+   （`forwarded_allow_ips=127.0.0.1`），它會在**應用之下**改寫 `scope["client"]`，
+   令上面第 1 點完全失效。正確做法是**關掉 uvicorn 的 proxy headers**（`--no-proxy-headers`），
+   只由應用層的 `TRUSTED_PROXY_COUNT` 一處決定信不信 XFF。
 4. 加 per-phone 限流（現在只有 per-IP + 全域），避免單一號碼被 OTP 轟炸。
 
 ### SEC-08：全域 OTP 上限 = 全平台登入 DoS
