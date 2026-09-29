@@ -38,20 +38,26 @@ On Linux/macOS use `.venv/bin/python` instead of `.venv/Scripts/python`.
 
 ```
 app/
-  api/            # HTTP layer — auth, drivers, fare, orders, tracking, trips, admin, ws
+  api/            # HTTP layer — auth, drivers, fare, orders, tracking, trips, admin,
+                  #   fleets, ws
   core/           # config (fail-fast prod validator), db, deps (DB-backed guards),
                   #   exceptions, logging (JSON + request-ID), money, masking,
                   #   rate_limit (Redis fixed-window), security (JWT)
   models/         # SQLAlchemy 2.0 declarative — users, drivers, deposits, orders,
-                  #   ledger (append-only), otp_codes, refresh_tokens
+                  #   ledger (append-only), otp_codes, refresh_tokens,
+                  #   fleets + fleet_memberships + fleet_settlement_runs
   services/       # domain logic — fare_calculator (tariff-versioned, TDD'd),
-                  #   order/grab (SETNX + Lua lock release), ledger (row-locked),
+                  #   order/grab (SETNX + Lua release), ledger (row-locked),
                   #   otp, geo dispatch, trip hub (Redis Pub/Sub), maintenance jobs,
-                  #   refresh (rotating tokens), notify (WhatsApp Cloud API, fail-closed)
+                  #   refresh (rotating tokens), notify (WhatsApp Cloud API, fail-closed),
+                  #   fleet + settlement (the roster is the billing boundary)
 alembic/          # async migrations (postgis tables filtered via include_object)
 scripts/          # dev tooling — serve_and_probe, verify_api, stop_server,
-                  #   live_smoke (9-check E2E), prod_boot_drill
+                  #   live_smoke (9-check E2E), prod_boot_drill,
+                  #   gen_mobile_fixtures (pins the mobile wire format from the real API)
 tests/            # pytest — unit + module + WS streaming + hardening regression
+mobile/           # Flutter client (Android first) — driver, passenger and admin surfaces
+admin-web/        # zero-build ES-module console for the management and admin teams
 docs/             # PRODUCTION_READINESS.md (audit + fix log), LINTING.md
 ```
 
@@ -67,7 +73,11 @@ All routes under `/api/v1` unless noted. Auth = `Authorization: Bearer <access J
 | **Orders** | `POST /orders` · `GET /orders/nearby` · `GET /orders` · `GET /orders/{id}` · `POST /orders/{id}/grab` · `.../arrive` · `.../start` · `.../complete` · `.../cancel` |
 | **Driver GPS** | `POST /driver/location` |
 | **Trips** | `GET /trips/{order_id}/location` (REST snapshot for WS reconnects) |
-| **Admin** | `GET /admin/drivers` · `POST /admin/drivers/{id}/review` · `POST /admin/drivers/{id}/deposit/grant` |
+| **Admin — KYC** | `GET /admin/drivers` · `POST /admin/drivers/{id}/review` · `POST /admin/drivers/{id}/deposit/grant` |
+| **Admin — refunds** | `GET /admin/refunds` · `POST /admin/refunds/{id}/decision` |
+| **Admin — settlement** | `POST /admin/settlement/weekly/run` (idempotent per ISO week) |
+| **Admin — fleets** | `GET /admin/fleets` · `POST /admin/fleets` · `PATCH /admin/fleets/{id}` · `GET|POST /admin/fleets/{id}/members` · `DELETE /admin/fleets/{id}/members/{driver_id}` · `GET /admin/fleets/{id}/settlement` · `POST /admin/fleets/{id}/settlement/run` |
+| **Fleets (driver)** | `GET /fleets/me` · `GET /fleets/{id}` · `GET /fleets/{id}/members` · `GET /fleets/{id}/settlement` |
 | **Live** | `WS /ws/trip/{order_id}?token=<access JWT>` |
 | **Ops** | `GET /health` (pings DB + Redis, 503 on failure) · `GET /metrics` (when `PROMETHEUS_ENABLED`) |
 
@@ -91,6 +101,16 @@ Live socket close codes: `4401` unauthenticated, `4403` forbidden, `4404` unknow
 - **D — Live tracking**: WS channel above (passenger subscribes, assigned driver pushes,
   driver ACTIVE re-checked per tick); ticks persist to PostGIS and fan out via Redis
   Pub/Sub (`realtaxi:trip:{order_id}`); server pings every `WS_HEARTBEAT_S`.
+- **E — Fleets & settlement**: a fleet is a **licensed operator** — the Transport
+  Department grants the licence — so it is created by an admin and never
+  self-service; drivers join via a roster. The roster is the billing boundary: an
+  ACTIVE member leaves the platform-wide weekly run and is charged the fleet's
+  discounted rate instead. A partial unique index keeps a driver on at most one
+  ACTIVE roster, so a second add is a 409 rather than a silent double-bill.
+  Settlement is idempotent per (fleet, ISO week) and writes a `fleet:` ledger
+  reference, while the platform run writes `weekly:` — so neither idempotency
+  check protects a driver across the two. The platform run therefore excludes
+  rostered drivers and reports the count as `fleet_managed`.
 - **Background jobs**: geo ghost-order sweeper (auto-cancels stale `BROADCASTING` after
   `MAX_BROADCAST_MINUTES`) + PDPO retention purges; both run in lifespan tasks and are
   cancelled cleanly on shutdown.
@@ -140,11 +160,28 @@ unconfigured), Sentry/Prometheus (optional).
 .venv/Scripts/python -m pytest -q        # needs db+redis containers up
 ```
 
-- 93 test functions over 9 files: fare unit tests, per-module API tests, WS streaming,
-  and `test_hardening.py` (14 regression tests for every fixed finding).
+- 221 tests over 12 files: fare unit tests, per-module API tests, WS streaming,
+  fleet management / roster / settlement, and `test_hardening.py` (14 regression
+  tests for every fixed finding).
 - Per-test isolated Postgres databases (template clone) — no cross-test state.
 - CI (`.github/workflows/ci.yml`): ruff check → format check → full pytest, with
   PostGIS + Redis service containers.
+
+Both clients are verified against the **real** API rather than mocks:
+
+```bash
+.venv/Scripts/python scripts/gen_mobile_fixtures.py    # capture the real wire format
+.venv/Scripts/python mobile/tool/dart_check.py mobile  # analyzer, over LSP
+NODE_PATH="$HOME/.workbuddy-ai/binaries/node/workspace/node_modules" \
+  node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081
+```
+
+`mobile/tool/verify_contract.dart` decodes all 54 fixtures with the real Dart
+models, `mobile/tool/run_tests.dart` runs the unit assertions, and the admin
+console is driven in a real browser. `dart analyze` / `flutter test` cannot spawn
+piped subprocesses on Windows (`ERROR_PIPE_BUSY` 231), which is why the analyzer
+is driven over LSP by a Python harness. See `mobile/README.md` and
+`admin-web/README.md`.
 
 ## Docker / deploy
 
