@@ -3,6 +3,7 @@
 docs/PRODUCTION_READINESS.md: B1-B4 + P0/P1/P2 items each get an executable
 check here. Live DB/Redis (realtaxi-db/realtaxi-redis containers) required.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -30,15 +31,15 @@ def _admin_headers() -> dict:
 
     return {
         "Authorization": "Bearer "
-        + create_access_token(
-            {"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"}
-        )
+        + create_access_token({"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"})
     }
 
 
 _ORDER = {
-    "pickup_lat": 22.284, "pickup_lng": 114.158,
-    "dropoff_lat": 22.315, "dropoff_lng": 114.219,
+    "pickup_lat": 22.284,
+    "pickup_lng": 114.158,
+    "dropoff_lat": 22.315,
+    "dropoff_lng": 114.219,
     "pickup_address": "Statue Square, Central",
     "dropoff_address": "Harbour North, North Point",
     "distance_km": "4.2",
@@ -66,9 +67,7 @@ class TestB1AuthMeDeletedUser:
         """B1: /auth/me with a valid JWT for a missing user -> guarded, no NameError."""
         from app.core.security import create_access_token
 
-        ghost = create_access_token(
-            {"sub": str(uuid.uuid4()), "role": "PASSENGER"}
-        )
+        ghost = create_access_token({"sub": str(uuid.uuid4()), "role": "PASSENGER"})
         r = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {ghost}"})
         assert r.status_code == 403  # require_active_user: account not found
         assert r.json()["code"] != "INTERNAL_ERROR"
@@ -78,12 +77,11 @@ class TestB2LedgerConcurrency:
     @pytest.mark.asyncio
     async def test_concurrent_grants_no_lost_update(self, client):
         """B2/P0-1: 10 parallel grants -> every cent lands, chain consistent."""
-        phone = "+85251%06d" % (uuid.uuid4().int % 1000000)
+        phone = f"+85251{uuid.uuid4().int % 1000000:06d}"
         token = _mk_user_token(client, phone)
         did = _register_driver(client, token, phone)
         h = _admin_headers()
-        client.post(f"/api/v1/admin/drivers/{did}/review", headers=h,
-                    json={"decision": "approve"})
+        client.post(f"/api/v1/admin/drivers/{did}/review", headers=h, json={"decision": "approve"})
 
         factory = client.db_factory
 
@@ -95,10 +93,10 @@ class TestB2LedgerConcurrency:
             from sqlalchemy import select as _select
 
             dp = (
-                await s0.execute(
-                    _select(DriverProfile).where(DriverProfile.id == did)
-                )
-            ).scalars().first()
+                (await s0.execute(_select(DriverProfile).where(DriverProfile.id == did)))
+                .scalars()
+                .first()
+            )
             await LedgerService.ensure_deposit_row(s0, dp)
             await s0.commit()
 
@@ -110,7 +108,8 @@ class TestB2LedgerConcurrency:
                 from app.services.ledger_service import LedgerService
 
                 await LedgerService(s).append(
-                    did, LedgerEntryType.DEPOSIT_TOPUP,
+                    did,
+                    LedgerEntryType.DEPOSIT_TOPUP,
                     Decimal("10"),
                     note=f"parallel-{i}",
                 )
@@ -118,22 +117,26 @@ class TestB2LedgerConcurrency:
 
         await asyncio.gather(*[grant(i) for i in range(10)])
 
-        r = client.get("/api/v1/drivers/me/ledger",
-                       headers={"Authorization": f"Bearer {token}"})
+        r = client.get("/api/v1/drivers/me/ledger", headers={"Authorization": f"Bearer {token}"})
         items = r.json()["items"]
         balances = [float(i["balance_after_hkd"]) for i in items]
         assert len(items) == 10
         assert balances[-1] == 100.0
-        for prev, cur in zip([0.0] + balances[:-1], balances):
+        for prev, cur in zip([0.0, *balances[:-1]], balances, strict=True):
             assert abs((cur - prev) - 10.0) < 1e-9
 
 
 class TestB3TipCap:
     def test_fare_tip_overflow_rejected(self, client):
         """B3: tip > 500 -> 422, not a DB overflow 500."""
-        r = client.post("/api/v1/fare/estimate", json={
-            "taxi_type": "URBAN", "distance_km": "5", "tip": "1000000",
-        })
+        r = client.post(
+            "/api/v1/fare/estimate",
+            json={
+                "taxi_type": "URBAN",
+                "distance_km": "5",
+                "tip": "1000000",
+            },
+        )
         assert r.status_code == 422
 
 
@@ -159,7 +162,7 @@ class TestP0Deactivation:
     @pytest.mark.asyncio
     async def test_disabled_user_loses_access(self, client):
         """P0-3: is_active=False -> guarded endpoints 403 immediately."""
-        phone = "+85252%06d" % (uuid.uuid4().int % 1000000)
+        phone = f"+85252{uuid.uuid4().int % 1000000:06d}"
         token = _mk_user_token(client, phone)
         me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
         user_id = me.json()["id"]
@@ -169,8 +172,7 @@ class TestP0Deactivation:
         from app.models import User
 
         async with client.db_factory() as s:
-            await s.execute(update(User).where(User.id == user_id)
-                            .values(is_active=False))
+            await s.execute(update(User).where(User.id == user_id).values(is_active=False))
             await s.commit()
 
         r = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
@@ -182,9 +184,7 @@ class TestP0Deactivation:
         """P0-3: ADMIN claim without a real active admin row -> 403."""
         from app.core.security import create_access_token
 
-        token = create_access_token(
-            {"sub": str(uuid.uuid4()), "role": "ADMIN"}
-        )
+        token = create_access_token({"sub": str(uuid.uuid4()), "role": "ADMIN"})
         r = client.get(
             "/api/v1/admin/drivers",
             headers={"Authorization": f"Bearer {token}"},
@@ -205,7 +205,7 @@ class TestP0Health:
 class TestP1AuthRotation:
     def test_refresh_rotates_and_old_token_dies(self, client):
         """P1-5: refresh rotation - old token single-use."""
-        phone = "+85253%06d" % (uuid.uuid4().int % 1000000)
+        phone = f"+85253{uuid.uuid4().int % 1000000:06d}"
         r = client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
         r = client.post(
             "/api/v1/auth/otp/verify",
@@ -221,7 +221,7 @@ class TestP1AuthRotation:
         assert r2.status_code == 401  # replayed -> dead
 
     def test_logout_revokes_all(self, client):
-        phone = "+85254%06d" % (uuid.uuid4().int % 1000000)
+        phone = f"+85254{uuid.uuid4().int % 1000000:06d}"
         token = _mk_user_token(client, phone)
         h = {"Authorization": f"Bearer {token}"}
         r = client.post("/api/v1/auth/logout", headers=h)
@@ -236,7 +236,7 @@ class TestP1OtpLimits:
         for i in range(ip_limit + 2):
             last = client.post(
                 "/api/v1/auth/otp/request",
-                json={"phone_e164": "+852600000%02d" % i},
+                json={"phone_e164": f"+852600000{i:02d}"},
                 headers={"X-Forwarded-For": "203.0.113.77"},
             )
         assert last.status_code == 429
@@ -245,11 +245,12 @@ class TestP1OtpLimits:
 class TestP1OrderTollsInSnapshot:
     def test_order_snapshot_includes_tunnel_toll(self, client):
         """P1-10: tunnels no longer silently dropped from the fare snapshot."""
-        phone = "+85257%06d" % (uuid.uuid4().int % 1000000)
+        phone = f"+85257{uuid.uuid4().int % 1000000:06d}"
         token = _mk_user_token(client, phone)
         payload = dict(_ORDER, crosses_harbour=True, tunnels=["cross_harbour"])
-        r = client.post("/api/v1/orders",
-                        headers={"Authorization": f"Bearer {token}"}, json=payload)
+        r = client.post(
+            "/api/v1/orders", headers={"Authorization": f"Bearer {token}"}, json=payload
+        )
         assert r.status_code == 201, r.text
         codes = [s["code"] for s in r.json()["fare"]["surcharges"]]
         assert "tunnel_cross_harbour" in codes  # toll captured, not dropped
@@ -258,7 +259,7 @@ class TestP1OrderTollsInSnapshot:
 
 class TestP2OrderHistoryAndDetail:
     def test_history_keyset_pagination(self, client):
-        phone = "+85258%06d" % (uuid.uuid4().int % 1000000)
+        phone = f"+85258{uuid.uuid4().int % 1000000:06d}"
         token = _mk_user_token(client, phone)
         h = {"Authorization": f"Bearer {token}"}
         first = client.post("/api/v1/orders", headers=h, json=_ORDER).json()
@@ -271,14 +272,13 @@ class TestP2OrderHistoryAndDetail:
         assert first["id"] in ids or second["id"] in ids
 
     def test_detail_forbidden_for_stranger(self, client):
-        owner = _mk_user_token(client, "+85259%06d" % (uuid.uuid4().int % 1000000))
+        owner = _mk_user_token(client, f"+85259{uuid.uuid4().int % 1000000:06d}")
         oid = client.post(
             "/api/v1/orders",
-            headers={"Authorization": f"Bearer {owner}"}, json=_ORDER,
+            headers={"Authorization": f"Bearer {owner}"},
+            json=_ORDER,
         ).json()["id"]
-        stranger = _mk_user_token(
-            client, "+85259%06d" % ((uuid.uuid4().int + 1) % 1000000)
-        )
+        stranger = _mk_user_token(client, f"+85259{(uuid.uuid4().int + 1) % 1000000:06d}")
         r = client.get(
             f"/api/v1/orders/{oid}",
             headers={"Authorization": f"Bearer {stranger}"},

@@ -1,9 +1,10 @@
 """Stop the detached uvicorn on :8000 (find PID via netstat, then kill)."""
+
 import re
 import subprocess
 import sys
 
-out = subprocess.run(["netstat", "-ano"], capture_output=True, text=True).stdout
+out = subprocess.run(["netstat", "-ano"], capture_output=True, text=True, check=False).stdout
 pids = set()
 for line in out.splitlines():
     if ":8000" in line and "LISTENING" in line:
@@ -14,5 +15,5 @@ if not pids:
     print("no listener on :8000")
     sys.exit(0)
 for pid in pids:
-    r = subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True, text=True)
+    r = subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True, text=True, check=False)
     print(f"kill {pid}:", r.returncode, (r.stdout or r.stderr).strip())

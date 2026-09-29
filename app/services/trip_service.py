@@ -8,11 +8,12 @@ PostGIS (driver profile), then fans out to all subscribers (passenger live
 map, monitors). Lifecycle events (grab/cancel) publish on the same channel
 so passenger apps can repaint without polling.
 """
+
 from __future__ import annotations
 
+import contextlib
 import json
-import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,11 +55,10 @@ class TripHub:
                 except json.JSONDecodeError:
                     continue
         finally:
-            try:
+            # best-effort teardown — a dead connection must not break the pump
+            with contextlib.suppress(Exception):  # pragma: no cover
                 await pubsub.unsubscribe(channel_for(order_id))
                 await pubsub.aclose()
-            except Exception:  # pragma: no cover — best-effort teardown
-                pass
 
     async def record_tick(
         self,
@@ -69,7 +69,7 @@ class TripHub:
         lng: float,
     ) -> None:
         """Persist tick (PostGIS) then fan out to the order channel."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await session.execute(
             update(DriverProfile)
             .where(DriverProfile.id == driver_profile_id)

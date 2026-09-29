@@ -8,6 +8,7 @@ Hardening wave (docs/PRODUCTION_READINESS.md):
 - P2-10 nearby degrades to an empty page when Redis is down (fail-open
   dispatch), never 500s the driver's map.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -19,8 +20,8 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import Principal, require_active_user
 from app.core.db import get_session, get_session_factory
+from app.core.deps import Principal, require_active_user
 from app.core.exceptions import BusinessRuleError
 from app.models import (
     DriverProfile,
@@ -90,10 +91,10 @@ async def _get_order(session: AsyncSession, order_id: str) -> Order:
 
 async def _driver_profile_of(session: AsyncSession, user_id) -> DriverProfile | None:
     return (
-        await session.execute(
-            select(DriverProfile).where(DriverProfile.user_id == user_id)
-        )
-    ).scalars().first()
+        (await session.execute(select(DriverProfile).where(DriverProfile.user_id == user_id)))
+        .scalars()
+        .first()
+    )
 
 
 @router.post("", status_code=201)
@@ -137,12 +138,16 @@ async def nearby_orders(
     if not ids:
         return {"items": []}
     orders = (
-        await session.execute(
-            select(Order)
-            .where(Order.id.in_([uuid.UUID(i) for i in ids]))
-            .where(Order.status == OrderStatus.BROADCASTING)
+        (
+            await session.execute(
+                select(Order)
+                .where(Order.id.in_([uuid.UUID(i) for i in ids]))
+                .where(Order.status == OrderStatus.BROADCASTING)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     by_id = {str(o.id): o for o in orders}
     return {"items": [order_out(by_id[i]) for i in ids if i in by_id]}
 
@@ -156,11 +161,7 @@ async def my_orders(
     session: AsyncSession = Depends(get_session),
 ):
     """P2-1: order history (newest first, keyset via before_id)."""
-    q = (
-        select(Order)
-        .order_by(Order.created_at.desc(), Order.id.desc())
-        .limit(limit)
-    )
+    q = select(Order).order_by(Order.created_at.desc(), Order.id.desc()).limit(limit)
     if role == "driver":
         profile = await _driver_profile_of(session, user.id)
         if profile is None:
@@ -209,9 +210,7 @@ async def grab_order(
     grab = GrabService(redis, factory)
     won = await grab.grab(order_id=str(order.id), driver_user_id=str(user.id))
     if not won:
-        raise HTTPException(
-            status_code=409, detail="order was taken by another driver or is gone"
-        )
+        raise HTTPException(status_code=409, detail="order was taken by another driver or is gone")
     await session.refresh(order)  # grab service committed in its own session
     return order_out(order)
 

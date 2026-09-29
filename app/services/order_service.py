@@ -3,15 +3,16 @@
 Cap. 374D: the fare snapshot (with disclaimers) is frozen into fare_json at
 creation time so historical orders stay auditable after tariff changes.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.money import money_str
-from app.models import Order, OrderStatus, UserRole
+from app.models import Order, OrderStatus
 from app.services.fare_calculator import TaxiType, Tunnel, calculate_fare
 from app.services.state_machine import assert_order_transition
 
@@ -87,7 +88,7 @@ class OrderService:
     async def transition(self, order: Order, target: OrderStatus) -> Order:
         assert_order_transition(order.status, target)
         order.status = target
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if target == OrderStatus.ACCEPTED:
             order.accepted_at = now
         elif target == OrderStatus.DRIVER_ARRIVED:

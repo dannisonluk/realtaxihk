@@ -1,10 +1,10 @@
 """Fare estimation API. Every response carries the Cap. 374D disclaimer fields."""
+
 from __future__ import annotations
 
 from decimal import Decimal
 
 from fastapi import APIRouter
-from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.exceptions import BusinessRuleError

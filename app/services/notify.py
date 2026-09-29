@@ -6,6 +6,7 @@ silently no-ops would lock the whole platform out. FCM v1 push needs a
 service-account JWT (RS256); it stays an explicit stub until the credentials
 land, and device-token wiring is owned by the driver/passenger apps.
 """
+
 from __future__ import annotations
 
 import logging

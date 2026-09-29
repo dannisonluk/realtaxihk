@@ -1,4 +1,5 @@
 """Spawn uvicorn detached, wait for health, then exit (server keeps running)."""
+
 import subprocess
 import sys
 import time
@@ -9,13 +10,16 @@ import uvicorn
 
 tmp = Path(__file__).parent.parent / ".tmp"
 tmp.mkdir(exist_ok=True)
-log = open(tmp / "uvicorn.log", "w", encoding="utf-8")
+# handle stays open on purpose: the child process inherits it as stdout
+log = open(tmp / "uvicorn.log", "w", encoding="utf-8")  # noqa: SIM115
 
 config = uvicorn.Config("app.main:app", host="127.0.0.1", port=8000, log_level="info")
 server = uvicorn.Server(config)
 proc = subprocess.Popen(
     [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
-    stdout=log, stderr=subprocess.STDOUT, cwd=str(tmp.parent.parent),
+    stdout=log,
+    stderr=subprocess.STDOUT,
+    cwd=str(tmp.parent.parent),
 )
 for _ in range(40):
     try:

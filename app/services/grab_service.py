@@ -5,10 +5,11 @@ Losers:   SETNX fails -> return False (API maps to 409 CONFLICT).
 Crashes:  lock TTL (15s) auto-expires; release is token-checked via Lua so a
           slow winner never deletes a successor's lock.
 """
+
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -42,12 +43,16 @@ class GrabService:
             async with self.session_factory() as session:
                 order = await session.get(Order, uuid.UUID(order_id))
                 profile = (
-                    await session.execute(
-                        select(DriverProfile).where(
-                            DriverProfile.user_id == uuid.UUID(driver_user_id)
+                    (
+                        await session.execute(
+                            select(DriverProfile).where(
+                                DriverProfile.user_id == uuid.UUID(driver_user_id)
+                            )
                         )
                     )
-                ).scalars().first()
+                    .scalars()
+                    .first()
+                )
                 if (
                     order is None
                     or order.status != OrderStatus.BROADCASTING
@@ -58,12 +63,10 @@ class GrabService:
                 assert_order_transition(order.status, OrderStatus.ACCEPTED)
                 order.status = OrderStatus.ACCEPTED
                 order.driver_id = profile.id
-                order.accepted_at = datetime.now(timezone.utc)
+                order.accepted_at = datetime.now(UTC)
                 await session.commit()
             await self.redis.zrem("geo:orders:active", str(order_id))
-            return True
-        except Exception:
-            # DB failure: lock released below; order stays BROADCASTING.
-            raise
         finally:
+            # Lock always released; a DB failure propagates (order stays BROADCASTING).
             await self.redis.eval(_RELEASE_LUA, 1, lock_key, lock_token)
+        return True

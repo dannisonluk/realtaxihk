@@ -1,4 +1,5 @@
 """End-to-end live smoke: boot uvicorn, exercise Modules A/B/C/D, self-terminate."""
+
 import json
 import socket
 import subprocess
@@ -38,7 +39,8 @@ assert port_free, "port 8000 occupied — stop other servers first"
 # 1. boot uvicorn
 proc = subprocess.Popen(
     [sys.executable, "-m", "uvicorn", "app.main:app", "--port", "8000"],
-    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
 )
 print("uvicorn booting...")
 
@@ -56,12 +58,23 @@ try:
     print("server ready")
 
     # 2. fare API (Cap. 374D compliance surface)
-    st, body = req("POST", "/api/v1/fare/estimate", {
-        "taxi_type": "URBAN", "distance_km": "10", "waiting_min": "5",
-        "tunnels": ["cross_harbour"], "crosses_harbour": True,
-        "discount_percent": "15",
-    })
-    print(f"fare estimate: {st} total={body.get('total_fare')} v={body.get('tariff_version')} err={body if st != 200 else ''}")
+    st, body = req(
+        "POST",
+        "/api/v1/fare/estimate",
+        {
+            "taxi_type": "URBAN",
+            "distance_km": "10",
+            "waiting_min": "5",
+            "tunnels": ["cross_harbour"],
+            "crosses_harbour": True,
+            "discount_percent": "15",
+        },
+    )
+    err = body if st != 200 else ""
+    print(
+        f"fare estimate: {st} total={body.get('total_fare')} "
+        f"v={body.get('tariff_version')} err={err}"
+    )
     assert st == 200 and body["total_fare"] == "149.0"
 
     # 3. passenger OTP login (rotating number: live DB has 60s resend cooldown)
@@ -79,12 +92,21 @@ try:
     assert st == 200 and body["phone_masked"].startswith("+852")
 
     # 4. create order (rate-limit budget 1 used)
-    st, order = req("POST", "/api/v1/orders", {
-        "pickup_lat": 22.30, "pickup_lng": 114.17,
-        "dropoff_lat": 22.32, "dropoff_lng": 114.20,
-        "pickup_address": "Central Ferry Piers", "dropoff_address": "Causeway Bay",
-        "distance_km": "3.5", "taxi_type": "URBAN",
-    }, auth=True)
+    st, order = req(
+        "POST",
+        "/api/v1/orders",
+        {
+            "pickup_lat": 22.30,
+            "pickup_lng": 114.17,
+            "dropoff_lat": 22.32,
+            "dropoff_lng": 114.20,
+            "pickup_address": "Central Ferry Piers",
+            "dropoff_address": "Causeway Bay",
+            "distance_km": "3.5",
+            "taxi_type": "URBAN",
+        },
+        auth=True,
+    )
     print(f"order create: {st} status={order.get('status')}")
     assert st == 201 and order["status"] == "BROADCASTING"
     oid = order["id"]
@@ -101,16 +123,26 @@ try:
     def dreq(method, path, body=None):
         return req(method, path, body, auth=True, token=driver_token)
 
-    st, body = dreq("POST", "/api/v1/drivers/register", {
-        "hk_id_last4": "1234", "taxi_driver_plate_no": "123456",
-        "vehicle_reg_mark": "SM1234", "taxi_type": "URBAN",
-    })
+    st, body = dreq(
+        "POST",
+        "/api/v1/drivers/register",
+        {
+            "hk_id_last4": "1234",
+            "taxi_driver_plate_no": "123456",
+            "vehicle_reg_mark": "SM1234",
+            "taxi_type": "URBAN",
+        },
+    )
     print(f"driver register: {st}")
     assert st in (200, 201), body
     drv_id = body["id"]
 
-    st, body = req("GET", "/api/v1/orders/nearby?lat=22.30&lng=114.17&radius_km=3",
-                   auth=True, token=driver_token)
+    st, body = req(
+        "GET",
+        "/api/v1/orders/nearby?lat=22.30&lng=114.17&radius_km=3",
+        auth=True,
+        token=driver_token,
+    )
     print(f"nearby (PENDING_KYC driver): {st} count={len(body.get('items', []))}")
     assert st == 200 and len(body["items"]) >= 1  # live DB accrues orders across runs
 
@@ -119,16 +151,20 @@ try:
     print(f"trip snapshot: {st} (404 expected — no ticks yet)")
     assert st in (200, 404)
 
-    # 7. rate limit: same passenger counts up (rotating users reset counter) -> verify 429 via 5 more
+    # 7. rate limit: same passenger counts up -> verify 429 after the budget (5/60s)
     def _order_payload():
         return {
-            "pickup_lat": 22.30, "pickup_lng": 114.17,
-            "dropoff_lat": 22.32, "dropoff_lng": 114.20,
-            "pickup_address": "Central Ferry Piers", "dropoff_address": "Causeway Bay",
-            "distance_km": "3.5", "taxi_type": "URBAN",
+            "pickup_lat": 22.30,
+            "pickup_lng": 114.17,
+            "dropoff_lat": 22.32,
+            "dropoff_lng": 114.20,
+            "pickup_address": "Central Ferry Piers",
+            "dropoff_address": "Causeway Bay",
+            "distance_km": "3.5",
+            "taxi_type": "URBAN",
         }
 
-    for i in range(4):
+    for _ in range(4):
         req("POST", "/api/v1/orders", _order_payload(), auth=True)
     st, body = req("POST", "/api/v1/orders", _order_payload(), auth=True)
     print(f"6th order (rate-limited): {st} code={body.get('code')}")

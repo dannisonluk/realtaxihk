@@ -1,4 +1,5 @@
 """Order/driver status state machines — illegal transitions raise."""
+
 from __future__ import annotations
 
 from app.core.exceptions import BusinessRuleError

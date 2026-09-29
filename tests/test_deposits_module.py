@@ -1,4 +1,5 @@
 """TDD — Module C (mini): deposit grant via admin, append-only ledger."""
+
 import pytest
 
 
@@ -13,9 +14,7 @@ def _mk_user_token(client, phone: str) -> str:
 def _admin_token() -> str:
     from app.core.security import create_access_token
 
-    return create_access_token(
-        {"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"}
-    )
+    return create_access_token({"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"})
 
 
 @pytest.fixture()
@@ -111,18 +110,22 @@ class TestLedger:
 
     def test_ledger_requires_driver_profile(self, client):
         token = _mk_user_token(client, "+85291400002")
-        r = client.get(
-            "/api/v1/drivers/me/ledger", headers={"Authorization": f"Bearer {token}"}
-        )
+        r = client.get("/api/v1/drivers/me/ledger", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 404
 
     def test_balance_after_chains_multiple_entries(self, client, pending_driver):
         admin = {"Authorization": f"Bearer {_admin_token()}"}
         did = pending_driver["driver_id"]
-        client.post(f"/api/v1/admin/drivers/{did}/deposit/grant", headers=admin,
-                    json={"amount_hkd": "300.00"})
-        client.post(f"/api/v1/admin/drivers/{did}/deposit/grant", headers=admin,
-                    json={"amount_hkd": "250.00"})
+        client.post(
+            f"/api/v1/admin/drivers/{did}/deposit/grant",
+            headers=admin,
+            json={"amount_hkd": "300.00"},
+        )
+        client.post(
+            f"/api/v1/admin/drivers/{did}/deposit/grant",
+            headers=admin,
+            json={"amount_hkd": "250.00"},
+        )
         r = client.get(
             "/api/v1/drivers/me/ledger",
             headers={"Authorization": f"Bearer {pending_driver['token']}"},

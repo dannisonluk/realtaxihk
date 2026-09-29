@@ -10,6 +10,7 @@ Two tiers:
 Legacy unit tests (fare engine, error format, JWT) never touch the DB
 and run unchanged on this fixture set.
 """
+
 import asyncio
 import uuid
 
@@ -46,9 +47,7 @@ async def _ensure_template() -> None:
     """Fresh template DB with full schema — rebuilt once per pytest session."""
     conn = await asyncpg.connect(dsn=_admin_dsn())
     try:
-        exists = await conn.fetchval(
-            "SELECT 1 FROM pg_database WHERE datname = $1", TEMPLATE_DB
-        )
+        exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", TEMPLATE_DB)
         if exists:
             await conn.execute(f'DROP DATABASE "{TEMPLATE_DB}" WITH (FORCE)')
         await conn.execute(f'CREATE DATABASE "{TEMPLATE_DB}"')
@@ -61,11 +60,13 @@ async def _ensure_template() -> None:
             await conn.run_sync(Base.metadata.create_all)
             # realtaxihk_admin_seed: the fixed admin UUID used by *_admin_token()
             # helpers now passes require_admin's live-DB re-check (P0-3).
-            await conn.execute(text(
-                "INSERT INTO users (id, phone_e164, role, is_active, created_at) "
-                "VALUES ('00000000-0000-0000-0000-0000000000aa', '+85200000000', "
-                "'ADMIN', true, now()) ON CONFLICT (id) DO NOTHING"
-            ))
+            await conn.execute(
+                text(
+                    "INSERT INTO users (id, phone_e164, role, is_active, created_at) "
+                    "VALUES ('00000000-0000-0000-0000-0000000000aa', '+85200000000', "
+                    "'ADMIN', true, now()) ON CONFLICT (id) DO NOTHING"
+                )
+            )
     finally:
         await engine.dispose()
 
@@ -136,7 +137,7 @@ def client() -> TestClient:
         app.dependency_overrides[get_session] = _gen
         app.dependency_overrides[get_session_factory] = lambda: factory
         with TestClient(app) as tc:
-            tc.db_url = _db_url(dbname)      # service-level concurrency tests
+            tc.db_url = _db_url(dbname)  # service-level concurrency tests
             tc.db_factory = factory
             yield tc
     finally:

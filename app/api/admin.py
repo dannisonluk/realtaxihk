@@ -5,10 +5,11 @@ are idempotent when the client supplies `reference` (P1-7): a retried grant
 replays the original entry instead of double-crediting. Driver listing is
 paginated (P1-8).
 """
+
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
@@ -51,12 +52,8 @@ async def list_drivers(
     q = select(DriverProfile).order_by(DriverProfile.created_at)
     if status_filter:
         q = q.where(DriverProfile.status == DriverStatus(status_filter))
-    rows = (
-        (await session.execute(q.limit(limit).offset(offset))).scalars().all()
-    )
-    total = (
-        await session.execute(select(func.count()).select_from(DriverProfile))
-    ).scalar_one()
+    rows = (await session.execute(q.limit(limit).offset(offset))).scalars().all()
+    total = (await session.execute(select(func.count()).select_from(DriverProfile))).scalar_one()
     return {
         "items": [
             {
@@ -88,7 +85,7 @@ async def review_driver(
     assert_driver_transition(dp.status, target)
     dp.status = target
     dp.kyc_reviewed_by = admin.id
-    dp.kyc_reviewed_at = datetime.now(timezone.utc)
+    dp.kyc_reviewed_at = datetime.now(UTC)
     await session.flush()
     return {"id": str(dp.id), "status": dp.status.value}
 

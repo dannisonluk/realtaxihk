@@ -1,7 +1,8 @@
 """JWT (HS256) helpers. Secret MUST be overridden in prod via env."""
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
@@ -14,11 +15,9 @@ def create_access_token(
     expires_minutes: int | None = None,
 ) -> str:
     settings = get_settings()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expire = now + timedelta(
-        minutes=settings.access_token_expire_minutes
-        if expires_minutes is None
-        else expires_minutes
+        minutes=settings.access_token_expire_minutes if expires_minutes is None else expires_minutes
     )
     payload = {"iat": now, "exp": expire, **claims}
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)

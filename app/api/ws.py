@@ -18,9 +18,11 @@ Protocol:
 - the driver's own pump does NOT echo location ticks (direct ack instead),
   so the driver socket sees exactly one reply per sent tick.
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import uuid
 
@@ -28,9 +30,9 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.db import get_session, get_session_factory
 from app.core.deps import principal_from_token
-from app.core.config import get_settings
 from app.models import DriverProfile, DriverStatus, Order, User
 from app.services.trip_service import TripHub
 
@@ -71,10 +73,10 @@ async def trip_socket(
     order_id_str = str(order.id)
     is_passenger = order.passenger_id == user.id
     profile = (
-        await session.execute(
-            select(DriverProfile).where(DriverProfile.user_id == user.id)
-        )
-    ).scalars().first()
+        (await session.execute(select(DriverProfile).where(DriverProfile.user_id == user.id)))
+        .scalars()
+        .first()
+    )
     profile_id = profile.id if profile is not None else None
     driver_id_on_order = order.driver_id
     await session.rollback()  # release the implicit read transaction
@@ -121,9 +123,7 @@ async def trip_socket(
                 )
             ).first()
             if row is None or row.status != DriverStatus.ACTIVE:
-                await ws.send_text(
-                    json.dumps({"type": "error", "code": "DRIVER_NOT_ACTIVE"})
-                )
+                await ws.send_text(json.dumps({"type": "error", "code": "DRIVER_NOT_ACTIVE"}))
                 return
             await hub.record_tick(ops, order_id_str, row.id, lat, lng)
         await ws.send_text(json.dumps({"type": "ack", "lat": lat, "lng": lng}))
@@ -153,7 +153,5 @@ async def trip_socket(
         pass
     finally:
         pump_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await pump_task
-        except asyncio.CancelledError:
-            pass

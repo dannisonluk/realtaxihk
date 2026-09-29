@@ -4,6 +4,7 @@ GET /api/v1/trips/{order_id}/location — participants only (passenger owner
 or assigned driver). Reads the driver's latest persisted PostGIS point via
 ST_AsText (raw SQL, avoids Geography deserialization quirks).
 """
+
 from __future__ import annotations
 
 import uuid
@@ -49,7 +50,7 @@ async def trip_location(
     ).first()
     if row is None:
         raise HTTPException(status_code=404, detail="order not found")
-    passenger_id, driver_id, status, driver_user_id, wkt = row
+    passenger_id, _driver_id, status, driver_user_id, wkt = row
 
     is_participant = passenger_id == user.id or (
         driver_user_id is not None and driver_user_id == user.id

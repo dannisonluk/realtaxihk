@@ -4,6 +4,7 @@ P0-2 acceptance: the startup validator raises instead of starting the server.
 Docker db/redis run (healthcheck would otherwise not be reached anyway).
 Exit 0 = validator refused (correct), exit 1 = app booted (BAD).
 """
+
 import os
 import subprocess
 import sys
@@ -24,9 +25,10 @@ r = subprocess.run(
     capture_output=True,
     text=True,
     timeout=60,
+    check=False,
 )
 
-out = (r.stdout + r.stderr)
+out = r.stdout + r.stderr
 ok = r.returncode != 0 and ("JWT_SECRET" in out or "dev" in out.lower())
 print("stdout:", r.stdout[:300])
 print("stderr:", r.stderr[:600])

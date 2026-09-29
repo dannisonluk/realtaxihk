@@ -7,16 +7,17 @@ aged out (BROADCASTING -> CANCELLED is a legal transition; no penalty).
 
 PDPO purges: OTP rows past retention; dead refresh tokens past retention.
 """
+
 from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.models import OtpCode, Order, OrderStatus, RefreshToken
+from app.models import Order, OrderStatus, OtpCode, RefreshToken
 from app.services.geo_service import GEO_ORDERS_KEY
 
 logger = logging.getLogger("realtaxihk.maintenance")
@@ -29,7 +30,7 @@ class MaintenanceService:
 
     async def sweep_ghost_orders(self, max_broadcast_minutes: int) -> dict:
         """Reconcile geo:orders:active with DB truth. Returns counts."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         removed_ghosts = 0
         auto_cancelled = 0
 
@@ -44,7 +45,9 @@ class MaintenanceService:
                             Order.created_at < cutoff,
                         )
                     )
-                ).scalars().all()
+                )
+                .scalars()
+                .all()
             )
             if stale_ids:
                 await session.execute(
@@ -81,7 +84,9 @@ class MaintenanceService:
                                     Order.status == OrderStatus.BROADCASTING,
                                 )
                             )
-                        ).scalars().all()
+                        )
+                        .scalars()
+                        .all()
                     }
                 ghosts = [str(r) for r in raw_ids if str(r) not in live] + malformed
                 if ghosts:
@@ -100,7 +105,7 @@ class MaintenanceService:
         self, retention_days_otp: int, retention_days_refresh: int
     ) -> dict:
         """PDPO: delete OTP rows and dead refresh tokens past retention."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self.session_factory() as session:
             otp_res = await session.execute(
@@ -119,9 +124,7 @@ class MaintenanceService:
             )
             # Additional retention guard: rows created long ago regardless of state.
             await session.execute(
-                delete(OtpCode).where(
-                    OtpCode.created_at < now - timedelta(days=retention_days_otp)
-                )
+                delete(OtpCode).where(OtpCode.created_at < now - timedelta(days=retention_days_otp))
             )
             await session.commit()
             otp_n = otp_res.rowcount or 0

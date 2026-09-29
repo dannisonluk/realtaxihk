@@ -6,6 +6,7 @@ asyncio client: pooled connections bind to the loop that created them, and a
 shared client reused across loops fails/hangs unpredictably. Production runs a
 single loop, so one client per redis_factory() call costs nothing extra there.
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
@@ -37,9 +38,7 @@ def get_engine():
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
     global _session_factory
     if _session_factory is None:
-        _session_factory = async_sessionmaker(
-            get_engine(), expire_on_commit=False, autoflush=False
-        )
+        _session_factory = async_sessionmaker(get_engine(), expire_on_commit=False, autoflush=False)
     return _session_factory
 
 

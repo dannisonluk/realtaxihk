@@ -5,11 +5,12 @@ rotates: the presented token is revoked and a fresh pair is issued. Replay of
 a rotated token fails (revoked) — clients re-OTP when that happens. Logout
 revokes every token of the user (device-loss friendly).
 """
+
 from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +24,7 @@ def _hash(raw: str) -> str:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class RefreshService:
@@ -38,8 +39,7 @@ class RefreshService:
             RefreshToken(
                 user_id=user_id,
                 token_hash=_hash(raw),
-                expires_at=_now()
-                + timedelta(days=settings.refresh_token_expire_days),
+                expires_at=_now() + timedelta(days=settings.refresh_token_expire_days),
             )
         )
         await self.session.flush()
@@ -48,10 +48,14 @@ class RefreshService:
     async def rotate(self, raw_token: str) -> tuple[object, str] | None:
         """Single-use rotation. Returns (user_id, new_raw) or None if invalid."""
         row = (
-            await self.session.execute(
-                select(RefreshToken).where(RefreshToken.token_hash == _hash(raw_token))
+            (
+                await self.session.execute(
+                    select(RefreshToken).where(RefreshToken.token_hash == _hash(raw_token))
+                )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if row is None or row.revoked_at is not None or row.expires_at <= _now():
             return None
         row.revoked_at = _now()
@@ -61,10 +65,14 @@ class RefreshService:
 
     async def revoke_raw(self, raw_token: str) -> bool:
         row = (
-            await self.session.execute(
-                select(RefreshToken).where(RefreshToken.token_hash == _hash(raw_token))
+            (
+                await self.session.execute(
+                    select(RefreshToken).where(RefreshToken.token_hash == _hash(raw_token))
+                )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if row is None or row.revoked_at is not None:
             return False
         row.revoked_at = _now()

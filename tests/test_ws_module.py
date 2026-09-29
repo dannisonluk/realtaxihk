@@ -8,15 +8,14 @@ WS channel /ws/trip/{order_id}:
 - lifecycle events (grab/cancel) published on the same channel;
 - REST snapshot GET /api/v1/trips/{order_id}/location for reconnection.
 """
+
 from __future__ import annotations
 
 import json
 import time
 
-from starlette.testclient import TestClient  # noqa: F401
-from starlette.websockets import WebSocketDisconnect
-
 import pytest  # shared at top: no bottom-of-file import
+from starlette.testclient import TestClient  # noqa: F401
 
 
 def _mk_user_token(client, phone: str) -> str:
@@ -30,9 +29,7 @@ def _mk_user_token(client, phone: str) -> str:
 def _admin_token() -> str:
     from app.core.security import create_access_token
 
-    return create_access_token(
-        {"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"}
-    )
+    return create_access_token({"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"})
 
 
 def _mk_active_driver(client, phone: str) -> dict:
@@ -59,15 +56,15 @@ def _mk_active_driver(client, phone: str) -> dict:
         headers={"Authorization": f"Bearer {_admin_token()}"},
         json={"amount_hkd": "500.00"},
     )
-    me = client.get(
-        "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
-    ).json()
+    me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}).json()
     return {"token": token, "driver_id": driver_id, "user_id": me["id"]}
 
 
 _ORDER = {
-    "pickup_lat": 22.284, "pickup_lng": 114.158,
-    "dropoff_lat": 22.315, "dropoff_lng": 114.219,
+    "pickup_lat": 22.284,
+    "pickup_lng": 114.158,
+    "dropoff_lat": 22.315,
+    "dropoff_lng": 114.219,
     "pickup_address": "Statue Square, Central",
     "dropoff_address": "Harbour North, North Point",
     "distance_km": "4.2",
@@ -174,8 +171,10 @@ class TestWsStreaming:
             async with Session() as s:
                 uid = principal_from_token(drv["token"]).id
                 prof = (
-                    await s.execute(select(DriverProfile).where(DriverProfile.user_id == uid))
-                ).scalars().first()
+                    (await s.execute(select(DriverProfile).where(DriverProfile.user_id == uid)))
+                    .scalars()
+                    .first()
+                )
                 prof.status = DriverStatus.SUSPENDED
                 await s.commit()
             await engine.dispose()
@@ -216,10 +215,13 @@ class TestWsStreaming:
         other = _mk_user_token(client, "+85260000052")
         drv = _mk_active_driver(client, "+85260000053")
         oid = _mk_broadcasting_order(client, pax)
-        assert client.post(
-            f"/api/v1/orders/{oid}/grab",
-            headers={"Authorization": f"Bearer {drv['token']}"},
-        ).status_code == 200
+        assert (
+            client.post(
+                f"/api/v1/orders/{oid}/grab",
+                headers={"Authorization": f"Bearer {drv['token']}"},
+            ).status_code
+            == 200
+        )
 
         r = client.get(
             f"/api/v1/trips/{oid}/location",

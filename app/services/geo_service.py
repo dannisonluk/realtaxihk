@@ -4,6 +4,7 @@ Index lifecycle mirrors order state:
 - BROADCASTING  -> indexed (GEOADD)
 - grabbed/cancelled -> removed (ZREM, idempotent)
 """
+
 from __future__ import annotations
 
 GEO_ORDERS_KEY = "geo:orders:active"

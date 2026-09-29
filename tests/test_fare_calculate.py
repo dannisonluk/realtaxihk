@@ -1,4 +1,5 @@
 """TDD Cycle 2 — RED: full fare estimate (tunnels, surcharges, discount, tip)."""
+
 from decimal import Decimal as D
 
 import pytest
@@ -18,8 +19,11 @@ class TestCrossHarbour:
     def test_toll_plus_return_fee(self):
         # 10km+5min urban meter = 116.5; +25 toll +25 return
         bd = calculate_fare(
-            taxi_type=URBAN, distance_km="10", waiting_min=5,
-            tunnels=(CH,), crosses_harbour=True,
+            taxi_type=URBAN,
+            distance_km="10",
+            waiting_min=5,
+            tunnels=(CH,),
+            crosses_harbour=True,
         )
         assert bd.meter_fare == D("116.5")
         assert _by_code(bd, "tunnel_cross_harbour").amount == D("25")
@@ -29,8 +33,11 @@ class TestCrossHarbour:
 
     def test_stand_pickup_waives_return_fee(self):
         bd = calculate_fare(
-            taxi_type=URBAN, distance_km="10", waiting_min=5,
-            tunnels=(CH,), crosses_harbour=True,
+            taxi_type=URBAN,
+            distance_km="10",
+            waiting_min=5,
+            tunnels=(CH,),
+            crosses_harbour=True,
             pickup_at_cross_harbour_stand=True,
         )
         assert bd.surcharges_total == D("25")
@@ -40,8 +47,11 @@ class TestCrossHarbour:
         # crossing tunnel used but destination on same side (e.g. cross to island
         # and back scenario is out of scope; here destination not across harbour)
         bd = calculate_fare(
-            taxi_type=URBAN, distance_km="2.5", waiting_min=0,
-            tunnels=(CH,), crosses_harbour=False,
+            taxi_type=URBAN,
+            distance_km="2.5",
+            waiting_min=0,
+            tunnels=(CH,),
+            crosses_harbour=False,
         )
         assert bd.surcharges_total == D("25")
 
@@ -71,7 +81,8 @@ class TestLandTunnels:
 
     def test_multiple_tunnels_sum_and_dedupe(self):
         bd = calculate_fare(
-            taxi_type=URBAN, distance_km="9",
+            taxi_type=URBAN,
+            distance_km="9",
             tunnels=(Tunnel.TAI_LAM, Tunnel.TAI_LAM, Tunnel.LION_ROCK),
         )
         # meter 9km = 102.5 + 28 + 8
@@ -82,17 +93,25 @@ class TestLandTunnels:
 class TestOtherSurcharges:
     def test_baggage_animals_booking(self):
         bd = calculate_fare(
-            taxi_type=URBAN, distance_km="3",
-            baggage_count=2, animals=1, advance_booking=True,
+            taxi_type=URBAN,
+            distance_km="3",
+            baggage_count=2,
+            animals=1,
+            advance_booking=True,
         )
         # meter 3km = 39.5 + 12 + 5 + 5
         assert bd.meter_fare == D("39.5")
         assert bd.surcharges_total == D("22")
         assert bd.total_fare == D("61.5")
 
-    @pytest.mark.parametrize("kwargs", [
-        {"baggage_count": -1}, {"animals": -1}, {"baggage_count": 99},
-    ])
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"baggage_count": -1},
+            {"animals": -1},
+            {"baggage_count": 99},
+        ],
+    )
     def test_invalid_counts_raise(self, kwargs):
         with pytest.raises(ValueError):
             calculate_fare(taxi_type=URBAN, distance_km="3", **kwargs)
@@ -102,8 +121,12 @@ class TestDiscountAndTip:
     def test_85_discount_applies_to_meter_only(self):
         # meter 116.5; 15% off = 17.475 -> 17.5 (ROUND_HALF_UP 0.1)
         bd = calculate_fare(
-            taxi_type=URBAN, distance_km="10", waiting_min=5,
-            tunnels=(CH,), crosses_harbour=True, discount_percent="15",
+            taxi_type=URBAN,
+            distance_km="10",
+            waiting_min=5,
+            tunnels=(CH,),
+            crosses_harbour=True,
+            discount_percent="15",
         )
         assert bd.meter_fare == D("116.5")
         assert bd.meter_discount == D("17.5")
@@ -114,7 +137,9 @@ class TestDiscountAndTip:
 
     def test_discount_rounding_half_up(self):
         bd = calculate_fare(
-            taxi_type=URBAN, distance_km="3", waiting_min="1.2",
+            taxi_type=URBAN,
+            distance_km="3",
+            waiting_min="1.2",
             discount_percent="15",
         )
         # meter 43.7 * 0.15 = 6.555 -> 6.6 ; after = 37.1
@@ -129,7 +154,10 @@ class TestDiscountAndTip:
 
     def test_tip_added_after_discount(self):
         bd = calculate_fare(
-            taxi_type=URBAN, distance_km="4", discount_percent="10", tip="10",
+            taxi_type=URBAN,
+            distance_km="4",
+            discount_percent="10",
+            tip="10",
         )
         # meter 50 -> 45 after; + tip 10
         assert bd.total_fare == D("55.0")
@@ -148,7 +176,10 @@ class TestNTTaxiCrossHarbour:
     def test_nt_meter_and_toll(self):
         # NT 8km = exactly 82.5 (threshold); + 50 cross-harbour
         bd = calculate_fare(
-            taxi_type=NT, distance_km="8", tunnels=(CH,), crosses_harbour=True,
+            taxi_type=NT,
+            distance_km="8",
+            tunnels=(CH,),
+            crosses_harbour=True,
         )
         assert bd.meter_fare == D("82.5")
         assert bd.total_fare == D("132.5")

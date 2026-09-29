@@ -5,6 +5,7 @@ use `require_active_user` (one PK lookup per request) so a disabled account
 loses access the moment is_active flips, and `require_admin` re-reads the real
 user row so a phantom/stale ADMIN claim is rejected.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -13,7 +14,6 @@ from dataclasses import dataclass
 import jwt as pyjwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
@@ -45,9 +45,7 @@ async def get_current_user(
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> Principal:
     if creds is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="missing bearer token"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="missing bearer token")
     return principal_from_token(creds.credentials)
 
 
@@ -58,16 +56,12 @@ async def require_active_user(
     """JWT + live DB check: user exists, is_active, and matches the claim role."""
     row = await session.get(User, user.id)
     if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="account not found"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account not found")
     if not row.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account disabled")
     if row.role != user.role:
         # Claim no longer matches reality (e.g. demoted admin) — trust the DB.
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="account state changed"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account state changed")
     return user
 
 
@@ -77,12 +71,7 @@ async def require_admin(
 ) -> Principal:
     """Admin must be a REAL, ACTIVE admin user row — not just an ADMIN claim."""
     row = await session.get(User, user.id)
-    if (
-        row is None
-        or row.role != UserRole.ADMIN
-        or not row.is_active
-        or row.role != user.role
-    ):
+    if row is None or row.role != UserRole.ADMIN or not row.is_active or row.role != user.role:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="admin privileges required"
         )

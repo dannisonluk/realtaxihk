@@ -17,14 +17,15 @@ Regulatory basis (verified 2026-09-28 from official sources):
 Fares produced here are ESTIMATES ONLY. Every breakdown must carry the
 information-intermediary disclaimer per Cap. 374D.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 from enum import Enum
 
-_MAX_DISTANCE_KM = Decimal("100")   # sanity cap: far beyond any HK taxi route
-_MAX_WAIT_MIN = Decimal("600")      # sanity cap: 10 hours of waiting
+_MAX_DISTANCE_KM = Decimal("100")  # sanity cap: far beyond any HK taxi route
+_MAX_WAIT_MIN = Decimal("600")  # sanity cap: 10 hours of waiting
 
 
 def _as_decimal(value: Decimal | str | float | int) -> Decimal:
@@ -40,9 +41,9 @@ def _ceil_units(value: Decimal) -> int:
 
 
 class TaxiType(str, Enum):
-    URBAN = "URBAN"      # 市區的士（紅的）
-    NT = "NT"            # 新界的士（綠的）
-    LANTAU = "LANTAU"    # 大嶼山的士（藍的）
+    URBAN = "URBAN"  # 市區的士（紅的）
+    NT = "NT"  # 新界的士（綠的）
+    LANTAU = "LANTAU"  # 大嶼山的士（藍的）
 
 
 # Official tariff (Cap. 374D schedule, effective 2024-07-14).
@@ -50,29 +51,35 @@ class TaxiType(str, Enum):
 # reachable exactly by whole jumps from the flagfall (see tests).
 _TARIFFS: dict[TaxiType, dict] = {
     TaxiType.URBAN: {
-        "flagfall": Decimal("29"), "inc1": Decimal("2.1"),
-        "threshold": Decimal("102.5"), "inc2": Decimal("1.4"),
+        "flagfall": Decimal("29"),
+        "inc1": Decimal("2.1"),
+        "threshold": Decimal("102.5"),
+        "inc2": Decimal("1.4"),
     },
     TaxiType.NT: {
-        "flagfall": Decimal("25.5"), "inc1": Decimal("1.9"),
-        "threshold": Decimal("82.5"), "inc2": Decimal("1.4"),
+        "flagfall": Decimal("25.5"),
+        "inc1": Decimal("1.9"),
+        "threshold": Decimal("82.5"),
+        "inc2": Decimal("1.4"),
     },
     TaxiType.LANTAU: {
-        "flagfall": Decimal("24"), "inc1": Decimal("1.9"),
-        "threshold": Decimal("195"), "inc2": Decimal("1.6"),
+        "flagfall": Decimal("24"),
+        "inc1": Decimal("1.9"),
+        "threshold": Decimal("195"),
+        "inc2": Decimal("1.6"),
     },
 }
 
 
 class Tunnel(str, Enum):
-    CROSS_HARBOUR = "cross_harbour"   # 紅隧/東隧/西隧（的士劃一收費）
-    TAI_LAM = "tai_lam"               # 大欖隧道
-    TATES_CAIRN = "tates_cairn"       # 大老山隧道
-    LION_ROCK = "lion_rock"           # 獅子山隧道
-    EAGLES_NEST = "eagles_nest"       # 尖山隧道
-    SHING_MUN = "shing_mun"           # 城門隧道
-    ABERDEEN = "aberdeen"             # 香港仔隧道
-    LANTAU_LINK = "lantau_link"       # 青嶼幹線
+    CROSS_HARBOUR = "cross_harbour"  # 紅隧/東隧/西隧（的士劃一收費）
+    TAI_LAM = "tai_lam"  # 大欖隧道
+    TATES_CAIRN = "tates_cairn"  # 大老山隧道
+    LION_ROCK = "lion_rock"  # 獅子山隧道
+    EAGLES_NEST = "eagles_nest"  # 尖山隧道
+    SHING_MUN = "shing_mun"  # 城門隧道
+    ABERDEEN = "aberdeen"  # 香港仔隧道
+    LANTAU_LINK = "lantau_link"  # 青嶼幹線
 
 
 @dataclass(frozen=True)
@@ -236,9 +243,7 @@ def calculate_fare(
             )
         )
     return_fee_applicable = (
-        Tunnel.CROSS_HARBOUR in tunnels
-        and crosses_harbour
-        and not pickup_at_cross_harbour_stand
+        Tunnel.CROSS_HARBOUR in tunnels and crosses_harbour and not pickup_at_cross_harbour_stand
     )
     if return_fee_applicable:
         surcharges.append(
@@ -252,21 +257,27 @@ def calculate_fare(
     if baggage_count:
         surcharges.append(
             SurchargeItem(
-                code="baggage", name_en="Baggage (per item)", name_zh="行李（每件）",
+                code="baggage",
+                name_en="Baggage (per item)",
+                name_zh="行李（每件）",
                 amount=_BAGGAGE_FEE * baggage_count,
             )
         )
     if animals:
         surcharges.append(
             SurchargeItem(
-                code="animals", name_en="Animal/bird (each)", name_zh="動物或雀鳥（每隻）",
+                code="animals",
+                name_en="Animal/bird (each)",
+                name_zh="動物或雀鳥（每隻）",
                 amount=_ANIMAL_FEE * animals,
             )
         )
     if advance_booking:
         surcharges.append(
             SurchargeItem(
-                code="advance_booking", name_en="Advance booking", name_zh="電召預約服務",
+                code="advance_booking",
+                name_en="Advance booking",
+                name_zh="電召預約服務",
                 amount=_ADVANCE_BOOKING_FEE,
             )
         )

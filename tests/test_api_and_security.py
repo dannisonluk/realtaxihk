@@ -1,4 +1,5 @@
 """TDD Cycle 3 — RED: FastAPI app shell, error format, fare endpoint, JWT."""
+
 from fastapi.testclient import TestClient
 
 

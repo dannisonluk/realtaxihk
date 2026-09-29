@@ -3,6 +3,7 @@
 The atomic-grab test hammers one BROADCASTING order with 6 concurrent
 service-level grabs: exactly one must win, the rest must lose cleanly.
 """
+
 import asyncio
 
 import pytest
@@ -21,9 +22,7 @@ def _admin_headers() -> dict:
 
     return {
         "Authorization": "Bearer "
-        + create_access_token(
-            {"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"}
-        )
+        + create_access_token({"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"})
     }
 
 
@@ -57,8 +56,10 @@ def _mk_active_driver(client, phone: str) -> dict:
 
 
 _ORDER = {
-    "pickup_lat": 22.284, "pickup_lng": 114.158,   # Central
-    "dropoff_lat": 22.315, "dropoff_lng": 114.219, # North Point
+    "pickup_lat": 22.284,
+    "pickup_lng": 114.158,  # Central
+    "dropoff_lat": 22.315,
+    "dropoff_lng": 114.219,  # North Point
     "pickup_address": "Statue Square, Central",
     "dropoff_address": "Harbour North, North Point",
     "distance_km": "4.2",
@@ -115,9 +116,7 @@ class TestOrderLifecycle:
     def test_grab_requires_active_driver(self, client, passenger_token):
         oid = _create_order(client, passenger_token)["id"]
         token = _mk_user_token(client, "+85291500002")  # plain passenger
-        r = client.post(
-            f"/api/v1/orders/{oid}/grab", headers={"Authorization": f"Bearer {token}"}
-        )
+        r = client.post(f"/api/v1/orders/{oid}/grab", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 403
 
     def test_full_lifecycle_to_completed(self, client, passenger_token):
@@ -125,7 +124,8 @@ class TestOrderLifecycle:
         d = _mk_active_driver(client, "+85291500003")
         h = {"Authorization": f"Bearer {d['token']}"}
         assert client.post(f"/api/v1/orders/{oid}/grab", headers=h).json()["status"] == "ACCEPTED"
-        assert client.post(f"/api/v1/orders/{oid}/arrive", headers=h).json()["status"] == "DRIVER_ARRIVED"
+        r = client.post(f"/api/v1/orders/{oid}/arrive", headers=h)
+        assert r.json()["status"] == "DRIVER_ARRIVED"
         assert client.post(f"/api/v1/orders/{oid}/start", headers=h).json()["status"] == "IN_TRIP"
         r = client.post(f"/api/v1/orders/{oid}/complete", headers=h)
         assert r.json()["status"] == "COMPLETED"
@@ -143,9 +143,12 @@ class TestOrderLifecycle:
         oid = _create_order(client, passenger_token)["id"]
         d1 = _mk_active_driver(client, "+85291500005")
         d2 = _mk_active_driver(client, "+85291500006")
-        assert client.post(
-            f"/api/v1/orders/{oid}/grab", headers={"Authorization": f"Bearer {d1['token']}"}
-        ).status_code == 200
+        assert (
+            client.post(
+                f"/api/v1/orders/{oid}/grab", headers={"Authorization": f"Bearer {d1['token']}"}
+            ).status_code
+            == 200
+        )
         r = client.post(
             f"/api/v1/orders/{oid}/grab", headers={"Authorization": f"Bearer {d2['token']}"}
         )
@@ -156,13 +159,9 @@ class TestOrderLifecycle:
         d = _mk_active_driver(client, "+85291500007")
         h = {"Authorization": f"Bearer {d['token']}"}
         client.post(f"/api/v1/orders/{oid}/grab", headers=h)
-        r = client.post(
-            f"/api/v1/orders/{oid}/cancel", headers=h, json={"reason": "cant make it"}
-        )
+        r = client.post(f"/api/v1/orders/{oid}/cancel", headers=h, json={"reason": "cant make it"})
         assert r.status_code == 200
-        ledger = client.get(
-            "/api/v1/drivers/me/ledger", headers=h
-        ).json()["items"]
+        ledger = client.get("/api/v1/drivers/me/ledger", headers=h).json()["items"]
         penalties = [i for i in ledger if i["entry_type"] == "PENALTY_DEDUCTION"]
         assert penalties and penalties[0]["amount_hkd"] == "-50.0"
         assert penalties[0]["order_id"] == oid
@@ -171,7 +170,7 @@ class TestOrderLifecycle:
 class TestAtomicGrab:
     def test_exactly_one_service_grab_wins(self, client, passenger_token):
         oid = _create_order(client, passenger_token)["id"]
-        drivers = [_mk_active_driver(client, f"+852{915*10**5+15100+i}") for i in range(6)]
+        drivers = [_mk_active_driver(client, f"+852{915 * 10**5 + 15100 + i}") for i in range(6)]
         user_ids = [d["user_id"] for d in drivers]
 
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -189,9 +188,7 @@ class TestAtomicGrab:
             try:
                 return await asyncio.gather(
                     *[
-                        GrabService(rds, factory).grab(
-                            order_id=oid, driver_user_id=uid
-                        )
+                        GrabService(rds, factory).grab(order_id=oid, driver_user_id=uid)
                         for uid in user_ids
                     ],
                     return_exceptions=True,

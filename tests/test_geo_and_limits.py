@@ -1,5 +1,4 @@
 """TDD — geo dispatch (Redis GEOSEARCH) + rate limiting (Redis INCR windows)."""
-import pytest
 
 
 def _mk_user_token(client, phone_expr: str) -> str:
@@ -15,9 +14,7 @@ def _admin_headers() -> dict:
 
     return {
         "Authorization": "Bearer "
-        + create_access_token(
-            {"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"}
-        )
+        + create_access_token({"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"})
     }
 
 
@@ -34,14 +31,24 @@ def _mk_active_driver(client, phone_expr: str):
         },
     )
     did = r.json()["id"]
-    client.post(f"/api/v1/admin/drivers/{did}/review", headers=_admin_headers(), json={"decision": "approve"})
-    client.post(f"/api/v1/admin/drivers/{did}/deposit/grant", headers=_admin_headers(), json={"amount_hkd": "500.00"})
+    client.post(
+        f"/api/v1/admin/drivers/{did}/review",
+        headers=_admin_headers(),
+        json={"decision": "approve"},
+    )
+    client.post(
+        f"/api/v1/admin/drivers/{did}/deposit/grant",
+        headers=_admin_headers(),
+        json={"amount_hkd": "500.00"},
+    )
     return {"token": token, "driver_id": did}
 
 
 _ORDER = {
-    "pickup_lat": 22.284, "pickup_lng": 114.158,   # Central
-    "dropoff_lat": 22.315, "dropoff_lng": 114.219, # North Point
+    "pickup_lat": 22.284,
+    "pickup_lng": 114.158,  # Central
+    "dropoff_lat": 22.315,
+    "dropoff_lng": 114.219,  # North Point
     "pickup_address": "Statue Square, Central",
     "dropoff_address": "Harbour North, North Point",
     "distance_km": "4.2",
@@ -69,7 +76,7 @@ class TestRateLimiter:
         assert results == [True, True, True, False]
 
     def test_order_creation_rate_limited(self, client):
-        pax = _mk_user_token(client, f"+852{916*10**5+20001}")
+        pax = _mk_user_token(client, f"+852{916 * 10**5 + 20001}")
         statuses = []
         for i in range(6):
             r = client.post(
@@ -90,7 +97,7 @@ class TestRateLimiter:
 
 class TestGeoDispatch:
     def test_driver_location_update_and_nearby(self, client):
-        d = _mk_active_driver(client, f"+852{916*10**5+30001}")
+        d = _mk_active_driver(client, f"+852{916 * 10**5 + 30001}")
         h = {"Authorization": f"Bearer {d['token']}"}
         r = client.post(
             "/api/v1/driver/location",
@@ -99,10 +106,8 @@ class TestGeoDispatch:
         )
         assert r.status_code == 200
 
-        pax = _mk_user_token(client, f"+852{916*10**5+30002}")
-        r = client.post(
-            "/api/v1/orders", headers={"Authorization": f"Bearer {pax}"}, json=_ORDER
-        )
+        pax = _mk_user_token(client, f"+852{916 * 10**5 + 30002}")
+        r = client.post("/api/v1/orders", headers={"Authorization": f"Bearer {pax}"}, json=_ORDER)
         assert r.status_code == 201
         oid = r.json()["id"]
 
@@ -117,16 +122,15 @@ class TestGeoDispatch:
         assert all(o["status"] == "BROADCASTING" for o in r.json()["items"])
 
     def test_far_order_not_in_nearby(self, client):
-        d = _mk_active_driver(client, f"+852{916*10**5+30003}")
+        d = _mk_active_driver(client, f"+852{916 * 10**5 + 30003}")
         h = {"Authorization": f"Bearer {d['token']}"}
         client.post(
-            "/api/v1/driver/location", headers=h,
+            "/api/v1/driver/location",
+            headers=h,
             json={"lat": 22.308, "lng": 113.918, "online": True},  # Tung Chung ~25km
         )
-        pax = _mk_user_token(client, f"+852{916*10**5+30004}")
-        client.post(
-            "/api/v1/orders", headers={"Authorization": f"Bearer {pax}"}, json=_ORDER
-        )
+        pax = _mk_user_token(client, f"+852{916 * 10**5 + 30004}")
+        client.post("/api/v1/orders", headers={"Authorization": f"Bearer {pax}"}, json=_ORDER)
         r = client.get(
             "/api/v1/orders/nearby",
             headers=h,
@@ -136,13 +140,14 @@ class TestGeoDispatch:
         assert r.json()["items"] == []
 
     def test_accepted_order_leaves_geo_index(self, client):
-        d = _mk_active_driver(client, f"+852{916*10**5+30005}")
+        d = _mk_active_driver(client, f"+852{916 * 10**5 + 30005}")
         h = {"Authorization": f"Bearer {d['token']}"}
         client.post(
-            "/api/v1/driver/location", headers=h,
+            "/api/v1/driver/location",
+            headers=h,
             json={"lat": 22.284, "lng": 114.158, "online": True},
         )
-        pax = _mk_user_token(client, f"+852{916*10**5+30006}")
+        pax = _mk_user_token(client, f"+852{916 * 10**5 + 30006}")
         oid = client.post(
             "/api/v1/orders", headers={"Authorization": f"Bearer {pax}"}, json=_ORDER
         ).json()["id"]
@@ -162,7 +167,7 @@ class TestGeoDispatch:
         assert oid not in [o["id"] for o in r.json()["items"]]
 
     def test_location_requires_active_driver(self, client):
-        token = _mk_user_token(client, f"+852{916*10**5+30007}")  # passenger
+        token = _mk_user_token(client, f"+852{916 * 10**5 + 30007}")  # passenger
         r = client.post(
             "/api/v1/driver/location",
             headers={"Authorization": f"Bearer {token}"},

@@ -1,4 +1,5 @@
 """Redis rate limiter — fixed-window INCR, atomic check+increment."""
+
 from __future__ import annotations
 
 import time

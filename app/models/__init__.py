@@ -7,18 +7,18 @@ Design notes:
 - Orders carry a snapshot of the fare estimate (tariff_version + totals) so
   historical orders stay auditable even after tariff changes.
 """
+
 from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from geoalchemy2 import Geography
 from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
-    Enum as SAEnum,
     ForeignKey,
     Index,
     Numeric,
@@ -26,6 +26,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+)
+from sqlalchemy import (
+    Enum as SAEnum,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -40,7 +43,7 @@ def _uuid() -> uuid.UUID:
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class UserRole(str, enum.Enum):
@@ -102,10 +105,10 @@ class DriverProfile(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True
     )
     # KYC — HK-specific identifiers (stored as provided; masked in API outputs)
-    hk_id_last4: Mapped[str] = mapped_column(String(4))          # e.g. "1234"
-    taxi_driver_plate_no: Mapped[str] = mapped_column(String(10), index=True)   # 的士司機證
-    vehicle_reg_mark: Mapped[str] = mapped_column(String(8), index=True)        # 車牌
-    taxi_type: Mapped[str] = mapped_column(String(10))           # URBAN / NT / LANTAU
+    hk_id_last4: Mapped[str] = mapped_column(String(4))  # e.g. "1234"
+    taxi_driver_plate_no: Mapped[str] = mapped_column(String(10), index=True)  # 的士司機證
+    vehicle_reg_mark: Mapped[str] = mapped_column(String(8), index=True)  # 車牌
+    taxi_type: Mapped[str] = mapped_column(String(10))  # URBAN / NT / LANTAU
     status: Mapped[DriverStatus] = mapped_column(
         SAEnum(DriverStatus, name="driver_status", native_enum=False),
         default=DriverStatus.PENDING_KYC,
@@ -137,8 +140,8 @@ class DriverDeposit(Base):
     driver_profile_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("driver_profiles.id", ondelete="CASCADE"), unique=True
     )
-    balance_hkd: Mapped[object] = mapped_column(Numeric(10, 2), default=0)   # available
-    held_hkd: Mapped[object] = mapped_column(Numeric(10, 2), default=0)      # locked pending refund
+    balance_hkd: Mapped[object] = mapped_column(Numeric(10, 2), default=0)  # available
+    held_hkd: Mapped[object] = mapped_column(Numeric(10, 2), default=0)  # locked pending refund
     required_hkd: Mapped[object] = mapped_column(Numeric(10, 2), default=500)
     is_fulfilled: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

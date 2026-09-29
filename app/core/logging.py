@@ -4,6 +4,7 @@ P0-4: structured JSON logs (grepable, shippable); P1-1: the WS ?token= query
 never reaches any log line — scrubbed defensively even if uvicorn's own
 access logger is active.
 """
+
 from __future__ import annotations
 
 import contextvars
@@ -14,9 +15,7 @@ import sys
 import time
 import uuid
 
-request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "request_id", default="-"
-)
+request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 
 _TOKEN_RE = re.compile(r"([?&])token=[^&\s\"']+")
 
@@ -41,10 +40,14 @@ class StripTokenQueryFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         if record.args:
-            scrubbed = tuple(
-                _TOKEN_RE.sub(r"\1token=REDACTED", a) if isinstance(a, str) else a
-                for a in record.args
-            ) if isinstance(record.args, tuple) else record.args
+            scrubbed = (
+                tuple(
+                    _TOKEN_RE.sub(r"\1token=REDACTED", a) if isinstance(a, str) else a
+                    for a in record.args
+                )
+                if isinstance(record.args, tuple)
+                else record.args
+            )
             record.args = scrubbed
             if isinstance(record.msg, str):
                 record.msg = _TOKEN_RE.sub(r"\1token=REDACTED", record.msg)

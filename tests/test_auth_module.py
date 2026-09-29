@@ -1,9 +1,9 @@
 """TDD — Module A: OTP auth, KYC state machine, masking, JWT deps."""
+
 import re
 
 import pytest
 
-from app.core.config import get_settings
 from app.core.security import create_access_token
 
 
@@ -54,7 +54,7 @@ class TestOtpService:
         svc = OtpService(db_session)
         await svc.request_otp("+85291234567", ttl_seconds=-1)
         with pytest.raises(BusinessRuleError):
-            await svc.verify_otp("+85291234567", svc._last_code)  # noqa: SLF001
+            await svc.verify_otp("+85291234567", svc._last_code)
 
     async def test_invalid_phone_format_rejected(self, db_session):
         from app.services.otp_service import OtpService
@@ -77,9 +77,7 @@ class TestOtpService:
 
 class TestAuthApi:
     def test_request_verify_me_flow(self, client):
-        r = client.post(
-            "/api/v1/auth/otp/request", json={"phone_e164": "+85291234567"}
-        )
+        r = client.post("/api/v1/auth/otp/request", json={"phone_e164": "+85291234567"})
         assert r.status_code == 200
         code = r.json()["dev_code"]
 
@@ -93,9 +91,7 @@ class TestAuthApi:
         # raw phone never leaks
         assert "91234567" not in r.text.replace("+852****4567", "")
 
-        r = client.get(
-            "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
-        )
+        r = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 200
         assert r.json()["phone_masked"] == "+852****4567"
 
@@ -118,9 +114,7 @@ class TestDriverKycApi:
     def _new_user_token(self, client, phone: str) -> str:
         r = client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
         code = r.json()["dev_code"]
-        r = client.post(
-            "/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": code}
-        )
+        r = client.post("/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": code})
         return r.json()["access_token"]
 
     def test_register_driver_pending_kyc(self, client):
@@ -140,7 +134,6 @@ class TestDriverKycApi:
         assert r.json()["taxi_driver_plate_no"] == "TD12345"
 
     def test_admin_review_approve_flow(self, client):
-        from app.core.config import get_settings
 
         admin_token = create_access_token(
             {"sub": "00000000-0000-0000-0000-0000000000aa", "role": "ADMIN"}
@@ -174,15 +167,11 @@ class TestDriverKycApi:
         assert r.json()["status"] == "DEPOSIT_REQUIRED"
 
         # driver cannot become ACTIVE without deposit
-        r = client.get(
-            "/api/v1/drivers/me", headers={"Authorization": f"Bearer {token}"}
-        )
+        r = client.get("/api/v1/drivers/me", headers={"Authorization": f"Bearer {token}"})
         assert r.json()["status"] == "DEPOSIT_REQUIRED"
         assert r.json()["deposit"]["required_hkd"] == "500.0"
 
     def test_admin_required(self, client):
         token = self._new_user_token(client, "+85291230003")
-        r = client.get(
-            "/api/v1/admin/drivers", headers={"Authorization": f"Bearer {token}"}
-        )
+        r = client.get("/api/v1/admin/drivers", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 403

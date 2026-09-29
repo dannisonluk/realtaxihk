@@ -1,76 +1,150 @@
 # realtaxihk.com Backend
 
 Hong Kong taxi matching platform — **information intermediary** (Cap. 374D compliant).
-FastAPI (async) + PostgreSQL 16/PostGIS + Redis 7 + Alembic. Money math is exact
-(`Decimal`, never float); all fare responses carry bilingual Cap. 374D disclaimers.
+FastAPI (async) + PostgreSQL 16/PostGIS + Redis 7 + Alembic, SQLAlchemy 2.0 async.
+
+Money math is exact (`Decimal`, never float); every fare response carries bilingual
+Cap. 374D disclaimers; every estimate embeds a `tariff_version` so historical orders
+stay auditable.
+
+**Status: production-hardened.** 120/120 tests green, live smoke 9/9, prod boot drill
+PASS. Full audit + fix log: [`docs/PRODUCTION_READINESS.md`](docs/PRODUCTION_READINESS.md)
+(4 bugs, 7 P0, 10 P1, 10 P2 — all closed). Lint gate + cleanup log:
+[`docs/LINTING.md`](docs/LINTING.md).
 
 ## Quick start
 
 ```bash
-# 1. infra (PostGIS :15433, Redis :16379 — ports chosen to avoid sibling projects)
+# 1. infra (PostGIS :15433, Redis :16379 — ports avoid sibling projects)
 docker compose up -d db redis
 
-# 2. app
-uv venv && uv pip install -e ".[dev]"
-cp .env.example .env  # adjust if needed
+# 2. app (uv manages venv + deps; --all-extras pulls dev tools: pytest, ruff)
+uv sync --all-extras
+cp .env.example .env          # adjust if needed; see Configuration below
 
 # 3. schema
 .venv/Scripts/python -m alembic upgrade head
 
 # 4. run + verify
-.venv/Scripts/python scripts/serve_and_probe.py   # or: uvicorn app.main:app --port 8000
-.venv/Scripts/python scripts/verify_api.py        # one-shot smoke test
-.venv/Scripts/python -m pytest tests/ -q          # 106 tests
+.venv/Scripts/python scripts/serve_and_probe.py   # detached uvicorn + health wait
+.venv/Scripts/python scripts/verify_api.py        # one-shot API smoke
+.venv/Scripts/python -m pytest -q                 # 120 tests
+uv run ruff check . && uv run ruff format --check .
 ```
+
+On Linux/macOS use `.venv/bin/python` instead of `.venv/Scripts/python`.
 
 ## Layout
 
 ```
 app/
-  api/          # HTTP layer (request/response models, thin)
-  core/         # config, db session mgmt, exceptions, security (JWT), rate_limit
-  models/       # SQLAlchemy 2.0 declarative models (Users, Drivers, Deposits,
-                #   Orders, LedgerEntry append-only, OtpCodes)
-  services/     # domain logic — fare_calculator.py (TDD'd, tariff-versioned),
-                #   order/grab (SETNX), ledger, otp, geo dispatch, trip hub
-alembic/        # async migrations (include_object filter guards postgis tables)
-scripts/        # dev helpers (serve_and_probe, verify_api, stop_server)
-tests/          # pytest — unit (fares) + module tests + WS streaming
+  api/            # HTTP layer — auth, drivers, fare, orders, tracking, trips, admin, ws
+  core/           # config (fail-fast prod validator), db, deps (DB-backed guards),
+                  #   exceptions, logging (JSON + request-ID), money, masking,
+                  #   rate_limit (Redis fixed-window), security (JWT)
+  models/         # SQLAlchemy 2.0 declarative — users, drivers, deposits, orders,
+                  #   ledger (append-only), otp_codes, refresh_tokens
+  services/       # domain logic — fare_calculator (tariff-versioned, TDD'd),
+                  #   order/grab (SETNX + Lua lock release), ledger (row-locked),
+                  #   otp, geo dispatch, trip hub (Redis Pub/Sub), maintenance jobs,
+                  #   refresh (rotating tokens), notify (WhatsApp Cloud API, fail-closed)
+alembic/          # async migrations (postgis tables filtered via include_object)
+scripts/          # dev tooling — serve_and_probe, verify_api, stop_server,
+                  #   live_smoke (9-check E2E), prod_boot_drill
+tests/            # pytest — unit + module + WS streaming + hardening regression
+docs/             # PRODUCTION_READINESS.md (audit + fix log), LINTING.md
 ```
+
+## API
+
+All routes under `/api/v1` unless noted. Auth = `Authorization: Bearer <access JWT>`.
+
+| Area | Endpoints |
+|---|---|
+| **Auth** | `POST /auth/otp/request` · `POST /auth/otp/verify` · `POST /auth/refresh` · `POST /auth/logout` · `GET /auth/me` |
+| **Drivers** | `POST /drivers/register` · `GET /drivers/me` · `GET /drivers/me/ledger` |
+| **Fare** | `POST /fare/estimate` |
+| **Orders** | `POST /orders` · `GET /orders/nearby` · `GET /orders` · `GET /orders/{id}` · `POST /orders/{id}/grab` · `.../arrive` · `.../start` · `.../complete` · `.../cancel` |
+| **Driver GPS** | `POST /driver/location` |
+| **Trips** | `GET /trips/{order_id}/location` (REST snapshot for WS reconnects) |
+| **Admin** | `GET /admin/drivers` · `POST /admin/drivers/{id}/review` · `POST /admin/drivers/{id}/deposit/grant` |
+| **Live** | `WS /ws/trip/{order_id}?token=<access JWT>` |
+| **Ops** | `GET /health` (pings DB + Redis, 503 on failure) · `GET /metrics` (when `PROMETHEUS_ENABLED`) |
+
+Live socket close codes: `4401` unauthenticated, `4403` forbidden, `4404` unknown order.
+
+## Modules & domain rules
+
+- **A — Auth & KYC**: WhatsApp OTP (sha256-hashed, TTL, resend cooldown, 5-attempt cap,
+  per-IP + global rate limits), JWT HS256 with rotating refresh tokens (hashed at rest,
+  single-use). Driver lifecycle `PENDING_KYC → DEPOSIT_REQUIRED → ACTIVE → SUSPENDED/TERMINATED`.
+  Deactivation takes effect immediately: every request re-checks the DB (`require_active_user`),
+  not just the JWT.
+- **B — Orders & dispatch**: fare snapshot frozen into `fare_json` at creation;
+  Redis `GEOSEARCH` nearby broadcast; `SETNX` + Lua-release lock for atomic grab
+  (exactly-once, 6-way concurrency tested); lifecycle `BROADCASTING → ACCEPTED →
+  DRIVER_ARRIVED → IN_TRIP → COMPLETED/CANCELLED`; $50 no-show penalty (negative
+  ledger = arrears). Order creation is rate-limited (5/60s per passenger → 429).
+- **C-mini — Ledger**: append-only `ledger_entries` with `balance_after` chain,
+  `with_for_update` row locks + reference-idempotency index; HKD 500 deposit grant
+  gates activation.
+- **D — Live tracking**: WS channel above (passenger subscribes, assigned driver pushes,
+  driver ACTIVE re-checked per tick); ticks persist to PostGIS and fan out via Redis
+  Pub/Sub (`realtaxi:trip:{order_id}`); server pings every `WS_HEARTBEAT_S`.
+- **Background jobs**: geo ghost-order sweeper (auto-cancels stale `BROADCASTING` after
+  `MAX_BROADCAST_MINUTES`) + PDPO retention purges; both run in lifespan tasks and are
+  cancelled cleanly on shutdown.
 
 ## Fare engine (verified sources)
 
 - Meter tariffs effective **2024-07-14** (TD press release; Cap. 374D schedule):
-  Urban $29/2km → $2.1/200m (to $102.5) → $1.4; NT $25.5 → $1.9 (to $82.5) → $1.4;
-  Lantau $24 → $1.9 (to $195) → $1.6. Waiting: per 1 min or part.
+  Urban $29 flagfall → $2.1/200m (to $102.5) → $1.4; NT $25.5 → $1.9 (to $82.5) → $1.4;
+  Lantau $24 → $1.9 (to $195) → $1.6. Waiting charged per minute or part.
 - Tolls: cross-harbour $25 (+$25 return fee, waived at cross-harbour stands / same-side
-  destination), Tai Lam $28 (2025-05-31), Tates Cairn $20, Lion Rock / Eagle's Nest /
-  Shing Mun / Aberdeen $8 (Aberdeen & Shing Mun 2025-09-21), Lantau Link $30.
-- Other: baggage $6, animal $5, advance booking $5. Discount applies to meter only.
+  destination), Tai Lam $28, Tates Cairn $20, Lion Rock / Eagle's Nest / Shing Mun /
+  Aberdeen $8, Lantau Link $30. Surcharge codes: `tunnel_cross_harbour`,
+  `cross_harbour_return`.
+- Extras: baggage $6, animal $5, advance booking $5; discounts apply to the meter only.
 
-Every estimate embeds `tariff_version` (`meter:2024-07-14;tolls:2025-09-21`) so
-historical orders stay auditable.
+`tariff_version` = `meter:2024-07-14;tolls:2025-09-21`.
 
-## Modules (all live)
+## Configuration
 
-- **A — Auth & KYC**: WhatsApp OTP (sha256-stored, TTL, cooldown, 5 attempts),
-  JWT HS256; driver KYC `PENDING_KYC → DEPOSIT_REQUIRED → ACTIVE → SUSPENDED/TERMINATED`.
-- **B — Orders & dispatch**: fare snapshot frozen into `fare_json` at creation;
-  Redis `GEOSEARCH` nearby broadcast; `SETNX` atomic grab (exactly-once, 6-way
-  concurrency tested); lifecycle `BROADCASTING → ACCEPTED → DRIVER_ARRIVED →
-  IN_TRIP → COMPLETED/CANCELLED`; $50 no-show penalty (negative ledger = arrears).
-- **C-mini — Ledger**: append-only `ledger_entries` with `balance_after` chain;
-  HKD 500 deposit grant gates activation.
-- **D — Live tracking**: `WS /ws/trip/{order_id}?token=…` (passenger subscribes,
-  assigned driver pushes; driver status re-checked per tick); ticks persist to
-  PostGIS, fan out via Redis Pub/Sub (`realtaxi:trip:{order_id}`); REST snapshot
-  `GET /api/v1/trips/{order_id}/location` for reconnects; drivers receive direct
-  acks (no self-echo).
-- **Rate limiting**: Redis fixed-window counters (order creation capped per user
-  → 429; namespace `realtaxi:`).
+`.env.example` documents every knob. Prod safety rail: with `APP_ENV=prod`, the app
+**refuses to boot** if `JWT_SECRET_KEY` or `POSTGRES_PASSWORD` still hold dev defaults
+(`scripts/prod_boot_drill.py` verifies this).
+
+Key groups: DB/Redis connection, JWT + token lifetimes, OTP limits, background-job
+intervals + retention windows, WS heartbeat, external providers (WhatsApp / FCM /
+Google Maps — providers fail closed when unconfigured), Sentry/Prometheus (optional).
+
+## Tests & CI
+
+```bash
+.venv/Scripts/python -m pytest -q        # 120 tests; needs db+redis containers up
+```
+
+- 93 test functions over 9 files: fare unit tests, per-module API tests, WS streaming,
+  and `test_hardening.py` (14 regression tests for every fixed finding).
+- Per-test isolated Postgres databases (template clone) — no cross-test state.
+- CI (`.github/workflows/ci.yml`): ruff check → format check → full pytest, with
+  PostGIS + Redis service containers.
+
+## Docker / deploy
+
+`docker compose up -d` runs the full stack: `db` (PostGIS 16-3.4), `redis` (AOF on),
+`api` (auto-runs `alembic upgrade head` before serving, `restart: unless-stopped`).
+
+## Ops quick reference
+
+```bash
+.venv/Scripts/python scripts/live_smoke.py       # 9-check end-to-end (needs server up)
+.venv/Scripts/python scripts/stop_server.py      # stop detached uvicorn
+.venv/Scripts/python scripts/prod_boot_drill.py  # verify prod fail-fast guard
+```
 
 ## Roadmap (next)
 
-1. Weekly settlement job (ledger ready; cron + service-fee deduction entries)
-2. FCM/WhatsApp production providers (env-driven stubs already in place)
-3. Nginx TLS + deploy packaging
+1. Weekly settlement job (ledger ready; cron + service-fee entries)
+2. FCM push provider (WhatsApp already wired); Google Maps distance integration
+3. Nginx TLS + CORS lockdown + pg_dump backup cron (pre-launch checklist)

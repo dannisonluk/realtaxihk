@@ -4,6 +4,7 @@ PDPO: phones masked in output. P1-2: OTP requests are rate-limited per IP and
 globally (cost cap). P1-5: login returns access + refresh; /auth/refresh
 rotates; /auth/logout revokes everything for the caller.
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -65,9 +66,7 @@ async def otp_request(
         f"otp:ip:{ip}", settings.otp_ip_rate_limit, settings.otp_ip_window_s
     ):
         raise HTTPException(status_code=429, detail="too many OTP requests from this address")
-    if not await limiter.allow(
-        "otp:global:hourly", settings.otp_global_hourly_limit, 3600
-    ):
+    if not await limiter.allow("otp:global:hourly", settings.otp_global_hourly_limit, 3600):
         raise HTTPException(status_code=429, detail="OTP volume cap reached, try again later")
     try:
         result = await OtpService(session).request_otp(payload.phone_e164)
@@ -112,8 +111,9 @@ async def refresh_tokens(payload: RefreshIn, session: AsyncSession = Depends(get
 
 
 @router.post("/logout")
-async def logout(user: Principal = Depends(require_active_user),
-                 session: AsyncSession = Depends(get_session)):
+async def logout(
+    user: Principal = Depends(require_active_user), session: AsyncSession = Depends(get_session)
+):
     revoked = await RefreshService(session).revoke_all_for_user(user.id)
     return {"ok": True, "revoked": revoked}
 
@@ -136,9 +136,7 @@ async def me(
 def require_role(role: UserRole):
     async def _guard(user: Principal = Depends(require_active_user)) -> Principal:
         if user.role != role:
-            raise HTTPException(
-                status_code=403, detail=f"{role.value} role required"
-            )
+            raise HTTPException(status_code=403, detail=f"{role.value} role required")
         return user
 
     return _guard

@@ -1,4 +1,5 @@
 """Standardized error payloads: { code, message, details }."""
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -32,11 +33,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             content=_error(
                 "VALIDATION_ERROR",
                 "Request validation failed.",
-                {
-                    "errors": jsonable_encoder(
-                        exc.errors(), custom_encoder={Decimal: str}
-                    )
-                },
+                {"errors": jsonable_encoder(exc.errors(), custom_encoder={Decimal: str})},
             ),
         )
 

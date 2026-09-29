@@ -1,4 +1,5 @@
 """Driver self-service API: registration (enters PENDING_KYC), profile view."""
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -10,10 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
 from app.core.deps import Principal, get_current_user
-from app.core.masking import mask_phone
-from app.models import DriverDeposit, DriverProfile, DriverStatus, User, LedgerEntry
-from sqlalchemy import select
-from app.services.state_machine import assert_driver_transition
+from app.models import DriverDeposit, DriverProfile, DriverStatus, LedgerEntry
 
 router = APIRouter(prefix="/api/v1/drivers", tags=["drivers"])
 
@@ -50,10 +48,10 @@ def _profile_out(dp: DriverProfile) -> dict:
 
 async def _get_profile(session: AsyncSession, user_id) -> DriverProfile | None:
     return (
-        await session.execute(
-            select(DriverProfile).where(DriverProfile.user_id == user_id)
-        )
-    ).scalars().first()
+        (await session.execute(select(DriverProfile).where(DriverProfile.user_id == user_id)))
+        .scalars()
+        .first()
+    )
 
 
 @router.post("/register", status_code=201)
@@ -86,10 +84,14 @@ async def my_driver_profile(
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no driver profile")
     deposit = (
-        await session.execute(
-            select(DriverDeposit).where(DriverDeposit.driver_profile_id == profile.id)
+        (
+            await session.execute(
+                select(DriverDeposit).where(DriverDeposit.driver_profile_id == profile.id)
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     out = _profile_out(profile)
     out["deposit"] = _deposit_out(deposit)
     if deposit is None:
@@ -106,21 +108,23 @@ async def my_ledger(
     if profile is None:
         raise HTTPException(status_code=404, detail="no driver profile")
     rows = (
-        await session.execute(
-            select(LedgerEntry)
-            .where(LedgerEntry.driver_profile_id == profile.id)
-            .order_by(LedgerEntry.id.asc())
+        (
+            await session.execute(
+                select(LedgerEntry)
+                .where(LedgerEntry.driver_profile_id == profile.id)
+                .order_by(LedgerEntry.id.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {
         "items": [
             {
                 "id": r.id,
                 "entry_type": r.entry_type.value,
                 "amount_hkd": str(Decimal(r.amount_hkd).quantize(Decimal("0.1"))),
-                "balance_after_hkd": str(
-                    Decimal(r.balance_after_hkd).quantize(Decimal("0.1"))
-                ),
+                "balance_after_hkd": str(Decimal(r.balance_after_hkd).quantize(Decimal("0.1"))),
                 "order_id": str(r.order_id) if r.order_id else None,
                 "note": r.note,
                 "created_at": r.created_at.isoformat() if r.created_at else None,

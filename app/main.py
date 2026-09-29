@@ -6,6 +6,7 @@ Hardening wave (docs/PRODUCTION_READINESS.md):
   cancelled cleanly on shutdown — no leaked engine).
 - P2-4/P2-8: Sentry init when SENTRY_DSN set; /metrics when PROMETHEUS_ENABLED.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -37,7 +38,7 @@ async def _job_loop(interval_s: int, coro_factory, name: str):
             await coro_factory()
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001 — a job error must not stop the loop
+        except Exception:
             logger.exception("background job %s failed", name)
         await asyncio.sleep(interval_s)
 
@@ -80,7 +81,7 @@ def create_app() -> FastAPI:
     app.include_router(ws_router)
 
     from app.core.db import get_redis, get_session_factory
-    from app.core.logging import configure_logging, attach_request_logging
+    from app.core.logging import attach_request_logging, configure_logging
     from app.core.rate_limit import RateLimiter
     from app.services.maintenance import MaintenanceService
 
@@ -128,9 +129,11 @@ def create_app() -> FastAPI:
         # Graceful shutdown (P0-6): close Redis, dispose the DB engine.
         with contextlib.suppress(Exception):
             from app.core.db import close_redis
+
             await close_redis()
         with contextlib.suppress(Exception):
             from app.core.db import dispose_engine
+
             await dispose_engine()
 
     @app.get("/health", tags=["ops"])
@@ -138,16 +141,17 @@ def create_app() -> FastAPI:
         checks = {"db": False, "redis": False}
         try:
             from app.core.db import get_session_factory
+
             async with get_session_factory()() as s:
                 await s.execute(text("SELECT 1"))
             checks["db"] = True
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("health: db check failed")
         try:
             redis = get_redis()
             await redis.ping()
             checks["redis"] = True
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("health: redis check failed")
         ok = all(checks.values())
         return {
@@ -160,6 +164,7 @@ def create_app() -> FastAPI:
     if settings.prometheus_enabled:
         try:
             from prometheus_client import make_asgi_app
+
             app.mount("/metrics", make_asgi_app())
         except ImportError:  # pragma: no cover
             logger.warning("prometheus_enabled=true but prometheus-client not installed")

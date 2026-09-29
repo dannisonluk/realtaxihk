@@ -1,4 +1,5 @@
 """One-shot API smoke test: hits the running server, prints results, exits."""
+
 import json
 
 import httpx
@@ -12,8 +13,11 @@ with httpx.Client(base_url=BASE, timeout=5) as c:
     r = c.post(
         "/api/v1/fare/estimate",
         json={
-            "taxi_type": "URBAN", "distance_km": "10", "waiting_min": "5",
-            "tunnels": ["cross_harbour"], "crosses_harbour": True,
+            "taxi_type": "URBAN",
+            "distance_km": "10",
+            "waiting_min": "5",
+            "tunnels": ["cross_harbour"],
+            "crosses_harbour": True,
             "discount_percent": "15",
         },
     )

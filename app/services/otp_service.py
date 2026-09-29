@@ -6,12 +6,13 @@ Security properties:
 - resend cooldown prevents OTP-flooding a phone number;
 - PDPO: expired/consumed codes are short-lived rows (purge job later).
 """
+
 from __future__ import annotations
 
 import hashlib
 import re
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +33,7 @@ def _hash_code(phone_e164: str, code: str) -> str:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class AuthResult:
@@ -53,13 +54,17 @@ class OtpService:
 
         cutoff = _now() - timedelta(seconds=_RESEND_COOLDOWN_S)
         recent = (
-            await self.session.execute(
-                select(OtpCode)
-                .where(OtpCode.phone_e164 == phone_e164, OtpCode.created_at > cutoff)
-                .order_by(OtpCode.created_at.desc())
-                .limit(1)
+            (
+                await self.session.execute(
+                    select(OtpCode)
+                    .where(OtpCode.phone_e164 == phone_e164, OtpCode.created_at > cutoff)
+                    .order_by(OtpCode.created_at.desc())
+                    .limit(1)
+                )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if recent is not None:
             raise BusinessRuleError(
                 "OTP resend cooldown active",
@@ -89,13 +94,17 @@ class OtpService:
             raise ValueError("phone_e164 must be an HK number in E.164 form (+852XXXXXXXX)")
 
         otp = (
-            await self.session.execute(
-                select(OtpCode)
-                .where(OtpCode.phone_e164 == phone_e164)
-                .order_by(OtpCode.created_at.desc())
-                .limit(1)
+            (
+                await self.session.execute(
+                    select(OtpCode)
+                    .where(OtpCode.phone_e164 == phone_e164)
+                    .order_by(OtpCode.created_at.desc())
+                    .limit(1)
+                )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if otp is None:
             raise BusinessRuleError("OTP not found — request a code first")
         if otp.attempts >= _MAX_ATTEMPTS:
@@ -116,8 +125,10 @@ class OtpService:
         otp.consumed_at = _now()
 
         user = (
-            await self.session.execute(select(User).where(User.phone_e164 == phone_e164))
-        ).scalars().first()
+            (await self.session.execute(select(User).where(User.phone_e164 == phone_e164)))
+            .scalars()
+            .first()
+        )
         created = user is None
         if created:
             user = User(

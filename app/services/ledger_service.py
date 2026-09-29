@@ -8,6 +8,7 @@ appends serialize on the row lock, so a lost balance update is impossible.
 Idempotency (P1-7): a non-null `reference` replays the original entry instead
 of double-crediting; a DB partial UNIQUE index on reference backstops races.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -43,21 +44,29 @@ class LedgerService:
         # Idempotent replay: same reference -> return the original entry.
         if reference:
             existing = (
-                await session.execute(
-                    select(LedgerEntry).where(LedgerEntry.reference == reference)
+                (
+                    await session.execute(
+                        select(LedgerEntry).where(LedgerEntry.reference == reference)
+                    )
                 )
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
             if existing is not None:
                 return existing
 
         # Row lock: serialize concurrent appends for this driver (P0-1).
         deposit = (
-            await session.execute(
-                select(DriverDeposit)
-                .where(DriverDeposit.driver_profile_id == driver_profile_id)
-                .with_for_update()
+            (
+                await session.execute(
+                    select(DriverDeposit)
+                    .where(DriverDeposit.driver_profile_id == driver_profile_id)
+                    .with_for_update()
+                )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if deposit is None:
             raise BusinessRuleError("driver deposit account not found")
 
@@ -84,9 +93,7 @@ class LedgerService:
             await session.flush()
         except IntegrityError as exc:
             # Lost a same-reference race — the unique index backstop fired.
-            raise BusinessRuleError(
-                "duplicate ledger reference", {"reference": reference}
-            ) from exc
+            raise BusinessRuleError("duplicate ledger reference", {"reference": reference}) from exc
         return entry
 
     @staticmethod
@@ -94,12 +101,16 @@ class LedgerService:
         session: AsyncSession, driver_profile: DriverProfile
     ) -> DriverDeposit:
         deposit = (
-            await session.execute(
-                select(DriverDeposit).where(
-                    DriverDeposit.driver_profile_id == driver_profile.id
+            (
+                await session.execute(
+                    select(DriverDeposit).where(
+                        DriverDeposit.driver_profile_id == driver_profile.id
+                    )
                 )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if deposit is None:
             deposit = DriverDeposit(
                 driver_profile_id=driver_profile.id,

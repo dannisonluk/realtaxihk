@@ -3,7 +3,7 @@
 All expected values hand-derived from the tariff table and the ceiling rule
 ("每200米或其部分／每分鐘或其部分" = any part counts as a full jump).
 """
-import math
+
 from decimal import Decimal as D
 
 import pytest
@@ -19,15 +19,15 @@ class TestUrbanMeter:
     @pytest.mark.parametrize(
         "km,wait,expected",
         [
-            ("1.5", "0", "29.0"),        # within flagfall
-            ("2", "0", "29.0"),          # exactly 2km still flagfall
-            ("2.05", "0", "31.1"),       # any part of 200m = 1 jump
-            ("2.4", "0", "33.2"),        # exactly 2 jumps
-            ("2.400001", "0", "35.3"),   # epsilon over = 3rd jump
-            ("4", "0", "50.0"),          # 10 jumps x 2.1
-            ("9", "0", "102.5"),         # 35 jumps = tier boundary exactly
-            ("9.2", "0", "103.9"),       # 36th jump at reduced rate 1.4
-            ("25", "0", "214.5"),        # 115 jumps: 29+35*2.1+80*1.4
+            ("1.5", "0", "29.0"),  # within flagfall
+            ("2", "0", "29.0"),  # exactly 2km still flagfall
+            ("2.05", "0", "31.1"),  # any part of 200m = 1 jump
+            ("2.4", "0", "33.2"),  # exactly 2 jumps
+            ("2.400001", "0", "35.3"),  # epsilon over = 3rd jump
+            ("4", "0", "50.0"),  # 10 jumps x 2.1
+            ("9", "0", "102.5"),  # 35 jumps = tier boundary exactly
+            ("9.2", "0", "103.9"),  # 36th jump at reduced rate 1.4
+            ("25", "0", "214.5"),  # 115 jumps: 29+35*2.1+80*1.4
         ],
     )
     def test_meter_table(self, km, wait, expected):
@@ -59,10 +59,10 @@ class TestNTMeter:
         "km,expected",
         [
             ("2", "25.5"),
-            ("5", "54.0"),     # 15 x 1.9
-            ("8", "82.5"),     # 30 x 1.9 = boundary exactly
-            ("8.2", "83.9"),   # 31st jump at 1.4
-            ("12", "110.5"),   # 50 jumps: 25.5+57+20*1.4
+            ("5", "54.0"),  # 15 x 1.9
+            ("8", "82.5"),  # 30 x 1.9 = boundary exactly
+            ("8.2", "83.9"),  # 31st jump at 1.4
+            ("12", "110.5"),  # 50 jumps: 25.5+57+20*1.4
         ],
     )
     def test_meter_table(self, km, expected):
@@ -74,9 +74,9 @@ class TestLantauMeter:
         "km,expected",
         [
             ("2", "24.0"),
-            ("5", "52.5"),     # 15 x 1.9
-            ("20", "195.0"),   # 90 x 1.9 = boundary exactly
-            ("20.2", "196.6"), # 91st jump at 1.6
+            ("5", "52.5"),  # 15 x 1.9
+            ("20", "195.0"),  # 90 x 1.9 = boundary exactly
+            ("20.2", "196.6"),  # 91st jump at 1.6
         ],
     )
     def test_meter_table(self, km, expected):
