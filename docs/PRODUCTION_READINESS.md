@@ -39,16 +39,22 @@
 
 ## 0. Verdict
 
-**MVP 核心域邏輯紮實（計費、搶單、ledger、WS 全有 TDD 背書），但有 7 個 P0 項未過關 — 其中 2 個係掃描中發現嘅真 bug。** 錢相關（ledger 並發）同 fail-safe（JWT/OTP 誤設定）必須先修先好上線。
+> **目前狀態（2026-09-29，第三輪後）：冇任何上線阻塞項。**
+> §2–§4 以下保留**原始審計內容**作記錄；逐項的修復位置見 `docs/SECURITY_AUDIT.md` §0.1，
+> 以及本檔上方的「新增檔案 / 修復嘅 regression / 上線日仍然要做」段。
+> 未做的只剩 §4 的 P2 backlog（產品演進）與 §0.1 兩項刻意延後（JWT `iss`/`aud`、部署環境覆寫 `CORS_ORIGINS`）。
 
-| 層 | 狀態 |
-|---|---|
-| Domain logic / 測試 | ✅ 106/106，模式正確（SETNX+Lua、per-tick session、append-only ledger） |
-| 資料完整性 | ⚠️ ledger 冇行級鎖 → 並發 lost update（P0-1） |
-| Fail-safe | ❌ prod 誤設定無攔截（P0-2） |
-| Observability | ❌ 零 logging config、/health 係假健康（P0-4） |
-| 部署管道 | ⚠️ 無 lockfile、無 CI、container 唔自動 migrate（P1） |
-| 合規 | ⚠️ PDPO purge job 未實現（P1） |
+**原始判定（2026-09-28，保留作對照）**：MVP 核心域邏輯紮實（計費、搶單、ledger、WS 全有 TDD 背書），但有 7 個 P0 項未過關 — 其中 2 個係掃描中發現嘅真 bug。錢相關（ledger 並發）同 fail-safe（JWT/OTP 誤設定）必須先修先好上線。
+
+| 層 | 2026-09-28 | 現在 |
+|---|---|---|
+| Domain logic / 測試 | ✅ 106/106 | ✅ 186/186 |
+| 資料完整性 | ⚠️ ledger 無行級鎖 → 並發 lost update（P0-1） | ✅ `FOR UPDATE` + 條件式 UPDATE 仲裁 |
+| Fail-safe | ❌ prod 誤設定無攔截（P0-2） | ✅ fail-closed validator，7/7 開機情境實測 |
+| Observability | ❌ 零 logging config、`/health` 假健康（P0-4） | ✅ structured JSON log + request id；`/health` 真查 DB/Redis，唔 OK 回 503 |
+| 部署管道 | ⚠️ 無 lockfile、無 CI、container 唔自動 migrate | ✅ `uv.lock` + GitHub Actions + `alembic upgrade head` 前置 |
+| 合規 | ⚠️ PDPO purge job 未實現 | ✅ `pdpo_purge` job |
+| Auth | ⚠️ 2 小時 JWT、無 refresh | ✅ refresh rotation + per-user revocation epoch |
 
 ---
 
@@ -189,10 +195,10 @@ JWT 2 小時（`config.py:25`）、無 refresh token。的士 trip 夠用，但�
 
 | # | 項目 | 證據 / 說明 |
 |---|---|---|
-| P2-1 | `GET /orders/{id}`（當事人）、order history、driver 訂單流 | `orders.py` 只有 `/nearby` 一個 GET；乘客冇途徑查自己訂單 — 移動端 MVP 前必補 |
+| P2-1 | ~~`GET /orders/{id}`（當事人）、order history、driver 訂單流~~ **✅ 已實作** | `GET /orders?role=passenger或driver&limit&before_id`（keyset 分頁，cursor 在 caller 自己 scope 內解析 — SEC-26）＋ `GET /orders/{order_id}`（只限當事人或 ADMIN）。前端可直接用，唔需要再等 |
 | P2-2 | ~~`held_hkd` / `WEEKLY_FEE_DEDUCTION` / `REFUND` 業務流~~ **✅ 已實作** | 週費結算 `SettlementService`（ISO 週冪等，ledger reference `weekly:{driver}:{period}`）＋退款流程 `RefundService`（司機申請凍結 → 管理員審批）。端點：`POST /admin/settlement/weekly/run`、`POST /drivers/me/refund/request`、`GET /admin/refunds`、`POST /admin/refunds/{id}/decision`。對帳恆等式：`balance_hkd + held_hkd == sum(ledger.amount_hkd)`。**仍未做**：部分退款（現時全額退還）、實際打款渠道（只寫 ledger，轉帳仍線下處理） |
 | P2-3 | `distance_km` 由 client 自報 | `orders.py:51` — 乘客可以亂報。374D 下估價僅供參考，風險可控，但廣播排序會被 gaming；中期接路徑規劃（`.env.example:27` 已預留 `GOOGLE_MAPS_API_KEY`，`config.py` 未接） |
-| P2-4 | Metrics（Prometheus）+ 錯誤追蹤（Sentry） | 而家連 5xx 都只會喺 uvicorn stderr |
+| P2-4 | ~~Metrics（Prometheus）~~ **✅ 已實作**；錯誤追蹤（Sentry）仍未做 | `/metrics` 已存在且 token-gated（`PROMETHEUS_ENABLED` + `METRICS_TOKEN`；未設 token 就完全唔掛載 — SEC-22）。5xx 有 structured JSON log（`core/logging.py`）。**仍未做**：Sentry／錯誤聚合 |
 | P2-5 | Load test（WS tick 吞吐、SETNX 競爭） | 無任何基準數據 |
 | P2-6 | Ledger 防篡改 hash chain / 對帳 job | `balance_after` 鏈已可核數；加 running-hash 係升級 |
 | P2-7 | 多 worker / 多 instance 壓測 | Pub/Sub 已 Redis-backed，理論 OK。~~`get_redis()` per-call 建新 client（`db.py:50-51`、`trip_service.py:34`）高頻 publish 時要 pooling~~ → 已改為 **per-loop cache**（`db.py`），production 單 loop 共用一個 client。**仍未做**：真正嘅多 worker 壓測 |
