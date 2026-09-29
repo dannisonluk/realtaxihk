@@ -30,6 +30,7 @@ What *does* work:
 ```bash
 dart format --line-length 100 lib tool        # formatting
 python tool/dart_check.py .                   # type-check (see below)
+dart --packages=.dart_tool/package_config.json tool/run_tests.dart
 dart --packages=.dart_tool/package_config.json tool/verify_contract.dart
 ```
 
@@ -156,6 +157,27 @@ ALLOW_DEV_OTP=true uvicorn app.main:app --port 8000
 
 then log in with any `+852` number and the code `123456`.
 
+## Tests
+
+```bash
+dart --packages=.dart_tool/package_config.json tool/run_tests.dart
+```
+
+77 assertions over the code with no Flutter dependency: money and date
+formatting, the wire decoders, the enums, the error envelope, websocket frames,
+pagination, the models, and the router redirect rules.
+
+Not `package:test`, because neither `flutter test` nor `dart test` can start
+here — both go through `dartdev`, which is what trips the pipe bug. `tool/run_tests.dart`
+is a self-contained harness that runs on the plain VM. When `flutter test`
+works on this machine, that file is the migration list.
+
+The routing rules live in `lib/router/routing_rules.dart` rather than inside
+`app_router.dart` specifically so they can be tested without a widget tree. The
+redirect is the piece most likely to strand a user on a blank screen — a
+signed-in driver bounced to login, an admin bounced into the passenger shell —
+so it is worth testing directly rather than by driving the UI.
+
 ## Layout
 
 ```
@@ -169,11 +191,13 @@ lib/
   features/   screens, grouped by role, plus shared widgets
 tool/
   dart_check.py        type-check via LSP (see above)
+  run_tests.dart       unit tests for the pure code
   verify_contract.dart decode every fixture with the real models
 ```
 
 ## Known gaps
 
-* No widget tests yet — the harness that would run them (`flutter test`) does
-  not work here.
+* No **widget** tests — the harness that would run them (`flutter test`) does not
+  work here, and there is no headless alternative without the Flutter tool.
+  Everything testable without a widget tree is covered by `tool/run_tests.dart`.
 * Push notifications are not wired up; the trip screen polls instead.

@@ -1,0 +1,98 @@
+/// Routing rules, as pure functions.
+///
+/// These live apart from `app_router.dart` so they can be exercised without a
+/// widget tree. `flutter test` does not run on this machine (see
+/// `mobile/README.md`), and the redirect is the piece of the app most likely to
+/// strand a user on a blank screen — a signed-in driver bounced to login, or an
+/// admin bounced into the passenger shell — so it is worth being able to test
+/// it directly. `tool/run_tests.dart` does exactly that.
+library;
+
+import '../models/auth.dart';
+import '../models/enums.dart';
+
+/// Route paths, in one place so no screen has to spell a URL by hand.
+abstract final class Routes {
+  static const String splash = '/splash';
+  static const String login = '/login';
+  static const String otp = '/login/otp';
+
+  static const String request = '/passenger/request';
+  static const String trips = '/passenger/trips';
+  static const String passengerAccount = '/passenger/account';
+  static const String trackTrip = '/passenger/trip';
+
+  static const String driverOnboarding = '/driver/onboarding';
+  static const String driverJobs = '/driver/jobs';
+  static const String driverAccount = '/driver/account';
+  static const String driverEarnings = '/driver/earnings';
+  static const String driverActiveTrip = '/driver/active';
+
+  static const String adminKyc = '/admin/kyc';
+  static const String adminRefunds = '/admin/refunds';
+  static const String adminSettlement = '/admin/settlement';
+  static const String adminAccount = '/admin/account';
+}
+
+/// Where an authenticated account belongs.
+///
+/// **Only ADMIN is a real account role.** `app/models/__init__.py` defines
+/// `UserRole.DRIVER`, but nothing in the backend ever assigns it — signup always
+/// creates a PASSENGER (`otp_service.py`), `POST /drivers/register` only creates
+/// a `DriverProfile`, and `require_role()` in `app/api/auth.py` is never called.
+/// Driver capability is gated entirely on the *profile*: `grab` and
+/// `POST /driver/location` require `DriverStatus.ACTIVE`, and the rest of
+/// `/drivers/me/*` requires the profile to exist.
+///
+/// So the routing model is: admin gets the console, everyone else gets the
+/// passenger app, and driver mode is entered from the account screen once a
+/// profile exists. An account can legitimately be both.
+String homeRouteFor(AppUser user) => user.role == UserRole.admin ? Routes.adminKyc : Routes.request;
+
+/// The router's redirect decision.
+///
+/// Returns the location to go to, or null to stay put.
+///
+/// * [restoring] — a stored session is still being re-validated. Hold on the
+///   splash rather than flashing the login screen at a signed-in user.
+/// * [hasError] — the restore failed (typically offline). The splash owns the
+///   retry; bouncing to login here would look like a sign-out and would throw
+///   away tokens that are still perfectly good.
+String? resolveRedirect({
+  required String location,
+  required bool restoring,
+  required bool hasError,
+  required AppUser? user,
+}) {
+  if (restoring) {
+    return location == Routes.splash ? null : Routes.splash;
+  }
+
+  if (user == null) {
+    if (hasError) {
+      return location == Routes.splash ? null : Routes.splash;
+    }
+    return location.startsWith(Routes.login) ? null : Routes.login;
+  }
+
+  final bool isAdmin = user.role == UserRole.admin;
+  final String home = homeRouteFor(user);
+
+  // Sitting on a pre-auth route while signed in.
+  if (location == Routes.splash || location.startsWith(Routes.login)) {
+    return home;
+  }
+
+  // An admin account has no passenger or driver surface, and vice versa: the
+  // driver endpoints would 403 on a missing profile and the admin ones on a
+  // missing ADMIN row, so neither branch is reachable for the wrong account.
+  final bool inAdminArea = location.startsWith('/admin');
+  if (isAdmin && !inAdminArea) {
+    return home;
+  }
+  if (!isAdmin && inAdminArea) {
+    return home;
+  }
+
+  return null;
+}

@@ -20,31 +20,13 @@ import '../features/passenger/trip_tracking_screen.dart';
 import '../features/shared/account_screen.dart';
 import '../features/splash_screen.dart';
 import '../models/auth.dart';
-import '../models/enums.dart';
 import '../state/providers.dart';
+import 'routing_rules.dart';
 
-/// Route paths, in one place so no screen has to spell a URL by hand.
-abstract final class Routes {
-  static const String splash = '/splash';
-  static const String login = '/login';
-  static const String otp = '/login/otp';
-
-  static const String request = '/passenger/request';
-  static const String trips = '/passenger/trips';
-  static const String passengerAccount = '/passenger/account';
-  static const String trackTrip = '/passenger/trip';
-
-  static const String driverOnboarding = '/driver/onboarding';
-  static const String driverJobs = '/driver/jobs';
-  static const String driverAccount = '/driver/account';
-  static const String driverEarnings = '/driver/earnings';
-  static const String driverActiveTrip = '/driver/active';
-
-  static const String adminKyc = '/admin/kyc';
-  static const String adminRefunds = '/admin/refunds';
-  static const String adminSettlement = '/admin/settlement';
-  static const String adminAccount = '/admin/account';
-}
+// `Routes` and the redirect rules live in `routing_rules.dart` so they can be
+// tested without a widget tree. Re-exported here because every screen already
+// imports this file for `Routes`.
+export 'routing_rules.dart' show Routes;
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
@@ -218,61 +200,17 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
   );
 });
 
-/// Where an authenticated account belongs.
+/// The redirect decision, adapted from Riverpod state to [resolveRedirect].
 ///
-/// **Only ADMIN is a real account role.** `app/models/__init__.py` defines
-/// `UserRole.DRIVER`, but nothing in the backend ever assigns it — signup always
-/// creates a PASSENGER (`otp_service.py`), `POST /drivers/register` only creates
-/// a `DriverProfile`, and `require_role()` in `app/api/auth.py` is never called.
-/// Driver capability is gated entirely on the *profile*: `grab` and
-/// `POST /driver/location` require `DriverStatus.ACTIVE`, and the rest of
-/// `/drivers/me/*` requires the profile to exist.
-///
-/// So the routing model is: admin gets the console, everyone else gets the
-/// passenger app, and driver mode is entered from the account screen once a
-/// profile exists. An account can legitimately be both.
-String _homeFor(AppUser user) => user.role == UserRole.admin ? Routes.adminKyc : Routes.request;
-
+/// The rules themselves live in `routing_rules.dart`; this only reads the auth
+/// provider and unpacks `AsyncValue` into the three flags the rule needs.
 String? _redirect(Ref ref, GoRouterState state) {
   final AsyncValue<AppUser?> auth = ref.read(authControllerProvider);
-  final String location = state.uri.path;
-
-  // Cold start: the stored token is still being re-validated. Hold on the splash
-  // rather than flashing the login screen at a signed-in user.
-  final bool restoring = auth.isLoading && !auth.hasValue;
-  if (restoring) {
-    return location == Routes.splash ? null : Routes.splash;
-  }
-
-  final AppUser? user = auth.value;
-
-  if (user == null) {
-    // A restore failure (offline) leaves `hasError`, and the splash screen owns
-    // the retry — do not bounce to login, which would look like a sign-out.
-    if (auth.hasError) {
-      return location == Routes.splash ? null : Routes.splash;
-    }
-    return location.startsWith(Routes.login) ? null : Routes.login;
-  }
-
-  final bool isAdmin = user.role == UserRole.admin;
-  final String home = _homeFor(user);
-
-  // Sitting on a pre-auth route while signed in.
-  if (location == Routes.splash || location.startsWith(Routes.login)) {
-    return home;
-  }
-
-  // An admin account has no passenger or driver surface, and vice versa: the
-  // driver endpoints would 403 on a missing profile and the admin ones on a
-  // missing ADMIN row, so neither branch is reachable for the wrong account.
-  final bool inAdminArea = location.startsWith('/admin');
-  if (isAdmin && !inAdminArea) {
-    return home;
-  }
-  if (!isAdmin && inAdminArea) {
-    return home;
-  }
-
-  return null;
+  return resolveRedirect(
+    location: state.uri.path,
+    // Cold start: the stored token is still being re-validated.
+    restoring: auth.isLoading && !auth.hasValue,
+    hasError: auth.hasError,
+    user: auth.value,
+  );
 }
