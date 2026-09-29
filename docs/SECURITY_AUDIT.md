@@ -544,6 +544,6 @@ redis maxclients = 10000
 .venv/Scripts/python.exe scripts/security_probe.py d
 ```
 
-腳本會自行以受控環境變數啟動 uvicorn（並在「無 `.env`」情境下從 `.tmp/` 啟動以模擬 Docker image），逐項輸出 `VULNERABLE` / `not reproduced`，並在最後列出已證實清單。所有測試均為非破壞性（只建立一次性測試用戶與訂單），Redis 的注入測試只發佈到不存在的 order channel 並即時清理。
+腳本會自行以受控環境變數啟動 uvicorn（並在「無 `.env`」情境下從一個**空 tempdir** 啟動以模擬 Docker image），逐項輸出 `VULNERABLE` / `not reproduced`，並在最後列出已證實清單。所有測試均為非破壞性（只建立一次性測試用戶與訂單），Redis 的注入測試只發佈到不存在的 order channel 並即時清理。
 
 **注意**：`scripts/security_probe.py` 會建立測試用戶與訂單。若要對生產環境重跑，請先改為只讀檢查（移除 B、C、D 的寫入部分）。
