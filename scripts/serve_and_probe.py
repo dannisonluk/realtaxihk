@@ -8,7 +8,8 @@ from pathlib import Path
 import httpx
 import uvicorn
 
-tmp = Path(__file__).parent.parent / ".tmp"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+tmp = PROJECT_ROOT / ".tmp"
 tmp.mkdir(exist_ok=True)
 # handle stays open on purpose: the child process inherits it as stdout
 log = open(tmp / "uvicorn.log", "w", encoding="utf-8")  # noqa: SIM115
@@ -19,7 +20,7 @@ proc = subprocess.Popen(
     [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
     stdout=log,
     stderr=subprocess.STDOUT,
-    cwd=str(tmp.parent.parent),
+    cwd=str(PROJECT_ROOT),
 )
 for _ in range(40):
     try:

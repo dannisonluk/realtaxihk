@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -101,23 +102,31 @@ async def my_driver_profile(
 
 @router.get("/me/ledger")
 async def my_ledger(
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    after_id: Annotated[int | None, Query(ge=0)] = None,
     user: Principal = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    """P1-8: keyset-paginated statement, ascending by id.
+
+    A driver's ledger grows without bound — returning every row (the previous
+    `.all()`) would eventually blow the response size. `after_id` is the `id` of
+    the last row the client already holds; `next_cursor` stays non-null only
+    while a full page came back.
+    """
     profile = await _get_profile(session, user.id)
     if profile is None:
         raise HTTPException(status_code=404, detail="no driver profile")
-    rows = (
-        (
-            await session.execute(
-                select(LedgerEntry)
-                .where(LedgerEntry.driver_profile_id == profile.id)
-                .order_by(LedgerEntry.id.asc())
-            )
-        )
-        .scalars()
-        .all()
+    q = (
+        select(LedgerEntry)
+        .where(LedgerEntry.driver_profile_id == profile.id)
+        .order_by(LedgerEntry.id.asc())
+        .limit(limit)
     )
+    if after_id is not None:
+        q = q.where(LedgerEntry.id > after_id)
+    rows = (await session.execute(q)).scalars().all()
+    next_cursor = rows[-1].id if len(rows) == limit else None
     return {
         "items": [
             {
@@ -130,5 +139,6 @@ async def my_ledger(
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             }
             for r in rows
-        ]
+        ],
+        "next_cursor": next_cursor,
     }

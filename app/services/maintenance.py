@@ -10,6 +10,7 @@ PDPO purges: OTP rows past retention; dead refresh tokens past retention.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -27,6 +28,16 @@ class MaintenanceService:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession], redis):
         self.session_factory = session_factory
         self.redis = redis
+
+    async def aclose(self) -> None:
+        """Release the pooled Redis client on shutdown.
+
+        Mirrors `RateLimiter.aclose` — without it the client is torn down when
+        the event loop dies, logging an asyncio ERROR on an otherwise clean
+        shutdown.
+        """
+        with contextlib.suppress(Exception):
+            await self.redis.aclose()
 
     async def sweep_ghost_orders(self, max_broadcast_minutes: int) -> dict:
         """Reconcile geo:orders:active with DB truth. Returns counts."""

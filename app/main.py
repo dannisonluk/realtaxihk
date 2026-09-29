@@ -13,7 +13,7 @@ import asyncio
 import contextlib
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -55,9 +55,70 @@ def create_app() -> FastAPI:
         except ImportError:
             logger.warning("SENTRY_DSN set but sentry-sdk not installed — skipped")
 
+    @contextlib.asynccontextmanager
+    async def lifespan(app: FastAPI):
+        """Startup + shutdown in one place (the modern replacement for the
+        deprecated `@app.on_event`, which this module's docstring already
+        promised).
+
+        Background jobs (P0-5 geo sweeper, P1-6 PDPO purge) are started here and
+        cancelled on shutdown, and the Redis client / DB engine are released so
+        uvicorn's SIGTERM does not leave connections to be reaped by process
+        death (P0-6).
+        """
+        tasks: list[asyncio.Task] = []
+        if settings.jobs_enabled:
+            tasks.append(
+                asyncio.create_task(
+                    _job_loop(
+                        settings.geo_sweep_interval_s,
+                        lambda: app.state.maintenance.sweep_ghost_orders(
+                            settings.max_broadcast_minutes
+                        ),
+                        "geo_sweep",
+                    )
+                )
+            )
+            tasks.append(
+                asyncio.create_task(
+                    _job_loop(
+                        settings.purge_interval_s,
+                        lambda: app.state.maintenance.purge_expired_rows(
+                            settings.retention_days_otp,
+                            settings.retention_days_refresh,
+                        ),
+                        "pdpo_purge",
+                    )
+                )
+            )
+        app.state.jobs = tasks
+        try:
+            yield
+        finally:
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            # Graceful shutdown (P0-6): close Redis, dispose the DB engine.
+            with contextlib.suppress(Exception):
+                from app.core.db import close_redis
+
+                await close_redis()
+            # Close the long-lived Redis clients (rate limiter + maintenance).
+            # Otherwise the loop dying logs an asyncio connection_lost() ERROR.
+            for holder in ("rate_limiter", "maintenance"):
+                obj = getattr(app.state, holder, None)
+                if obj is not None:
+                    with contextlib.suppress(Exception):
+                        await obj.aclose()
+            with contextlib.suppress(Exception):
+                from app.core.db import dispose_engine
+
+                await dispose_engine()
+
     app = FastAPI(
         title="realtaxihk.com API",
         version="0.2.0",
+        lifespan=lifespan,
         description=(
             "Hong Kong taxi matching platform — information intermediary "
             "(Cap. 374D compliant fare estimates)."
@@ -92,52 +153,8 @@ def create_app() -> FastAPI:
     app.state.rate_limiter = RateLimiter(get_redis(), namespace="realtaxi:")
     app.state.maintenance = MaintenanceService(get_session_factory(), get_redis())
 
-    @app.on_event("startup")
-    async def _startup() -> None:
-        tasks: list[asyncio.Task] = []
-        if settings.jobs_enabled:
-            tasks.append(
-                asyncio.create_task(
-                    _job_loop(
-                        settings.geo_sweep_interval_s,
-                        lambda: app.state.maintenance.sweep_ghost_orders(
-                            settings.max_broadcast_minutes
-                        ),
-                        "geo_sweep",
-                    )
-                )
-            )
-            tasks.append(
-                asyncio.create_task(
-                    _job_loop(
-                        settings.purge_interval_s,
-                        lambda: app.state.maintenance.purge_expired_rows(
-                            settings.retention_days_otp,
-                            settings.retention_days_refresh,
-                        ),
-                        "pdpo_purge",
-                    )
-                )
-            )
-        app.state.jobs = tasks
-
-    @app.on_event("shutdown")
-    async def _shutdown() -> None:
-        for t in getattr(app.state, "jobs", []):
-            t.cancel()
-        await asyncio.gather(*getattr(app.state, "jobs", []), return_exceptions=True)
-        # Graceful shutdown (P0-6): close Redis, dispose the DB engine.
-        with contextlib.suppress(Exception):
-            from app.core.db import close_redis
-
-            await close_redis()
-        with contextlib.suppress(Exception):
-            from app.core.db import dispose_engine
-
-            await dispose_engine()
-
     @app.get("/health", tags=["ops"])
-    async def health() -> dict:
+    async def health(response: Response) -> dict:
         checks = {"db": False, "redis": False}
         try:
             from app.core.db import get_session_factory
@@ -154,6 +171,11 @@ def create_app() -> FastAPI:
         except Exception:
             logger.exception("health: redis check failed")
         ok = all(checks.values())
+        if not ok:
+            # P0-4: the STATUS CODE is what a load balancer or readiness probe
+            # acts on. Answering 200 with a "degraded" body keeps traffic
+            # flowing to a node whose DB/Redis is gone.
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return {
             "status": "ok" if ok else "degraded",
             "env": settings.app_env,

@@ -3,6 +3,13 @@
 P0-4: structured JSON logs (grepable, shippable); P1-1: the WS ?token= query
 never reaches any log line — scrubbed defensively even if uvicorn's own
 access logger is active.
+
+Scrubbing happens in two places on purpose:
+- `JsonFormatter.format` scrubs the FINAL rendered message, which is the only
+  layer that also catches `logger.info("...?token=%s", jwt)` — the token there
+  arrives as an argument with no `token=` prefix of its own.
+- `StripTokenQueryFilter` scrubs the raw record before rendering, so a handler
+  that is not ours still never sees the token.
 """
 
 from __future__ import annotations
@@ -17,7 +24,22 @@ import uuid
 
 request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 
-_TOKEN_RE = re.compile(r"([?&])token=[^&\s\"']+")
+# A JWT is base64url, so `%` can safely be excluded from the value class. That
+# keeps `%s` / `%(name)s` placeholders in a format string intact — matching
+# across one would delete the placeholder and make getMessage() raise
+# "not all arguments converted during string formatting".
+_TOKEN_RE = re.compile(r"([?&])token=[^&\s\"'%]+")
+
+
+def scrub_tokens(value):
+    """Recursively redact ?token=… inside str / tuple / dict log payloads."""
+    if isinstance(value, str):
+        return _TOKEN_RE.sub(r"\1token=REDACTED", value)
+    if isinstance(value, tuple):
+        return tuple(scrub_tokens(v) for v in value)
+    if isinstance(value, dict):
+        return {k: scrub_tokens(v) for k, v in value.items()}
+    return value
 
 
 class JsonFormatter(logging.Formatter):
@@ -27,30 +49,28 @@ class JsonFormatter(logging.Formatter):
             "+ms": int(record.msecs),
             "level": record.levelname,
             "logger": record.name,
-            "msg": record.getMessage(),
+            "msg": scrub_tokens(record.getMessage()),
             "request_id": request_id_var.get(),
         }
         if record.exc_info and record.exc_info[0] is not None:
-            payload["exc"] = self.formatException(record.exc_info)
+            payload["exc"] = scrub_tokens(self.formatException(record.exc_info))
         return json.dumps(payload, ensure_ascii=False)
 
 
 class StripTokenQueryFilter(logging.Filter):
-    """Rewrite ?token=<jwt> out of any string log args (defence in depth)."""
+    """Redact ?token=<jwt> before the record is rendered (defence in depth).
+
+    `args` is scrubbed whenever present; `msg` is scrubbed only when the record
+    carries no args — i.e. when the message already *is* the final text.
+    Rewriting a `%s` format string would strip its placeholder and break
+    `getMessage()`, so that case is left to the formatter.
+    """
 
     def filter(self, record: logging.LogRecord) -> bool:
         if record.args:
-            scrubbed = (
-                tuple(
-                    _TOKEN_RE.sub(r"\1token=REDACTED", a) if isinstance(a, str) else a
-                    for a in record.args
-                )
-                if isinstance(record.args, tuple)
-                else record.args
-            )
-            record.args = scrubbed
-            if isinstance(record.msg, str):
-                record.msg = _TOKEN_RE.sub(r"\1token=REDACTED", record.msg)
+            record.args = scrub_tokens(record.args)
+        elif isinstance(record.msg, str):
+            record.msg = scrub_tokens(record.msg)
         return True
 
 

@@ -88,7 +88,22 @@ async def _drop_test_db(name: str) -> None:
 
 
 def pytest_configure(config):
-    asyncio.run(_ensure_template())
+    """Build the template DB once per session.
+
+    Without this guard, a stopped Docker/Postgres surfaces as a 30-line
+    `INTERNALERROR` traceback ending in a raw socket error, which reads like a
+    broken test suite rather than missing infrastructure. Fail with the actual
+    remedy instead.
+    """
+    try:
+        asyncio.run(_ensure_template())
+    except (OSError, asyncpg.PostgresError) as exc:
+        s = get_settings()
+        raise pytest.UsageError(
+            f"cannot reach Postgres at {s.postgres_host}:{s.postgres_port} — "
+            "start the stack first: `docker compose up -d db redis`. "
+            f"Original error: {type(exc).__name__}: {exc}"
+        ) from exc
 
 
 def _clear_rate_limits() -> None:

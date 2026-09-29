@@ -46,11 +46,19 @@ class RefreshService:
         return raw
 
     async def rotate(self, raw_token: str) -> tuple[object, str] | None:
-        """Single-use rotation. Returns (user_id, new_raw) or None if invalid."""
+        """Single-use rotation. Returns (user_id, new_raw) or None if invalid.
+
+        `with_for_update()` is load-bearing: two concurrent requests presenting
+        the same refresh token would otherwise both read `revoked_at IS NULL`,
+        both pass the check, and both mint a new pair — defeating single-use.
+        The row lock serializes them so the loser sees `revoked_at` set.
+        """
         row = (
             (
                 await self.session.execute(
-                    select(RefreshToken).where(RefreshToken.token_hash == _hash(raw_token))
+                    select(RefreshToken)
+                    .where(RefreshToken.token_hash == _hash(raw_token))
+                    .with_for_update()
                 )
             )
             .scalars()
@@ -67,7 +75,9 @@ class RefreshService:
         row = (
             (
                 await self.session.execute(
-                    select(RefreshToken).where(RefreshToken.token_hash == _hash(raw_token))
+                    select(RefreshToken)
+                    .where(RefreshToken.token_hash == _hash(raw_token))
+                    .with_for_update()
                 )
             )
             .scalars()

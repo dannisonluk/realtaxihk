@@ -1,0 +1,33 @@
+# Normalize line endings so Windows devs and Linux CI agree.
+# Without this, core.autocrlf=true (the Git for Windows default) makes the
+# working tree LF while git wants CRLF, producing spurious "LF will be replaced
+# by CRLF" warnings and noisy diffs on every touch.
+* text=auto eol=lf
+
+# Python
+*.py text
+*.pyi text
+
+# Config / docs
+*.toml text
+*.ini text
+*.cfg text
+*.md text
+*.yml text
+*.yaml text
+*.json text
+
+# Binary — never normalize
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.gz binary
+
+# Generated migration files are exempt from style gates but still text
+alembic/versions/*.py text

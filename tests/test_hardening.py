@@ -201,6 +201,45 @@ class TestP0Health:
         assert body["status"] == "ok"
         assert body["checks"] == {"db": True, "redis": True}
 
+    def test_health_returns_503_when_db_down(self, client, monkeypatch):
+        """P0-4: a failing dependency must answer 503, not 200.
+
+        The docs promise "503 on failure" and a load balancer / readiness probe
+        keys off the STATUS CODE, not the body — a 200 here keeps routing
+        traffic to a node whose database is gone.
+        """
+        import app.core.db as db
+
+        def _boom():
+            raise RuntimeError("db unreachable")
+
+        monkeypatch.setattr(db, "get_session_factory", _boom)
+        r = client.get("/health")
+        assert r.status_code == 503
+        assert r.json()["checks"]["db"] is False
+        assert r.json()["status"] == "degraded"
+
+
+class TestLifespanBackgroundJobs:
+    def test_jobs_start_on_boot_and_stop_on_shutdown(self):
+        """The lifespan must actually start the geo-sweep and PDPO-purge loops.
+
+        Nothing asserted this before, so a refactor that dropped the startup
+        hook would silently disable ghost-order sweeping and data purges while
+        every other test stayed green.
+        """
+        from fastapi.testclient import TestClient
+
+        from app.main import create_app
+
+        app = create_app()
+        with TestClient(app):
+            jobs = app.state.jobs
+            assert len(jobs) == 2
+            assert all(not j.done() for j in jobs)
+        # Shutdown must cancel them — leaked tasks keep the loop alive.
+        assert all(j.done() for j in jobs)
+
 
 class TestP1AuthRotation:
     def test_refresh_rotates_and_old_token_dies(self, client):
