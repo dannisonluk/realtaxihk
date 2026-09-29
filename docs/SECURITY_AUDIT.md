@@ -3,7 +3,7 @@
 **審計日期**：2026-09-29
 **審計範圍**：`app/`（FastAPI 後端）、`docker-compose.yml`、`Dockerfile`、依賴、Redis/Postgres 暴露面
 **方法**：靜態審閱 + **對真實運行的 uvicorn + Postgres + Redis 實測攻擊**（非只讀代碼）
-**驗證腳本**：`.tmp/security_probe.py`（找出漏洞，可重跑）、`.tmp/security_verify.py`（修復後重跑攻擊）、`scripts/prod_boot_drill.py`、`tests/test_security_hardening.py`
+**驗證腳本**：`scripts/security_probe.py`（找出漏洞，可重跑）、`scripts/security_verify.py`（修復後重跑攻擊）、`scripts/prod_boot_drill.py`、`tests/test_security_hardening.py`
 **審計輪次**：第一輪只讀審計（未改任何應用代碼）；第二輪修復 30 項，見 §0.1。
 
 ---
@@ -44,7 +44,7 @@
 ## 0.1 修復狀態（2026-09-29 第二輪）
 
 30 項全部修復。驗證方式：`scripts/prod_boot_drill.py`（7 個真實開機情境）、
-`tests/test_security_hardening.py`（25 個回歸測試）、`.tmp/security_verify.py`
+`tests/test_security_hardening.py`（27 個回歸測試）、`scripts/security_verify.py`
 （對真實運行的 server 重跑攻擊）。**下表每一項都有對應測試或實測。**
 
 | ID | 狀態 | 修復位置 |
@@ -106,7 +106,8 @@
 `localhost` 同時解析出 `::1` 與 `127.0.0.1`，而 Docker 發佈的埠**只有 IPv4**。
 連 `::1:15433` 時 SYN 被**靜默丟棄**（不是 refuse），要等 ~2 秒逾時才回退 IPv4。
 
-實測（`.tmp/host_probe.py`）：
+實測（用 `socket.getaddrinfo` / 原生 `connect` 逐個 family 計時，再對 asyncpg 與
+redis-py 量連接建立成本）：
 
 | 目標 | 結果 |
 |---|---|
@@ -185,7 +186,7 @@ SSRF、以及 Docker 下 `FORWARDED_ALLOW_IPS` 被設成 `*` 的常見誤配）�
 **`_client_ip()` 收到的是已經被污染的 `request.client.host`**，護欄根本沒機會執行。
 `TRUSTED_PROXY_COUNT=0` 在這一刻是裝飾品。
 
-### 實測（`.tmp/xff_experiment.py`）
+### 實測（啟動一次 server、送一個從未用過的 XFF 值，再直查 Redis 的 bucket 名）
 
 | 啟動方式 | 送 `X-Forwarded-For: 198.51.100.78` 之後 |
 |---|---|
@@ -538,11 +539,11 @@ redis maxclients = 10000
 
 ```bash
 # 全部（A 認證 / B 限流 / C DoS / D 授權）
-.venv/Scripts/python.exe .tmp/security_probe.py all
+.venv/Scripts/python.exe scripts/security_probe.py all
 # 只跑單一組
-.venv/Scripts/python.exe .tmp/security_probe.py d
+.venv/Scripts/python.exe scripts/security_probe.py d
 ```
 
 腳本會自行以受控環境變數啟動 uvicorn（並在「無 `.env`」情境下從 `.tmp/` 啟動以模擬 Docker image），逐項輸出 `VULNERABLE` / `not reproduced`，並在最後列出已證實清單。所有測試均為非破壞性（只建立一次性測試用戶與訂單），Redis 的注入測試只發佈到不存在的 order channel 並即時清理。
 
-**注意**：`.tmp/security_probe.py` 會建立測試用戶與訂單。若要對生產環境重跑，請先改為只讀檢查（移除 B、C、D 的寫入部分）。
+**注意**：`scripts/security_probe.py` 會建立測試用戶與訂單。若要對生產環境重跑，請先改為只讀檢查（移除 B、C、D 的寫入部分）。

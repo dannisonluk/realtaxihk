@@ -157,7 +157,13 @@ unconfigured), Sentry/Prometheus (optional).
 .venv/Scripts/python scripts/live_smoke.py       # 9-check end-to-end (needs server up)
 .venv/Scripts/python scripts/stop_server.py      # stop detached uvicorn
 .venv/Scripts/python scripts/prod_boot_drill.py  # verify prod fail-fast guard
+.venv/Scripts/python scripts/security_verify.py  # re-run every audit finding against a live server
+.venv/Scripts/python scripts/security_probe.py all   # the original attack probe (boots its own server)
 ```
+
+Both security scripts boot their own uvicorn on :8000, so stop anything already
+listening there first. They only create throwaway users/orders. See
+`docs/SECURITY_AUDIT.md` for what each check corresponds to.
 
 ## Roadmap (next)
 
