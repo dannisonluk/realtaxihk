@@ -78,6 +78,9 @@ ignore = [
 "tests/*" = ["S101", "S105", "S106", "S107"]   # pytest asserts + literal test secrets are intentional
 "scripts/*" = ["S310", "S603", "S607"]    # localhost dev tooling: urlopen/subprocess vs own server
 "scripts/live_smoke.py" = ["S101"]        # asserts are the smoke checks themselves
+# Same rationale: this harness's `assert`s ARE the fixture contract checks — each
+# one pins a response shape the mobile client decodes.
+"scripts/gen_mobile_fixtures.py" = ["S101"]
 # The adversarial probes (docs/SECURITY_AUDIT.md). `assert` IS the check here;
 # the hardcoded "secrets" are the known-bad values the probe must prove are
 # rejected, so they have to be literals; and unpacking a whole response only to

@@ -22,6 +22,11 @@ every fixture with the real Dart models. Re-run it whenever the API changes:
 It is a development tool: it opts into `ALLOW_DEV_OTP=true` to log in without
 WhatsApp credentials, exactly as `scripts/live_smoke.py` does. The dev rail is
 refused outright when APP_ENV=prod, and the code is never echoed in a response.
+
+It resets the five fixture phones and the fixture fleet before it starts, and
+leaves `ADMIN_PHONE` as an ADMIN when it finishes — so `admin-web/` can still be
+signed into afterwards. Note it starts its own server on port 8123, so it does
+not need (or disturb) a server already running on 8000.
 """
 
 from __future__ import annotations
@@ -52,6 +57,11 @@ REFUND_PHONE = "+85290000004"
 # Used only to submit a wrong code, so the attempt counter is not spent on a
 # phone the rest of the run depends on.
 OTP_PHONE = "+85290000005"
+
+# The fleet this run creates. `fleets.name` and `fleets.license_no` are UNIQUE,
+# so unlike the fixture phones this row cannot simply be left behind — a second
+# run would 409 on create. `reset_dev_state` deletes it by licence number.
+FLEET_LICENSE = "FLEET-STAR-001"
 
 sys.path.insert(0, str(ROOT))
 
@@ -104,7 +114,12 @@ def reset_dev_state() -> None:
     and `refund_requests` are `CASCADE`, so deleting the `users` row is enough
     for those.
 
-    Only the four throwaway fixture phones are touched.
+    The fixture fleet is deleted too. It is not tied to a phone number, and
+    `fleets.name` / `fleets.license_no` are UNIQUE, so leaving it behind makes
+    the next run 409 on create. `fleet_memberships` and `fleet_settlement_runs`
+    both cascade from `fleets`, so removing the fleet is enough.
+
+    Only the four throwaway fixture phones, and that one fleet, are touched.
     """
     import redis.asyncio as aioredis
     from sqlalchemy import delete, or_, select
@@ -113,6 +128,7 @@ def reset_dev_state() -> None:
     from app.core.db import get_session_factory
     from app.models import (
         DriverProfile,
+        Fleet,
         LedgerEntry,
         Order,
         OtpCode,
@@ -131,14 +147,10 @@ def reset_dev_state() -> None:
 
         async with get_session_factory()() as session:
             user_ids = select(User.id).where(User.phone_e164.in_(TEST_PHONES))
-            profile_ids = select(DriverProfile.id).where(
-                DriverProfile.user_id.in_(user_ids)
-            )
+            profile_ids = select(DriverProfile.id).where(DriverProfile.user_id.in_(user_ids))
             # RESTRICT -> must be removed before the rows they point at.
             await session.execute(
-                delete(LedgerEntry).where(
-                    LedgerEntry.driver_profile_id.in_(profile_ids)
-                )
+                delete(LedgerEntry).where(LedgerEntry.driver_profile_id.in_(profile_ids))
             )
             await session.execute(
                 delete(Order).where(
@@ -148,16 +160,14 @@ def reset_dev_state() -> None:
                     )
                 )
             )
-            await session.execute(
-                delete(RefreshToken).where(RefreshToken.user_id.in_(user_ids))
-            )
-            await session.execute(
-                delete(OtpCode).where(OtpCode.phone_e164.in_(TEST_PHONES))
-            )
+            await session.execute(delete(RefreshToken).where(RefreshToken.user_id.in_(user_ids)))
+            await session.execute(delete(OtpCode).where(OtpCode.phone_e164.in_(TEST_PHONES)))
             # CASCADE handles driver_profiles -> driver_deposits, refund_requests.
-            await session.execute(
-                delete(User).where(User.phone_e164.in_(TEST_PHONES))
-            )
+            await session.execute(delete(User).where(User.phone_e164.in_(TEST_PHONES)))
+            # CASCADE handles fleets -> fleet_memberships, fleet_settlement_runs.
+            # After the users, so a membership row is already gone with its
+            # driver profile rather than being cascaded twice.
+            await session.execute(delete(Fleet).where(Fleet.license_no == FLEET_LICENSE))
             await session.commit()
 
     asyncio.run(run())
@@ -221,7 +231,7 @@ def record(name: str, source: str, payload: Any) -> None:
     SOURCES[name] = source
 
 
-def main() -> int:  # noqa: C901 - a linear script, not a library
+def main() -> int:  # a linear script, not a library
     OUT.mkdir(parents=True, exist_ok=True)
 
     sock = socket.socket()
@@ -256,7 +266,7 @@ def main() -> int:  # noqa: C901 - a linear script, not a library
             try:
                 with urllib.request.urlopen(f"{BASE}/health", timeout=2):
                     break
-            except Exception:  # noqa: BLE001 - readiness probe
+            except Exception:  # a readiness probe must survive anything
                 time.sleep(0.5)
         else:
             raise SystemExit("server did not become ready")
@@ -288,11 +298,18 @@ def main() -> int:  # noqa: C901 - a linear script, not a library
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
-        admin_cli("--phone", ADMIN_PHONE, "--revoke")
+        # Leave an ADMIN behind, deliberately. This used to `--revoke`, on the
+        # theory that the grant should be undone — but `reset_dev_state()` deleted
+        # the whole user row at the start of the run, so there is no earlier state
+        # to restore. Revoking therefore left the development database with no
+        # ADMIN at all, and the admin console's next sign-in silently created a
+        # fresh PASSENGER and refused it with "此帳戶沒有管理權限" — a dead end
+        # that names the symptom and not the cause.
+        admin_cli("--phone", ADMIN_PHONE)
     return 0
 
 
-def _capture(record: Any) -> None:  # noqa: C901 - linear capture sequence
+def _capture(record: Any) -> None:  # a linear capture sequence
     # ---- auth ----------------------------------------------------------
     passenger_token, verify_body, otp_request_body = login(PASSENGER_PHONE)
     record("auth_otp_request", "POST /api/v1/auth/otp/request", otp_request_body)
@@ -445,6 +462,101 @@ def _capture(record: Any) -> None:  # noqa: C901 - linear capture sequence
     assert status == 200, settlement
     record("admin_settlement", "POST /api/v1/admin/settlement/weekly/run", settlement)
 
+    # ---- fleets ---------------------------------------------------------
+    # A fleet is created by an admin: HK fleets are licensed operators, so there
+    # is no driver-facing "create my fleet" route to capture.
+    status, fleet = req(
+        "POST",
+        "/api/v1/admin/fleets",
+        {
+            "name": "星群的士",
+            "license_no": "FLEET-STAR-001",
+            "weekly_fee_discount_percent": "25",
+            "contact_name": "陳先生",
+            "contact_phone": "+85222334455",
+        },
+        token=admin_token,
+    )
+    assert status == 201, fleet
+    record("fleet_created", "POST /api/v1/admin/fleets (201)", fleet)
+    fleet_id = fleet["id"]
+
+    status, fleets = req("GET", "/api/v1/admin/fleets", token=admin_token)
+    assert status == 200, fleets
+    record("admin_fleets", "GET /api/v1/admin/fleets", fleets)
+
+    status, added = req(
+        "POST",
+        f"/api/v1/admin/fleets/{fleet_id}/members",
+        {"driver_profile_id": driver_profile_id, "member_role": "MEMBER"},
+        token=admin_token,
+    )
+    assert status == 201, added
+    record("admin_fleet_member_added", "POST /api/v1/admin/fleets/{id}/members (201)", added)
+
+    status, admin_roster = req("GET", f"/api/v1/admin/fleets/{fleet_id}/members", token=admin_token)
+    assert status == 200, admin_roster
+    record("admin_fleet_members", "GET /api/v1/admin/fleets/{id}/members", admin_roster)
+
+    # The member's own view. Every `/fleets/*` route checks membership per
+    # request and answers 404 — not 403 — for someone else's fleet, so this is
+    # the only driver-facing fleet read that succeeds.
+    status, my_fleet = req("GET", "/api/v1/fleets/me", token=driver_token)
+    assert status == 200, my_fleet
+    assert my_fleet["fleet"] is not None, my_fleet
+    record("fleet_me", "GET /api/v1/fleets/me (member)", my_fleet)
+
+    status, fleet_detail = req("GET", f"/api/v1/fleets/{fleet_id}", token=driver_token)
+    assert status == 200, fleet_detail
+    record("fleet_detail", "GET /api/v1/fleets/{id} (member)", fleet_detail)
+
+    status, fleet_roster = req("GET", f"/api/v1/fleets/{fleet_id}/members", token=driver_token)
+    assert status == 200, fleet_roster
+    record("fleet_members", "GET /api/v1/fleets/{id}/members (member)", fleet_roster)
+
+    # A driver who is on no roster gets a null pair rather than a 404 — the
+    # common state, so the client must treat it as data.
+    status, no_fleet = req("GET", "/api/v1/fleets/me", token=passenger_token)
+    assert status == 200, no_fleet
+    assert no_fleet["fleet"] is None, no_fleet
+    record("fleet_me_none", "GET /api/v1/fleets/me (not a member)", no_fleet)
+
+    # An explicit week, so this cannot collide with the run above (which used
+    # the current ISO week) and the idempotency key is deterministic.
+    status, fleet_run = req(
+        "POST",
+        f"/api/v1/admin/fleets/{fleet_id}/settlement/run?period=2026-W45",
+        token=admin_token,
+    )
+    assert status == 200, fleet_run
+    record("admin_fleet_settlement_run", "POST /api/v1/admin/fleets/{id}/settlement/run", fleet_run)
+
+    status, fleet_history = req(
+        "GET", f"/api/v1/admin/fleets/{fleet_id}/settlement", token=admin_token
+    )
+    assert status == 200, fleet_history
+    record("admin_fleet_settlement", "GET /api/v1/admin/fleets/{id}/settlement", fleet_history)
+
+    status, fleet_history_member = req(
+        "GET", f"/api/v1/fleets/{fleet_id}/settlement", token=driver_token
+    )
+    assert status == 200, fleet_history_member
+    record("fleet_settlement", "GET /api/v1/fleets/{id}/settlement (member)", fleet_history_member)
+
+    # The billing boundary, captured as a fixture: the platform-wide run now
+    # skips the driver because they are on an active roster, and says so. The
+    # week is explicit so this does not collide with either run above.
+    status, settlement_excluded = req(
+        "POST", "/api/v1/admin/settlement/weekly/run?period=2026-W46", token=admin_token
+    )
+    assert status == 200, settlement_excluded
+    assert settlement_excluded["fleet_managed"] >= 1, settlement_excluded
+    record(
+        "admin_settlement_fleet_managed",
+        "POST /api/v1/admin/settlement/weekly/run with a fleet member (200)",
+        settlement_excluded,
+    )
+
     # ---- refunds (suspends the driver, so use a second account) ---------
     refund_token, _, _ = login(REFUND_PHONE)
     status, refund_profile = req(
@@ -474,7 +586,9 @@ def _capture(record: Any) -> None:  # noqa: C901 - linear capture sequence
         token=admin_token,
     )
 
-    status, refund = req("POST", "/api/v1/drivers/me/refund/request", {"note": "leaving"}, token=refund_token)
+    status, refund = req(
+        "POST", "/api/v1/drivers/me/refund/request", {"note": "leaving"}, token=refund_token
+    )
     assert status == 201, refund
     record("refund_request", "POST /api/v1/drivers/me/refund/request (201)", refund)
 
@@ -497,7 +611,9 @@ def _capture(record: Any) -> None:  # noqa: C901 - linear capture sequence
     record("admin_refund_decision", "POST /api/v1/admin/refunds/{id}/decision", decided)
 
     # ---- errors: the envelope every client must parse -------------------
-    status, not_found = req("GET", "/api/v1/orders/00000000-0000-0000-0000-000000000000", token=passenger_token)
+    status, not_found = req(
+        "GET", "/api/v1/orders/00000000-0000-0000-0000-000000000000", token=passenger_token
+    )
     assert status == 404, not_found
     record("error_not_found", "GET /api/v1/orders/{unknown} (404)", not_found)
 
@@ -527,9 +643,7 @@ def _capture(record: Any) -> None:  # noqa: C901 - linear capture sequence
     # structured object rather than `{}`: the order is already COMPLETED and
     # `COMPLETED` has no outgoing transitions, so re-starting it reports
     # `{"from": "COMPLETED", "to": "IN_TRIP"}`.
-    status, business_rule = req(
-        "POST", f"/api/v1/orders/{order_id}/start", token=driver_token
-    )
+    status, business_rule = req("POST", f"/api/v1/orders/{order_id}/start", token=driver_token)
     assert status == 400, business_rule
     record(
         "error_business_rule",
@@ -586,9 +700,7 @@ def _capture(record: Any) -> None:  # noqa: C901 - linear capture sequence
     # The cooldown, whose `details.retry_after_seconds` the client needs in
     # order to count down. The passenger phone already has an OTP row from this
     # run, so the cooldown is guaranteed live.
-    status, cooldown = req(
-        "POST", "/api/v1/auth/otp/request", {"phone_e164": PASSENGER_PHONE}
-    )
+    status, cooldown = req("POST", "/api/v1/auth/otp/request", {"phone_e164": PASSENGER_PHONE})
     assert status == 400, cooldown
     record("error_otp_cooldown", "POST /api/v1/auth/otp/request twice (400)", cooldown)
 
@@ -600,9 +712,10 @@ def _capture_websocket(record: Any, order_id: str, passenger_token: str, driver_
     async def run() -> None:
         passenger_uri = f"{WS_BASE}/ws/trip/{order_id}?token={passenger_token}"
         driver_uri = f"{WS_BASE}/ws/trip/{order_id}?token={driver_token}"
-        async with websockets.connect(passenger_uri) as passenger, websockets.connect(
-            driver_uri
-        ) as driver:
+        async with (
+            websockets.connect(passenger_uri) as passenger,
+            websockets.connect(driver_uri) as driver,
+        ):
             await driver.send(json.dumps({"lat": 22.3201, "lng": 114.1701}))
             ack = json.loads(await asyncio.wait_for(driver.recv(), timeout=10))
             tick = json.loads(await asyncio.wait_for(passenger.recv(), timeout=10))
