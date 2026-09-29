@@ -10,9 +10,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.db import get_session
-from app.core.deps import Principal, get_current_user
-from app.models import DriverDeposit, DriverProfile, DriverStatus, LedgerEntry
+from app.core.deps import Principal, get_current_user, require_active_user
+from app.models import DriverDeposit, DriverProfile, DriverStatus, LedgerEntry, RefundRequest
+from app.services.refund_service import RefundService
 
 router = APIRouter(prefix="/api/v1/drivers", tags=["drivers"])
 
@@ -142,3 +144,66 @@ async def my_ledger(
         ],
         "next_cursor": next_cursor,
     }
+
+
+class RefundRequestIn(BaseModel):
+    note: str = Field(default="", max_length=500)
+
+
+def _refund_out(r: RefundRequest) -> dict:
+    return {
+        "id": str(r.id),
+        "amount_hkd": str(Decimal(r.amount_hkd).quantize(Decimal("0.1"))),
+        "status": r.status.value,
+        "note": r.note,
+        "decision_note": r.decision_note,
+        "decided_at": r.decided_at.isoformat() if r.decided_at else None,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    }
+
+
+@router.post("/me/refund/request", status_code=201)
+async def request_refund(
+    payload: RefundRequestIn,
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Ask to withdraw the whole remaining deposit.
+
+    The balance is *held*, not paid — an admin must approve before any money
+    leaves the platform. Requesting suspends the driver, which stops dispatch
+    and pauses the weekly service fee. At most one open request per driver.
+    """
+    profile = await _get_profile(session, user.id)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no driver profile")
+    refund = await RefundService(session).request(
+        profile,
+        note=payload.note or None,
+        min_amount_hkd=get_settings().refund_min_hkd,
+    )
+    return _refund_out(refund)
+
+
+@router.get("/me/refund")
+async def my_refund(
+    user: Principal = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """The driver's most recent refund request (null if they never filed one)."""
+    profile = await _get_profile(session, user.id)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no driver profile")
+    row = (
+        (
+            await session.execute(
+                select(RefundRequest)
+                .where(RefundRequest.driver_profile_id == profile.id)
+                .order_by(RefundRequest.created_at.desc())
+                .limit(1)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    return {"refund": _refund_out(row) if row is not None else None}

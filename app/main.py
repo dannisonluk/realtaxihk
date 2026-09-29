@@ -68,6 +68,8 @@ def create_app() -> FastAPI:
         """
         tasks: list[asyncio.Task] = []
         if settings.jobs_enabled:
+            # Tasks are named so they are identifiable in asyncio dumps and so
+            # tests can assert *which* jobs started rather than how many.
             tasks.append(
                 asyncio.create_task(
                     _job_loop(
@@ -76,7 +78,8 @@ def create_app() -> FastAPI:
                             settings.max_broadcast_minutes
                         ),
                         "geo_sweep",
-                    )
+                    ),
+                    name="geo_sweep",
                 )
             )
             tasks.append(
@@ -88,9 +91,24 @@ def create_app() -> FastAPI:
                             settings.retention_days_refresh,
                         ),
                         "pdpo_purge",
-                    )
+                    ),
+                    name="pdpo_purge",
                 )
             )
+            if settings.weekly_settlement_enabled:
+                # Fires once at boot, then every 7 days. The per-ISO-week ledger
+                # reference makes any extra run a no-op, so restarting mid-week
+                # cannot double-charge a driver.
+                tasks.append(
+                    asyncio.create_task(
+                        _job_loop(
+                            settings.weekly_settlement_interval_s,
+                            lambda: app.state.settlement.run_weekly(settings.weekly_fee_hkd),
+                            "weekly_settlement",
+                        ),
+                        name="weekly_settlement",
+                    )
+                )
         app.state.jobs = tasks
         try:
             yield
@@ -145,6 +163,7 @@ def create_app() -> FastAPI:
     from app.core.logging import attach_request_logging, configure_logging
     from app.core.rate_limit import RateLimiter
     from app.services.maintenance import MaintenanceService
+    from app.services.settlement_service import SettlementService
 
     configure_logging(settings.log_level)
     attach_request_logging(app)
@@ -152,6 +171,7 @@ def create_app() -> FastAPI:
     app.state.redis_factory = get_redis
     app.state.rate_limiter = RateLimiter(get_redis(), namespace="realtaxi:")
     app.state.maintenance = MaintenanceService(get_session_factory(), get_redis())
+    app.state.settlement = SettlementService(get_session_factory())
 
     @app.get("/health", tags=["ops"])
     async def health(response: Response) -> dict:

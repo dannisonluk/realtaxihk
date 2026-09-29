@@ -222,11 +222,15 @@ class TestP0Health:
 
 class TestLifespanBackgroundJobs:
     def test_jobs_start_on_boot_and_stop_on_shutdown(self):
-        """The lifespan must actually start the geo-sweep and PDPO-purge loops.
+        """The lifespan must actually start every background loop.
 
         Nothing asserted this before, so a refactor that dropped the startup
         hook would silently disable ghost-order sweeping and data purges while
         every other test stayed green.
+
+        Asserting the job *names* rather than a count: the original `== 2` broke
+        the moment weekly settlement was added, which is a false alarm, whereas
+        a missing job is a real one.
         """
         from fastapi.testclient import TestClient
 
@@ -235,7 +239,11 @@ class TestLifespanBackgroundJobs:
         app = create_app()
         with TestClient(app):
             jobs = app.state.jobs
-            assert len(jobs) == 2
+            assert sorted(j.get_name() for j in jobs) == [
+                "geo_sweep",
+                "pdpo_purge",
+                "weekly_settlement",
+            ]
             assert all(not j.done() for j in jobs)
         # Shutdown must cancel them — leaked tasks keep the loop alive.
         assert all(j.done() for j in jobs)

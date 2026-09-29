@@ -26,6 +26,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy import (
     Enum as SAEnum,
@@ -76,6 +77,12 @@ class LedgerEntryType(str, enum.Enum):
     PENALTY_DEDUCTION = "PENALTY_DEDUCTION"
     REFUND = "REFUND"
     ADJUSTMENT = "ADJUSTMENT"
+
+
+class RefundStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
 
 
 class User(Base):
@@ -225,6 +232,14 @@ class LedgerEntry(Base):
         UniqueConstraint("id", "created_at", name="uq_ledger_id_created_at"),
         # Guard against tampering: sequence must strictly increase with id
         Index("ix_ledger_driver_created", "driver_profile_id", "created_at"),
+        # Idempotency backstop: one entry per non-null reference, so a retried
+        # write (admin grant, weekly fee) can never double-post.
+        Index(
+            "uq_ledger_reference",
+            "reference",
+            unique=True,
+            postgresql_where=text("reference IS NOT NULL"),
+        ),
     )
 
 
@@ -255,3 +270,43 @@ class RefreshToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RefundRequest(Base):
+    """Driver-initiated deposit refund — money is *held*, never moved on request.
+
+    On request the driver's `balance_hkd` is locked into `held_hkd` and the driver
+    leaves ACTIVE (ACTIVE is the dispatch gate, so this also stops new jobs). The
+    ledger entry is written only when an admin approves — the single point where
+    value actually leaves the platform. `uq_refund_pending_per_driver` turns a
+    double-submit race into a DB error instead of a double hold.
+    """
+
+    __tablename__ = "refund_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    driver_profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("driver_profiles.id", ondelete="CASCADE"), index=True
+    )
+    amount_hkd: Mapped[object] = mapped_column(Numeric(10, 2))
+    status: Mapped[RefundStatus] = mapped_column(
+        SAEnum(RefundStatus, name="refund_status", native_enum=False),
+        default=RefundStatus.PENDING,
+        index=True,
+    )
+    note: Mapped[str | None] = mapped_column(Text)  # driver's reason
+    decision_note: Mapped[str | None] = mapped_column(Text)  # admin's note
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        # At most one open (PENDING) request per driver — DB backstop for a
+        # double-submit that slipped past the service-layer check.
+        Index(
+            "uq_refund_pending_per_driver",
+            "driver_profile_id",
+            unique=True,
+            postgresql_where=text("status = 'PENDING'"),
+        ),
+    )

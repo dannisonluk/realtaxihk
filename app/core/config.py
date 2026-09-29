@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     retention_days_otp: int = 30  # PDPO: keep OTP rows 30 days
     retention_days_refresh: int = 30  # PDPO: keep dead refresh tokens 30 days
 
+    # --- Weekly settlement (P2-2: the platform's revenue model) ---
+    weekly_settlement_enabled: bool = True
+    weekly_fee_hkd: int = 200  # deducted from every ACTIVE driver, per week
+    weekly_settlement_interval_s: int = 604800  # 7 days between settlement runs
+    refund_min_hkd: int = 1  # balance below this is not worth a refund request
+
     # --- OTP / rate limiting (P1-2) ---
     otp_ip_rate_limit: int = 10  # requests per IP per window
     otp_ip_window_s: int = 600  # 10 minutes

@@ -190,7 +190,7 @@ JWT 2 小時（`config.py:25`）、無 refresh token。的士 trip 夠用，但�
 | # | 項目 | 證據 / 說明 |
 |---|---|---|
 | P2-1 | `GET /orders/{id}`（當事人）、order history、driver 訂單流 | `orders.py` 只有 `/nearby` 一個 GET；乘客冇途徑查自己訂單 — 移動端 MVP 前必補 |
-| P2-2 | `held_hkd` / `WEEKLY_FEE_DEDUCTION` / `REFUND` 業務流 | grep 證實三個概念零實作；週費收取係商業模式核心 |
+| P2-2 | ~~`held_hkd` / `WEEKLY_FEE_DEDUCTION` / `REFUND` 業務流~~ **✅ 已實作** | 週費結算 `SettlementService`（ISO 週冪等，ledger reference `weekly:{driver}:{period}`）＋退款流程 `RefundService`（司機申請凍結 → 管理員審批）。端點：`POST /admin/settlement/weekly/run`、`POST /drivers/me/refund/request`、`GET /admin/refunds`、`POST /admin/refunds/{id}/decision`。對帳恆等式：`balance_hkd + held_hkd == sum(ledger.amount_hkd)`。**仍未做**：部分退款（現時全額退還）、實際打款渠道（只寫 ledger，轉帳仍線下處理） |
 | P2-3 | `distance_km` 由 client 自報 | `orders.py:51` — 乘客可以亂報。374D 下估價僅供參考，風險可控，但廣播排序會被 gaming；中期接路徑規劃（`.env.example:27` 已預留 `GOOGLE_MAPS_API_KEY`，`config.py` 未接） |
 | P2-4 | Metrics（Prometheus）+ 錯誤追蹤（Sentry） | 而家連 5xx 都只會喺 uvicorn stderr |
 | P2-5 | Load test（WS tick 吞吐、SETNX 競爭） | 無任何基準數據 |
@@ -199,6 +199,7 @@ JWT 2 小時（`config.py:25`）、無 refresh token。的士 trip 夠用，但�
 | P2-8 | Redis 驅逐策略聲明 | geo/rl keys 無 maxmemory 政策；上雲時設 `maxmemory-policy allkeys-lru` 之外嘅方案（rl keys 有 TTL ✓、geo keys 無 TTL — 見 P0-5） |
 | P2-9 | OTP/WhatsApp provider 實測 | `notify.py:33-40` `WhatsAppCloudProvider` 係 `NotImplementedError` stub；`.env.example:28-30` 欄位已備但 `config.py` 無對應 Settings（靠 `extra="ignore"` 靜默吞）— 接線時要加 config 欄位 |
 | P2-10 | 降級開關（kill switches） | 派單/rate limit 任何一環 Redis 故障時嘅行為未定義（宜 fail-open 派單、fail-closed ledger 操作，寫明） |
+| P2-11 | **首個 ADMIN bootstrap 路徑（上線阻塞）** | `00000000-0000-0000-0000-0000000000aa` 只存在於 `tests/conftest.py` 的 template DB；生產／dev DB 無任何建立 ADMIN 的方法，等於**冇人可以批 KYC 或退款**。需加 CLI（如 `scripts/create_admin.py`）或 alembic data migration |
 
 ---
 
