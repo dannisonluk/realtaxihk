@@ -13,10 +13,40 @@ import subprocess
 import sys
 import time
 import urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 BASE = "http://127.0.0.1:8000"
 TOKEN = None
 DEV_OTP_CODE = "123456"  # requires ALLOW_DEV_OTP=true in the server environment
+
+
+def clear_rate_limits() -> None:
+    """Drop this app's rate-limit windows before booting.
+
+    The OTP per-IP bucket has a 600s TTL and lives in Redis, so it survives a
+    server restart. Run this straight after `scripts/security_verify.py` — which
+    deliberately exhausts that bucket to prove SEC-07 — and the first OTP request
+    here fails with an opaque 429. Only this app's own `rl:realtaxi:*` keys are
+    touched.
+    """
+    import asyncio
+
+    import redis.asyncio as aioredis
+
+    from app.core.config import get_settings
+
+    async def run() -> None:
+        cli = aioredis.from_url(get_settings().redis_url, decode_responses=True)
+        try:
+            keys = [k async for k in cli.scan_iter("rl:realtaxi:*")]
+            if keys:
+                await cli.delete(*keys)
+        finally:
+            await cli.aclose()
+
+    asyncio.run(run())
 
 
 def req(method, path, body=None, auth=False, token=None):
@@ -45,6 +75,7 @@ print(f"port 8000 free: {port_free}")
 assert port_free, "port 8000 occupied — stop other servers first"
 
 # 1. boot uvicorn
+clear_rate_limits()
 # SEC-31: --no-proxy-headers so X-Forwarded-For cannot rewrite the client address
 # (uvicorn trusts it from 127.0.0.1 by default, which made IP limits spoofable).
 proc = subprocess.Popen(

@@ -635,3 +635,37 @@ class TestRedisClientCaching:
         from app.core.db import get_redis
 
         assert get_redis() is not get_redis()
+
+
+class TestSharedRedisClientOwnership:
+    """The app owns the per-loop client and closes it at shutdown.
+
+    Two call sites (`_revoke_access_tokens` on logout, the WS handshake) used to
+    do `redis = redis_factory()` … `finally: await redis.aclose()`. That was
+    correct while `get_redis()` returned a fresh client per call, and became a
+    bug the moment it started caching: every logout and every WS connect tore
+    down the client every other request was sharing.
+
+    It cannot be caught behaviourally — redis-py simply reconnects on the next
+    command, so the symptom is churn, not an error. So this asserts on the call
+    sites, the same way the SEC-31 test asserts on the launch configuration.
+    """
+
+    def test_no_call_site_closes_a_client_it_borrowed(self):
+        import re
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent.parent
+        offenders = []
+        for path in sorted((root / "app").rglob("*.py")):
+            text = path.read_text(encoding="utf-8")
+            if "redis_factory()" not in text:
+                continue
+            for match in re.finditer(r"^\s*(\w+)\s*=\s*[\w.]*redis_factory\(\)", text, re.M):
+                name = match.group(1)
+                if re.search(rf"\b{re.escape(name)}\.aclose\(\)", text):
+                    offenders.append(f"{path.relative_to(root)}: {name}.aclose()")
+        assert offenders == [], (
+            "these close a client obtained from redis_factory(), which is the app's "
+            f"shared per-loop client — closing it disconnects every other user: {offenders}"
+        )

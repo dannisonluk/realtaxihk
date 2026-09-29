@@ -17,7 +17,6 @@ Security (SEC-07/08/17/18):
 
 from __future__ import annotations
 
-import contextlib
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -89,13 +88,12 @@ def _client_ip(request: Request) -> str:
 
 
 async def _revoke_access_tokens(request: Request, user_id) -> None:
-    """Set the user's revocation epoch so every issued access token dies."""
-    redis = request.app.state.redis_factory()
-    try:
-        await revoke_user_tokens(redis, user_id)
-    finally:
-        with contextlib.suppress(Exception):
-            await redis.aclose()
+    """Set the user's revocation epoch so every issued access token dies.
+
+    The client is the app's shared per-loop one and is closed at shutdown —
+    closing it here would disconnect every other request sharing it.
+    """
+    await revoke_user_tokens(request.app.state.redis_factory(), user_id)
 
 
 @router.post("/otp/request")

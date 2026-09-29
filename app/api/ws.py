@@ -81,14 +81,12 @@ async def trip_socket(
         return
 
     # SEC-18: a revoked access token must not open a live channel either.
+    # The client is the app's shared per-loop one, closed at shutdown — closing
+    # it here would disconnect every other user of it on each WS handshake.
     with contextlib.suppress(Exception):
-        redis = ws.app.state.redis_factory()
-        try:
-            if await is_token_revoked(redis, user.id, user.issued_at):
-                await ws.close(code=WS_UNAUTHENTICATED)
-                return
-        finally:
-            await redis.aclose()
+        if await is_token_revoked(ws.app.state.redis_factory(), user.id, user.issued_at):
+            await ws.close(code=WS_UNAUTHENTICATED)
+            return
 
     # --- resolve party (request-scoped session, one read) ---
     try:

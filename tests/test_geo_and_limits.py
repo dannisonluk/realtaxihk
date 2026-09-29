@@ -64,14 +64,11 @@ class TestRateLimiter:
         from app.core.rate_limit import RateLimiter
 
         async def run():
-            rds = client.app.state.redis_factory()
-            try:
-                rl = RateLimiter(rds)
-                key = f"test:{id(object())}"
-                results = [await rl.allow(key, limit=3, window_s=60) for _ in range(4)]
-                return results
-            finally:
-                await rds.aclose()
+            # The app's shared per-loop client. The app owns it and closes it at
+            # shutdown, so the test must not close it either.
+            rl = RateLimiter(client.app.state.redis_factory())
+            key = f"test:{id(object())}"
+            return [await rl.allow(key, limit=3, window_s=60) for _ in range(4)]
 
         results = asyncio.run(run())
         assert results == [True, True, True, False]
