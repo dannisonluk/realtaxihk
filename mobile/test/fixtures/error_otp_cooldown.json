@@ -1,0 +1,7 @@
+{
+  "code": "BUSINESS_RULE_VIOLATION",
+  "message": "OTP resend cooldown active",
+  "details": {
+    "retry_after_seconds": 60
+  }
+}

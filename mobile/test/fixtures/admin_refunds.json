@@ -1,0 +1,51 @@
+{
+  "items": [
+    {
+      "id": "65280286-68c7-49f5-91d8-3f35504ccf9c",
+      "driver_profile_id": "b008f07f-4b4e-44ca-80d1-2a9ab3609565",
+      "amount_hkd": "500.0",
+      "status": "PENDING",
+      "note": "leaving",
+      "decision_note": null,
+      "decided_by": null,
+      "decided_at": null,
+      "created_at": "2026-09-29T12:39:53.352259+00:00"
+    },
+    {
+      "id": "9a7eb029-ed27-4920-8a61-f8c3142062f6",
+      "driver_profile_id": "cd8aa442-ceec-43b5-be8a-6c59fa1b3970",
+      "amount_hkd": "500.0",
+      "status": "APPROVED",
+      "note": "x",
+      "decision_note": null,
+      "decided_by": "00000000-0000-0000-0000-0000000000aa",
+      "decided_at": "2026-09-29T07:57:01.946653+00:00",
+      "created_at": "2026-09-29T07:57:01.890340+00:00"
+    },
+    {
+      "id": "d11a425c-b7b8-4273-8a26-2c34936f7d5f",
+      "driver_profile_id": "11995f7d-8953-4cc8-8fa3-8ecd086f2c7d",
+      "amount_hkd": "300.0",
+      "status": "APPROVED",
+      "note": "live probe",
+      "decision_note": "live probe payout",
+      "decided_by": "00000000-0000-0000-0000-0000000000aa",
+      "decided_at": "2026-09-29T07:36:53.753974+00:00",
+      "created_at": "2026-09-29T07:36:53.702813+00:00"
+    },
+    {
+      "id": "a57978bc-e189-4e1b-8c9c-6012561c7280",
+      "driver_profile_id": "afe45b69-5f2d-4622-b0a0-9f4ecc718daa",
+      "amount_hkd": "300.0",
+      "status": "APPROVED",
+      "note": "live probe",
+      "decision_note": "live probe payout",
+      "decided_by": "00000000-0000-0000-0000-0000000000aa",
+      "decided_at": "2026-09-29T07:34:01.253248+00:00",
+      "created_at": "2026-09-29T07:34:01.198626+00:00"
+    }
+  ],
+  "total": 4,
+  "limit": 50,
+  "offset": 0
+}

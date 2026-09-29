@@ -1,0 +1,131 @@
+import '../core/format/money.dart';
+import '../core/network/wire.dart';
+import 'enums.dart';
+import 'refund.dart';
+
+/// A row of the admin KYC queue (`GET /api/v1/admin/drivers`).
+///
+/// Deliberately narrower than [DriverProfile]: the admin list does **not**
+/// expose `user_id` or `is_online`, and there is no endpoint that maps a
+/// profile back to its account. Keep it that way.
+class AdminDriverRow {
+  const AdminDriverRow({
+    required this.id,
+    required this.status,
+    required this.taxiType,
+    required this.taxiDriverPlateNo,
+    required this.vehicleRegMark,
+  });
+
+  factory AdminDriverRow.fromJson(Map<String, dynamic> json) => AdminDriverRow(
+    id: asString(json['id'], 'admin.driver.id'),
+    status: DriverStatus.fromWire(asString(json['status'], 'admin.driver.status')),
+    taxiType: TaxiType.fromWire(asString(json['taxi_type'], 'admin.driver.taxi_type')),
+    taxiDriverPlateNo: asString(json['taxi_driver_plate_no'], 'admin.driver.taxi_driver_plate_no'),
+    vehicleRegMark: asString(json['vehicle_reg_mark'], 'admin.driver.vehicle_reg_mark'),
+  );
+
+  final String id;
+  final DriverStatus status;
+  final TaxiType taxiType;
+  final String taxiDriverPlateNo;
+  final String vehicleRegMark;
+}
+
+/// The admin list endpoints all return `{items, total, limit, offset}`.
+class Paged<T> {
+  const Paged({
+    required this.items,
+    required this.total,
+    required this.limit,
+    required this.offset,
+  });
+
+  factory Paged.fromJson(Map<String, dynamic> json, T Function(Map<String, dynamic>) decode) =>
+      Paged<T>(
+        items: asObjectList(json['items'], 'items', decode),
+        total: asInt(json['total'], 'total'),
+        limit: asInt(json['limit'], 'limit'),
+        offset: asInt(json['offset'], 'offset'),
+      );
+
+  final List<T> items;
+  final int total;
+  final int limit;
+  final int offset;
+
+  bool get hasMore => offset + items.length < total;
+}
+
+/// Result of `POST /api/v1/admin/drivers/{id}/deposit/grant`.
+///
+/// `reference` is the **namespaced** key the server derived (`grant:<driver>:…`,
+/// see `SEC-13`) — it is echoed back so a retry with the same client key is
+/// provably idempotent (`P1-7`). Show it in a receipt; do not resend it as the
+/// client key.
+class DepositGrantResult {
+  const DepositGrantResult({
+    required this.driverId,
+    required this.driverStatus,
+    required this.balanceHkd,
+    required this.isFulfilled,
+    required this.reference,
+  });
+
+  factory DepositGrantResult.fromJson(Map<String, dynamic> json) => DepositGrantResult(
+    driverId: asString(json['id'], 'grant.id'),
+    driverStatus: DriverStatus.fromWire(asString(json['driver_status'], 'grant.driver_status')),
+    balanceHkd: Money.parse(json['balance_hkd']),
+    isFulfilled: json['is_fulfilled'] as bool? ?? false,
+    reference: asString(json['reference'], 'grant.reference'),
+  );
+
+  final String driverId;
+  final DriverStatus driverStatus;
+  final Money balanceHkd;
+  final bool isFulfilled;
+  final String reference;
+}
+
+/// Result of `POST /api/v1/admin/refunds/{id}/decision`.
+typedef RefundDecisionResult = RefundRequest;
+
+/// Result of `POST /api/v1/admin/settlement/weekly/run`.
+///
+/// The run is idempotent per ISO week: a driver already charged for `period` is
+/// counted in [skipped], not charged again. `tampered` is the one to watch — it
+/// means the ledger reference for that week is held by a *different* entry, so
+/// the fee was deliberately not collected (`SEC-13`). Anything above zero
+/// deserves a look.
+class SettlementRun {
+  const SettlementRun({
+    required this.period,
+    required this.feeHkd,
+    required this.eligibleDrivers,
+    required this.charged,
+    required this.skipped,
+    required this.failed,
+    required this.tampered,
+  });
+
+  factory SettlementRun.fromJson(Map<String, dynamic> json) => SettlementRun(
+    period: asString(json['period'], 'settlement.period'),
+    feeHkd: Money.parse(json['fee_hkd']),
+    eligibleDrivers: asInt(json['eligible_drivers'], 'settlement.eligible_drivers'),
+    charged: asInt(json['charged'], 'settlement.charged'),
+    skipped: asInt(json['skipped'], 'settlement.skipped'),
+    failed: asInt(json['failed'], 'settlement.failed'),
+    tampered: asInt(json['tampered'], 'settlement.tampered'),
+  );
+
+  /// ISO week key, e.g. `2026-W38`.
+  final String period;
+  final Money feeHkd;
+  final int eligibleDrivers;
+  final int charged;
+  final int skipped;
+  final int failed;
+  final int tampered;
+
+  bool get hasAnomaly => failed > 0 || tampered > 0;
+}

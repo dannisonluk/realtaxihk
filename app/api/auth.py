@@ -145,6 +145,13 @@ async def otp_request(
 
     try:
         result = await OtpService(session).request_otp(payload.phone_e164)
+    except BusinessRuleError:
+        # `BusinessRuleError` subclasses `ValueError`, so without this branch the
+        # generic handler below would rebuild it from `str(exc)` and silently
+        # drop `details`. That is where the resend cooldown's
+        # `retry_after_seconds` and the invalid-code `attempts_remaining` live —
+        # the client cannot render a countdown without them.
+        raise
     except ValueError as exc:
         raise BusinessRuleError(str(exc)) from exc
     return result
@@ -164,6 +171,13 @@ async def otp_verify(
 
     try:
         auth = await OtpService(session).verify_otp(payload.phone_e164, payload.code)
+    except BusinessRuleError:
+        # `BusinessRuleError` subclasses `ValueError`, so without this branch the
+        # generic handler below would rebuild it from `str(exc)` and silently
+        # drop `details`. That is where the resend cooldown's
+        # `retry_after_seconds` and the invalid-code `attempts_remaining` live —
+        # the client cannot render a countdown without them.
+        raise
     except ValueError as exc:
         raise BusinessRuleError(str(exc)) from exc
     token = create_access_token({"sub": str(auth.user.id), "role": auth.user.role.value})

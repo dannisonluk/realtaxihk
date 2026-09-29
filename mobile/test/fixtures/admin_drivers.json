@@ -1,0 +1,126 @@
+{
+  "items": [
+    {
+      "id": "cc77ad82-9137-448e-9868-6d1864b8eed2",
+      "status": "PENDING_KYC",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "123456",
+      "vehicle_reg_mark": "SM1234"
+    },
+    {
+      "id": "16df9a31-9609-4b2f-b01e-65d4f5a089f7",
+      "status": "PENDING_KYC",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "123456",
+      "vehicle_reg_mark": "SM1234"
+    },
+    {
+      "id": "26bed211-77ce-44e5-8e63-07ea037b0aff",
+      "status": "PENDING_KYC",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "123456",
+      "vehicle_reg_mark": "SM1234"
+    },
+    {
+      "id": "afe45b69-5f2d-4622-b0a0-9f4ecc718daa",
+      "status": "TERMINATED",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "TD4321",
+      "vehicle_reg_mark": "SM4321"
+    },
+    {
+      "id": "11995f7d-8953-4cc8-8fa3-8ecd086f2c7d",
+      "status": "TERMINATED",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "TD4321",
+      "vehicle_reg_mark": "SM4321"
+    },
+    {
+      "id": "302e5198-0fff-4ebd-8b3c-b15055ed738c",
+      "status": "PENDING_KYC",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "TD4001",
+      "vehicle_reg_mark": "SM4001"
+    },
+    {
+      "id": "0d5cc4b2-2ed1-4a60-833e-5ffaaff24ad7",
+      "status": "ACTIVE",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "TD4001",
+      "vehicle_reg_mark": "SM4001"
+    },
+    {
+      "id": "b9a62785-c9a8-46a1-a88c-21436182431a",
+      "status": "ACTIVE",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "TD4600",
+      "vehicle_reg_mark": "SM4600"
+    },
+    {
+      "id": "cd8aa442-ceec-43b5-be8a-6c59fa1b3970",
+      "status": "TERMINATED",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "TD4700",
+      "vehicle_reg_mark": "SM4700"
+    },
+    {
+      "id": "7f15c49e-ec8c-4322-a346-6f3b2720f90b",
+      "status": "ACTIVE",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "TD4001",
+      "vehicle_reg_mark": "SM4001"
+    },
+    {
+      "id": "e09e8f6d-8c4b-40d4-88ce-4d440da1e2bb",
+      "status": "ACTIVE",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "TD4001",
+      "vehicle_reg_mark": "SM4001"
+    },
+    {
+      "id": "3c376c9d-dbe5-45a6-b971-2bee6e77131c",
+      "status": "ACTIVE",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "TD4001",
+      "vehicle_reg_mark": "SM4001"
+    },
+    {
+      "id": "81a757bd-cd02-4c6c-96bd-5be6eda313c8",
+      "status": "ACTIVE",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "TD4001",
+      "vehicle_reg_mark": "SM4001"
+    },
+    {
+      "id": "36087e08-f523-4941-9252-f267436ea57a",
+      "status": "PENDING_KYC",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "123456",
+      "vehicle_reg_mark": "SM1234"
+    },
+    {
+      "id": "7347253e-35ca-46a3-b59c-a44a99ec6e49",
+      "status": "PENDING_KYC",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "123456",
+      "vehicle_reg_mark": "SM1234"
+    },
+    {
+      "id": "d67ab594-2237-4a7f-93e4-df5732cbc500",
+      "status": "ACTIVE",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "TD4001",
+      "vehicle_reg_mark": "SM4001"
+    },
+    {
+      "id": "8b89e093-279e-4e7f-93f9-5f8cd1bebe40",
+      "status": "PENDING_KYC",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "123456",
+      "vehicle_reg_mark": "AB1234"
+    }
+  ],
+  "total": 17,
+  "limit": 50,
+  "offset": 0
+}

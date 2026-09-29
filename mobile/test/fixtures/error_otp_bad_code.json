@@ -1,0 +1,7 @@
+{
+  "code": "BUSINESS_RULE_VIOLATION",
+  "message": "Invalid OTP code",
+  "details": {
+    "attempts_remaining": 4
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Request validation failed.",
+  "details": {
+    "errors": [
+      {
+        "type": "less_than_equal",
+        "loc": [
+          "body",
+          "distance_km"
+        ],
+        "msg": "Input should be less than or equal to 100",
+        "ctx": {
+          "le": "100"
+        }
+      }
+    ]
+  }
+}

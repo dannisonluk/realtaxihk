@@ -1,0 +1,36 @@
+{
+  "taxi_type": "URBAN",
+  "distance_km": "12.5",
+  "waiting_min": "3",
+  "meter_fare": "131.9",
+  "discount_percent": "0",
+  "meter_discount": "0.0",
+  "meter_after_discount": "131.9",
+  "surcharges": [
+    {
+      "code": "tunnel_cross_harbour",
+      "name_en": "Cross-harbour tunnel (CHT/EHC/WHC)",
+      "name_zh": "過海隧道（紅隧/東隧/西隧）",
+      "amount": "25.0"
+    },
+    {
+      "code": "cross_harbour_return",
+      "name_en": "Cross-harbour return fee",
+      "name_zh": "過海回程費",
+      "amount": "25.0"
+    },
+    {
+      "code": "baggage",
+      "name_en": "Baggage (per item)",
+      "name_zh": "行李（每件）",
+      "amount": "12.0"
+    }
+  ],
+  "surcharges_total": "62.0",
+  "tip": "10.0",
+  "total_fare": "203.9",
+  "tariff_version": "meter:2024-07-14;tolls:2025-09-21",
+  "is_estimate": true,
+  "disclaimer_en": "Fare estimate for reference only. The platform is an information intermediary; the final fare is settled voluntarily between passenger and driver (Cap. 374D). Tolls and surcharges depend on the actual route taken.",
+  "disclaimer_zh": "車費估價僅供參考。平台僅屬資訊中介，最終車資由乘客與司機自願協商確認（香港法例第374D章）。隧道費及附加費視乎實際路線而定。"
+}

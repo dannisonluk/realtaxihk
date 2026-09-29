@@ -1,0 +1,5 @@
+{
+  "code": "UNAUTHORIZED",
+  "message": "refresh token reuse detected — all sessions revoked",
+  "details": {}
+}

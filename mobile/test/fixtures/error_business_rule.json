@@ -1,0 +1,8 @@
+{
+  "code": "BUSINESS_RULE_VIOLATION",
+  "message": "Illegal order transition COMPLETED -> IN_TRIP",
+  "details": {
+    "from": "COMPLETED",
+    "to": "IN_TRIP"
+  }
+}

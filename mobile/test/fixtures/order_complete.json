@@ -1,0 +1,38 @@
+{
+  "id": "9df41483-36c9-4756-b2fc-2a43ad353bf5",
+  "status": "COMPLETED",
+  "taxi_type": "URBAN",
+  "fare": {
+    "tip": "5.0",
+    "tunnels": [
+      "cross_harbour"
+    ],
+    "meter_fare": "75.2",
+    "surcharges": [
+      {
+        "code": "tunnel_cross_harbour",
+        "amount": "25.0",
+        "name_en": "Cross-harbour tunnel (CHT/EHC/WHC)",
+        "name_zh": "過海隧道（紅隧/東隧/西隧）"
+      },
+      {
+        "code": "cross_harbour_return",
+        "amount": "25.0",
+        "name_en": "Cross-harbour return fee",
+        "name_zh": "過海回程費"
+      }
+    ],
+    "total_fare": "130.2",
+    "is_estimate": true,
+    "disclaimer_en": "Fare estimate for reference only. The platform is an information intermediary; the final fare is settled voluntarily between passenger and driver (Cap. 374D). Tolls and surcharges depend on the actual route taken.",
+    "disclaimer_zh": "車費估價僅供參考。平台僅屬資訊中介，最終車資由乘客與司機自願協商確認（香港法例第374D章）。隧道費及附加費視乎實際路線而定。",
+    "tariff_version": "meter:2024-07-14;tolls:2025-09-21",
+    "crosses_harbour": true,
+    "discount_percent": "0",
+    "surcharges_total": "50.0",
+    "meter_after_discount": "75.2"
+  },
+  "estimated_total_hkd": "130.2",
+  "completed_at": "2026-09-29T12:39:53.144119+00:00",
+  "created_at": "2026-09-29T12:39:52.787071+00:00"
+}

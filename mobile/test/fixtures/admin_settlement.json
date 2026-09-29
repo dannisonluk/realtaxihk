@@ -1,0 +1,9 @@
+{
+  "period": "2026-W40",
+  "fee_hkd": "200",
+  "eligible_drivers": 8,
+  "charged": 1,
+  "skipped": 7,
+  "failed": 0,
+  "tampered": 0
+}

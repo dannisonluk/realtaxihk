@@ -1,0 +1,19 @@
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Request validation failed.",
+  "details": {
+    "errors": [
+      {
+        "type": "string_pattern_mismatch",
+        "loc": [
+          "body",
+          "phone_e164"
+        ],
+        "msg": "String should match pattern '^\\+852\\d{8}$'",
+        "ctx": {
+          "pattern": "^\\+852\\d{8}$"
+        }
+      }
+    ]
+  }
+}

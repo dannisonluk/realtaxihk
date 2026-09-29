@@ -1,0 +1,11 @@
+{
+  "access_token": "<redacted>",
+  "token_type": "bearer",
+  "refresh_token": "<redacted>",
+  "created": false,
+  "user": {
+    "id": "405db1a8-160d-4c48-9f33-1ea2585c380a",
+    "phone_masked": "+852****0001",
+    "role": "ADMIN"
+  }
+}

@@ -134,6 +134,10 @@ async def create_order(
         raise HTTPException(status_code=429, detail="too many orders, slow down")
     try:
         order = await OrderService(session).create(user.id, payload)
+    except BusinessRuleError:
+        # Already carries machine-readable `details`; `BusinessRuleError`
+        # subclasses `ValueError`, so the branch below would discard them.
+        raise
     except ValueError as exc:
         raise BusinessRuleError(str(exc)) from exc
     await GeoService(request.app.state.redis_factory()).index_order(

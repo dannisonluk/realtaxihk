@@ -1,0 +1,5 @@
+{
+  "code": "FORBIDDEN",
+  "message": "admin privileges required",
+  "details": {}
+}

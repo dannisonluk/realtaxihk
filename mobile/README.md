@@ -1,0 +1,179 @@
+# RealTaxi HK — mobile client
+
+Flutter client for the RealTaxi HK backend (`../app`). One app, three roles,
+routed by the authenticated account.
+
+| Role | Shell | Entry point |
+|---|---|---|
+| Passenger | 3 tabs | `lib/features/passenger/` |
+| Driver | 3 tabs | `lib/features/driver/` |
+| Admin | 4 tabs | `lib/features/admin/` |
+
+Target: Android first (minSdk 24), iOS-compatible source. Flutter 3.44.0 /
+Dart 3.12.0.
+
+## Before you run anything
+
+**`flutter` and `dart analyze` do not work on this machine.** The Dart VM cannot
+spawn subprocesses that use pipes — the spawn fails with Windows
+`ERROR_PIPE_BUSY` (231) at `process_win.cc:742`. Everything that shells out dies
+at startup:
+
+```
+flutter create / flutter run / flutter test   ->  CreateFile failed 231
+dart analyze                                  ->  same
+dart run / dart compile                       ->  same (native-assets build hook)
+```
+
+What *does* work:
+
+```bash
+dart format --line-length 100 lib tool        # formatting
+python tool/dart_check.py .                   # type-check (see below)
+dart --packages=.dart_tool/package_config.json tool/verify_contract.dart
+```
+
+The last one bypasses `dartdev` entirely. `dart <file>` goes through `dartdev`,
+which is what runs the native-assets build hook for `objective_c` (pulled in
+transitively by `flutter_secure_storage_darwin`) and blows up; passing
+`--packages` explicitly runs the VM straight on the script.
+
+`tool/dart_check.py` drives the analysis server over LSP from Python, which
+*can* spawn it with pipes. It is the same engine `dart analyze` would have used,
+with the same `analysis_options.yaml`. Its docstring records the three
+non-obvious things about driving it — each of which silently produces "0
+diagnostics" rather than an error. Read it before debugging it.
+
+`android/` was materialised from the Flutter SDK's own templates
+(`packages/flutter_tools/templates/app/`) rather than by `flutter create`, for
+the same reason. It is a normal Android project; nothing about it is special.
+
+## The contract is verified, not assumed
+
+`/openapi.json` types almost nothing: 28 paths, and all but one response schema
+is `{}`, because every response is a hand-built dict in `app/api/*`. A
+hand-written Dart model is therefore an *assumption* about the wire format, and
+an assumption checked only by reading the Python is not checked at all.
+
+Two halves:
+
+```bash
+python ../scripts/gen_mobile_fixtures.py      # boots the API, captures real responses
+dart --packages=.dart_tool/package_config.json tool/verify_contract.dart
+```
+
+The generator writes 42 raw responses to `test/fixtures/`, each with the
+endpoint it came from in `manifest.json`. The verifier decodes every one with
+the **real** models, and fails if a fixture has no decoder or a decoder has no
+fixture — so a new endpoint cannot be added to the generator and quietly go
+unverified. Re-run both after any backend change.
+
+Fixtures are committed so the contract is reviewable in a diff. Credential
+fields are redacted by the generator before they reach disk.
+
+The two assumptions most likely to be wrong, both of which the verifier pins:
+
+* **`Decimal` serialises as a JSON string**, not a number — `"distance_km":
+  "12.5"`. Pydantic v2 does this for every `Decimal`, which is most money and
+  distance fields. `json['distance_km'] as double` throws on every real
+  response. See `lib/core/network/wire.dart`.
+* **The error envelope is `{code, message, details}`**, not FastAPI's default
+  `{"detail": ...}`. See `app/core/exceptions.py` and
+  `ApiException.fromEnvelope`.
+
+## Backend behaviour the UI has to work around
+
+These are not bugs to fix in the client; they are shapes the client was built
+around. Each is documented at the call site.
+
+* **`UserRole.DRIVER` is never assigned.** Signup always creates `PASSENGER`
+  (`app/services/otp_service.py`), and `POST /drivers/register` only creates a
+  `DriverProfile`. Driver capability is gated entirely on `DriverProfile.status`
+  — there are 19 `require_active_user` driver routes and zero role-gated ones.
+  So routing keys off admin-vs-not (`lib/router/app_router.dart`), and driver
+  mode is entered from the account screen (`lib/features/shared/account_screen.dart`).
+* **Trip lifecycle events are never published.** `TripHub.publish()` is only
+  reachable from location ticks, so a passive passenger socket never learns that
+  a driver grabbed the order. `TripTrackingScreen` therefore polls
+  `GET /orders/{id}` alongside the socket.
+* **`GET /orders` returns no cursor** while `GET /drivers/me/ledger` does. See
+  `OrderPage.nextCursor` and `LedgerPage.nextCursor`.
+* **`OrderCreateIn` cannot express a baggage or animal surcharge**, so a quote
+  including one is not reproducible in the order snapshot. The request screen
+  offers only the fields that survive.
+
+## Configuration
+
+**Google Maps.** The key is read from `android/local.properties`, which is
+git-ignored:
+
+```properties
+GOOGLE_MAPS_API_KEY=AIza...
+```
+
+`app/build.gradle.kts` feeds it to the manifest placeholder
+`${googleMapsApiKey}`. With no key the map surfaces render a labelled
+placeholder instead of crashing — see `AppConfig.mapsConfigured` and
+`_MapUnavailable` in `lib/features/shared/map_panel.dart`.
+
+**API base URL.** `lib/core/config/app_config.dart` picks
+`http://10.0.2.2:8000` on the Android emulator (the host loopback) and
+`http://127.0.0.1:8000` elsewhere. Override at build time:
+
+```bash
+--dart-define=API_BASE_URL=https://api.example.com
+```
+
+Cleartext HTTP is permitted only for `10.0.2.2`, `localhost` and `127.0.0.1`
+(`android/app/src/main/res/xml/network_security_config.xml`). Anything else must
+be HTTPS — the refresh token is a bearer credential.
+
+## Credentials
+
+The session lives in the platform keystore, never in `SharedPreferences`:
+Android Keystore (AES-GCM, RSA-OAEP-wrapped key) and the iOS keychain with
+`first_unlock_this_device`. The options are pinned explicitly in
+`lib/core/storage/token_store.dart` so a library default change cannot silently
+downgrade where the refresh token is stored.
+
+`first_unlock` rather than `unlocked` because the driver's background location
+task has to read the token while the screen is locked.
+
+The refresh token **rotates on every use**, and replaying a superseded one makes
+the server revoke the entire token family plus every access token the user holds
+(`SEC-17`). `ApiClient` therefore refreshes through a single-flight guard, so ten
+concurrent 401s produce one refresh rather than ten — nine of which would present
+an already-rotated token and log the user out.
+
+## Signing in during development
+
+The backend refuses the dev OTP rail when `APP_ENV=prod`, and the code is never
+echoed in a response (`SEC-02`). For local work:
+
+```bash
+ALLOW_DEV_OTP=true uvicorn app.main:app --port 8000
+```
+
+then log in with any `+852` number and the code `123456`.
+
+## Layout
+
+```
+lib/
+  core/       config, network (client, error envelope, wire decoders),
+              storage, formatting, theme, location
+  models/     one file per response shape, decoded from the wire
+  data/       repositories — one per API area, thin over ApiClient
+  state/      Riverpod providers and the auth controller
+  router/     go_router configuration and the role redirect
+  features/   screens, grouped by role, plus shared widgets
+tool/
+  dart_check.py        type-check via LSP (see above)
+  verify_contract.dart decode every fixture with the real models
+```
+
+## Known gaps
+
+* No widget tests yet — the harness that would run them (`flutter test`) does
+  not work here.
+* Push notifications are not wired up; the trip screen polls instead.

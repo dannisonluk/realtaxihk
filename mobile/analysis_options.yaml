@@ -1,0 +1,30 @@
+# Static analysis for the RealTaxi HK client.
+#
+# `flutter analyze` cannot run on this machine (the Dart VM cannot spawn piped
+# subprocesses here — CreateFile failed 231 / ERROR_PIPE_BUSY), so the same
+# rules are enforced through the analysis server over LSP. See mobile/README.md.
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+  errors:
+    # Treat these as build-breaking rather than advisory: they are exactly the
+    # class of mistake that only shows up at runtime on a device.
+    unawaited_futures: error
+    always_declare_return_types: error
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+
+linter:
+  rules:
+    always_declare_return_types: true
+    avoid_print: true
+    prefer_single_quotes: true
+    prefer_final_locals: true
+    unawaited_futures: true
+    use_super_parameters: true
+    require_trailing_commas: true
