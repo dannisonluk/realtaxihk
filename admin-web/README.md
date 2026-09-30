@@ -29,8 +29,8 @@ admin-web/
   serve.py            static server (MIME allow-list, no-store, path containment)
   js/                 legacy console — hash router, api, dom helpers, views/
   tool/
-    verify_ui.mjs           browser-driven verifier (Playwright)
-    reset_signin_budget.py  clears the dev OTP budget so the verifier can re-run
+    verify_ui.mjs           browser-driven verifier (Playwright), React build only
+    reset_signin_budget.py  clears the dev OTP budget (legacy build only)
 ```
 
 ## Running it
@@ -102,27 +102,45 @@ Verify it the same way as the legacy build — the verifier is build-agnostic:
 
 ```bash
 .venv/Scripts/python.exe admin-web/serve.py --port 8081 --dist
-NODE_PATH="$HOME/.workbuddy-ai/binaries/node/workspace/node_modules" \
+NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@playwright/cli/node_modules" \
   node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 \
-    --phone +85290000001 --code 123456
+    --username ops-admin --password "$ADMIN_PASSWORD" --totp-secret "$ADMIN_TOTP_SECRET"
 ```
 
 ### Signing in
 
-Signup always creates a `PASSENGER` (`app/services/otp_service.py`), so an admin
-account has to be granted out of band:
+The console signs in against `admin_accounts`, **not** `users`. It is username +
+password + a 6-digit TOTP code — a phone number cannot sign in, and the `users`
+table's `ADMIN` role (what `scripts/create_admin.py` grants) is not enough to get
+past the console's login screen. Create an admin account instead:
 
 ```bash
-.venv/Scripts/python.exe scripts/create_admin.py --list
-.venv/Scripts/python.exe scripts/create_admin.py --phone +85290000001
+ADMIN_PASSWORD='...' .venv/Scripts/python.exe scripts/create_admin_account.py \
+    --username ops-admin --email ops-admin@realtaxihk.local --yes
 ```
 
-The login screen checks the role and refuses a non-admin, rather than letting them
-in to watch every request 403.
+That leaves the account unenrolled. Enrol it by walking the real flow — `POST
+/api/v1/admin/auth/login` returns the pending secret on a first login, and
+`POST /api/v1/admin/auth/totp/enrol/confirm` persists it once you prove a code
+generated from it. `admin_accounts.totp_secret` then holds the base32 secret,
+which is what `--totp-secret` wants:
 
-With `ALLOW_DEV_OTP=true` the code is the fixed `123456`. That switch is
-fail-closed (rejected outright when `APP_ENV=prod`) and the code is **never** echoed
-in the response body — `SEC-02`. Read it from the notify seam or use the constant.
+```bash
+docker compose exec -T db psql -U realtaxi -d realtaxihk \
+  -tAc "select totp_secret from admin_accounts where username='ops-admin';"
+```
+
+The verifier computes each code itself (RFC 6238, SHA-1/6-digit/30s) rather than
+shelling out to Python, so it stays one self-contained command. It deliberately
+does **not** implement the ±1-step window: it submits exactly one code, and the
+server's window already covers a slow run.
+
+Why there is no OTP budget to clear any more: the phone-OTP login this verifier
+used to drive is gone from the console, and with it the `otp_phone_rate_limit` /
+`otp_ip_rate_limit` 429s that `reset_signin_budget.py` existed to clear. TOTP
+codes are not rate-limited per number, but they **are** single-use — replay
+protection refuses a code at or before the last accepted step — so the verifier
+generates its code at submit time rather than once at startup.
 
 ### Ports and CORS
 
@@ -168,21 +186,29 @@ populated so the split-origin setup keeps working.
 
 There are no unit tests for the console — it is DOM code, and DOM code that is only
 read is not verified. The verifier drives the real thing in a real browser against
-the real API, and it is **build-agnostic**: point `--base` at either server.
+the real API.
+
+**It targets the React build only.** It used to be build-agnostic, and is not any
+more: the two builds now have different login flows. The React build signs in
+against `admin_accounts` with username + password + TOTP; the legacy build still
+posts to `/auth/otp/request` with a phone number and reads `#login-phone`. The
+verifier drives the former, so point `--base` at `serve.py --dist`.
 
 ```bash
-# legacy build
-.venv/Scripts/python.exe admin-web/serve.py --port 8081 &
-# or the React build
 .venv/Scripts/python.exe admin-web/serve.py --port 8081 --dist &
 
-NODE_PATH="$HOME/.workbuddy-ai/binaries/node/workspace/node_modules" \
-  node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081
+NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@playwright/cli/node_modules" \
+  node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 \
+    --username ops-admin --password "$ADMIN_PASSWORD" --totp-secret "$ADMIN_TOTP_SECRET"
 ```
 
-`playwright` is resolved from `NODE_PATH`; the browsers are already downloaded
-under `~/AppData/Local/ms-playwright`. Exit code 0 means every route rendered with
-a clean console and no failed API calls. Screenshots land in `tool/.ui-check/`.
+`playwright` is resolved from `NODE_PATH`. It is not installed as a top-level
+package on this machine — it lives nested under the Playwright CLI
+(`…/node_modules/@playwright/cli/node_modules`), which is why the path above
+points there rather than at `node/workspace/node_modules`. The browsers are
+already downloaded under `~/AppData/Local/ms-playwright`. Exit code 0 means every
+route rendered with a clean console and no failed API calls. Screenshots land in
+`tool/.ui-check/`.
 
 It checks three things reading the source cannot: a module that fails to load
 (blank page, one console error), a render that throws (dead route), and a silent
@@ -190,15 +216,24 @@ API mismatch (a 422 the page renders as an error banner). It also clicks the
 sidebar nav — every route check loads a URL, so a nav that renders *nothing* passes
 all of them.
 
-### Re-running it: the OTP budget
+The nav click selects its target **by label**, not by index. The index form used to
+click the wrong link the moment a route was inserted above it, and the failure read
+as "the nav is broken" rather than "the verifier is stale" — which is how the
+licence-review and analytics links went unnoticed.
 
-The verifier logs in through the real OTP flow, and that flow is deliberately
-budgeted — `otp_ip_rate_limit` 10/600s, `otp_phone_rate_limit` 5/3600s, plus a 60s
-resend cooldown. Those numbers are correct for production. But running the verifier
-a few times in ten minutes from one address spends the budget, and the next run
-gets a `429` that `login.js` correctly renders while staying on the phone step — so
-the harness times out waiting for the code field and it *looks* like a broken
-console. It is a spent budget. Clear it:
+### Re-running it: the OTP budget (legacy build only)
+
+This section applies to the **legacy** console, which still logs in through the
+phone-OTP flow. The React build's TOTP sign-in does not consume any of these
+budgets, so a React run needs nothing cleared.
+
+The OTP flow is deliberately budgeted — `otp_ip_rate_limit` 10/600s,
+`otp_phone_rate_limit` 5/3600s, plus a 60s resend cooldown. Those numbers are
+correct for production. But driving the legacy build a few times in ten minutes
+from one address spends the budget, and the next run gets a `429` that `login.js`
+correctly renders while staying on the phone step — so the harness times out
+waiting for the code field and it *looks* like a broken console. It is a spent
+budget. Clear it:
 
 ```bash
 .venv/Scripts/python.exe admin-web/tool/reset_signin_budget.py --phone +85290000001
@@ -287,9 +322,12 @@ chance. Four mitigations exploit that rather than pretending to fix it:
 console from a stall in the browser, and the verifier harness turns it on by
 default.
 
-A run that fails at sign-in is worth repeating once. If it keeps failing, the
-first thing to check is whether a security agent is filtering loopback
-connections, and the second is `reset_signin_budget.py` (above).
+A run that fails at sign-in is worth repeating once. If it keeps failing, check
+whether a security agent is filtering loopback connections, and — on the legacy
+build — whether the OTP budget is spent (`reset_signin_budget.py`, above). On the
+React build the equivalent first thing to check is that `--totp-secret` is the
+account's current secret and that the machine's clock is within ±30s of the
+server's, since a TOTP code is only valid for one 30-second step either way.
 
 ## Rules the code holds to
 

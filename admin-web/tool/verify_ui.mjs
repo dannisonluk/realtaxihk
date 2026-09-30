@@ -27,6 +27,7 @@
  * Exit code 0 = every route rendered with a clean console.
  */
 
+import { createHmac } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,8 +43,31 @@ function arg(name, fallback) {
 }
 
 const BASE = arg('base', 'http://127.0.0.1:8081');
-const PHONE = arg('phone', '+85290000001');
-const CODE = arg('code', '123456');
+
+// Admin console sign-in is username + password + TOTP. The phone/OTP flow this
+// verifier used to drive is gone from the console — and it could never have
+// signed in anyway, because admins live in `admin_accounts`, a different table
+// from the `users` the OTP flow authenticates. So `--phone/--code` are replaced
+// by credentials plus the account's TOTP secret.
+const USERNAME = arg('username', process.env.ADMIN_USERNAME ?? 'ops-admin');
+const PASSWORD = arg('password', process.env.ADMIN_PASSWORD ?? '');
+const TOTP_SECRET = arg('totp-secret', process.env.ADMIN_TOTP_SECRET ?? '');
+
+// Fail before launching a browser. Without this the run gets as far as the
+// password field and then dies on a 30s `waitForSelector` timeout that reads
+// like a console defect rather than a missing argument.
+if (!PASSWORD || !TOTP_SECRET) {
+  console.error(
+    'missing credentials: pass --password and --totp-secret (or set ' +
+      'ADMIN_PASSWORD / ADMIN_TOTP_SECRET).\n' +
+      'Create one with:\n' +
+      '  ADMIN_PASSWORD=... python scripts/create_admin_account.py \\\n' +
+      '      --username ops-admin --email ops-admin@realtaxihk.local --yes\n' +
+      'then enrol TOTP through POST /api/v1/admin/auth/login and\n' +
+      '/totp/enrol/confirm, and read the secret from admin_accounts.totp_secret.',
+  );
+  process.exit(2);
+}
 
 /**
  * The console is driven **same-origin**, with `serve.py` reverse-proxying
@@ -95,6 +119,12 @@ const ROUTES = [
   { hash: '#/refunds', name: 'refunds', title: '退款申請', expect: ['退款申請', '待審批'] },
   { hash: '#/settlement', name: 'settlement', title: '每週結算', expect: ['每週結算', '執行結算'] },
   { hash: '#/fleets', name: 'fleets', title: '車隊', expect: ['車隊', '新增車隊'] },
+  // The analytics page is the one route whose content depends on there being
+  // completed orders in range. It must still render its headings and charts
+  // when the range is empty — a dashboard that white-screens on "no data" is
+  // worse than one that shows zeroes — so the needles are the section titles,
+  // not any figure.
+  { hash: '#/analytics', name: 'analytics', title: '表現分析', expect: ['表現分析', '時段分佈'] },
 ];
 
 const failures = [];
@@ -163,116 +193,44 @@ async function safeCount(page, selector, timeout = 10000) {
 }
 
 /**
- * Sign in, tolerating the server's 60s OTP resend cooldown.
+ * The TOTP code an authenticator app would show right now.
  *
- * This is not defensive padding — it is the fix for a real flake. The backend
- * rate-limits `POST /auth/otp/request` to one code per phone per 60s
- * (`otp_service._RESEND_COOLDOWN_S`), and `verify_otp` always reads the *newest*
- * row for that phone. A previous run leaves that newest row `consumed_at`-stamped.
- * So a back-to-back run gets the cooldown, `login.js` **deliberately** advances to
- * the code step anyway (it honours `details.retry_after_seconds` rather than
- * dead-ending the operator), and the fixed dev code then verifies against a row
- * the server reports as "OTP already used" — a 400, no session, and a bare
- * `waitForSelector('.shell')` timeout that looks like a product bug.
+ * RFC 6238 with the parameters this project actually issues — HMAC-SHA1, 6
+ * digits, a 30-second step — matching `app/core/totp.py`. Implemented here
+ * rather than shelled out to Python so the verifier stays one self-contained
+ * command with no venv dependency.
  *
- * So: if the cooldown banner appears, wait it out on the countdown the UI is
- * already showing, resend, and confirm the banner clears before continuing.
+ * Note there is no ±1-step window here on purpose: the verifier submits exactly
+ * one code, and the server's window already tolerates a slow run. Widening it
+ * client-side would only hide a clock problem.
  */
-async function requestCode(page) {
-  // `發送驗證碼` must be matched exactly: the resend button's label is
-  // `重新發送驗證碼`, which *contains* it, so a substring match resolves to two
-  // elements and the click target becomes ambiguous.
-  const send = page.getByRole('button', { name: '發送驗證碼', exact: true });
-  const resend = page.getByRole('button', { name: /^重新發送/ });
-  const banner = page.locator('.dialog__error');
-
-  if ((await send.count()) > 0 && (await send.isVisible())) {
-    await send.click();
-  } else {
-    await resend.click();
+function totpNow(secret) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const cleaned = secret.replace(/[\s-]/g, '').toUpperCase();
+  let bits = '';
+  for (const char of cleaned) {
+    const index = alphabet.indexOf(char);
+    if (index === -1) throw new Error(`totp secret is not base32: ${char}`);
+    bits += index.toString(2).padStart(5, '0');
+  }
+  const key = Buffer.alloc(Math.floor(bits.length / 8));
+  for (let i = 0; i < key.length; i += 1) {
+    key[i] = parseInt(bits.slice(i * 8, i * 8 + 8), 2);
   }
 
-  // Wait for *either* outcome. Waiting only for the code step hides which one
-  // happened, and turns a spent rate-limit budget into a bare timeout that reads
-  // like a broken console. `#login-code` is built eagerly inside a collapsed step,
-  // so this tests rendered-ness, not existence.
-  await page.waitForFunction(
-    () => {
-      const code = document.querySelector('#login-code');
-      const error = document.querySelector('.dialog__error');
-      return Boolean(code?.getClientRects().length) || Boolean(error?.getClientRects().length);
-    },
-    undefined,
-    { timeout: 15000 },
-  );
+  const counter = Math.floor(Date.now() / 1000 / 30);
+  const message = Buffer.alloc(8);
+  message.writeBigUInt64BE(BigInt(counter));
+  const mac = createHmac('sha1', key).update(message).digest();
 
-  if (!(await banner.isVisible())) return; // the step opened: a live code was issued
-
-  const message = (await banner.innerText()).trim();
-
-  // The resend cooldown is recoverable. The row on record is a *previous* code —
-  // and `verify_otp` reads the newest row, so it would report "OTP already used".
-  // Wait the countdown the UI is already showing out, then ask for a fresh one.
-  if (/cooldown/i.test(message)) {
-    const label = (await resend.count()) > 0 ? await resend.innerText() : '';
-    const seconds = Number((label.match(/(\d+)/) ?? [])[1] ?? 0);
-    const waitS = seconds > 0 ? seconds + 2 : 62;
-    notes.push(`  note  OTP resend cooldown active — waiting ${waitS}s for a live code`);
-
-    await page.waitForFunction(
-      () => {
-        const button = [...document.querySelectorAll('button')].find((node) =>
-          /^重新發送/.test((node.textContent ?? '').trim()),
-        );
-        return Boolean(button) && !button.disabled;
-      },
-      undefined,
-      { timeout: (waitS + 20) * 1000 },
-    );
-
-    await resend.click();
-
-    // "Banner hidden" is NOT a success signal: `requestCode()` calls `clearError()`
-    // *before* it awaits the request, so the banner disappears the instant the
-    // button is clicked and only comes back if the call fails. The unambiguous
-    // positive signal is `startCooldown()` disabling the resend button again.
-    let issued = true;
-    try {
-      await page.waitForFunction(
-        () => {
-          const button = [...document.querySelectorAll('button')].find((node) =>
-            /^重新發送/.test((node.textContent ?? '').trim()),
-          );
-          return Boolean(button?.disabled);
-        },
-        undefined,
-        { timeout: 20000 },
-      );
-    } catch {
-      issued = false;
-    }
-
-    if (!issued) {
-      const again = (await banner.innerText().catch(() => '')).trim();
-      throw new Error(
-        `OTP resend issued no new code${again ? ` — server said "${again}"` : ''}. ` +
-          `Note this is per-phone: if anything else signed in with ${PHONE} in the ` +
-          `last 60s, its code is the one on record. Clear the budget and retry: ` +
-          `\`python admin-web/tool/reset_signin_budget.py --phone ${PHONE}\`.`,
-      );
-    }
-    notes.push('  ok    a live code was issued after the cooldown');
-    return;
-  }
-
-  // Anything else is a spent budget, not a console defect: `otp_phone_rate_limit`
-  // (5/hour/number) or `otp_ip_rate_limit` (10/10min/address). The console renders
-  // the 429 correctly and stays on the phone step. Say so, and say how to clear it.
-  throw new Error(
-    `OTP request refused: "${message}" — the rate-limit budget is spent, this is ` +
-      `not a console defect. Clear it with ` +
-      `\`python admin-web/tool/reset_signin_budget.py --phone ${PHONE}\` and retry.`,
-  );
+  // Dynamic truncation: the low nibble of the last byte picks a 4-byte window.
+  const offset = mac[mac.length - 1] & 0x0f;
+  const value =
+    ((mac[offset] & 0x7f) << 24) |
+    (mac[offset + 1] << 16) |
+    (mac[offset + 2] << 8) |
+    mac[offset + 3];
+  return String(value % 1_000_000).padStart(6, '0');
 }
 
 /**
@@ -397,11 +355,25 @@ async function main() {
   await page.waitForSelector('.login__card', { timeout: 15000 });
   record(true, 'login screen renders');
 
-  await page.fill('#login-phone', PHONE);
-  await requestCode(page);
-  record(await page.isVisible('#login-code'), 'code step appears after requesting an OTP');
+  await page.fill('#login-username', USERNAME);
+  await page.fill('#login-password', PASSWORD);
+  await page.getByRole('button', { name: '下一步', exact: true }).click();
+  // `waitForSelector`, not `isVisible`. The password step is an async round trip
+  // (and, on a first login, a Redis write), so an instantaneous visibility check
+  // races the transition and reports a failure on a sign-in that then succeeds —
+  // which is exactly what the first run of this produced.
+  let totpStep = true;
+  try {
+    await page.waitForSelector('#login-code', { timeout: 20000 });
+  } catch {
+    totpStep = false;
+  }
+  record(totpStep, 'TOTP step appears after the password');
 
-  await page.fill('#login-code', CODE);
+  // Computed here, not once at startup: enrolment replay protection refuses a
+  // code at or before the last accepted step, so a code generated before a slow
+  // route walk could be stale by the time sign-in runs.
+  await page.fill('#login-code', totpNow(TOTP_SECRET));
   await page.getByRole('button', { name: '登入', exact: true }).click();
 
   let signedIn = true;
@@ -421,18 +393,22 @@ async function main() {
     // Report *why*, rather than the bare timeout this used to produce: the body
     // text is where `login.js` puts the server's rejection.
     const body = (await safeBodyText(page)).replace(/\s+/g, ' ').slice(0, 300);
-    record(false, `signed in as ${PHONE} — ${describe(consoleErrors, failedRequests)} | page: ${body}`);
+    record(false, `signed in as ${USERNAME} — ${describe(consoleErrors, failedRequests)} | page: ${body}`);
     await page.screenshot({ path: `${SHOTS}/signin-failure.png`, fullPage: true });
     notes.push(`  shot  ${SHOTS}/signin-failure.png`);
   } else {
-    record(true, `signed in as ${PHONE}`);
+    record(true, `signed in as ${USERNAME}`);
 
     // The shell is up, but the sandbox wedge can still make the page unreadable
     // at this exact moment (the sidebar assertions all read the DOM). Guard them
     // as a block so a wedged page records failures instead of aborting the run.
     try {
       const sidebarFoot = await page.locator('.sidebar__foot').innerText({ timeout: 10000 });
-      record(sidebarFoot.includes('852'), 'sidebar shows the masked account');
+      // The account shown is the admin's `username`, not a masked phone: an
+      // admin token resolves against `admin_accounts`, which has no phone. This
+      // assertion used to require `852` and failed the moment the console moved
+      // to admin sign-in — correctly, because the foot was rendering an em dash.
+      record(sidebarFoot.includes(USERNAME), `sidebar shows the signed-in account (${USERNAME})`);
 
       // The sidebar nav — and the one check the route loop structurally cannot make.
       // Every route below is entered by loading a URL, so a nav that renders nothing
@@ -440,7 +416,19 @@ async function main() {
       // hypothetical: `[brand, NAV.map(navLink), foot]` was not flattened by
       // `append()`, so the inner array was stringified to its anchors' comma-joined
       // `href`s — five links became one long `http://…#/,http://…#/kyc,…` text node.
-      const NAV_LABELS = ['總覽', '司機審核', '退款', '每週結算', '車隊'];
+      // Order matters and is asserted, because the nav is the only way an
+      // operator moves around. `的士證審核` (licence review) and `表現分析`
+      // (analytics) were added after this list was written — the list has to be
+      // maintained, or the check silently stops covering the nav.
+      const NAV_LABELS = [
+        '總覽',
+        '司機審核',
+        '的士證審核',
+        '退款',
+        '每週結算',
+        '車隊',
+        '表現分析',
+      ];
       const navLabels = (await page.locator('.navlink > span:first-child').allInnerTexts()).map(
         (text) => text.trim(),
       );
@@ -463,7 +451,12 @@ async function main() {
 
       // Click, rather than load. This is the only assertion that exercises the
       // shell's `hashchange` wiring and the nav links together.
-      await page.locator('.navlink').nth(4).click({ timeout: 10000 });
+      //
+      // Selected by label, not by index. The index form (`nth(4)`) silently
+      // started clicking 每週結算 instead of 車隊 the moment a link was inserted
+      // above it, and the failure read as "the nav is broken" rather than "the
+      // verifier is stale".
+      await page.getByRole('link', { name: '車隊', exact: true }).click({ timeout: 10000 });
       let navWorked = true;
       try {
         await page.waitForFunction(() => window.location.hash === '#/fleets', undefined, {
