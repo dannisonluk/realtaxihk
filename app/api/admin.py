@@ -22,7 +22,18 @@ from app.core.config import get_settings
 from app.core.db import get_session, get_session_factory
 from app.core.deps import Principal, require_admin
 from app.core.money import money_str
-from app.models import DriverProfile, DriverStatus, LedgerEntryType, RefundRequest, RefundStatus
+from app.models import (
+    DriverDeposit,
+    DriverProfile,
+    DriverStatus,
+    Fleet,
+    FleetMembership,
+    FleetMemberStatus,
+    LedgerEntry,
+    LedgerEntryType,
+    RefundRequest,
+    RefundStatus,
+)
 from app.services.ledger_service import LedgerService, reference_for_grant
 from app.services.refund_service import RefundService
 from app.services.settlement_service import SettlementService
@@ -72,6 +83,178 @@ async def list_drivers(
         "limit": limit,
         "offset": offset,
     }
+
+
+def _driver_detail_out(
+    dp: DriverProfile,
+    deposit: DriverDeposit | None,
+    *,
+    ledger: list[LedgerEntry],
+    refunds: list[RefundRequest],
+    membership: FleetMembership | None,
+    fleet: Fleet | None,
+) -> dict:
+    """One driver, as the console's detail page needs them.
+
+    The list endpoint (`GET /admin/drivers`) carries only what the KYC queue
+    renders in a row. This is the "everything an operator has to look at before
+    deciding" view: the identity documents, the deposit and its required
+    threshold, the statement, the refund history, and the fleet the driver is
+    currently billed under.
+
+    `hk_id_last4` is returned **masked** — an admin who needs to check the
+    document against a person needs the last four digits, not the whole number,
+    and the unmasked form never leaves the database.
+    """
+    return {
+        "id": str(dp.id),
+        "user_id": str(dp.user_id),
+        "status": dp.status.value,
+        "taxi_type": dp.taxi_type,
+        "taxi_driver_plate_no": dp.taxi_driver_plate_no,
+        "vehicle_reg_mark": dp.vehicle_reg_mark,
+        "hk_id_last4": dp.hk_id_last4,
+        "is_online": dp.is_online,
+        "kyc_reviewed_at": dp.kyc_reviewed_at.isoformat() if dp.kyc_reviewed_at else None,
+        "created_at": dp.created_at.isoformat() if dp.created_at else None,
+        "updated_at": dp.updated_at.isoformat() if dp.updated_at else None,
+        "deposit": _deposit_detail_out(deposit),
+        "ledger": {
+            "items": [_ledger_out(entry) for entry in ledger],
+        },
+        "refunds": {"items": [_refund_out(r) for r in refunds]},
+        "fleet": (
+            {
+                "fleet_id": str(fleet.id),
+                "name": fleet.name,
+                "license_no": fleet.license_no,
+                "status": fleet.status.value,
+                "weekly_fee_discount_percent": str(Decimal(fleet.weekly_fee_discount_percent)),
+                "member_role": membership.member_role.value,
+                "joined_at": membership.joined_at.isoformat() if membership.joined_at else None,
+            }
+            if fleet is not None and membership is not None
+            else None
+        ),
+    }
+
+
+def _deposit_detail_out(dep: DriverDeposit | None) -> dict:
+    """The deposit as the detail page shows it — with the shortfall spelled out.
+
+    A driver with no deposit row has never been credited, which is a different
+    situation from a zero balance; both are rendered, but `required_hkd` is still
+    the platform default so the page can show progress against a real target.
+
+    The two branches emit the **same keys**: the page reads `shortfall_hkd`
+    unconditionally, so a branch that omitted it would leave the "距達標" cell
+    undefined on exactly the driver who most needs it — one who has never paid.
+    """
+    required = Decimal(dep.required_hkd) if dep is not None else Decimal("500")
+    balance = Decimal(dep.balance_hkd) if dep is not None else Decimal(0)
+    return {
+        "balance_hkd": money_str(balance),
+        "held_hkd": money_str(Decimal(dep.held_hkd)) if dep is not None else "0.0",
+        "required_hkd": money_str(required),
+        "is_fulfilled": dep.is_fulfilled if dep is not None else False,
+        "has_account": dep is not None,
+        "shortfall_hkd": money_str(max(required - balance, Decimal(0))),
+    }
+
+
+def _ledger_out(entry: LedgerEntry) -> dict:
+    return {
+        "id": entry.id,
+        "entry_type": entry.entry_type.value,
+        "amount_hkd": money_str(Decimal(entry.amount_hkd)),
+        "balance_after_hkd": money_str(Decimal(entry.balance_after_hkd)),
+        "order_id": str(entry.order_id) if entry.order_id else None,
+        "note": entry.note,
+        "reference": entry.reference,
+        "created_at": entry.created_at.isoformat() if entry.created_at else None,
+    }
+
+
+@router.get("/drivers/{driver_id}")
+async def driver_detail(
+    driver_id: str,
+    ledger_limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    refund_limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    admin: Principal = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Everything about one driver, in one round trip.
+
+    Composed server-side rather than left to the console: a page that makes five
+    calls can render a half-truthful driver (the statement loaded, the deposit
+    not), and the console has no way to say which. One call, one consistent read.
+
+    Ledger and refund history are capped, newest first — the statement grows
+    without bound, and an operator looking at a driver is interested in the
+    recent position, not the full archive.
+    """
+    dp = await session.get(DriverProfile, driver_id)
+    if dp is None:
+        raise HTTPException(status_code=404, detail="driver not found")
+
+    deposit = (
+        (
+            await session.execute(
+                select(DriverDeposit).where(DriverDeposit.driver_profile_id == dp.id)
+            )
+        )
+        .scalars()
+        .first()
+    )
+
+    ledger = (
+        (
+            await session.execute(
+                select(LedgerEntry)
+                .where(LedgerEntry.driver_profile_id == dp.id)
+                .order_by(LedgerEntry.id.desc())
+                .limit(ledger_limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    refunds = (
+        (
+            await session.execute(
+                select(RefundRequest)
+                .where(RefundRequest.driver_profile_id == dp.id)
+                .order_by(RefundRequest.created_at.desc())
+                .limit(refund_limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    membership = (
+        (
+            await session.execute(
+                select(FleetMembership).where(
+                    FleetMembership.driver_profile_id == dp.id,
+                    FleetMembership.status == FleetMemberStatus.ACTIVE,
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    fleet = await session.get(Fleet, membership.fleet_id) if membership else None
+
+    return _driver_detail_out(
+        dp,
+        deposit,
+        ledger=list(ledger),
+        refunds=list(refunds),
+        membership=membership,
+        fleet=fleet,
+    )
 
 
 @router.post("/drivers/{driver_id}/review")

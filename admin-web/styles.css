@@ -506,6 +506,27 @@ textarea:focus {
 
 /* states ------------------------------------------------------------------ */
 
+/*
+ * A deposit's progress toward its threshold. The console had no such widget:
+ * the KYC queue only ever showed the balance as text, which is fine in a table
+ * row but not on a page whose whole point is "is this driver funded enough to
+ * dispatch". The fill colour is set inline from the caller (satisfied / short)
+ * because it depends on the data, not on the theme.
+ */
+.meter {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.meter__fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.25s ease;
+}
+
 .empty,
 .error,
 .loading {

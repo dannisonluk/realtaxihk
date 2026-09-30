@@ -19,6 +19,7 @@ import { api, ApiClient } from './api.js';
 import { el, mount, toast } from './dom.js';
 import { session } from './session.js';
 import { DashboardView } from './views/dashboard.js';
+import { DriverDetailView } from './views/driverDetail.js';
 import { FleetDetailView } from './views/fleetDetail.js';
 import { FleetsView } from './views/fleets.js';
 import { KycView } from './views/kyc.js';
@@ -46,6 +47,13 @@ const client = new ApiClient({
 
 /** Counts for the sidebar badges. Best-effort: a failure must not break the shell. */
 const badges = { pendingKyc: null, pendingRefunds: null };
+
+/** Apply badge counts handed over by a view that already fetched them. */
+function setBadges(next) {
+  if (next.pendingKyc !== undefined) badges.pendingKyc = next.pendingKyc;
+  if (next.pendingRefunds !== undefined) badges.pendingRefunds = next.pendingRefunds;
+  renderNavCounts();
+}
 
 async function refreshBadges() {
   try {
@@ -192,7 +200,16 @@ function pageHead(title, subtitle, actions) {
 const ROUTES = [
   {
     pattern: /^\/$/,
-    render: async (ctx) => [pageHead('總覽', '平台即時狀況。'), await DashboardView(ctx)],
+    render: async (ctx) => [pageHead('總覽', '平台即時狀況。'), await DashboardView({ ...ctx, setBadges })],
+  },
+  {
+    // The driver detail page. Declared before `/kyc` is irrelevant — the two
+    // patterns are disjoint — but it must come before any route that would
+    // greedily swallow the `drivers/...` prefix.
+    pattern: /^\/drivers\/([^/]+)$/,
+    render: async (ctx, match) => [
+      await DriverDetailView({ ...ctx, driverId: decodeURIComponent(match[1]) }),
+    ],
   },
   {
     pattern: /^\/kyc$/,
@@ -307,7 +324,13 @@ async function boot() {
 
   window.addEventListener('hashchange', renderRoute);
   await renderRoute();
-  refreshBadges();
+  // The dashboard route fills both counters from the fetches it already makes
+  // (see `DashboardView`'s `setBadges`), so asking again would spend two more
+  // parallel requests for numbers already on screen. Other routes render no
+  // counts, so they still need this.
+  if (badges.pendingKyc === null || badges.pendingRefunds === null) {
+    refreshBadges();
+  }
 }
 
 boot();

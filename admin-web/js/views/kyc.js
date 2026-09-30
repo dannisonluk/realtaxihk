@@ -46,7 +46,7 @@ const FILTERS = [
 
 const TAXI_LABEL = { URBAN: '市區的士', NT: '新界的士', LANTAU: '大嶼山的士' };
 
-export async function KycView({ client, refreshBadges }) {
+export async function KycView({ client, refreshBadges, navigate }) {
   let filter = 'PENDING_KYC';
 
   const listHost = el('div', {}, [loading()]);
@@ -91,6 +91,19 @@ export async function KycView({ client, refreshBadges }) {
 
   function rowActions(driver) {
     const actions = [];
+
+    // The detail page first, on every row. The state-machine buttons below are
+    // the *decision*; this is the "let me look before I press anything" step, and
+    // it is the only way to reach the statement, the deposit and the fleet from
+    // the queue.
+    actions.push(
+      el('button', {
+        type: 'button',
+        class: 'btn btn--sm',
+        text: '檢視',
+        onClick: () => navigate(`/drivers/${driver.id}`),
+      }),
+    );
 
     if (driver.status === 'PENDING_KYC') {
       actions.push(
