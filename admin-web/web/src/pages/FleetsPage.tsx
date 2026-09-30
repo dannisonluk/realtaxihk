@@ -21,7 +21,7 @@ import { useLoad } from '../app/useLoad';
 import { PageHead } from '../app/Shell';
 import { endpoints } from '../api/endpoints';
 import type { FleetStatus } from '../api/types';
-import { Card, Chip, Empty } from '../components/primitives';
+import { Card, Chip, Empty, Percent } from '../components/primitives';
 import { ErrorState, LoadingState } from '../components/states';
 import { fleetStatusLabel, fleetStatusTone, formatTime } from '../lib/labels';
 
@@ -141,7 +141,9 @@ export function FleetsPage() {
                   <tr key={fleet.id}>
                     <td>{fleet.name}</td>
                     <td className="mono">{fleet.license_no ?? '—'}</td>
-                    <td>{fleet.weekly_fee_discount_percent}%</td>
+                    <td>
+                      <Percent value={fleet.weekly_fee_discount_percent} />
+                    </td>
                     <td className="num">{fleet.member_count ?? 0}</td>
                     <td>
                       <Chip tone={fleetStatusTone(fleet.status)}>

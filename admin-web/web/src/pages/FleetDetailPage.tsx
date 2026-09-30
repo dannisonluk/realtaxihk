@@ -32,7 +32,7 @@ import type {
   FleetRow,
   FleetSettlementRunResult,
 } from '../api/types';
-import { Card, Chip, DetailRow, Empty, Message, Money, Rows } from '../components/primitives';
+import { Card, Chip, DetailRow, Empty, Message, Money, Percent, Rows } from '../components/primitives';
 import { ErrorState, LoadingState } from '../components/states';
 import {
   currentIsoWeek,
@@ -215,7 +215,9 @@ export function FleetDetailPage() {
         </div>
         <div style={{ marginTop: 16 }}>
           <Rows>
-            <DetailRow label="每週費用折扣">{fleet.weekly_fee_discount_percent}%</DetailRow>
+            <DetailRow label="每週費用折扣">
+              <Percent value={fleet.weekly_fee_discount_percent} />
+            </DetailRow>
             <DetailRow label="成員人數">{String(fleet.member_count ?? 0)}</DetailRow>
             <DetailRow label="聯絡人">{fleet.contact_name ?? '—'}</DetailRow>
             <DetailRow label="聯絡電話">{fleet.contact_phone ?? '—'}</DetailRow>
@@ -271,7 +273,9 @@ export function FleetDetailPage() {
                   <td className="num">
                     <Money value={run.fee_hkd} />
                   </td>
-                  <td className="num">{run.discount_percent}%</td>
+                  <td className="num">
+                    <Percent value={run.discount_percent} />
+                  </td>
                   <td className="num">{run.member_count ?? 0}</td>
                   <td className="num">{run.charged ?? 0}</td>
                   <td className="num">{run.skipped ?? 0}</td>
@@ -425,7 +429,7 @@ function RunCard({ run }: { run: FleetSettlementRunResult }) {
         <DetailRow label="每位節省">
           {saving !== null && saving !== 0 ? (
             <>
-              <Money value={saving} /> · 折扣 {run.discount_percent}%
+              <Money value={saving} /> · 折扣 <Percent value={run.discount_percent} />
             </>
           ) : (
             '—'

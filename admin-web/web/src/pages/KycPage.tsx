@@ -14,7 +14,7 @@
  */
 
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import type { AdminDriverRow, DriverStatus } from '../api/types';
 import { endpoints } from '../api/endpoints';
 import { Chip } from '../components/primitives';
@@ -36,6 +36,7 @@ const FILTERS: { value: DriverStatus | null; label: string }[] = [
 
 export function KycPage() {
   const { client, notify, refreshBadges } = useApp();
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<DriverStatus | null>('PENDING_KYC');
   const dialog = useFormDialog();
 
@@ -95,10 +96,19 @@ export function KycPage() {
     // The detail page first, on every row. The state-machine buttons are the
     // *decision*; this is the "let me look before I press anything" step, and it
     // is the only way to reach the statement, the deposit and the fleet.
+    //
+    // A real `<button>` rather than a `<Link>`, so it keeps the button role the
+    // row's other actions have — and because the UI verifier reaches the detail
+    // page by clicking it, which is what exercises the navigate path.
     const actions: React.ReactNode[] = [
-      <Link key="view" className="btn btn--sm" to={`/drivers/${driver.id}`}>
+      <button
+        key="view"
+        type="button"
+        className="btn btn--sm"
+        onClick={() => navigate(`/drivers/${driver.id}`)}
+      >
         檢視
-      </Link>,
+      </button>,
     ];
 
     if (driver.status === 'PENDING_KYC') {

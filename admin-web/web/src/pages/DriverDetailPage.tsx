@@ -24,7 +24,7 @@ import { useFormDialog } from '../app/useDialogs';
 import { useLoad } from '../app/useLoad';
 import { endpoints } from '../api/endpoints';
 import type { DriverProfileDetail } from '../api/types';
-import { Card, Chip, DetailRow, Empty, Money, Rows } from '../components/primitives';
+import { Card, Chip, DetailRow, Empty, Money, Percent, Rows } from '../components/primitives';
 import { ErrorState, LoadingState } from '../components/states';
 import {
   driverStatusLabel,
@@ -192,7 +192,9 @@ export function DriverDetailPage() {
             <DetailRow label="車隊狀態">{driver.fleet.status}</DetailRow>
             <DetailRow label="名單角色">{memberRoleLabel(driver.fleet.member_role)}</DetailRow>
             <DetailRow label="加入日期">{formatTime(driver.fleet.joined_at)}</DetailRow>
-            <DetailRow label="每週費用折扣">{driver.fleet.weekly_fee_discount_percent}%</DetailRow>
+            <DetailRow label="每週費用折扣">
+              <Percent value={driver.fleet.weekly_fee_discount_percent} />
+            </DetailRow>
           </Rows>
           <p className="dim" style={{ margin: '14px 0 0' }}>
             成員按車隊折扣價收費，不再計入平台劃一收費。
@@ -440,14 +442,10 @@ function DepositSection({ driver }: { driver: DriverProfileDetail }) {
   );
 }
 
-/** A ledger amount, signed so a deduction reads as a deduction. */
+/** A ledger amount, signed. The server stores a deduction as negative, so the
+ * sign comes from the value, not from a guess about the entry type. */
 function SignedMoney({ value }: { value: string }) {
-  const negative = value.trim().startsWith('-');
-  return (
-    <span className={negative ? 'loss' : 'gain'}>
-      <Money value={value} />
-    </span>
-  );
+  return <Money value={value} sign />;
 }
 
 function ReviewBody({

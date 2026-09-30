@@ -164,8 +164,60 @@ export function Modal({
   );
 }
 
-/** A money amount, tabular so columns of figures line up. */
-export function Money({ value, className = '' }: { value: string | number; className?: string }) {
-  const text = typeof value === 'number' ? value.toFixed(2) : value;
-  return <span className={`num ${className}`}>HK$ {text}</span>;
+/**
+ * A money amount, tabular so columns of figures line up.
+ *
+ * Ported from the vanilla `dom.js#money`, and the details matter:
+ *
+ *  * **No space** between `HK$` and the figure — `HK$500.00`, not `HK$ 500.00`.
+ *  * **Always two decimals.** The server is inconsistent: the platform's flat
+ *    fee arrives as `"200"` while a discounted fleet fee is `"150.00"`. Echoing
+ *    that verbatim puts `HK$0.0` next to `HK$1234.5` and the column stops
+ *    reading as money.
+ *  * `sign` prefixes `+`/`−` and takes the absolute value, because a ledger
+ *    deduction is stored **negative** (`amount_hkd=-fee`) and `−HK$200.00`
+ *    double-negates into a plus. The minus is U+2212, not a hyphen: it is the
+ *    same width as the plus, so a signed column stays aligned.
+ */
+export function Money({
+  value,
+  className = '',
+  sign = false,
+}: {
+  value: string | number | null | undefined;
+  className?: string;
+  sign?: boolean;
+}) {
+  return (
+    <span className={`num ${className}`}>
+      {formatMoney(value, sign)}
+    </span>
+  );
+}
+
+function formatMoney(value: string | number | null | undefined, sign: boolean): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const amount = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(amount)) return String(value);
+
+  // Grouped manually: `toLocaleString` varies by locale and a money column
+  // should not reflow because the browser is set to a different region.
+  const [whole = '0', fraction = '00'] = Math.abs(amount).toFixed(2).split('.');
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const body = `HK$${grouped}.${fraction}`;
+  if (!sign) return body;
+  return `${amount < 0 ? '\u2212' : '+'}${body}`;
+}
+
+/**
+ * A percentage.
+ *
+ * `12.5` -> `12.5%`, `25.00` -> `25%`. The server sends the discount as a
+ * decimal string, and printing `25.00%` shows precision the operator never
+ * typed — so an integral value loses its fraction entirely.
+ */
+export function Percent({ value }: { value: string | number | null | undefined }) {
+  const amount = typeof value === 'number' ? value : Number(value);
+  if (value === null || value === undefined || !Number.isFinite(amount)) return <>—</>;
+  return <>{Number.isInteger(amount) ? amount : amount.toFixed(1)}%</>;
 }
