@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session, get_session_factory
 from app.core.deps import Principal, require_active_user, require_phone_current
 from app.core.exceptions import BusinessRuleError
+from app.core.service_area import require_in_hong_kong
 from app.models import (
     DriverProfile,
     DriverStatus,
@@ -141,6 +142,13 @@ async def create_order(
     limiter = request.app.state.rate_limiter
     if not await limiter.allow(f"order:create:{user.id}", _ORDER_RATE_LIMIT, _ORDER_WINDOW_S):
         raise HTTPException(status_code=429, detail="too many orders, slow down")
+    # Service area: only Hong Kong may create orders. The pydantic bounds above
+    # are a cheap first pass, but they are a *box*, and the box contains
+    # Shenzhen — see `app/core/hk_bounds.py` for the measurements. Checked after
+    # the limiter so a caller spraying out-of-area coordinates still spends
+    # rate-limit budget rather than being handed a free path.
+    require_in_hong_kong(payload.pickup_lat, payload.pickup_lng, field="pickup")
+    require_in_hong_kong(payload.dropoff_lat, payload.dropoff_lng, field="dropoff")
     try:
         order = await OrderService(session).create(user.id, payload)
     except BusinessRuleError:

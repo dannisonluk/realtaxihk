@@ -45,12 +45,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.db import get_session, get_session_factory
 from app.core.deps import principal_from_token
+from app.core.hk_bounds import is_in_hong_kong
 from app.core.token_revocation import is_token_revoked
 from app.models import DriverProfile, DriverStatus, Order, User
 
 router = APIRouter(tags=["ws"])
-
-WS_HK_BOUNDS = ((22.1, 22.6), (113.8, 114.5))
 
 # Close codes
 WS_UNAUTHENTICATED = 4401
@@ -172,9 +171,11 @@ async def trip_socket(
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             await send({"type": "error", "code": "BAD_MESSAGE"})
             return
-        (lat_lo, lat_hi), (lng_lo, lng_hi) = WS_HK_BOUNDS
-        if not (lat_lo <= lat <= lat_hi and lng_lo <= lng <= lng_hi):
-            await send({"type": "error", "code": "BAD_LOCATION"})
+        # Service area: a driver outside Hong Kong may not publish positions.
+        # The check is the polygon one from `hk_bounds`, not the box this used
+        # to carry — see that module for why the box admitted Shenzhen.
+        if not is_in_hong_kong(lat, lng):
+            await send({"type": "error", "code": "OUTSIDE_HK"})
             return
         async with factory() as ops:
             row = (

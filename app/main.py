@@ -35,6 +35,7 @@ from app.api.identity import router as identity_router
 from app.api.licence import router as licence_router
 from app.api.licence_admin import router as licence_admin_router
 from app.api.orders import router as orders_router
+from app.api.service_area import router as service_area_router
 from app.api.tracking import router as tracking_router
 from app.api.trips import router as trips_router
 from app.api.ws import router as ws_router
@@ -184,6 +185,7 @@ def create_app() -> FastAPI:
     app.include_router(orders_router)
     app.include_router(tracking_router)
     app.include_router(trips_router)
+    app.include_router(service_area_router)
     app.include_router(ws_router)
 
     from app.core.db import get_redis, get_session_factory

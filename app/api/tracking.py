@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.deps import Principal, require_active_user
+from app.core.service_area import require_in_hong_kong
 from app.models import DriverProfile, DriverStatus
 
 router = APIRouter(prefix="/api/v1/driver", tags=["driver"])
@@ -51,6 +52,12 @@ async def upsert_location(
         settings.driver_location_window_s,
     ):
         raise HTTPException(status_code=429, detail="location updates are too frequent")
+
+    # Service area: a driver outside Hong Kong must not publish a position. The
+    # field bounds above are a box that admits Shenzhen — see
+    # `app/core/hk_bounds.py`. Refusing here also protects the dispatch index,
+    # which is what the coordinate feeds.
+    require_in_hong_kong(payload.lat, payload.lng, field="location")
 
     profile = (
         (await session.execute(select(DriverProfile).where(DriverProfile.user_id == user.id)))
