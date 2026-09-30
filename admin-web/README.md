@@ -4,24 +4,30 @@ The web console for the platform's management and admin teams: the KYC queue, th
 refund decisions, the weekly platform settlement, and the taxi-fleet register with
 its rosters and fleet-level settlement.
 
-It is a **zero-build ES-module SPA**. No bundler, no transpiler, no `package.json`,
-no `node_modules`. `index.html` loads `js/app.js` as a module and the browser does
-the rest. The reason is not minimalism for its own sake: this console holds the
-admin session for a payments platform, and a build pipeline would mean a dependency
-tree of hundreds of packages with install-time script execution — for a UI that is
-a few thousand lines of `document.createElement`. There is nothing to build.
+There are **two builds**, and they live side by side. `serve.py --dist` picks
+between them; without the flag the legacy one is served.
+
+| | entry | build |
+|---|---|---|
+| **React (current)** | `web/` | Vite + React 18 + TypeScript — `npm run build` → `web/dist` |
+| **Legacy** | `index.html`, `js/`, `styles.css` | none — hand-written ES modules |
+
+The React rewrite is the supported console. The legacy bundle is kept because it
+still works and it is the reference the rewrite was verified against; remove it
+only once nothing depends on it.
+
+### The legacy build — a zero-build ES-module SPA
+
+No bundler, no transpiler, no `package.json`. `index.html` loads `js/app.js` as a
+module and the browser does the rest.
 
 ```
 admin-web/
-  index.html          shell; loads js/app.js as a module
-  styles.css          one stylesheet, no preprocessor
+  web/                React + Vite + TypeScript (see "The React build" below)
+  index.html          legacy shell; loads js/app.js as a module
+  styles.css          legacy stylesheet
   serve.py            static server (MIME allow-list, no-store, path containment)
-  js/
-    app.js            hash router, shell, boot sequence
-    api.js            HTTP client + typed endpoint wrappers
-    session.js        token storage (sessionStorage — see the caveat below)
-    dom.js            element helpers; the "no innerHTML on server data" rule
-    views/            one module per route
+  js/                 legacy console — hash router, api, dom helpers, views/
   tool/
     verify_ui.mjs           browser-driven verifier (Playwright)
     reset_signin_budget.py  clears the dev OTP budget so the verifier can re-run
@@ -35,12 +41,64 @@ The API must be up first, and the console is served as static files:
 # API on :8000 (see the root README for the full stack)
 .venv/Scripts/python.exe -m uvicorn app.main:app --port 8000
 
-# console on :3000 by default
+# the React console — build once, then serve
+cd admin-web/web && npm install && npm run build && cd ../..
+.venv/Scripts/python.exe admin-web/serve.py --dist
+
+# the legacy console, unchanged
 .venv/Scripts/python.exe admin-web/serve.py
 .venv/Scripts/python.exe admin-web/serve.py --port 8081   # or pick a port
 ```
 
 Then open <http://127.0.0.1:3000>.
+
+## The React build
+
+Vite + React 18 + TypeScript, in `web/`. The rewrite is not a re-skin: three
+things from the legacy build are load-bearing and were carried over deliberately.
+
+1. **Sequential multi-call loading** — `useLoad` / `inOrder` in
+   `src/app/useLoad.ts`. The browser opens at most **six** sockets per origin, and
+   this environment intermittently accepts a connection and then never answers it.
+   A route that fires six calls at once parks the entire socket pool on a wedged
+   upstream, and the *next* request — even a static file — cannot get one. Calls
+   are issued one at a time so there is never more than one in flight.
+2. **Server data never becomes markup** — there is no `dangerouslySetInnerHTML`
+   anywhere. Driver notes, fleet names and contact details are all
+   attacker-controlled strings and this console renders every one of them.
+3. **Hash routing** (`createHashRouter`) — the console is static files with no
+   rewrite rule, so a History-API deep link would 404 before the app loaded.
+
+**Types are hand-written from `app/api/admin.py`**, which is the authority.
+Two things that are easy to get wrong:
+
+- **Money is a `string` on the wire** (the server formats it with `money_str`).
+  Typing it as `number` renders `NaN` after the first arithmetic.
+- **`FleetStatus` ends in `DISSOLVED`, not `TERMINATED`** — a fleet is wound up,
+  a *driver* is terminated.
+
+```
+admin-web/web/
+  index.html            Vite entry — the one thing that is not under src/
+  vite.config.ts        base './', dev proxy for /api with a 3s upstream timeout
+  tsconfig.json         strict + noUnusedLocals + noUncheckedIndexedAccess
+  src/
+    api/                client, session, types (from app/api/admin.py), endpoints
+    app/                AppProvider, useLoad, useDialogs, Shell, routes
+    components/         primitives (Card/Chip/Money/Percent), states, toasts
+    lib/labels.ts       status vocabulary and the money/percent formatters
+    pages/              one component per route
+    styles.css          design tokens (iOS type scale, 4pt grid, 44px targets)
+```
+
+Verify it the same way as the legacy build — the verifier is build-agnostic:
+
+```bash
+.venv/Scripts/python.exe admin-web/serve.py --port 8081 --dist
+NODE_PATH="$HOME/.workbuddy-ai/binaries/node/workspace/node_modules" \
+  node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 \
+    --phone +85290000001 --code 123456
+```
 
 ### Signing in
 
@@ -103,10 +161,14 @@ populated so the split-origin setup keeps working.
 
 There are no unit tests for the console — it is DOM code, and DOM code that is only
 read is not verified. The verifier drives the real thing in a real browser against
-the real API:
+the real API, and it is **build-agnostic**: point `--base` at either server.
 
 ```bash
+# legacy build
 .venv/Scripts/python.exe admin-web/serve.py --port 8081 &
+# or the React build
+.venv/Scripts/python.exe admin-web/serve.py --port 8081 --dist &
+
 NODE_PATH="$HOME/.workbuddy-ai/binaries/node/workspace/node_modules" \
   node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081
 ```
@@ -225,9 +287,11 @@ connections, and the second is `reset_signin_budget.py` (above).
 ## Rules the code holds to
 
 **Server data never becomes markup.** Every view builds nodes and assigns
-`textContent`. Driver refund notes, fleet contact names and licence numbers are all
-attacker-controlled strings and this console renders them, so there is deliberately
-no `html` escape hatch in `js/dom.js`. If a view needs markup, it composes elements.
+`textContent`; the React build has no `dangerouslySetInnerHTML` anywhere. Driver
+refund notes, fleet contact names and licence numbers are all attacker-controlled
+strings and this console renders them, so there is deliberately no `html` escape
+hatch in `js/dom.js` and no raw-HTML escape hatch in `web/src/`. If a view needs
+markup, it composes elements.
 
 **`append()` flattens nested arrays.** This is load-bearing, not a convenience. A
 children array is the natural place to put a `.map()`, and the sidebar is built as
