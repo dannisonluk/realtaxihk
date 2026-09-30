@@ -7,7 +7,7 @@ Money math is exact (`Decimal`, never float); every fare response carries biling
 Cap. 374D disclaimers; every estimate embeds a `tariff_version` so historical orders
 stay auditable.
 
-**Status: production-hardened.** 245 backend tests green (+ 93 mobile, 54 contract
+**Status: production-hardened.** 272 backend tests green (+ 93 mobile, 54 contract
 fixtures, browser UI verifier PASS). Start with
 [`docs/WORK_SUMMARY.md`](docs/WORK_SUMMARY.md) for the whole picture — what's built,
 what's verified, and what still needs credentials or a deployment target.
@@ -56,7 +56,7 @@ app/
                   #   fleet + settlement (the roster is the billing boundary)
 alembic/          # async migrations (postgis tables filtered via include_object)
 scripts/          # dev tooling — serve_and_probe, verify_api, stop_server,
-                  #   live_smoke (9-check E2E), prod_boot_drill,
+                  #   live_smoke (9-check E2E), prod_boot_drill, db_backup,
                   #   gen_mobile_fixtures (pins the mobile wire format from the real API)
 tests/            # pytest — unit + module + WS streaming + hardening regression
 mobile/           # Flutter client (Android first) — driver, passenger and admin surfaces
@@ -169,9 +169,9 @@ unconfigured), Sentry/Prometheus (optional).
 .venv/Scripts/python -m pytest -q        # needs db+redis containers up
 ```
 
-- 221 tests over 12 files: fare unit tests, per-module API tests, WS streaming,
-  fleet management / roster / settlement, and `test_hardening.py` (14 regression
-  tests for every fixed finding).
+- 272 tests over 14 files: fare unit tests, per-module API tests, WS streaming,
+  fleet management / roster / settlement, backup retention and restore-drill
+  guards, and `test_hardening.py` (14 regression tests for every fixed finding).
 - Per-test isolated Postgres databases (template clone) — no cross-test state.
 - CI (`.github/workflows/ci.yml`): ruff check → format check → full pytest, with
   PostGIS + Redis service containers.
@@ -210,6 +210,50 @@ is driven over LSP by a Python harness. See `mobile/README.md` and
 Both security scripts boot their own uvicorn on :8000, so stop anything already
 listening there first. They only create throwaway users/orders. See
 `docs/SECURITY_AUDIT.md` for what each check corresponds to.
+
+### Backups (`scripts/db_backup.py`)
+
+The ledger is the financial record, so a dump nobody has restored is not a
+backup. `verify` is the part that matters: it restores the newest archive into
+a scratch database and compares exact row counts, table by table.
+
+```bash
+# the nightly run
+.venv/Scripts/python scripts/db_backup.py backup
+
+# the drill — restores, compares, drops the scratch db
+.venv/Scripts/python scripts/db_backup.py verify
+
+# what is on disk, and what retention would prune
+.venv/Scripts/python scripts/db_backup.py list
+```
+
+Off-host copying is deliberately the operator's command, not a hard-coded
+provider — the deploy target is not decided yet, and a backup script that
+assumes S3 is a backup script that breaks on the next host:
+
+```bash
+.venv/Scripts/python scripts/db_backup.py backup \
+  --upload-cmd        'rclone copy {file} remote:realtaxi-backups/' \
+  --upload-verify-cmd 'rclone lsf remote:realtaxi-backups/'
+```
+
+`--upload-verify-cmd` is worth setting. Without it, "upload ok" only means the
+command exited 0 — `true` passes. With it, the remote is actually asked whether
+the archive is there.
+
+Cron line (note it does **not** need the API running):
+
+```
+17 3 * * *  cd /srv/realtaxihk && .venv/bin/python scripts/db_backup.py backup
+```
+
+Retention defaults to 7 daily + 4 weekly, counted by **calendar distance**, so
+the weekly tier survives a problem that takes days to notice. **Redis is not
+backed up on purpose** — rate-limit counters, grab locks and Pub/Sub are all
+ephemeral; the database is the truth. `--via auto` uses local `pg_*` tools when
+present and falls back to `docker exec realtaxi-db` when they are not, which is
+the case on this machine.
 
 ## Roadmap (next)
 

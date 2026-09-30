@@ -1,8 +1,8 @@
 # realtaxihk — 工作總覽
 
-- **生成日期**：2026-09-30
-- **HEAD**：`4333f2a`（45 commits · 1 未推）
-- **現時狀態**：working tree clean · `pytest` **245 passed** · `ruff` clean · mobile 93 tests · contract 54 fixtures · admin UI verifier PASS
+- **生成日期**：2026-09-30（**同日傍晚更新**：併入 P1-4 備份實作；更正 Sentry 與未推數量兩項過時資訊）
+- **HEAD**：`869636d`（48 commits · 3 未推）
+- **現時狀態**：working tree clean · `pytest` **272 passed** · `ruff` clean · mobile 93 tests · contract 54 fixtures · admin UI verifier PASS
 
 > **呢份文件嘅用途**：一份可以單獨睇完嘅總覽 —— 做過咩、而家係咩狀態、
 > 仲有咩未做、邊樣需要你出手。其他 `docs/*` 係**主題深入報告**（安全、
@@ -102,7 +102,31 @@
 - **admin-web**：管理後台**由零重寫成 React + Vite**（`admin-web/web/`），
   同 legacy 版並存。10 modules，driver detail 由一個 composed endpoint 支撐。
 
-### 2.6 測試基建
+### 2.6 備份與還原演練（P1-4，2026-09-30）
+
+`scripts/db_backup.py`。**還原演練係重點** —— 冇還原過嘅 dump 只係假設。
+
+實跑結果（真 Postgres 16.4）：`49 tables / 17,627 rows`，source vs restore
+逐表 count 完全一致。
+
+過程中捉到 4 個**只有真跑才會現形**嘅 bug：
+
+1. **`pg_restore --list` 收 host path**，但 docker transport 下個 tool 跑喺
+   container 裡面 → 找不到檔案。要改成 stdin 灌入（同 restore 一樣嘅橋）。
+2. **`subprocess.run(shell=True)` 喺 Windows 用 `cmd.exe`**，`;` 唔係分隔符。
+   實測 `echo hi >&2; exit 7` **回 0** → 一個失敗嘅上載被報成成功 ——
+   備份最惡劣嘅失敗模式（靜靜地冇 copy 到，但每晚都報 OK）。
+   改成明確 `sh -c`。
+3. **Windows 路徑經 `sh` 會被食走反斜線**：`C:\Users\user\x.dump` →
+   `C:Usersuserx.dump`。`{file}` 完全用唔到。改用 `as_posix()`。
+4. **「上載 OK」原來只係「command exit 0」** —— `true` 都會 pass。
+   加 `--upload-verify-cmd`，要真係問 remote 攞到 archive 名先算數。
+
+保留策略係 GFS（7 daily + 4 weekly），按**日曆距離**而唔係檔案數量計 ——
+weekly 層要捱得過「幾日後才發現」嘅問題，所以 40 日 / keep 7+3 實測
+仍然留住 Sep 20 同 Sep 13（各自 ISO week 最舊嘅一份）。
+
+### 2.7 測試基建
 
 - **Mobile fixtures 係「生成」唔係手寫**：`scripts/gen_mobile_fixtures.py`
   起 API、打真 endpoint、寫低 raw response；`mobile/tool/verify_contract.dart`
@@ -120,16 +144,20 @@
 
 ```bash
 uv run ruff check . && uv run ruff format --check .   # 或 ./.venv/Scripts/python.exe -m ruff
-uv run pytest -q                                       # 245 passed
+uv run pytest -q                                       # 272 passed
 cd admin-web/web && npx tsc --noEmit && npm run build
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
 cd mobile && python tool/dart_check.py .               # LSP，非 flutter analyze
 cd mobile && dart --packages=.dart_tool/package_config.json tool/verify_contract.dart
-node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8082 --phone +85290000001 --code 123456
+node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 --phone +85290000001 --code 123456
+# 備份：唔止跑 backup，一定要跑埋 drill
+.venv/Scripts/python scripts/db_backup.py backup
+.venv/Scripts/python scripts/db_backup.py verify      # 還原 + 逐表核對 row count
 ```
 
 **關鍵**：改動 money 格式後，要對**真 server + 真 Postgres** 做 live 驗證，
-唔可以只信 TestClient。上面 2.3 嗰個 `"0.0"` bug 就係咁搵到。
+唔可以只信 TestClient。上面 2.3 嗰個 `"0.0"` bug 就係咁搵到；2.6 嗰 4 個
+備份 bug 亦一樣 —— 全部係「讀源碼睇唔到、真跑先爆」。
 
 ---
 
@@ -140,12 +168,12 @@ node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8082 --phone +85290000
 | 項目 | 阻塞原因 |
 |---|---|
 | **P1-1 WS token 走 `?token=`** | `app/api/ws.py:73` 仍係 query param。現設計**有文件說明係刻意**（瀏覽器 WS 無 header 通道），已有 `StripTokenQueryFilter` 兜底。要真正解決需定 TLS 反代（nginx/Caddy）。 |
-| **P1-4 無 pg_dump 備份 cron** | 已確認 `scripts/` 16 個檔案無一個同備份有關。需要部署目標先知備份去邊。 |
+| **P1-4 備份 — off-host destination 未揀** | ~~無 pg_dump cron~~ **2026-09-30 更新：script 已完成並實跑 PASS**（`scripts/db_backup.py`，27 tests，還原演練 49 tables / 17,627 rows 全對）。只剩**揀 destination**（見 §5）。原本判為「需要 credentials」係唔準確 —— 只係未揀去邊。 |
 | **WhatsApp / FCM / Google Maps 未接** | config 欄位存在、env 空。需要三家 provider 嘅憑證。 |
 | **P2-2 遺留：部分退款** | 現時只做全額退還。 |
 | **P2-2 遺留：實際打款渠道** | 只寫 ledger，轉帳仍線下人手。需要真實支付渠道。 |
 | **P2-3 `distance_km` 由 client 自報** | 乘客可亂報。374D 下估價僅供參考、風險可控，但廣播排序會被 gaming。需 `GOOGLE_MAPS_API_KEY`。 |
-| **P2-4 Sentry／錯誤聚合** | `/metrics` 已有（token-gated）；5xx 有 structured JSON log。淨係差 Sentry。 |
+| **P2-4 Sentry／錯誤聚合** | ~~淨係差 Sentry~~ **2026-09-30 更正：Sentry 已經接好**（`app/main.py:63-70`，`sentry_dsn` 有值就 init，無 `sentry-sdk` 就 warn 而唔會炸）。真正短缺嘅只係一個 DSN。 |
 
 ### B. 已知產品層取捨（非 bug，記錄在案）
 
@@ -159,14 +187,42 @@ node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8082 --phone +85290000
 
 ## 5. 未推
 
-**1 commit 未推：`4333f2a`。**
+**3 commits 未推**（2026-09-30 更新；原本寫 1 個 — `869636d` 本身都未推）：
+`4333f2a`、`869636d`，加上本文件更新後嘅 commit。
 
 需要一個對 `dannisonluk/realtaxihk` 有 `contents=write` 嘅 token。
 未推嘅 commit 冇 `.github/workflows/**`，所以只需 `contents=write`
-（唔需要 `workflows=write`）。
+（唔需要 `workflows=write`）。如果之後要改 CI workflow，就要 `workflows=write`。
 
 > ⚠️ **舊筆記有過時資訊**：`2026-09-30.md` 早期段落寫「17 commits 未推、
 > 被 403 擋」。實際查證：`542fc6b` 已經推咗，當時 0 未推。唔好照舊記錄去修。
+>
+> ⚠️ 另一個同類陷阱：**`git push` 喺呢部機係無聲掛住**，唔係網絡問題 ——
+> 係 `git-credential-manager.exe` 等緊互動輸入。`git ls-remote` 照樣成功，
+> 令人誤以為 remote 通。要用 repo 自己嘅 token + 停用 credential helper：
+>
+> ```bash
+> TOKEN=$(grep '^GITHUB_PERSONAL_ACCESS_TOKEN=' .env | cut -d= -f2- | tr -d '\r\n"')
+> GIT_TERMINAL_PROMPT=0 git -c credential.helper= \
+>   push "https://x-access-token:${TOKEN}@github.com/dannisonluk/realtaxihk.git" main
+> ```
+
+### 5b. 部署目標未定 — 呢個係根阻塞
+
+用戶 2026-09-30 確認：**未決定部署去邊**。§4A 表面睇係「7 項等 credentials」，
+但實際 5 項都係**下游**於呢個決定：
+
+| §4A 項目 | 真正阻塞 |
+|---|---|
+| P1-4 備份 destination | 去邊儲 |
+| P1-1 TLS 反代 | 喺邊度跑 |
+| P2-2 打款渠道 | 用邊個 provider |
+| Google Maps / FCM / WhatsApp | **真正嘅 key 阻塞（3 項）** |
+| P2-4 Sentry | 只差一個 DSN |
+
+所以下一步唔係逐項啃，而係**先定部署目標**。定咗之後，backup destination
+同 TLS 反代就跟住解。`scripts/db_backup.py` 刻意設計成
+`--upload-cmd` / `--via auto`，就係唔想喺 destination 未定之前鎖死任何 provider。
 
 ---
 
@@ -203,21 +259,26 @@ node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8082 --phone +85290000
 | Background server 無聲死 | Bash tool call 內 `cmd &` 隨 shell 退出被收割 | 用 `run_in_background=true` + `TaskStop` |
 | 用 `conftest.ADMIN_ID` mint token 打 live server → 401 | 佢係每個 test session 隨機 `uuid4()` | 讀真 DB：`docker exec realtaxi-db psql -U realtaxi -d realtaxihk -c "SELECT id FROM users WHERE role='ADMIN';"`（DB user 係 `realtaxi` 唔係 `postgres`） |
 | 要 login 但 OTP code 唔喺 response（SEC-02） | 刻意設計 | `ALLOW_DEV_OTP=true` + code `123456` |
+| 本機完全冇 `pg_dump` / `psql` / `createdb` | 只有 `realtaxi-db` container 裡面有 | `scripts/db_backup.py --via auto` 自動 fallback 去 `docker exec` |
+| `subprocess.run(cmd, shell=True)` 回 0 但 command 係失敗嘅 | Windows 用 `cmd.exe`，`;` 唔係分隔符（`echo hi >&2; exit 7` → rc 0） | 明確 `subprocess.run(["sh","-c",cmd])` |
+| 傳 Windows 路徑入 `sh -c` 會被食反斜線 | `C:\Users\x` → `C:Usersx` | `.as_posix()` 傳正斜線 |
 
 ---
 
 ## 8. 一頁睇完
 
 ```
-✅ 後端 40 paths / 44 ops / 245 tests / ruff clean  — 生產就緒
+✅ 後端 40 paths / 44 ops / 272 tests / ruff clean  — 生產就緒
 ✅ mobile 21 畫面 / 93 tests / 0 diagnostics      — 三角色完整
 ✅ admin-web React 重寫 / UI verifier PASS        — 全部路由通過
 ✅ 4 真 bug + 7 P0 + 10 P1 + 10 P2 全數處理
 ✅ SEC-01~31 全數處理
 ✅ money 精度：cent 儲存、wire 2dp、meter 1dp
 ✅ ADJUSTMENT ledger 業務流接通
+✅ P1-4 備份 script + 還原演練實跑 PASS（27 tests）
 
-⬜ 7 項需要憑證／部署目標（見 §4A）— 我做唔到，等你
-⬜ 1 commit 未推（`4333f2a`）— 需要 contents=write token
+⚠️ 根阻塞：**部署目標未定** — §4A 表面 7 項，實際 5 項下游於此（見 §5b）
+⬜ 真正等 credentials 嘅只有 3 家 provider：Google Maps / FCM / WhatsApp
+⬜ 3 commits 未推 — 需要 contents=write token
 ⚠️ docs/PROJECT_UNDERSTANDING.md 內容過時（見 §6）
 ```

@@ -161,9 +161,37 @@ grep 證實 `is_active` 只喺 `app/models/__init__.py:87` 出現，**零使用*
 - grep 證實無 `.github/`。106 個測試靠人手跑。
 **修法**：`uv lock` + Dockerfile 改 `uv sync --frozen`；GitHub Actions：postgres:16-postgis service + redis:7 service + `uv run pytest` + ruff。
 
-### P1-4. DB/Redis 備份策略未定義
-compose 有 named volumes（`docker-compose.yml:50-52`）+ Redis appendonly ✓，但無 pg_dump cron、無 off-site 複製、無還原演練記錄。Ledger 係財務紀錄 — 冇 backup 唔可以上線。
-**修法**：每日 `pg_dump` cron → 對象存儲；Redis 可重建（geo/rate 係 ephemeral，Pub/Sub 係瞬態）— 明確寫低「Redis 唔係 truth，DB 先係」。
+### P1-4. DB 備份策略 — **✅ 已實作（2026-09-30）**
+
+原本：compose 有 named volumes（`docker-compose.yml:50-52`）+ Redis appendonly ✓，但無 pg_dump cron、無 off-site 複製、無還原演練記錄。Ledger 係財務紀錄 — 冇 backup 唔可以上線。
+
+**現況**：`scripts/db_backup.py`（`backup` / `verify` / `list` 三個子命令）＋
+`tests/test_db_backup.py`（27 個 test）。已對真 Postgres 跑通，唔係只寫咗：
+
+```
+[backup] 75,225 bytes · sha256 9533d41e… · archive TOC: 112 entries
+[verify]   49 table(s), 17,627 row(s)
+[verify] restored 49 table(s), 17,627 row(s)
+[verify] PASS — all 49 table(s) match the source exactly
+```
+
+- **`backup`**：`pg_dump -Fc --no-owner --no-privileges` → sha256 sidecar →
+  `pg_restore --list` 驗 archive 可讀 → 選擇性 off-host 上載 → GFS 保留策略
+  （預設 7 daily + 4 weekly，按**日曆距離**而唔係數量 —— weekly 層要捱得過
+  「幾日後才發現」嘅問題）。
+- **`verify`**：就係還原演練。起 scratch DB → `pg_restore --exit-on-error`
+  → 逐表比較 `count(*)`（唔用 `reltuples` 估算值）→ drop scratch。呢個係唯一
+  捉得到「archive 結構正常但資料唔齊」嘅檢查。
+- **`--via auto|host|docker`**：本機無 `pg_*` 工具（只有 realtaxi-db container
+  裡面有），真 server 通常有。同一個 code path，兩條路都行得通。
+- **Redis 刻意唔備份**：rate limit counter / grab lock / Pub-Sub 全部 ephemeral，
+  DB 先係 truth。（`--upload-cmd` / `--upload-verify-cmd` 留返畀你填 provider —
+  destination 係部署決定，唔應該 hard-code 落 script。）
+
+**仍然要你做**：揀 off-host destination，然後上 cron：
+`17 3 * * * cd /srv/realtaxihk && .venv/bin/python scripts/db_backup.py backup`。
+`docs/WORK_SUMMARY.md` §4A 原本當呢項「卡喺冇 credentials」，實際上只係卡喺
+destination 未揀 —— script 本身已經寫完同驗完。
 
 ### P1-5. Token 生命週期對移動端唔完整
 JWT 2 小時（`config.py:25`）、無 refresh token。的士 trip 夠用，但司機成日開 app 就要日日 OTP。
@@ -221,7 +249,7 @@ JWT 2 小時（`config.py:25`）、無 refresh token。的士 trip 夠用，但�
 [ ] P0-6 lifespan dispose + compose alembic upgrade
 [ ] P0-7 restart policy + nginx 範本（TLS + WS headers + log 剝 query）
 [ ] uv lock + CI 綠燈
-[ ] pg_dump cron 上場 + 還原演練一次
+[x] pg_dump cron 上場 + 還原演練一次 — script 完成並實跑 PASS（`scripts/db_backup.py`）；用戶只需揀 off-host destination
 [ ] 環境變數實測清單：JWT_SECRET_KEY / POSTGRES_PASSWORD / APP_ENV=prod / CORS_ORIGINS=真域名
 [ ] live_smoke 跑一次 @ prod config（OTP 應該走真 provider 而唔係 dev_code）
 ```
