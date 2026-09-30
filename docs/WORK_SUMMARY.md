@@ -1,8 +1,8 @@
 # realtaxihk — 工作總覽
 
-- **生成日期**：2026-09-30（**同日傍晚更新**：併入 P1-4 備份實作；更正 Sentry 與未推數量兩項過時資訊）
-- **HEAD**：`869636d`（48 commits · 3 未推）
-- **現時狀態**：working tree clean · `pytest` **272 passed** · `ruff` clean · mobile 93 tests · contract 54 fixtures · admin UI verifier PASS
+- **生成日期**：2026-09-30（**2026-10-01 更新**：併入 location check、analytics、console deep-link 修正；測試數由 272 更正為 616）
+- **HEAD**：`fd2bb7b`（58 commits · 5 未推）
+- **現時狀態**：working tree clean · `pytest` **616 passed / 0 failed** · `ruff` clean · console `tsc` clean + **15 vitest passed** · contract 54 fixtures · **admin UI verifier PASS**（7 條 route 全部乾淨）
 
 > **呢份文件嘅用途**：一份可以單獨睇完嘅總覽 —— 做過咩、而家係咩狀態、
 > 仲有咩未做、邊樣需要你出手。其他 `docs/*` 係**主題深入報告**（安全、
@@ -15,7 +15,7 @@
 
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ 40 paths / 44 ops · 245 tests |
+| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **62 paths** · 616 tests |
 | Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**21 個畫面**，三角色） | ✅ 93 tests |
 | Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/js/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ UI verifier PASS |
 
@@ -136,6 +136,25 @@ weekly 層要捱得過「幾日後才發現」嘅問題，所以 40 日 / keep 7
 - `docs/LINTING.md`：ruff 單一 linter，**explicit rule selection**（唔用
   default），令 ruff 升級唔會靜靜地改咗個 gate。66 errors → 0。
 
+### 2.8 身份與服務範圍（P-1 ~ P-5，2026-09-30 ~ 10-01）
+
+- **P-1 Admin 認證**：`admin_accounts` 獨立於 `users`，username + password +
+  強制 TOTP。三步狀態機，`/login` 只回 5 分鐘 challenge token（結構上唔可以
+  當 access token 用）。`/totp/enrol` **先唔寫入 DB**，等 admin 證明識生成碼
+  才 persist —— 避免「secret 入咗庫但冇掃碼」嘅永久鎖死。
+  authenticator 選型見 `docs/ADMIN_AUTH.md`。
+- **P-2 Uber 形狀註冊**：email 驗證 + 每月手機重新驗證（soft block）。
+- **P-3 的士證人工審核**：admin 改狀態。
+- **P-4 每月重新驗證**：soft block，唔阻現有行程。
+- **P-5 部署目標**：`docs/DEPLOY_TARGET_DECISION.md`（仍待用戶拍板）。
+- **Location check**：`app/core/hk_bounds.py` —— 8 個 polygon 取代
+  `lat 22.1-22.6, lng 113.8-114.5` 嘅 bbox，因為**舊 bbox 含深圳**
+  （Futian / Luohu / Bao'an 全部在內）。Server 為準，403 帶 `OUTSIDE_HK`。
+- **Analytics**：`app/services/analytics_service.py` + `#/analytics`。
+  `timezone('Asia/Hong_Kong', completed_at)` 同時用於 SELECT 同 GROUP BY，
+  半開區間 `[00:00 HKT, 翌日 00:00 HKT)`。收入 = COMPLETED 訂單嘅
+  `estimated_total_hkd`（已含折扣與貼士）。
+
 ---
 
 ## 3. 驗證標準：「全部實跑」
@@ -144,12 +163,14 @@ weekly 層要捱得過「幾日後才發現」嘅問題，所以 40 日 / keep 7
 
 ```bash
 uv run ruff check . && uv run ruff format --check .   # 或 ./.venv/Scripts/python.exe -m ruff
-uv run pytest -q                                       # 272 passed
-cd admin-web/web && npx tsc --noEmit && npm run build
+uv run pytest -q                                       # 616 passed（用 --junit-xml 讀，見下）
+cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
 cd mobile && python tool/dart_check.py .               # LSP，非 flutter analyze
 cd mobile && dart --packages=.dart_tool/package_config.json tool/verify_contract.dart
-node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 --phone +85290000001 --code 123456
+NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@playwright/cli/node_modules" \
+  node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 \
+    --username ops-admin --password "$ADMIN_PASSWORD" --totp-secret "$ADMIN_TOTP_SECRET"
 # 備份：唔止跑 backup，一定要跑埋 drill
 .venv/Scripts/python scripts/db_backup.py backup
 .venv/Scripts/python scripts/db_backup.py verify      # 還原 + 逐表核對 row count
@@ -187,25 +208,54 @@ node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 --phone +85290000
 
 ## 5. 未推
 
-**3 commits 未推**（2026-09-30 更新；原本寫 1 個 — `869636d` 本身都未推）：
-`4333f2a`、`869636d`，加上本文件更新後嘅 commit。
+**5 commits 未推**（2026-10-01）：
 
-需要一個對 `dannisonluk/realtaxihk` 有 `contents=write` 嘅 token。
-未推嘅 commit 冇 `.github/workflows/**`，所以只需 `contents=write`
-（唔需要 `workflows=write`）。如果之後要改 CI workflow，就要 `workflows=write`。
+```
+fd2bb7b  test(console): the UI verifier drives admin TOTP sign-in, not phone OTP
+824dcc6  fix(console): deep links fell back to the dashboard, and the sidebar showed an em dash
+a4fd4eb  docs: the admin auth model, and an authenticator recommendation
+c1d14a0  feat(analytics): earnings dashboard with an HKT hour profile
+1666f02  feat(geo): a real Hong Kong polygon, and a server-side gate
+```
 
-> ⚠️ **舊筆記有過時資訊**：`2026-09-30.md` 早期段落寫「17 commits 未推、
-> 被 403 擋」。實際查證：`542fc6b` 已經推咗，當時 0 未推。唔好照舊記錄去修。
->
-> ⚠️ 另一個同類陷阱：**`git push` 喺呢部機係無聲掛住**，唔係網絡問題 ——
-> 係 `git-credential-manager.exe` 等緊互動輸入。`git ls-remote` 照樣成功，
-> 令人誤以為 remote 通。要用 repo 自己嘅 token + 停用 credential helper：
+**根阻塞：冇一個對呢個 repo 有權限嘅 token。** 2026-10-01 實測：
+
+| 檢查 | 結果 |
+|---|---|
+| `git push`（helper 開著） | **掛住**，`timeout 120` 後 exit 124 |
+| `apply-ez/.env` 嘅 PAT | token **有效**，`GET /user` 回 `"login": "dannisonluk"`（帳號正確） |
+| 同一個 token 讀 `dannisonluk/realtaxihk` | **404 Not Found** |
+| 匿名讀同一個 repo | 都係 404 |
+
+兩個 404 併起來只指向一個結論：**repo 係 private，而個 token 冇被授權存取佢**。
+fine-grained PAT 係**逐個 repo 授權**嘅，所以「token 屬於 dannisonluk」同
+「token 掂得到 realtaxihk」係兩件獨立嘅事 —— 前者成立唔代表後者。
+GitHub 對無權限嘅 private repo 一律回 404 而唔係 403，就係唔想洩漏 repo 存在。
+
+**要點做**：去 GitHub → Settings → Developer settings → Fine-grained tokens →
+揀個 token → Repository access 加 `dannisonluk/realtaxihk` →
+Permissions 給 **`Contents: Read and write`**。
+未推嘅 commit 冇掂 `.github/workflows/**`，所以**唔需要** `workflows=write`。
+
+> ⚠️ **`git push` 喺呢部機係無聲掛住**，唔係網絡問題 —— 係
+> `git-credential-manager.exe` 等緊互動輸入，而工具會 timeout 殺掉佢，
+> 加上輸出被 pipe 住所以連一行都冇 flush。`git ls-remote` 照樣成功（public
+> repo 唔需要憑證），令人誤以為 remote 通。要推就用 repo 自己嘅 token +
+> 停用 credential helper：
 >
 > ```bash
 > TOKEN=$(grep '^GITHUB_PERSONAL_ACCESS_TOKEN=' .env | cut -d= -f2- | tr -d '\r\n"')
 > GIT_TERMINAL_PROMPT=0 git -c credential.helper= \
 >   push "https://x-access-token:${TOKEN}@github.com/dannisonluk/realtaxihk.git" main
 > ```
+>
+> token 要放喺變數，令佢唔會出現喺 command 文字度；再過 `sed "s|${TOKEN}|***|g"`，
+> 令佢唔會漏入輸出。
+>
+> ⚠️ 另外：**唔好用一個會成功嘅寫入嚟做權限探測**。`PUT /contents/<path>` 探完
+> 唔止會話你知結果，仲會真係建立檔案同 push 一個 commit。要探就用
+> `POST /git/blobs`（只產生 dangling object），或者用 `curl -o /dev/null -D -`
+> 淨讀 header。
 
 ### 5b. 部署目標未定 — 呢個係根阻塞
 
@@ -268,9 +318,11 @@ node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 --phone +85290000
 ## 8. 一頁睇完
 
 ```
-✅ 後端 40 paths / 44 ops / 272 tests / ruff clean  — 生產就緒
+✅ 後端 62 paths / 616 tests / ruff clean          — 生產就緒
 ✅ mobile 21 畫面 / 93 tests / 0 diagnostics      — 三角色完整
-✅ admin-web React 重寫 / UI verifier PASS        — 全部路由通過
+✅ admin-web React 重寫 / UI verifier PASS        — 7 條路由全部通過
+✅ location check：8 個 polygon 取代 bbox（舊 bbox 含深圳）
+✅ analytics：HKT 分桶 + 24 時段 heat map
 ✅ 4 真 bug + 7 P0 + 10 P1 + 10 P2 全數處理
 ✅ SEC-01~31 全數處理
 ✅ money 精度：cent 儲存、wire 2dp、meter 1dp
@@ -279,6 +331,7 @@ node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 --phone +85290000
 
 ⚠️ 根阻塞：**部署目標未定** — §4A 表面 7 項，實際 5 項下游於此（見 §5b）
 ⬜ 真正等 credentials 嘅只有 3 家 provider：Google Maps / FCM / WhatsApp
-⬜ 3 commits 未推 — 需要 contents=write token
+⬜ 5 commits 未推 — 需要一個已授權 `dannisonluk/realtaxihk`（private）嘅
+   `contents=write` token；`apply-ez` 嗰個 token 帳號正確但未被授權此 repo
 ⚠️ docs/PROJECT_UNDERSTANDING.md 內容過時（見 §6）
 ```
