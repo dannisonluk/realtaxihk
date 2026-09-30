@@ -1,0 +1,188 @@
+/**
+ * Typed endpoint wrappers.
+ *
+ * One function per endpoint, so no view builds a path by hand. The paths here
+ * are the contract; `tests/test_fleets.py` and `scripts/gen_mobile_fixtures.py`
+ * pin the same ones from the other side.
+ */
+
+import type { ApiClient } from './client';
+import type {
+  AdminDriverRow,
+  AdminIdentity,
+  AuthTokens,
+  DriverProfileDetail,
+  DriverStatus,
+  FleetDetail,
+  FleetMember,
+  FleetRow,
+  FleetSettlementRow,
+  FleetSettlementRunResult,
+  GrantResult,
+  Paged,
+  RefundRow,
+  RefundStatus,
+  SettlementRunResult,
+} from './types';
+
+export const endpoints = {
+  auth: {
+    requestOtp: (client: ApiClient, phone: string) =>
+      client.post<{ sent: boolean }>('/api/v1/auth/otp/request', {
+        body: { phone_e164: phone },
+        authenticated: false,
+      }),
+    verifyOtp: (client: ApiClient, phone: string, code: string) =>
+      client.post<AuthTokens>('/api/v1/auth/otp/verify', {
+        body: { phone_e164: phone, code },
+      }),
+    me: (client: ApiClient) => client.get<AdminIdentity>('/api/v1/auth/me'),
+    logout: (client: ApiClient) => client.post<null>('/api/v1/auth/logout'),
+  },
+
+  drivers: {
+    /** The KYC queue, oldest first. */
+    list: (client: ApiClient, { status, limit = 100, offset = 0 }: {
+      status?: DriverStatus;
+      limit?: number;
+      offset?: number;
+    } = {}) =>
+      client.get<Paged<AdminDriverRow>>('/api/v1/admin/drivers', {
+        status_filter: status,
+        limit,
+        offset,
+      }),
+    /**
+     * One driver in full: profile, deposit, statement, refund history, fleet.
+     *
+     * Composed server-side so the page cannot render a half-loaded driver. The
+     * ledger and refund lists are capped and newest-first.
+     */
+    detail: (client: ApiClient, driverId: string, { ledgerLimit = 50, refundLimit = 20 }: {
+      ledgerLimit?: number;
+      refundLimit?: number;
+    } = {}) =>
+      client.get<DriverProfileDetail>(`/api/v1/admin/drivers/${encodeURIComponent(driverId)}`, {
+        ledger_limit: ledgerLimit,
+        refund_limit: refundLimit,
+      }),
+    /** `approve` -> DEPOSIT_REQUIRED, `reject`/`terminate` -> TERMINATED, `suspend` -> SUSPENDED. */
+    review: (client: ApiClient, driverId: string, { decision, note = '' }: {
+      decision: string;
+      note?: string;
+    }) =>
+      client.post<AdminDriverRow>(`/api/v1/admin/drivers/${encodeURIComponent(driverId)}/review`, {
+        body: { decision, note },
+      }),
+    /**
+     * Credits the deposit. Idempotent when `reference` is supplied: the server
+     * namespaces it `grant:<driver>:<key>`, so a retry cannot double-credit and
+     * it cannot collide with a settlement or refund reference (`SEC-13`).
+     */
+    grantDeposit: (client: ApiClient, driverId: string, { amountHkd, note = '', reference }: {
+      amountHkd: string;
+      note?: string;
+      reference?: string;
+    }) =>
+      client.post<GrantResult>(
+        `/api/v1/admin/drivers/${encodeURIComponent(driverId)}/deposit/grant`,
+        {
+          body: {
+            amount_hkd: String(amountHkd),
+            note,
+            ...(reference ? { reference } : {}),
+          },
+        },
+      ),
+  },
+
+  refunds: {
+    list: (client: ApiClient, { status, limit = 100, offset = 0 }: {
+      status?: RefundStatus;
+      limit?: number;
+      offset?: number;
+    } = {}) =>
+      client.get<Paged<RefundRow>>('/api/v1/admin/refunds', {
+        status_filter: status,
+        limit,
+        offset,
+      }),
+    /** Approving is the only path that moves money out, and it terminates the driver. */
+    decide: (client: ApiClient, refundId: string, { approve, note = '' }: {
+      approve: boolean;
+      note?: string;
+    }) =>
+      client.post<RefundRow>(`/api/v1/admin/refunds/${encodeURIComponent(refundId)}/decision`, {
+        body: { decision: approve ? 'approve' : 'reject', note },
+      }),
+  },
+
+  settlement: {
+    /** Idempotent per ISO week: a re-run charges nobody twice. */
+    runWeekly: (client: ApiClient, { period }: { period?: string } = {}) =>
+      client.post<SettlementRunResult>('/api/v1/admin/settlement/weekly/run', {
+        query: { period },
+      }),
+  },
+
+  fleets: {
+    list: (client: ApiClient, { status, limit = 100, offset = 0 }: {
+      status?: string;
+      limit?: number;
+      offset?: number;
+    } = {}) =>
+      client.get<Paged<FleetRow>>('/api/v1/admin/fleets', {
+        status_filter: status,
+        limit,
+        offset,
+      }),
+    create: (client: ApiClient, payload: Record<string, unknown>) =>
+      client.post<FleetRow>('/api/v1/admin/fleets', { body: payload }),
+    update: (client: ApiClient, fleetId: string, payload: Record<string, unknown>) =>
+      client.patch<FleetRow>(`/api/v1/admin/fleets/${encodeURIComponent(fleetId)}`, { body: payload }),
+    members: (client: ApiClient, fleetId: string, { includeLeft = false }: { includeLeft?: boolean } = {}) =>
+      client.get<{ items: FleetMember[] }>(
+        `/api/v1/admin/fleets/${encodeURIComponent(fleetId)}/members`,
+        { include_left: includeLeft },
+      ),
+    addMember: (client: ApiClient, fleetId: string, { driverProfileId, memberRole = 'MEMBER' }: {
+      driverProfileId: string;
+      memberRole?: string;
+    }) =>
+      client.post<null>(`/api/v1/admin/fleets/${encodeURIComponent(fleetId)}/members`, {
+        body: { driver_profile_id: driverProfileId, member_role: memberRole },
+      }),
+    removeMember: (client: ApiClient, fleetId: string, driverProfileId: string) =>
+      client.del<null>(
+        `/api/v1/admin/fleets/${encodeURIComponent(fleetId)}/members/${encodeURIComponent(driverProfileId)}`,
+      ),
+    settlementHistory: (client: ApiClient, fleetId: string, { limit = 52 }: { limit?: number } = {}) =>
+      client.get<{ items: FleetSettlementRow[] }>(
+        `/api/v1/admin/fleets/${encodeURIComponent(fleetId)}/settlement`,
+        { limit },
+      ),
+    /** Idempotent per (fleet, ISO week). Rejected for a fleet that is not ACTIVE. */
+    runSettlement: (client: ApiClient, fleetId: string, { period }: { period?: string } = {}) =>
+      client.post<FleetSettlementRunResult>(
+        `/api/v1/admin/fleets/${encodeURIComponent(fleetId)}/settlement/run`,
+        { query: { period } },
+      ),
+    /**
+     * The composed detail payload. Falls back to three parallel calls when the
+     * server has no single-endpoint for it, so the page shape is identical
+     * either way.
+     */
+    detail: async (client: ApiClient, fleetId: string): Promise<FleetDetail> => {
+      const [fleets, members, settlement] = await Promise.all([
+        endpoints.fleets.list(client, { limit: 100 }),
+        endpoints.fleets.members(client, fleetId, { includeLeft: true }),
+        endpoints.fleets.settlementHistory(client, fleetId),
+      ]);
+      const fleet = fleets.items.find((row) => row.id === fleetId);
+      if (!fleet) {
+        throw new Error(`找不到車隊 ${fleetId}`);
+      }
+      return { fleet, members: members.items, settlement: settlement.items };
+    },
+  },
+};

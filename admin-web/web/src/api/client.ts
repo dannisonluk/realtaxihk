@@ -1,0 +1,301 @@
+/**
+ * The HTTP client.
+ *
+ * Ported from `admin-web/js/api.js`, which mirrors
+ * `mobile/lib/core/network/api_client.dart` deliberately: same refresh
+ * strategy, same error envelope, so a bug fixed in one is a bug to check in the
+ * other. The backend's error shape is `{code, message, details}` — **not**
+ * FastAPI's default `{"detail": ...}` — see `app/core/exceptions.py`.
+ */
+
+import { session } from './session';
+
+/**
+ * The API base URL.
+ *
+ * Three cases, in order:
+ *
+ *   1. `?api=<base>` — an explicit absolute base for a split deploy.
+ *   2. `?api=same-origin` — the console's own origin, with the static server
+ *      reverse-proxying `/api/*` to the API. `serve.py` does exactly that, so
+ *      the whole app is reachable on one port with **no CORS preflight**: a
+ *      same-origin `fetch` is a simple request, which removes the OPTIONS
+ *      round-trip (and, in a locked-down sandbox, the preflight's follow-up
+ *      request that never arrives). Used by the UI verifier.
+ *   3. Default — the API on the same host, port 8000.
+ */
+export function resolveBaseUrl(): string {
+  const override = new URLSearchParams(window.location.search).get('api');
+  if (override === 'same-origin') return '';
+  if (override) return override.replace(/\/$/, '');
+  return `${window.location.protocol}//${window.location.hostname}:8000`;
+}
+
+export interface ApiErrorInit {
+  code: string;
+  message: string;
+  status: number;
+  details?: Record<string, unknown>;
+  retryAfter?: number | null;
+}
+
+export class ApiError extends Error {
+  readonly code: string;
+  readonly status: number;
+  readonly details: Record<string, unknown>;
+  readonly retryAfter: number | null;
+
+  constructor({ code, message, status, details, retryAfter }: ApiErrorInit) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.status = status;
+    this.details = details ?? {};
+    this.retryAfter = retryAfter ?? null;
+  }
+
+  /** A 401 anywhere means the session is gone; the shell signs the operator out. */
+  get isAuthFailure(): boolean {
+    return this.status === 401 || this.code === CODE.unauthorized;
+  }
+}
+
+/** Codes the server uses, so views do not spell strings. */
+export const CODE = {
+  network: 'NETWORK',
+  unauthorized: 'UNAUTHORIZED',
+  forbidden: 'FORBIDDEN',
+  notFound: 'NOT_FOUND',
+  conflict: 'CONFLICT',
+  rateLimited: 'RATE_LIMITED',
+  businessRule: 'BUSINESS_RULE_VIOLATION',
+  validationError: 'VALIDATION_ERROR',
+  serviceUnavailable: 'SERVICE_UNAVAILABLE',
+} as const;
+
+function parseRetryAfter(raw: string | null): number | null {
+  if (!raw) return null;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds);
+  const at = Date.parse(raw);
+  return Number.isNaN(at) ? null : Math.max(0, (at - Date.now()) / 1000);
+}
+
+/**
+ * How many extra attempts a **GET** gets when the connection fails.
+ *
+ * Three, because the drop is frequent on this environment rather than rare: a
+ * burst of six requests reliably loses one. Writes are never retried — see the
+ * note in `send` — and a genuinely down API still surfaces within ~1s, since
+ * the backoff is short.
+ */
+const RETRY_ON_TRANSPORT = 3;
+
+/** Linear backoff between retries. Short: the drop is transient or it is not. */
+const RETRY_BACKOFF_MS = 150;
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Build an ApiError from the server's envelope, tolerating a non-JSON body. */
+export function toApiError(status: number, body: unknown, retryAfter: number | null): ApiError {
+  if (body && typeof body === 'object' && typeof (body as { code?: unknown }).code === 'string') {
+    const envelope = body as { code: string; message?: string; details?: Record<string, unknown> };
+    return new ApiError({
+      code: envelope.code,
+      message: envelope.message ?? '請求失敗。',
+      status,
+      ...(envelope.details ? { details: envelope.details } : {}),
+      retryAfter,
+    });
+  }
+  return new ApiError({
+    code: 'UNKNOWN',
+    message: `伺服器回應 ${status}，但格式無法辨識。`,
+    status,
+    retryAfter,
+  });
+}
+
+type Query = Record<string, string | number | boolean | null | undefined>;
+
+function buildQuery(query?: Query): string {
+  if (!query) return '';
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === null || value === undefined || value === '') continue;
+    params.set(key, String(value));
+  }
+  const encoded = params.toString();
+  return encoded ? `?${encoded}` : '';
+}
+
+interface SendOptions {
+  body?: unknown;
+  query?: Query;
+  retried?: boolean;
+  authenticated?: boolean;
+  attempt?: number;
+}
+
+export class ApiClient {
+  private readonly baseUrl: string;
+  private readonly onSessionExpired: () => void;
+
+  /**
+   * At most one refresh in flight. Without this, several concurrent 401s fire
+   * several refreshes; all but one would present an already-rotated token, and
+   * the server treats a replayed refresh token as theft and revokes every
+   * session the user holds (`SEC-17`).
+   */
+  private refreshInFlight: Promise<boolean> | null = null;
+
+  constructor({ baseUrl, onSessionExpired }: { baseUrl?: string; onSessionExpired?: () => void } = {}) {
+    this.baseUrl = (baseUrl ?? resolveBaseUrl()).replace(/\/$/, '');
+    this.onSessionExpired = onSessionExpired ?? (() => {});
+  }
+
+  get<T>(path: string, query?: Query): Promise<T> {
+    return this.send<T>('GET', path, { query });
+  }
+
+  post<T>(path: string, options: Omit<SendOptions, 'retried' | 'attempt'> = {}): Promise<T> {
+    return this.send<T>('POST', path, options);
+  }
+
+  patch<T>(path: string, options: Omit<SendOptions, 'retried' | 'attempt'> = {}): Promise<T> {
+    return this.send<T>('PATCH', path, options);
+  }
+
+  /** `DELETE` returns a body on the routes that use it (a removed roster row). */
+  del<T>(path: string, options: Omit<SendOptions, 'retried' | 'attempt'> = {}): Promise<T> {
+    return this.send<T>('DELETE', path, options);
+  }
+
+  private async send<T>(
+    method: string,
+    path: string,
+    { body, query, retried = false, authenticated = true, attempt = 0 }: SendOptions = {},
+  ): Promise<T> {
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+
+    const token = session.accessToken;
+    if (authenticated && token) headers.Authorization = `Bearer ${token}`;
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path}${buildQuery(query)}`, {
+        method,
+        headers,
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        // The refresh token is a bearer credential and the API is a different
+        // origin, so credentials are never sent implicitly.
+        credentials: 'omit',
+        mode: 'cors',
+      });
+    } catch (cause) {
+      // A transport failure on a GET is retried before it is reported.
+      //
+      // Why: a dropped connection is not evidence of anything, and `boot()`
+      // renders the login screen for any error that is not a 401. Without a
+      // retry, one reset on `GET /auth/me` signs an operator out of a session
+      // that is perfectly valid — which is both wrong and indistinguishable
+      // from a real auth failure. Only GET is retried: a POST that reached the
+      // server may have had its effect, and re-issuing it could double up.
+      if (method === 'GET' && attempt < RETRY_ON_TRANSPORT) {
+        await delay(RETRY_BACKOFF_MS * (attempt + 1));
+        return this.send<T>(method, path, { body, query, retried, authenticated, attempt: attempt + 1 });
+      }
+      throw new ApiError({
+        code: CODE.network,
+        message: '無法連接伺服器。請檢查網絡。',
+        status: 0,
+        details: { cause: String(cause), attempts: attempt + 1 },
+      });
+    }
+
+    const retryAfter = parseRetryAfter(response.headers.get('retry-after'));
+    const text = await response.text();
+    let parsed: unknown = null;
+    if (text) {
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = null;
+      }
+    }
+
+    // A 5xx is not the request's fault, so a GET is retried once more. 501 is
+    // excluded: that is a contract error, and repeating it changes nothing.
+    if (method === 'GET' && attempt < RETRY_ON_TRANSPORT && [502, 503, 504].includes(response.status)) {
+      await delay(RETRY_BACKOFF_MS * (attempt + 1));
+      return this.send<T>(method, path, { body, query, retried, authenticated, attempt: attempt + 1 });
+    }
+
+    if (response.ok) {
+      return parsed as T;
+    }
+
+    if (response.status === 401 && authenticated && !retried) {
+      const refreshed = await this.refreshOnce();
+      if (refreshed) {
+        return this.send<T>(method, path, { body, query, retried: true, authenticated });
+      }
+      this.onSessionExpired();
+    }
+
+    throw toApiError(response.status, parsed, retryAfter);
+  }
+
+  private refreshOnce(): Promise<boolean> {
+    if (this.refreshInFlight) return this.refreshInFlight;
+    const attempt = this.refresh().finally(() => {
+      this.refreshInFlight = null;
+    });
+    this.refreshInFlight = attempt;
+    return attempt;
+  }
+
+  private async refresh(): Promise<boolean> {
+    const refreshToken = session.refreshToken;
+    if (!refreshToken) return false;
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+        credentials: 'omit',
+        mode: 'cors',
+      });
+    } catch {
+      // Offline. The tokens are still good; the caller surfaces the failure.
+      return false;
+    }
+
+    if (!response.ok) {
+      // A 401 here means the token was replayed or expired and the server has
+      // already revoked everything. Either way there is nothing usable left.
+      session.clear();
+      return false;
+    }
+
+    const body = (await response.json()) as {
+      access_token?: unknown;
+      refresh_token?: unknown;
+      user?: unknown;
+    };
+    if (typeof body.access_token !== 'string' || typeof body.refresh_token !== 'string') {
+      session.clear();
+      return false;
+    }
+
+    session.save({
+      accessToken: body.access_token,
+      refreshToken: body.refresh_token,
+      user: body.user as ReturnType<typeof session.save>['user'],
+    });
+    return true;
+  }
+}

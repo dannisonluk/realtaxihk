@@ -52,6 +52,17 @@ PROXY_TIMING = os.environ.get("SERVE_PROXY_TIMING") == "1"
 
 ROOT = Path(__file__).resolve().parent
 
+# Which directory is actually served.
+#
+# Two builds live side by side: the legacy hand-rolled ES-module bundle at
+# `admin-web/` (`js/`, `styles.css`) and the Vite + React rewrite at
+# `admin-web/web/dist`. They are kept separate so the legacy console keeps
+# working until the port is verified; `--dist` selects the rewrite.
+#
+# Set by `main()` from the flag, and read by the handler, because
+# `SimpleHTTPRequestHandler` is constructed by the server rather than by us.
+SERVE_ROOT: Path = ROOT
+
 # Paths forwarded to the API rather than served from disk. Prefix-matched.
 PROXY_PREFIXES = ("/api/", "/health")
 
@@ -92,7 +103,7 @@ EXTRA_TYPES = {
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(ROOT), **kwargs)
+        super().__init__(*args, directory=str(SERVE_ROOT), **kwargs)
 
     # The allow-list above wins; anything else falls back to the platform table.
     def guess_type(self, path):
@@ -114,13 +125,21 @@ class Handler(SimpleHTTPRequestHandler):
         """Refuse anything that resolves outside the served directory."""
         raw = self.path.split("?", 1)[0].split("#", 1)[0]
         try:
-            resolved = (ROOT / raw.lstrip("/")).resolve()
+            resolved = (SERVE_ROOT / raw.lstrip("/")).resolve()
         except (OSError, ValueError):
             self.send_error(400, "Bad path")
             return None
-        if ROOT not in resolved.parents and resolved != ROOT:
+        if SERVE_ROOT not in resolved.parents and resolved != SERVE_ROOT:
             self.send_error(404, "Not found")
             return None
+        if not resolved.exists():
+            # SPA fallback. The console hash-routes, so a deep link never reaches
+            # the server — but a *refresh* on the Vite dev-server path, or an
+            # asset reference that moved between builds, should still land on the
+            # app rather than a bare 404 with no way back.
+            fallback = SERVE_ROOT / "index.html"
+            if fallback.is_file() and not raw.startswith(("/api/", "/health")):
+                self.path = "/index.html"
         return super().send_head()
 
     def log_message(self, fmt, *args):
@@ -246,10 +265,22 @@ def main() -> int:
         default="http://127.0.0.1:8000",
         help="Upstream API for /api/* and /health (default: http://127.0.0.1:8000)",
     )
+    parser.add_argument(
+        "--dist",
+        action="store_true",
+        help="Serve the Vite + React build (admin-web/web/dist) instead of the legacy bundle.",
+    )
     args = parser.parse_args()
 
-    if not (ROOT / "index.html").is_file():
-        raise SystemExit(f"index.html not found in {ROOT}")
+    global SERVE_ROOT
+    if args.dist:
+        SERVE_ROOT = ROOT / "web" / "dist"
+        if not (SERVE_ROOT / "index.html").is_file():
+            raise SystemExit(
+                f"{SERVE_ROOT} has no index.html — run `npm run build` in admin-web/web first."
+            )
+    if not (SERVE_ROOT / "index.html").is_file():
+        raise SystemExit(f"index.html not found in {SERVE_ROOT}")
 
     target = urlsplit(args.api_target)
     if not target.hostname:
@@ -261,7 +292,7 @@ def main() -> int:
     server.api_target = (target.scheme or "http", target.hostname, target.port)  # type: ignore[attr-defined]
 
     print(f"admin console  ->  http://{args.host}:{args.port}")
-    print(f"serving        <-  {ROOT}")
+    print(f"serving        <-  {SERVE_ROOT}")
     print(f"api proxied    ->  {args.api_target}   (use ?api=same-origin to route through it)")
     print("press Ctrl+C to stop")
     try:

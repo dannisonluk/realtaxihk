@@ -1,0 +1,651 @@
+/*
+ * The console's design tokens and primitives.
+ *
+ * Ported from `admin-web/styles.css`, then re-based on Apple's Human Interface
+ * Guidelines rather than Material's defaults. The two changes that matter most:
+ *
+ *   1. Type is the iOS Dynamic Type scale at the `Large` step (34/28/22/20/17/
+ *      16/15/13/12/11), not a geometric progression invented per component.
+ *   2. Spacing is a 4pt grid with named steps, and a control's *hit* area is at
+ *      least 44px regardless of how large it is drawn.
+ *
+ * The palette is unchanged: this is a console for a Hong Kong taxi platform, so
+ * gains are red and losses green (the HK/CN convention), and the brand stays
+ * licensed-urban-taxi red. Dark mode is a first-class mode, not an afterthought
+ * — an operator watching a queue at night should not be blinded.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --bg: #f5f5f7; /* iOS grouped background, very slightly cool */
+  --surface: #ffffff;
+  --surface-2: #f0f1f4;
+  --border: #e2e4e9;
+  --text: #1d1d1f; /* iOS label */
+  --text-dim: #6e6e73; /* iOS secondary label */
+
+  --brand: #d2232a; /* licensed urban-taxi red */
+  --brand-ink: #ffffff;
+
+  --gain: #c62828;
+  --loss: #2e7d32;
+  --warn: #b26a00;
+  --danger: #c62828;
+  --focus: #0a6cff;
+
+  /* ---- spacing: a 4pt grid, named so a call site reads as intent ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* ---- radii ---- */
+  --radius-card: 12px;
+  --radius-field: 10px;
+  --radius-pill: 999px;
+
+  /* ---- the minimum hit area. Never draw a control smaller than this. ---- */
+  --target: 44px;
+
+  --shadow: 0 1px 2px rgb(16 18 22 / 6%), 0 6px 18px rgb(16 18 22 / 4%);
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181c;
+    --surface: #1e2126;
+    --surface-2: #262a31;
+    --border: #33383f;
+    --text: #eceef1;
+    --text-dim: #9aa0aa;
+    --gain: #ef5350;
+    --loss: #66bb6a;
+    --warn: #ffb74d;
+    --danger: #ef5350;
+    --focus: #4c9aff;
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 18px rgb(0 0 0 / 24%);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  /* -apple-system first so macOS and iOS get the system face; the CJK
+     fallbacks keep Chinese legible on all three platforms. */
+  font: 400 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
+    "PingFang TC", "Microsoft JhengHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#root {
+  min-height: 100%;
+}
+
+/* ------------------------------------------------------------------ type ---
+ * The iOS Dynamic Type scale at `Large`. A component picks a step by name
+ * (`t-title1`), never by pixel value, so the whole console retunes from here.
+ * ------------------------------------------------------------------------- */
+
+.t-large-title { font-size: 34px; font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; }
+.t-title1 { font-size: 28px; font-weight: 700; line-height: 1.25; letter-spacing: -0.015em; }
+.t-title2 { font-size: 22px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+.t-title3 { font-size: 20px; font-weight: 600; line-height: 1.35; }
+.t-headline { font-size: 17px; font-weight: 600; line-height: 1.4; }
+.t-body { font-size: 17px; font-weight: 400; line-height: 1.45; }
+.t-callout { font-size: 16px; font-weight: 400; line-height: 1.45; }
+.t-subhead { font-size: 15px; font-weight: 400; line-height: 1.45; }
+.t-footnote { font-size: 13px; font-weight: 400; line-height: 1.4; }
+.t-caption1 { font-size: 12px; font-weight: 400; line-height: 1.35; }
+.t-caption2 { font-size: 11px; font-weight: 500; line-height: 1.3; }
+
+/* A section header above a grouped card — iOS uppercases nothing, it just
+   dims and shrinks. */
+.t-section {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-dim);
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+
+.dim { color: var(--text-dim); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* Semantic text. `gain`/`loss` follow the HK convention: a *gain* is red, a
+   *loss* is green. Do not read them as profit/loss semantics in the Western
+   sense — on this console red is the good number. */
+.danger { color: var(--danger); }
+.gain { color: var(--gain); }
+.loss { color: var(--loss); }
+.warn { color: var(--warn); }
+
+/* ----------------------------------------------------------------- focus --- */
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ----------------------------------------------------------------- layout -- */
+
+.shell {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+@media (max-width: 860px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sidebar {
+    position: static;
+    height: auto;
+  }
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-4);
+}
+
+.brand__mark {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-field);
+  background: var(--brand);
+  color: var(--brand-ink);
+  font-weight: 700;
+  font-size: 17px;
+}
+
+.brand__title { font-size: 16px; font-weight: 650; }
+.brand__sub { font-size: 12px; color: var(--text-dim); }
+.brand__text { min-width: 0; }
+
+/* ---------------------------------------------------------------- login ---- */
+
+/* A centred sign-in card. The single column is the point: there is one thing
+   to do on this page, and Apple's guidance is not to decorate it. */
+.login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+}
+
+.login__card { width: min(420px, 100%); padding: var(--space-6); }
+.login__sub { font-size: 14px; margin: var(--space-1) 0 var(--space-5); }
+.login__foot { font-size: 12px; text-align: center; }
+
+.navlink {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* Padding, not a fixed height: the row stays a 44px target and still breathes
+     when the label wraps on a narrow sidebar. */
+  min-height: var(--target);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-field);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.navlink:hover { background: var(--surface-2); }
+
+.navlink[aria-current="page"] {
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.navlink__count {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--brand);
+  color: var(--brand-ink);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.sidebar__foot {
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.main {
+  padding: var(--space-6) var(--space-6) var(--space-8);
+  min-width: 0;
+}
+
+@media (max-width: 860px) {
+  .main { padding: var(--space-4); }
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.page-head h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.page-head__sub {
+  margin: var(--space-1) 0 0;
+  color: var(--text-dim);
+  font-size: 14px;
+  max-width: 68ch;
+}
+
+/* The heading block inside `.page-head`. `min-width: 0` is what stops a long
+   title from refusing to wrap in a flex row and shoving the actions off-screen. */
+.page-head__text { min-width: 0; }
+
+.actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+/* ------------------------------------------------------------------ card --- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+}
+
+.card + .card { margin-top: var(--space-4); }
+
+/* A card that is a *page block* rather than a table container: it carries its
+   own generous padding and a title, so nested spacing does not double up. */
+.card--pad { padding: var(--space-5) var(--space-6); }
+
+/* An anomaly, not a failure. Used when a settlement reports `tampered` or
+   `failed` — the data is real and worth reading, but a human has to look. */
+.card--alert { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+
+.card__title { margin: 0 0 var(--space-3); font-size: 20px; font-weight: 650; }
+
+/* A row of headings that must not be pushed around by a flex parent. */
+.row-inline { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+
+/* iOS's inset grouped list: a titled card whose rows share one surface. */
+.section { margin-bottom: var(--space-5); }
+
+.section__head {
+  padding: 0 var(--space-4) var(--space-2);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.section__foot {
+  padding: var(--space-2) var(--space-4) 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--space-3);
+}
+
+/* ------------------------------------------------------------------ stat --- */
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+}
+
+.stat__label { font-size: 13px; color: var(--text-dim); }
+.stat__value { font-size: 28px; font-weight: 700; letter-spacing: -0.015em; margin-top: var(--space-1); }
+.stat__hint { font-size: 12px; color: var(--text-dim); margin-top: var(--space-1); }
+
+/* ---------------------------------------------------------------- button --- */
+
+.btn {
+  /* 44px regardless of label: the number is the requirement, not a suggestion. */
+  min-height: var(--target);
+  padding: 0 var(--space-4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) { background: var(--surface-2); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn--primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-ink);
+}
+.btn--primary:hover:not(:disabled) { filter: brightness(1.06); background: var(--brand); }
+
+/* Destructive is red-outlined, never a filled red slab: on a console that moves
+   money, the dangerous action should be legible but not the most inviting thing
+   on the page. */
+.btn--danger { border-color: var(--danger); color: var(--danger); background: var(--surface); }
+.btn--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+
+.btn--sm { min-height: 34px; padding: 0 var(--space-3); font-size: 13px; }
+
+/* ----------------------------------------------------------------- field --- */
+
+.field { display: flex; flex-direction: column; gap: var(--space-2); }
+.field__label { font-size: 13px; font-weight: 600; color: var(--text-dim); }
+
+/* The label inside a `.field` is a bare <span>, so it needs the same weight
+   and size as `.field__label` without a second class at every call site. */
+.field > span:first-child { font-size: 13px; font-weight: 600; color: var(--text-dim); }
+
+/* The hint under a control. iOS puts guidance *below* the field it explains,
+   because that is where the eye already is once you have finished typing. */
+.field__hint { font-size: 12px; color: var(--text-dim); }
+
+input[type="text"],
+input[type="tel"],
+input[type="number"],
+input[type="search"],
+select,
+textarea {
+  min-height: var(--target);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px; /* 16px minimum: anything smaller makes iOS Safari zoom on focus */
+  width: 100%;
+}
+
+textarea { padding: var(--space-3); min-height: 88px; resize: vertical; }
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 22%, transparent);
+}
+
+/* ---------------------------------------------------------------- table ---- */
+
+.table-wrap { overflow-x: auto; }
+
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+table.data th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+table.data td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+table.data tr:last-child td { border-bottom: none; }
+table.data tbody tr:hover { background: var(--surface-2); }
+
+/* A filter bar: chips and the primary action on one wrapping line. */
+.filters {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+/* ------------------------------------------------------------ pick list ---- */
+
+/* A scrollable radio list for choosing one row out of many — used when
+   rostering a driver. Capped in height so the dialog's own buttons stay in
+   view rather than being pushed below the fold by 200 drivers. */
+.pick-list {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+}
+
+.pick-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  min-height: var(--target);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.pick-row:last-child { border-bottom: none; }
+.pick-row:hover { background: var(--surface-2); }
+
+/* ---------------------------------------------------------------- chip ----- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid currentColor;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  white-space: nowrap;
+}
+
+.chip--neutral { color: var(--text-dim); }
+.chip--ok { color: var(--loss); }
+.chip--warn { color: var(--warn); }
+.chip--danger { color: var(--danger); }
+.chip--brand { color: var(--brand); }
+
+/* -------------------------------------------------------------- message ---- */
+
+.message {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 14px;
+}
+
+.message--error { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); }
+.message--ok { border-color: color-mix(in srgb, var(--loss) 45%, var(--border)); color: var(--loss); }
+.message--warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); color: var(--warn); }
+
+/* --------------------------------------------------------------- empty ----- */
+
+.empty {
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 15px;
+}
+
+.empty__title { font-size: 17px; font-weight: 600; color: var(--text); margin-bottom: var(--space-2); }
+
+/* -------------------------------------------------------------- modal ------ */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 40%);
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  z-index: 50;
+}
+
+.modal {
+  width: min(520px, 100%);
+  max-height: min(84vh, 720px);
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+  padding: var(--space-5);
+}
+
+.modal h2 { margin: 0 0 var(--space-2); font-size: 20px; font-weight: 650; }
+.modal__body { margin: var(--space-3) 0 var(--space-5); font-size: 15px; line-height: 1.55; }
+.modal__actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+
+/* --------------------------------------------------------------- toast ----- */
+
+.toast-stack {
+  position: fixed;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 60;
+  max-width: min(420px, calc(100vw - var(--space-6)));
+}
+
+.toast {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+}
+
+.toast--error { border-color: var(--danger); color: var(--danger); }
+
+/* --------------------------------------------------------------- meter ----- */
+
+.meter {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.meter__fill { height: 100%; background: var(--brand); border-radius: var(--radius-pill); }
+
+/* --------------------------------------------------------------- stack ----- */
+
+.stack { display: flex; flex-direction: column; gap: var(--space-3); }
+.row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.spread { display: flex; justify-content: space-between; gap: var(--space-3); align-items: baseline; }
+
+/* A definition list rendered as the label/value rows a detail page needs. */
+.rows { display: flex; flex-direction: column; }
+.rows__item {
+  display: grid;
+  grid-template-columns: minmax(120px, 168px) minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  align-items: baseline;
+}
+.rows__label { color: var(--text-dim); font-size: 14px; }
+.rows__value { font-size: 15px; word-break: break-word; }
+
+@media (max-width: 560px) {
+  .rows__item { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+}
+
+/* --------------------------------------------------------------- utility --- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

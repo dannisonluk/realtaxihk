@@ -1,0 +1,147 @@
+/**
+ * The console's app-wide state: the API client, the signed-in operator, the
+ * toast queue, and the sidebar badge counts.
+ *
+ * Split out of the shell so a page can call `useApp()` instead of receiving six
+ * props it mostly ignores — the vanilla build threaded `{client, navigate,
+ * refreshBadges}` through every view constructor.
+ */
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { ApiClient } from '../api/client';
+import { endpoints } from '../api/endpoints';
+import { session, type AdminUser } from '../api/session';
+
+export interface Toast {
+  id: number;
+  message: string;
+  tone: 'info' | 'error';
+}
+
+interface AppState {
+  client: ApiClient;
+  user: AdminUser | null;
+  toasts: Toast[];
+  notify: (message: string, tone?: Toast['tone']) => void;
+  dismissToast: (id: number) => void;
+  badges: { pendingKyc: number | null; pendingRefunds: number | null };
+  setBadges: (next: Partial<{ pendingKyc: number; pendingRefunds: number }>) => void;
+  refreshBadges: () => Promise<void>;
+  signOut: () => Promise<void>;
+  onSignedOut: () => void;
+}
+
+const AppContext = createContext<AppState | null>(null);
+
+export function useApp(): AppState {
+  const value = useContext(AppContext);
+  if (!value) throw new Error('useApp 必須在 <AppProvider> 內使用。');
+  return value;
+}
+
+export function AppProvider({
+  onSignedOut,
+  children,
+}: {
+  onSignedOut: () => void;
+  children: ReactNode;
+}) {
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const nextToastId = useRef(1);
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
+  }, []);
+
+  const notify = useCallback(
+    (message: string, tone: Toast['tone'] = 'info') => {
+      const id = nextToastId.current++;
+      setToasts((current) => [...current, { id, message, tone }]);
+      // Auto-dismiss, but leave failures up long enough to read: this console
+      // reports money-moving errors through here.
+      window.setTimeout(() => dismissToast(id), tone === 'error' ? 9000 : 4500);
+    },
+    [dismissToast],
+  );
+
+  // One client for the app's lifetime. `onSessionExpired` must not be re-created
+  // per render or the client would hold a stale closure over `notify`.
+  const client = useMemo(
+    () =>
+      new ApiClient({
+        onSessionExpired: () => {
+          session.clear();
+          onSignedOut();
+        },
+      }),
+    [onSignedOut],
+  );
+
+  const [badges, setBadgesState] = useState<{
+    pendingKyc: number | null;
+    pendingRefunds: number | null;
+  }>({ pendingKyc: null, pendingRefunds: null });
+
+  const setBadges = useCallback((next: Partial<{ pendingKyc: number; pendingRefunds: number }>) => {
+    setBadgesState((current) => ({ ...current, ...next }));
+  }, []);
+
+  /** Best-effort: a failure here must not break the shell. */
+  const refreshBadges = useCallback(async () => {
+    try {
+      const [kyc, refunds] = await Promise.all([
+        endpoints.drivers.list(client, { status: 'PENDING_KYC', limit: 1 }),
+        endpoints.refunds.list(client, { status: 'PENDING', limit: 1 }),
+      ]);
+      setBadges({ pendingKyc: kyc.total ?? 0, pendingRefunds: refunds.total ?? 0 });
+    } catch {
+      // Leave the previous numbers; the pages themselves report real errors.
+    }
+  }, [client, setBadges]);
+
+  const signOut = useCallback(async () => {
+    try {
+      // Revokes every access and refresh token for this account, so signing out
+      // on a shared machine is real rather than cosmetic.
+      await endpoints.auth.logout(client);
+    } catch {
+      // Even if the server call fails, drop the local session.
+    }
+    session.clear();
+    onSignedOut();
+  }, [client, onSignedOut]);
+
+  // Expose the operator reactively: `session` is a plain object, so a change to
+  // it does not re-render anything on its own.
+  const [user, setUser] = useState<AdminUser | null>(() => session.user);
+  useEffect(() => {
+    setUser(session.user);
+  }, []);
+
+  const value = useMemo<AppState>(
+    () => ({
+      client,
+      user,
+      toasts,
+      notify,
+      dismissToast,
+      badges,
+      setBadges,
+      refreshBadges,
+      signOut,
+      onSignedOut,
+    }),
+    [client, user, toasts, notify, dismissToast, badges, setBadges, refreshBadges, signOut, onSignedOut],
+  );
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+}
