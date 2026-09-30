@@ -98,7 +98,12 @@ enum LedgerEntryType {
   static LedgerEntryType fromWire(String value) =>
       _decode(values, (LedgerEntryType v) => v.wire, value, 'LedgerEntryType');
 
-  bool get isCredit => this == LedgerEntryType.depositTopup || this == LedgerEntryType.adjustment;
+  // There is deliberately no `isCredit` here. Direction is a property of the
+  // *amount*, not of the entry type: `ADJUSTMENT` is signed (a correction may
+  // credit or debit), so a type-level flag reports the wrong direction for half
+  // its rows. The previous `ADJUSTMENT.isCredit == true` was an unverifiable
+  // guess that no production code consumed. Read the sign off
+  // `LedgerEntry.amountHkd` instead — see `mobile/lib/models/ledger_entry.dart`.
 
   String get labelZh => switch (this) {
     LedgerEntryType.depositTopup => '按金存入',

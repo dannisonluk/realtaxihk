@@ -24,10 +24,16 @@ Two defences now:
    what the caller asked for, so a collision can never silently no-op a charge;
 2. every reference is minted by the helpers below, each with a distinct prefix,
    so cross-purpose collisions are not expressible in the first place.
+
+The prefixes in use: `grant:` (admin top-up), `weekly:` (platform weekly fee),
+`fleet:` (fleet-member weekly fee), `refund:` (approved refund), `adj:` (manual
+balance correction). An `ADJUSTMENT` is always operator-initiated and always
+carries a reason, which is slugged into its own reference.
 """
 
 from __future__ import annotations
 
+import re
 import uuid
 from decimal import Decimal
 
@@ -66,6 +72,24 @@ def reference_for_fleet_weekly(fleet_id, period: str, driver_profile_id) -> str:
 
 def reference_for_refund(refund_id) -> str:
     return f"refund:{refund_id}"
+
+
+def reference_for_adjustment(driver_profile_id, reason: str, client_key: str | None = None) -> str:
+    """An operator's manual correction to a driver's balance.
+
+    Deliberately NOT folded into `grant:`. A grant is a top-up the driver can
+    point at a payment; an adjustment is the platform saying "our books were
+    wrong". Keeping distinct prefixes means a driver's statement separates the
+    two, and — per SEC-13 — an adjustment can never be crafted to collide with a
+    grant/settlement/refund reference and silently swallow one of them.
+
+    The reason is slugged into the reference (truncated, hex-suffixed for
+    uniqueness) so a ledger row is self-explaining even without its `note`,
+    which is what an auditor reads first.
+    """
+    slug = re.sub(r"[^a-z0-9]+", "-", reason.lower()).strip("-")[:32] or "unspecified"
+    suffix = client_key or uuid.uuid4().hex
+    return f"adj:{driver_profile_id}:{slug}:{suffix}"
 
 
 class LedgerService:

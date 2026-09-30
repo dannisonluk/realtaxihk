@@ -82,6 +82,8 @@ export interface LedgerEntry {
   order_id: string | null;
   note: string | null;
   reference: string | null;
+  /** Operator who posted this row; NULL for automated entries (settlement, refund). */
+  created_by: string | null;
   created_at: string | null;
 }
 
@@ -181,6 +183,22 @@ export interface FleetDetail {
 export interface GrantResult {
   balance_hkd: string;
   is_fulfilled: boolean;
+}
+
+/**
+ * `POST /admin/drivers/:id/deposit/adjust`
+ *
+ * `amount_hkd` echoes the signed correction, so the UI can show direction
+ * without re-deriving it. `driver_status` is returned for parity with the grant
+ * response; unlike a grant, an adjustment never activates a driver.
+ */
+export interface AdjustResult {
+  id: string;
+  driver_status: string;
+  amount_hkd: string;
+  balance_hkd: string;
+  is_fulfilled: boolean;
+  reference: string | null;
 }
 
 /**

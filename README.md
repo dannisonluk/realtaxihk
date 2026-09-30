@@ -73,7 +73,7 @@ All routes under `/api/v1` unless noted. Auth = `Authorization: Bearer <access J
 | **Orders** | `POST /orders` · `GET /orders/nearby` · `GET /orders` · `GET /orders/{id}` · `POST /orders/{id}/grab` · `.../arrive` · `.../start` · `.../complete` · `.../cancel` |
 | **Driver GPS** | `POST /driver/location` |
 | **Trips** | `GET /trips/{order_id}/location` (REST snapshot for WS reconnects) |
-| **Admin — KYC** | `GET /admin/drivers` · `POST /admin/drivers/{id}/review` · `POST /admin/drivers/{id}/deposit/grant` |
+| **Admin — KYC** | `GET /admin/drivers` · `POST /admin/drivers/{id}/review` · `POST /admin/drivers/{id}/deposit/grant` · `POST /admin/drivers/{id}/deposit/adjust` |
 | **Admin — refunds** | `GET /admin/refunds` · `POST /admin/refunds/{id}/decision` |
 | **Admin — settlement** | `POST /admin/settlement/weekly/run` (idempotent per ISO week) |
 | **Admin — fleets** | `GET /admin/fleets` · `POST /admin/fleets` · `PATCH /admin/fleets/{id}` · `GET|POST /admin/fleets/{id}/members` · `DELETE /admin/fleets/{id}/members/{driver_id}` · `GET /admin/fleets/{id}/settlement` · `POST /admin/fleets/{id}/settlement/run` |
@@ -97,7 +97,12 @@ Live socket close codes: `4401` unauthenticated, `4403` forbidden, `4404` unknow
   ledger = arrears). Order creation is rate-limited (5/60s per passenger → 429).
 - **C-mini — Ledger**: append-only `ledger_entries` with `balance_after` chain,
   `with_for_update` row locks + reference-idempotency index; HKD 500 deposit grant
-  gates activation.
+  gates activation. Five entry types, each with its own reference namespace so
+  they cannot collide (`SEC-13`): `DEPOSIT_TOPUP` (`grant:`), `WEEKLY_FEE_DEDUCTION`
+  (`weekly:`/`fleet:`), `PENALTY_DEDUCTION`, `REFUND` (`refund:`), and
+  `ADJUSTMENT` (`adj:`) — an operator's signed manual correction (±HK$5,000,
+  reason required, attributed via `created_by`), for when the books need fixing
+  for something no automated flow covers.
 - **D — Live tracking**: WS channel above (passenger subscribes, assigned driver pushes,
   driver ACTIVE re-checked per tick); ticks persist to PostGIS and fan out via Redis
   Pub/Sub (`realtaxi:trip:{order_id}`); server pings every `WS_HEARTBEAT_S`.

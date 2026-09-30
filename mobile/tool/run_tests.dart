@@ -315,11 +315,12 @@ void _enumTests() {
       expectFalse(DriverStatus.active.needsDeposit);
     });
 
-    test('credits only top-ups and adjustments', () {
-      expectTrue(LedgerEntryType.depositTopup.isCredit);
-      expectTrue(LedgerEntryType.adjustment.isCredit);
-      expectFalse(LedgerEntryType.weeklyFeeDeduction.isCredit);
-      expectFalse(LedgerEntryType.refund.isCredit);
+    test('adjustments are signed, so direction is read off the amount', () {
+      // The enum used to assert `adjustment.isCredit == true`, which is only
+      // true for half of them: a correction may debit. Pin the rule that
+      // replaced it — never infer direction from the entry type.
+      expect(LedgerEntryType.fromWire('ADJUSTMENT'), LedgerEntryType.adjustment);
+      expect(LedgerEntryType.adjustment.labelZh, '調整');
     });
 
     test('maps every tunnel', () {

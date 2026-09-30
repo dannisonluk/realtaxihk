@@ -34,7 +34,11 @@ from app.models import (
     RefundRequest,
     RefundStatus,
 )
-from app.services.ledger_service import LedgerService, reference_for_grant
+from app.services.ledger_service import (
+    LedgerService,
+    reference_for_adjustment,
+    reference_for_grant,
+)
 from app.services.refund_service import RefundService
 from app.services.settlement_service import SettlementService
 from app.services.state_machine import assert_driver_transition
@@ -166,6 +170,13 @@ def _deposit_detail_out(dep: DriverDeposit | None) -> dict:
 
 
 def _ledger_out(entry: LedgerEntry) -> dict:
+    """Ledger row as the admin detail page shows it.
+
+    `created_by` is exposed here and deliberately NOT on the driver-facing
+    `/drivers/me/ledger`: an operator's user id is internal, but for an
+    `ADJUSTMENT` — a discretionary move with no upstream event — attribution is
+    the point of keeping the record at all. Automated entries carry NULL.
+    """
     return {
         "id": entry.id,
         "entry_type": entry.entry_type.value,
@@ -174,6 +185,7 @@ def _ledger_out(entry: LedgerEntry) -> dict:
         "order_id": str(entry.order_id) if entry.order_id else None,
         "note": entry.note,
         "reference": entry.reference,
+        "created_by": str(entry.created_by) if entry.created_by else None,
         "created_at": entry.created_at.isoformat() if entry.created_at else None,
     }
 
@@ -321,6 +333,75 @@ async def grant_deposit(
     return {
         "id": str(dp.id),
         "driver_status": dp.status.value,
+        "balance_hkd": money_str(Decimal(entry.balance_after_hkd)),
+        "is_fulfilled": deposit.is_fulfilled,
+        "reference": entry.reference,
+    }
+
+
+class DepositAdjustIn(BaseModel):
+    """A manual correction to a driver's balance (ledger `ADJUSTMENT`).
+
+    `amount_hkd` is **signed**: positive credits the driver (we under-charged, or
+    a goodwill gesture), negative debits them (we over-charged, or a charge the
+    automated flows never posted). It is deliberately not `gt=0` like a grant.
+    """
+
+    amount_hkd: Decimal = Field(ge=-5000, le=5000)
+    # Required, not optional: an adjustment has no upstream event to point at,
+    # so the reason *is* the audit trail. An unexplained balance change is worse
+    # than no adjustment tool at all.
+    reason: str = Field(min_length=3, max_length=500)
+    reference: str | None = Field(default=None, max_length=60)
+
+
+@router.post("/drivers/{driver_id}/deposit/adjust")
+async def adjust_deposit(
+    driver_id: str,
+    payload: DepositAdjustIn,
+    admin: Principal = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Post a manual `ADJUSTMENT` to a driver's deposit ledger.
+
+    Why this exists: every other ledger writer is tied to an event — a grant has
+    a payment, a weekly fee has a period, a refund has a request. When the books
+    need correcting for something with no such event, the only honest option was
+    a raw `DEPOSIT_TOPUP` grant, which lies about *why* the money moved and
+    inflates the top-up total on every report that sums it.
+
+    Bounded at ±HK$5,000 on purpose. An adjustment is a correction, not a
+    payment channel; anything larger is a decision that belongs to a human
+    reviewing a real reconciliation, not a number typed into a form. Negative
+    balances remain legal (arrears) — see LedgerService.append.
+
+    The deposit row is created if absent, matching `grant`: an operator
+    correcting a driver who was never credited should not have to grant first
+    and then adjust, which would leave two entries where one is needed.
+    ``ensure_deposit_row`` flushes, and ``append`` row-locks it before touching
+    the balance, so this is safe under concurrency.
+    """
+    dp = await session.get(DriverProfile, driver_id)
+    if dp is None:
+        raise HTTPException(status_code=404, detail="driver not found")
+
+    # SEC-13: `adj:` prefix, so this can never collide with grant/weekly/fleet/
+    # refund references and silently swallow one of them.
+    reference = reference_for_adjustment(dp.id, payload.reason, payload.reference)
+    deposit = await LedgerService.ensure_deposit_row(session, dp)
+    entry = await LedgerService(session).append(
+        driver_profile_id=dp.id,
+        entry_type=LedgerEntryType.ADJUSTMENT,
+        amount_hkd=payload.amount_hkd,
+        note=payload.reason,
+        created_by=admin.id,
+        reference=reference,
+    )
+
+    return {
+        "id": str(dp.id),
+        "driver_status": dp.status.value,
+        "amount_hkd": money_str(Decimal(entry.amount_hkd)),
         "balance_hkd": money_str(Decimal(entry.balance_after_hkd)),
         "is_fulfilled": deposit.is_fulfilled,
         "reference": entry.reference,

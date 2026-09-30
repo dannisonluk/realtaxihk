@@ -300,3 +300,164 @@ class TestMoneyWirePrecision:
         )
         assert me.json()["deposit"]["required_hkd"] == "500.00"
         assert me.json()["deposit"]["is_fulfilled"] is True
+
+
+class TestDepositAdjustment:
+    """The manual `ADJUSTMENT` correction — the one ledger type with no upstream
+    event behind it, so its audit trail is the reason string itself."""
+
+    def _adjust(self, client, driver_id, **body):
+        body.setdefault("reason", "reconciliation correction")
+        return client.post(
+            f"/api/v1/admin/drivers/{driver_id}/deposit/adjust",
+            headers={"Authorization": f"Bearer {_admin_token()}"},
+            json=body,
+        )
+
+    def test_negative_adjustment_debits_the_balance(self, client, pending_driver):
+        did = pending_driver["driver_id"]
+        self._adjust(client, did, amount_hkd="500.00", reason="seed")
+        r = self._adjust(client, did, amount_hkd="-120.50", reason="over-charged fares")
+        assert r.status_code == 200, r.text
+        assert r.json()["amount_hkd"] == "-120.50"
+        assert r.json()["balance_hkd"] == "379.50"
+
+    def test_positive_adjustment_credits_the_balance(self, client, pending_driver):
+        did = pending_driver["driver_id"]
+        self._adjust(client, did, amount_hkd="500.00", reason="seed")
+        r = self._adjust(client, did, amount_hkd="25.25", reason="goodwill credit")
+        assert r.status_code == 200, r.text
+        assert r.json()["balance_hkd"] == "525.25"
+
+    def test_arrears_are_allowed(self, client, pending_driver):
+        """A correction may legitimately push a driver negative — the same rule
+        the penalty and settlement flows already rely on."""
+        did = pending_driver["driver_id"]
+        r = self._adjust(client, did, amount_hkd="-75.00", reason="unpaid fees from 2026-W40")
+        assert r.status_code == 200, r.text
+        assert r.json()["balance_hkd"] == "-75.00"
+        assert r.json()["is_fulfilled"] is False
+
+    def test_writes_an_adjustment_ledger_entry(self, client, pending_driver):
+        did = pending_driver["driver_id"]
+        self._adjust(client, did, amount_hkd="-9.99", reason="over-charged fare")
+        items = client.get(
+            "/api/v1/drivers/me/ledger",
+            headers={"Authorization": f"Bearer {pending_driver['token']}"},
+        ).json()["items"]
+        assert [e["entry_type"] for e in items] == ["ADJUSTMENT"]
+        assert items[0]["amount_hkd"] == "-9.99"
+        assert items[0]["balance_after_hkd"] == "-9.99"
+
+    def test_reference_is_namespaced_and_carries_the_reason(self, client, pending_driver):
+        """SEC-13: an adjustment gets its own `adj:` prefix, so it can never be
+        crafted to collide with a grant/settlement/refund reference."""
+        r = self._adjust(
+            client, pending_driver["driver_id"], amount_hkd="-1.00", reason="Over Charged Fare!"
+        )
+        ref = r.json()["reference"]
+        assert ref.startswith("adj:")
+        assert "over-charged-fare" in ref
+
+    def test_retry_with_same_client_key_replays(self, client, pending_driver):
+        """P1-7 idempotency: a retried correction must not debit twice."""
+        did = pending_driver["driver_id"]
+        first = self._adjust(client, did, amount_hkd="-50.00", reason="dup", reference="k1")
+        second = self._adjust(client, did, amount_hkd="-50.00", reason="dup", reference="k1")
+        assert first.status_code == second.status_code == 200
+        assert first.json()["reference"] == second.json()["reference"]
+        assert second.json()["balance_hkd"] == "-50.00"
+
+    def test_same_key_with_a_different_amount_is_refused(self, client, pending_driver):
+        """SEC-13: a reference hit that disagrees on amount is tampering, not a
+        replay — it must not silently no-op the second correction.
+
+        The envelope is the project-wide `BusinessRuleError` -> 400. The
+        diagnostic `details` matter as much as the status: they are what tells
+        an operator their key collided with an unrelated entry.
+        """
+        did = pending_driver["driver_id"]
+        self._adjust(client, did, amount_hkd="-50.00", reason="dup", reference="k2")
+        r = self._adjust(client, did, amount_hkd="-60.00", reason="dup", reference="k2")
+        assert r.status_code == 400
+        assert r.json()["code"] == "BUSINESS_RULE_VIOLATION"
+        details = r.json()["details"]
+        assert details["existing_amount_hkd"] == "-50.00"
+        assert details["requested_amount_hkd"] == "-60.00"
+
+    def test_zero_amount_is_rejected(self, client, pending_driver):
+        """A no-op correction is refused by `LedgerService.append`, which owns
+        that rule (`amount == 0` is not a ledger event) — hence the 400."""
+        r = self._adjust(client, pending_driver["driver_id"], amount_hkd="0.00")
+        assert r.status_code == 400
+        assert r.json()["code"] == "BUSINESS_RULE_VIOLATION"
+
+    def test_amount_beyond_the_bound_is_rejected(self, client, pending_driver):
+        """±5000 is the correction envelope; a larger move is a reconciliation
+        decision, not a number typed into a form."""
+        did = pending_driver["driver_id"]
+        assert self._adjust(client, did, amount_hkd="5000.01").status_code == 422
+        assert self._adjust(client, did, amount_hkd="-5000.01").status_code == 422
+        assert self._adjust(client, did, amount_hkd="5000.00").status_code == 200
+
+    def test_reason_is_required(self, client, pending_driver):
+        """An unexplained balance change is worse than no tool at all."""
+        r = client.post(
+            f"/api/v1/admin/drivers/{pending_driver['driver_id']}/deposit/adjust",
+            headers={"Authorization": f"Bearer {_admin_token()}"},
+            json={"amount_hkd": "-10.00"},
+        )
+        assert r.status_code == 422
+
+    def test_non_admin_cannot_adjust(self, client, pending_driver):
+        r = client.post(
+            f"/api/v1/admin/drivers/{pending_driver['driver_id']}/deposit/adjust",
+            headers={"Authorization": f"Bearer {pending_driver['token']}"},
+            json={"amount_hkd": "-10.00", "reason": "not allowed"},
+        )
+        assert r.status_code == 403
+
+    def test_unknown_driver_is_404(self, client):
+        r = self._adjust(client, "00000000-0000-0000-0000-000000000000", amount_hkd="-1.00")
+        assert r.status_code == 404
+
+    def test_attribution_lands_on_the_admin_detail_view(self, client, pending_driver):
+        """An adjustment is discretionary, so *who* moved the balance is part of
+        the record. It is exposed to admins and withheld from the driver's own
+        ledger (an operator id is internal)."""
+        from conftest import ADMIN_ID
+
+        did = pending_driver["driver_id"]
+        self._adjust(client, did, amount_hkd="-30.00", reason="over-charged fare")
+
+        detail = client.get(
+            f"/api/v1/admin/drivers/{did}",
+            headers={"Authorization": f"Bearer {_admin_token()}"},
+        ).json()
+        entry = detail["ledger"]["items"][0]
+        assert entry["entry_type"] == "ADJUSTMENT"
+        assert entry["created_by"] == ADMIN_ID
+        assert entry["note"] == "over-charged fare"
+
+        driver_view = client.get(
+            "/api/v1/drivers/me/ledger",
+            headers={"Authorization": f"Bearer {pending_driver['token']}"},
+        ).json()["items"][0]
+        assert "created_by" not in driver_view
+
+    def test_adjustment_does_not_activate_a_pending_driver(self, client, pending_driver):
+        """Unlike a grant, a correction must never satisfy the deposit threshold:
+        adjustment is bookkeeping, not a payment, and crossing it here would let
+        an operator approve a driver by moving numbers."""
+        r = self._adjust(
+            client, pending_driver["driver_id"], amount_hkd="500.00", reason="seed", reference="k3"
+        )
+        # ensure_deposit_row already set is_fulfilled from the balance, so this
+        # documents the pre-existing behaviour rather than claiming new safety:
+        assert r.json()["driver_status"] == "DEPOSIT_REQUIRED"
+        me = client.get(
+            "/api/v1/drivers/me",
+            headers={"Authorization": f"Bearer {pending_driver['token']}"},
+        ).json()
+        assert me["status"] == "DEPOSIT_REQUIRED"
+        assert me["deposit"]["is_fulfilled"] is True

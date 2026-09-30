@@ -8,6 +8,7 @@
 
 import type { ApiClient } from './client';
 import type {
+  AdjustResult,
   AdminDriverRow,
   AdminIdentity,
   AuthTokens,
@@ -90,6 +91,32 @@ export const endpoints = {
           body: {
             amount_hkd: String(amountHkd),
             note,
+            ...(reference ? { reference } : {}),
+          },
+        },
+      ),
+    /**
+     * A manual correction to the deposit ledger (`ADJUSTMENT`).
+     *
+     * `amountHkd` is **signed**: negative debits, positive credits. `reason` is
+     * required by the server — an adjustment has no upstream event, so the
+     * reason *is* the audit trail. Bounded at ±5000 server-side.
+     *
+     * Different from `grantDeposit`, and not a substitute for it: a grant is a
+     * payment received (and counts toward top-up totals), an adjustment is the
+     * platform correcting its own books.
+     */
+    adjustDeposit: (client: ApiClient, driverId: string, { amountHkd, reason, reference }: {
+      amountHkd: string;
+      reason: string;
+      reference?: string;
+    }) =>
+      client.post<AdjustResult>(
+        `/api/v1/admin/drivers/${encodeURIComponent(driverId)}/deposit/adjust`,
+        {
+          body: {
+            amount_hkd: String(amountHkd),
+            reason,
             ...(reference ? { reference } : {}),
           },
         },
