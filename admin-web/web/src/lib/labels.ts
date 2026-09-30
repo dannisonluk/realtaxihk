@@ -8,7 +8,12 @@
  */
 
 import type { ChipTone } from '../components/primitives';
-import type { DriverStatus, FleetStatus, RefundStatus } from '../api/types';
+import type {
+  DriverStatus,
+  FleetStatus,
+  LicenceReviewStatus,
+  RefundStatus,
+} from '../api/types';
 
 export const DRIVER_STATUS_LABEL: Record<DriverStatus, string> = {
   PENDING_KYC: '審核中',
@@ -169,4 +174,77 @@ export function entryTone(type: string): ChipTone {
 export function shortId(id: string | null | undefined): string {
   if (!id) return '—';
   return id.split('-')[0] ?? id;
+}
+
+/**
+ * P-3 licence review states.
+ *
+ * `SUPERSEDED` is neutral, not a failure: the driver withdrew their own
+ * submission to fix a photo, which is the flow working as intended. Colouring it
+ * like a rejection would make the queue look like a problem when it is not.
+ */
+export const LICENCE_STATUS_LABEL: Record<LicenceReviewStatus, string> = {
+  PENDING: '待審核',
+  APPROVED: '已通過',
+  REJECTED: '已拒絕',
+  SUPERSEDED: '已撤回',
+};
+
+const LICENCE_STATUS_TONE: Record<LicenceReviewStatus, ChipTone> = {
+  PENDING: 'warn',
+  APPROVED: 'ok',
+  REJECTED: 'danger',
+  SUPERSEDED: 'neutral',
+};
+
+export function licenceStatusLabel(status: string): string {
+  return LICENCE_STATUS_LABEL[status as LicenceReviewStatus] ?? status;
+}
+
+export function licenceStatusTone(status: string): ChipTone {
+  return LICENCE_STATUS_TONE[status as LicenceReviewStatus] ?? 'neutral';
+}
+
+/**
+ * Document kinds, by their licensed Chinese names.
+ *
+ * `TAXI_DRIVER_PASS` is the 的士司機證 — the Transport Department's permission to
+ * drive a taxi — which is the document an operator is actually checking for.
+ */
+export const DOCUMENT_KIND_LABEL: Record<string, string> = {
+  DRIVER_LICENCE: '正式駕駛執照',
+  TAXI_DRIVER_PASS: '的士司機證',
+  VEHICLE_REGISTRATION: '車輛登記文件',
+  INSURANCE: '保險',
+  OTHER: '其他',
+};
+
+export function documentKindLabel(kind: string): string {
+  return DOCUMENT_KIND_LABEL[kind] ?? kind;
+}
+
+/**
+ * Bytes as a human string.
+ *
+ * Decimal-ish steps with a fixed `MB`, because the value being checked against
+ * is a per-file ceiling expressed in MB — an operator comparing "4.7 MB" to a
+ * "5 MB limit" should not have to convert from MiB.
+ */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes === null || bytes === undefined) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** A date-only ISO string (`2027-09-30T...`) as `YYYY-MM-DD`. */
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return '—';
+  return at.toLocaleDateString('zh-HK', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
 }

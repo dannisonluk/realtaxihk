@@ -268,3 +268,84 @@ export interface FleetSettlementRunResult {
   tampered: number;
   collected_hkd: string;
 }
+
+/**
+ * P-3: the state of one licence submission.
+ *
+ * Deliberately separate from `DriverStatus`. A driver can be `ACTIVE` and trading
+ * while a *renewal* sits `PENDING` — coupling the two would take someone offline
+ * to re-upload a document.
+ */
+export type LicenceReviewStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUPERSEDED';
+
+/**
+ * The document kinds a submission can carry.
+ *
+ * `TAXI_DRIVER_PASS` is the HK 的士司機證 — the right to drive a taxi — while
+ * `DRIVER_LICENCE` is the right to drive. Both are required; one alone is half
+ * the evidence.
+ */
+export type DocumentKind =
+  | 'DRIVER_LICENCE'
+  | 'TAXI_DRIVER_PASS'
+  | 'VEHICLE_REGISTRATION'
+  | 'INSURANCE'
+  | 'OTHER';
+
+/** A queue row. Carries counts, not the documents themselves. */
+export interface LicenceSubmissionRow {
+  id: string;
+  licence_no: string;
+  expires_on: string;
+  status: LicenceReviewStatus;
+  submitted_note: string | null;
+  rejection_reason: string | null;
+  submitted_at: string;
+  reviewed_at: string | null;
+  driver_profile_id: string;
+  /** The driver's own `DriverStatus`, so the queue shows who is trading. */
+  driver_status: DriverStatus | null;
+  document_count: number;
+  /**
+   * Whether both required kinds are attached. `false` is the row an operator
+   * must not approve.
+   */
+  has_required_documents: boolean;
+}
+
+/**
+ * One document in the detail view.
+ *
+ * `stored` is the field that matters: it is `false` when the client declared an
+ * upload that never landed. Approving in that state is what the server refuses,
+ * so the console shows it before the button is pressed.
+ */
+export interface LicenceDocument {
+  id: string;
+  kind: DocumentKind;
+  content_type: string;
+  size_bytes: number;
+  uploaded_at: string | null;
+  /** A signed, short-lived URL. Present only on the detail endpoint. */
+  download_url: string;
+  url_expires_in: number;
+  stored: boolean;
+  stored_size_bytes: number | null;
+}
+
+export interface LicenceSubmissionDetail extends Omit<LicenceSubmissionRow, 'document_count'> {
+  driver_taxi_type: string | null;
+  driver_plate_no: string | null;
+  driver_vehicle_reg_mark: string | null;
+  reviewed_by: string | null;
+  documents: LicenceDocument[];
+}
+
+export interface LicenceDecisionResult {
+  id: string;
+  status: LicenceReviewStatus;
+  reviewed_at: string | null;
+  driver_status?: string;
+  /** `true` only for a first approval that moved the driver out of PENDING_KYC. */
+  driver_promoted?: boolean;
+}

@@ -22,6 +22,10 @@ import type {
   FleetSettlementRow,
   FleetSettlementRunResult,
   GrantResult,
+  LicenceDecisionResult,
+  LicenceReviewStatus,
+  LicenceSubmissionDetail,
+  LicenceSubmissionRow,
   Paged,
   RefundRow,
   RefundStatus,
@@ -152,6 +156,53 @@ export const endpoints = {
             ...(reference ? { reference } : {}),
           },
         },
+      ),
+  },
+
+  /**
+   * P-3: taxi driver licence review.
+   *
+   * A queue of *submissions*, not of drivers. The driver already has a row in
+   * the KYC queue; this is the separate, recurring evidence check — which is why
+   * approving here does not touch a trading driver's status.
+   */
+  licence: {
+    /** The review queue, oldest first. `status: 'all'` is the audit view. */
+    list: (client: ApiClient, { status = 'PENDING', limit = 100, offset = 0 }: {
+      status?: LicenceReviewStatus | 'all';
+      limit?: number;
+      offset?: number;
+    } = {}) =>
+      client.get<Paged<LicenceSubmissionRow>>('/api/v1/admin/licence/submissions', {
+        status,
+        limit,
+        offset,
+      }),
+    /**
+     * One submission with its documents and **short-lived signed URLs**.
+     *
+     * The URLs are minted only here, never in the list: a working link to an
+     * identity document must not sit in every poll of the queue. `ttl` is the
+     * console's own countdown, capped at 900s server-side.
+     */
+    detail: (client: ApiClient, submissionId: string, { ttl = 300 }: { ttl?: number } = {}) =>
+      client.get<LicenceSubmissionDetail>(
+        `/api/v1/admin/licence/submissions/${encodeURIComponent(submissionId)}`,
+        { ttl },
+      ),
+    /**
+     * The decision. Terminal — a second call is refused.
+     *
+     * `reason` is mandatory for a rejection, because a driver who is told only
+     * "rejected" cannot tell whether to retake the photo or give up.
+     */
+    decide: (client: ApiClient, submissionId: string, { approve, reason }: {
+      approve: boolean;
+      reason?: string;
+    }) =>
+      client.post<LicenceDecisionResult>(
+        `/api/v1/admin/licence/submissions/${encodeURIComponent(submissionId)}/decide`,
+        { body: { approve, ...(reason ? { reason } : {}) } },
       ),
   },
 

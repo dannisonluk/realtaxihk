@@ -11,6 +11,10 @@ import { useApp } from './AppContext';
 const NAV = [
   { path: '/', label: '總覽', badge: null, end: true },
   { path: '/kyc', label: '司機審核', badge: 'pendingKyc' as const, end: false },
+  // Sits next to KYC because the two are the same job — checking a driver's
+  // paperwork — split only because the licence is a recurring, document-shaped
+  // event while KYC is a one-off profile review.
+  { path: '/licences', label: '的士證審核', badge: null, end: false },
   { path: '/refunds', label: '退款', badge: 'pendingRefunds' as const, end: false },
   { path: '/settlement', label: '每週結算', badge: null, end: false },
   { path: '/fleets', label: '車隊', badge: null, end: false },

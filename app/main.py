@@ -32,6 +32,8 @@ from app.api.fare import router as fare_router
 from app.api.fleets import admin_router as admin_fleets_router
 from app.api.fleets import router as fleets_router
 from app.api.identity import router as identity_router
+from app.api.licence import router as licence_router
+from app.api.licence_admin import router as licence_admin_router
 from app.api.orders import router as orders_router
 from app.api.tracking import router as tracking_router
 from app.api.trips import router as trips_router
@@ -171,7 +173,12 @@ def create_app() -> FastAPI:
     # Mounted before the platform `admin_router` so `/api/v1/admin/auth/*` is
     # matched by the admin-auth handlers rather than falling into a catch-all.
     app.include_router(admin_auth_router)
+    # P-3: likewise before `admin_router`, so `/api/v1/admin/licence/*` reaches
+    # the licence-review handlers. The licence queue and the generic driver
+    # queue are different views of the same domain and must not be conflated.
+    app.include_router(licence_admin_router)
     app.include_router(admin_router)
+    app.include_router(licence_router)
     app.include_router(fleets_router)
     app.include_router(admin_fleets_router)
     app.include_router(orders_router)
