@@ -9,10 +9,10 @@ and the append-only ledger, not just HTTP codes.
 from __future__ import annotations
 
 import asyncio
+import uuid
 from decimal import Decimal
 
 import pytest
-from conftest import ADMIN_ID
 
 # --------------------------------------------------------------------------- #
 # helpers
@@ -30,10 +30,8 @@ def _mk_user_token(client, phone: str) -> str:
     return client.activate(phone)
 
 
-def _admin_headers() -> dict:
-    from app.core.security import create_access_token
-
-    return {"Authorization": "Bearer " + create_access_token({"sub": ADMIN_ID, "role": "ADMIN"})}
+def _admin_headers(client) -> dict:
+    return client.admin_headers()
 
 
 def _h(token: str) -> dict:
@@ -58,7 +56,7 @@ def _register(client, token: str, phone: str) -> str:
 def _grant(client, driver_id: str, amount: str) -> dict:
     r = client.post(
         f"/api/v1/admin/drivers/{driver_id}/deposit/grant",
-        headers=_admin_headers(),
+        headers=_admin_headers(client),
         json={"amount_hkd": amount},
     )
     assert r.status_code == 200, r.text
@@ -83,7 +81,7 @@ def _make_active(client, phone: str, deposit: str = "500.00") -> dict:
     driver_id = _register(client, token, phone)
     client.post(
         f"/api/v1/admin/drivers/{driver_id}/review",
-        headers=_admin_headers(),
+        headers=_admin_headers(client),
         json={"decision": "approve"},
     )
     _grant(client, driver_id, deposit)
@@ -116,11 +114,11 @@ class TestWeeklySettlement:
         driver_dr = _register(client, token_dr, "+85293000103")
         client.post(
             f"/api/v1/admin/drivers/{driver_dr}/review",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
             json={"decision": "approve"},
         )
 
-        r = client.post("/api/v1/admin/settlement/weekly/run", headers=_admin_headers())
+        r = client.post("/api/v1/admin/settlement/weekly/run", headers=_admin_headers(client))
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["charged"] == 1
@@ -133,7 +131,7 @@ class TestWeeklySettlement:
 
     def test_rerun_of_same_period_is_idempotent(self, client):
         d = _make_active(client, "+85293000111")
-        admin = _admin_headers()
+        admin = _admin_headers(client)
 
         first = client.post(
             "/api/v1/admin/settlement/weekly/run?period=2026-W40", headers=admin
@@ -151,7 +149,7 @@ class TestWeeklySettlement:
 
     def test_distinct_periods_are_charged_separately(self, client):
         d = _make_active(client, "+85293000121")
-        admin = _admin_headers()
+        admin = _admin_headers(client)
         for period in ("2026-W40", "2026-W41"):
             r = client.post(f"/api/v1/admin/settlement/weekly/run?period={period}", headers=admin)
             assert r.json()["charged"] == 1
@@ -160,7 +158,7 @@ class TestWeeklySettlement:
     def test_arrears_allowed_and_driver_stays_active(self, client):
         """A fee may push the balance negative — the driver keeps dispatching."""
         d = _make_active(client, "+85293000131")
-        admin = _admin_headers()
+        admin = _admin_headers(client)
         for period in ("2026-W40", "2026-W41", "2026-W42"):
             client.post(f"/api/v1/admin/settlement/weekly/run?period={period}", headers=admin)
 
@@ -170,7 +168,9 @@ class TestWeeklySettlement:
 
     def test_writes_ledger_entry_per_period(self, client):
         d = _make_active(client, "+85293000141")
-        client.post("/api/v1/admin/settlement/weekly/run?period=2026-W40", headers=_admin_headers())
+        client.post(
+            "/api/v1/admin/settlement/weekly/run?period=2026-W40", headers=_admin_headers(client)
+        )
         r = client.get("/api/v1/drivers/me/ledger", headers=_h(d["token"]))
         entries = r.json()["items"]
         assert [e["entry_type"] for e in entries] == ["DEPOSIT_TOPUP", "WEEKLY_FEE_DEDUCTION"]
@@ -183,7 +183,9 @@ class TestWeeklySettlement:
         assert r.status_code == 403
 
     def test_bad_period_format_rejected(self, client):
-        r = client.post("/api/v1/admin/settlement/weekly/run?period=nope", headers=_admin_headers())
+        r = client.post(
+            "/api/v1/admin/settlement/weekly/run?period=nope", headers=_admin_headers(client)
+        )
         assert r.status_code == 422
 
 
@@ -223,7 +225,7 @@ class TestRefundRequest:
     def test_request_without_balance_rejected(self, client):
         d = _make_active(client, "+85293000201")
         # Drain it: 500 - 2 x 200 = 100... push to zero via three fees.
-        admin = _admin_headers()
+        admin = _admin_headers(client)
         for period in ("2026-W40", "2026-W41"):
             client.post(f"/api/v1/admin/settlement/weekly/run?period={period}", headers=admin)
         client.post("/api/v1/admin/settlement/weekly/run?period=2026-W42", headers=admin)
@@ -238,14 +240,14 @@ class TestRefundRequest:
         driver_id = _register(client, token, "+85293000211")
         client.post(
             f"/api/v1/admin/drivers/{driver_id}/review",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
             json={"decision": "approve"},
         )
         _grant(client, driver_id, "500.00")
         # Grant fulfils the deposit -> ACTIVE; suspend to test the gate.
         client.post(
             f"/api/v1/admin/drivers/{driver_id}/review",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
             json={"decision": "suspend"},
         )
         r = _request_refund(client, token)
@@ -291,7 +293,7 @@ class TestRefundRequest:
     def test_pending_refund_is_exempt_from_weekly_fee(self, client, active_driver):
         _request_refund(client, active_driver["token"])
         r = client.post(
-            "/api/v1/admin/settlement/weekly/run?period=2026-W40", headers=_admin_headers()
+            "/api/v1/admin/settlement/weekly/run?period=2026-W40", headers=_admin_headers(client)
         )
         assert r.json()["charged"] == 0
         assert _deposit(client, active_driver["token"])["held_hkd"] == "500.00"
@@ -351,15 +353,19 @@ class TestRefundDecision:
 
     def test_approve_pays_out_and_terminates(self, client, active_driver):
         rid = self._pending(client, active_driver)
+        admin = _admin_headers(client)
         r = client.post(
             f"/api/v1/admin/refunds/{rid}/decision",
-            headers=_admin_headers(),
+            headers=admin,
             json={"decision": "approve", "note": "bank transfer sent"},
         )
         assert r.status_code == 200, r.text
         assert r.json()["status"] == "APPROVED"
         assert r.json()["decision_note"] == "bank transfer sent"
-        assert r.json()["decided_by"] == ADMIN_ID
+        # The id of the admin that actually signed in — no longer a fixture-wide
+        # constant, because the acting admin is now a real `admin_accounts` row
+        # created by `_admin_headers(client)`.
+        assert r.json()["decided_by"] == admin.admin_id
 
         dep = _deposit(client, active_driver["token"])
         assert dep["balance_hkd"] == "0.00"
@@ -380,7 +386,7 @@ class TestRefundDecision:
         rid = self._pending(client, active_driver)
         r = client.post(
             f"/api/v1/admin/refunds/{rid}/decision",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
             json={"decision": "reject", "note": "kyc issue"},
         )
         assert r.status_code == 200, r.text
@@ -402,14 +408,14 @@ class TestRefundDecision:
         rid = self._pending(client, active_driver)
         client.post(
             f"/api/v1/admin/refunds/{rid}/decision",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
             json={"decision": "reject"},
         )
         assert _request_refund(client, active_driver["token"]).status_code == 201
 
     def test_double_decision_rejected(self, client, active_driver):
         rid = self._pending(client, active_driver)
-        admin = _admin_headers()
+        admin = _admin_headers(client)
         assert (
             client.post(
                 f"/api/v1/admin/refunds/{rid}/decision", headers=admin, json={"decision": "approve"}
@@ -427,7 +433,7 @@ class TestRefundDecision:
     def test_unknown_refund_is_400(self, client):
         r = client.post(
             "/api/v1/admin/refunds/00000000-0000-0000-0000-0000000000ff/decision",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
             json={"decision": "approve"},
         )
         assert r.status_code == 400
@@ -436,7 +442,7 @@ class TestRefundDecision:
     def test_malformed_refund_id_is_422(self, client):
         r = client.post(
             "/api/v1/admin/refunds/not-a-uuid/decision",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
             json={"decision": "approve"},
         )
         assert r.status_code == 422
@@ -454,7 +460,7 @@ class TestRefundDecision:
         rid = self._pending(client, active_driver)
         r = client.post(
             f"/api/v1/admin/refunds/{rid}/decision",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
             json={"decision": "maybe"},
         )
         assert r.status_code == 422
@@ -462,11 +468,13 @@ class TestRefundDecision:
     def test_approval_after_partial_arrears_refunds_the_remainder(self, client):
         """Refund pays whatever is left, not the original deposit."""
         d = _make_active(client, "+85293000301")
-        client.post("/api/v1/admin/settlement/weekly/run?period=2026-W40", headers=_admin_headers())
+        client.post(
+            "/api/v1/admin/settlement/weekly/run?period=2026-W40", headers=_admin_headers(client)
+        )
         rid = self._pending(client, d)
         r = client.post(
             f"/api/v1/admin/refunds/{rid}/decision",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
             json={"decision": "approve"},
         )
         assert r.json()["amount_hkd"] == "300.00"
@@ -481,7 +489,7 @@ class TestRefundDecision:
 
 class TestRefundListing:
     def test_lists_and_filters(self, client, active_driver):
-        admin = _admin_headers()
+        admin = _admin_headers(client)
         rid = _request_refund(client, active_driver["token"]).json()["id"]
 
         r = client.get("/api/v1/admin/refunds", headers=admin)
@@ -566,7 +574,11 @@ class TestRefundConcurrency:
 
         rid = _request_refund(client, active_driver["token"]).json()["id"]
         factory = client.db_factory
-        admin_id = ADMIN_ID
+        # Drives `RefundService.decide` directly, below the HTTP layer, so no
+        # authentication is involved and the id is only ever written to
+        # `decided_by`. Any UUID is as good as another — it deliberately is not
+        # `ADMIN_ID`, which no longer names a console admin.
+        admin_id = uuid.uuid4()
 
         async def decide():
             async with factory() as s:

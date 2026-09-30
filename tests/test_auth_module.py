@@ -3,9 +3,6 @@
 import re
 
 import pytest
-from conftest import ADMIN_ID
-
-from app.core.security import create_access_token
 
 
 class TestMasking:
@@ -145,7 +142,8 @@ class TestDriverKycApi:
 
     def test_admin_review_approve_flow(self, client):
 
-        admin_token = create_access_token({"sub": ADMIN_ID, "role": "ADMIN"})
+        admin = client.admin_headers()
+        admin_token = admin["Authorization"].split(" ", 1)[1]
         token = self._new_user_token(client, "+85291230002")
         r = client.post(
             "/api/v1/drivers/register",

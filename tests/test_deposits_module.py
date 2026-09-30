@@ -14,12 +14,10 @@ def _mk_user_token(client, phone: str) -> str:
     return client.activate(phone)
 
 
-def _admin_token() -> str:
-    from conftest import ADMIN_ID
-
-    from app.core.security import create_access_token
-
-    return create_access_token({"sub": ADMIN_ID, "role": "ADMIN"})
+def _admin_token(client) -> str:
+    # `admin_headers()` returns a bearer header; the call sites below build
+    # their own `f"Bearer {...}"`, so hand back the bare token.
+    return client.admin_headers()["Authorization"].split(" ", 1)[1]
 
 
 @pytest.fixture()
@@ -39,7 +37,7 @@ def pending_driver(client):
     driver_id = r.json()["id"]
     client.post(
         f"/api/v1/admin/drivers/{driver_id}/review",
-        headers={"Authorization": f"Bearer {_admin_token()}"},
+        headers={"Authorization": f"Bearer {_admin_token(client)}"},
         json={"decision": "approve"},
     )
     return {"token": token, "driver_id": driver_id}
@@ -49,7 +47,7 @@ class TestDepositGrant:
     def test_grant_full_deposit_activates_driver(self, client, pending_driver):
         r = client.post(
             f"/api/v1/admin/drivers/{pending_driver['driver_id']}/deposit/grant",
-            headers={"Authorization": f"Bearer {_admin_token()}"},
+            headers={"Authorization": f"Bearer {_admin_token(client)}"},
             json={"amount_hkd": "500.00", "note": "cash topup"},
         )
         assert r.status_code == 200
@@ -60,7 +58,7 @@ class TestDepositGrant:
     def test_partial_grant_stays_deposit_required(self, client, pending_driver):
         r = client.post(
             f"/api/v1/admin/drivers/{pending_driver['driver_id']}/deposit/grant",
-            headers={"Authorization": f"Bearer {_admin_token()}"},
+            headers={"Authorization": f"Bearer {_admin_token(client)}"},
             json={"amount_hkd": "300.00"},
         )
         assert r.status_code == 200
@@ -71,7 +69,7 @@ class TestDepositGrant:
         # second grant crosses threshold -> ACTIVE
         r = client.post(
             f"/api/v1/admin/drivers/{pending_driver['driver_id']}/deposit/grant",
-            headers={"Authorization": f"Bearer {_admin_token()}"},
+            headers={"Authorization": f"Bearer {_admin_token(client)}"},
             json={"amount_hkd": "200.00"},
         )
         assert r.json()["balance_hkd"] == "500.00"
@@ -80,7 +78,7 @@ class TestDepositGrant:
     def test_grant_negative_rejected(self, client, pending_driver):
         r = client.post(
             f"/api/v1/admin/drivers/{pending_driver['driver_id']}/deposit/grant",
-            headers={"Authorization": f"Bearer {_admin_token()}"},
+            headers={"Authorization": f"Bearer {_admin_token(client)}"},
             json={"amount_hkd": "-50.00"},
         )
         assert r.status_code == 422
@@ -98,7 +96,7 @@ class TestLedger:
     def test_grant_writes_append_only_entries(self, client, pending_driver):
         client.post(
             f"/api/v1/admin/drivers/{pending_driver['driver_id']}/deposit/grant",
-            headers={"Authorization": f"Bearer {_admin_token()}"},
+            headers={"Authorization": f"Bearer {_admin_token(client)}"},
             json={"amount_hkd": "500.00", "note": "cash topup"},
         )
         r = client.get(
@@ -119,7 +117,7 @@ class TestLedger:
         assert r.status_code == 404
 
     def test_balance_after_chains_multiple_entries(self, client, pending_driver):
-        admin = {"Authorization": f"Bearer {_admin_token()}"}
+        admin = {"Authorization": f"Bearer {_admin_token(client)}"}
         did = pending_driver["driver_id"]
         client.post(
             f"/api/v1/admin/drivers/{did}/deposit/grant",
@@ -150,7 +148,7 @@ class TestAdminDriverDetail:
     """
 
     def test_detail_carries_every_section_the_page_renders(self, client, pending_driver):
-        admin = {"Authorization": f"Bearer {_admin_token()}"}
+        admin = {"Authorization": f"Bearer {_admin_token(client)}"}
         did = pending_driver["driver_id"]
         client.post(
             f"/api/v1/admin/drivers/{did}/deposit/grant",
@@ -181,7 +179,7 @@ class TestAdminDriverDetail:
         The page shows progress toward a target, so the target has to come back
         regardless: an absent row is not the same as a zero requirement.
         """
-        admin = {"Authorization": f"Bearer {_admin_token()}"}
+        admin = {"Authorization": f"Bearer {_admin_token(client)}"}
         r = client.get(f"/api/v1/admin/drivers/{pending_driver['driver_id']}", headers=admin)
         assert r.status_code == 200
         deposit = r.json()["deposit"]
@@ -196,7 +194,7 @@ class TestAdminDriverDetail:
         assert deposit["held_hkd"] == "0.00"
 
     def test_shortfall_closes_as_the_balance_grows(self, client, pending_driver):
-        admin = {"Authorization": f"Bearer {_admin_token()}"}
+        admin = {"Authorization": f"Bearer {_admin_token(client)}"}
         did = pending_driver["driver_id"]
         client.post(
             f"/api/v1/admin/drivers/{did}/deposit/grant",
@@ -207,7 +205,7 @@ class TestAdminDriverDetail:
         assert r.json()["deposit"]["shortfall_hkd"] == "200.00"
 
     def test_unknown_driver_is_404_not_empty(self, client):
-        admin = {"Authorization": f"Bearer {_admin_token()}"}
+        admin = {"Authorization": f"Bearer {_admin_token(client)}"}
         r = client.get(
             "/api/v1/admin/drivers/00000000-0000-0000-0000-000000000000",
             headers=admin,
@@ -243,7 +241,7 @@ class TestMoneyWirePrecision:
     """
 
     def test_sub_dollar_grant_keeps_its_cents(self, client, pending_driver):
-        admin = {"Authorization": f"Bearer {_admin_token()}"}
+        admin = {"Authorization": f"Bearer {_admin_token(client)}"}
         did = pending_driver["driver_id"]
 
         for amount, expected in (("0.05", "0.05"), ("0.01", "0.06")):
@@ -262,7 +260,7 @@ class TestMoneyWirePrecision:
         assert me.json()["deposit"]["balance_hkd"] == "0.06"
 
     def test_ledger_entries_keep_their_cents(self, client, pending_driver):
-        admin = {"Authorization": f"Bearer {_admin_token()}"}
+        admin = {"Authorization": f"Bearer {_admin_token(client)}"}
         client.post(
             f"/api/v1/admin/drivers/{pending_driver['driver_id']}/deposit/grant",
             headers=admin,
@@ -280,7 +278,7 @@ class TestMoneyWirePrecision:
         """The specific value the old format turned into a false `HK$0.00`."""
         r = client.post(
             f"/api/v1/admin/drivers/{pending_driver['driver_id']}/deposit/grant",
-            headers={"Authorization": f"Bearer {_admin_token()}"},
+            headers={"Authorization": f"Bearer {_admin_token(client)}"},
             json={"amount_hkd": "0.04"},
         )
         # 1 dp would yield "0.0" — indistinguishable from an empty account.
@@ -289,7 +287,7 @@ class TestMoneyWirePrecision:
     def test_whole_dollars_carry_two_decimals(self, client, pending_driver):
         r = client.post(
             f"/api/v1/admin/drivers/{pending_driver['driver_id']}/deposit/grant",
-            headers={"Authorization": f"Bearer {_admin_token()}"},
+            headers={"Authorization": f"Bearer {_admin_token(client)}"},
             json={"amount_hkd": "500.00"},
         )
         assert r.json()["balance_hkd"] == "500.00"
@@ -312,7 +310,7 @@ class TestDepositAdjustment:
         body.setdefault("reason", "reconciliation correction")
         return client.post(
             f"/api/v1/admin/drivers/{driver_id}/deposit/adjust",
-            headers={"Authorization": f"Bearer {_admin_token()}"},
+            headers={"Authorization": f"Bearer {_admin_token(client)}"},
             json=body,
         )
 
@@ -406,7 +404,7 @@ class TestDepositAdjustment:
         """An unexplained balance change is worse than no tool at all."""
         r = client.post(
             f"/api/v1/admin/drivers/{pending_driver['driver_id']}/deposit/adjust",
-            headers={"Authorization": f"Bearer {_admin_token()}"},
+            headers={"Authorization": f"Bearer {_admin_token(client)}"},
             json={"amount_hkd": "-10.00"},
         )
         assert r.status_code == 422
@@ -427,18 +425,24 @@ class TestDepositAdjustment:
         """An adjustment is discretionary, so *who* moved the balance is part of
         the record. It is exposed to admins and withheld from the driver's own
         ledger (an operator id is internal)."""
-        from conftest import ADMIN_ID
-
         did = pending_driver["driver_id"]
-        self._adjust(client, did, amount_hkd="-30.00", reason="over-charged fare")
+        # One admin for both the adjustment and the read-back, so the id on the
+        # ledger row is the id asserted on. `_adjust` provisions its own admin
+        # per call, which would make the acting id unknowable here.
+        admin = client.admin_headers()
+        client.post(
+            f"/api/v1/admin/drivers/{did}/deposit/adjust",
+            headers=admin,
+            json={"amount_hkd": "-30.00", "reason": "over-charged fare"},
+        )
 
         detail = client.get(
             f"/api/v1/admin/drivers/{did}",
-            headers={"Authorization": f"Bearer {_admin_token()}"},
+            headers=admin,
         ).json()
         entry = detail["ledger"]["items"][0]
         assert entry["entry_type"] == "ADJUSTMENT"
-        assert entry["created_by"] == ADMIN_ID
+        assert entry["created_by"] == admin.admin_id
         assert entry["note"] == "over-charged fare"
 
         driver_view = client.get(

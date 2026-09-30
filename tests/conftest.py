@@ -58,6 +58,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
+from app.core.passwords import hash_password
+from app.core.totp import _decode_key, _hotp, current_step, generate_secret
 from app.models import Base
 
 TEMPLATE_DB = "realtaxihk_test_tpl"
@@ -248,13 +250,98 @@ def client(otp_inbox) -> TestClient:
             def _exec(sql: str, params: dict | None = None) -> None:
                 return _exec_sync(tc, sql, params)
 
+            def _admin_headers(username: str | None = None) -> dict[str, str]:
+                return admin_headers(tc, username=username)
+
             tc.sign_in = _sign_in
             tc.activate = _activate
             tc.exec_sql = _exec
+            tc.admin_headers = _admin_headers
             yield tc
     finally:
         asyncio.run(engine.dispose())
         asyncio.run(_drop_test_db(dbname))
+
+
+class AdminHeaders(dict):
+    """An Authorization header dict that carries the admin's id alongside it.
+
+    Subclasses `dict` so it can be passed straight to `client.get(..., headers=...)`
+    without a call site having to strip anything — sending an `X-Admin-Id` would
+    be at best ignored and at worst a client-supplied identity. The id is kept in
+    a private attribute instead of a key, so "the headers" and "the id" never
+    get mixed up.
+    """
+
+    admin_id: str
+
+    def __init__(self, authorization: str, admin_id: str) -> None:
+        super().__init__(Authorization=authorization)
+        self.admin_id = admin_id
+
+
+def admin_headers(client, *, username: str | None = None) -> AdminHeaders:
+    """Sign in as a **real console admin**, returning bearer headers.
+
+    This is the honest way to reach `/api/v1/admin/*`: provision an
+    `admin_accounts` row, walk both factors (password, then TOTP), and use the
+    token that comes out. It replaces the old pattern of minting
+    `create_access_token({"sub": ADMIN_ID, "role": "ADMIN"})` for a
+    `users.role = ADMIN` row.
+
+    That pattern is now refused, and deliberately so. `admin_accounts` and
+    `users` are separate identity types with independent UUID spaces; a token
+    whose `sub` came from `users` cannot be distinguished from one whose `sub`
+    came from `admin_accounts` except by the `scope` claim, which only the real
+    login sets. Keeping the shortcut working would mean keeping two ways to be
+    an admin — and a stray INSERT into `users` granting access to refunds and
+    settlement.
+
+    Each call provisions a distinct account (a counter, not a fixed name) so a
+    test that calls this twice does not collide on the unique username index.
+    """
+    admin_headers._seq += 1
+    seq = admin_headers._seq
+    name = username or f"testadmin{seq}"
+    email = f"{name}@realtaxi.hk"
+    # Not "TestAdmin!2026-hk" — `_WEAK_FRAGMENTS` blocks the substring "admin",
+    # so a password containing the word its own account type is named after
+    # fails the policy and every caller errors in setup. The content here is
+    # arbitrary; what matters is that it clears `_assert_policy`.
+    password = "Harbour-Kite-9pLq"
+    admin_id = uuid.uuid4()
+    secret = generate_secret()
+
+    _exec_sync(
+        client,
+        "INSERT INTO admin_accounts "
+        "(id, username, email, full_name, password_hash, totp_secret, totp_enrolled_at, "
+        " is_active, failed_login_count, created_at, updated_at) "
+        "VALUES (:id, :u, :e, 'Test Admin', :pw, CAST(:secret AS text), now(), "
+        " true, 0, now(), now())",
+        {
+            "id": admin_id,
+            "u": name,
+            "e": email,
+            "pw": hash_password(password),
+            "secret": secret,
+        },
+    )
+
+    r = client.post(
+        "/api/v1/admin/auth/login", json={"username": name, "password": password}
+    )
+    assert r.status_code == 200, r.text
+    challenge = r.json()["challenge_token"]
+    r = client.post(
+        "/api/v1/admin/auth/totp/verify",
+        json={"challenge_token": challenge, "code": _hotp(_decode_key(secret), current_step(), 6)},
+    )
+    assert r.status_code == 200, r.text
+    return AdminHeaders(f"Bearer {r.json()['access_token']}", str(admin_id))
+
+
+admin_headers._seq = 0
 
 
 @pytest.fixture()

@@ -292,7 +292,15 @@ class TestRouteAuthzCoverage:
                 continue
             checked += 1
             deps = _dependency_names(route)
-            if not ({"require_active_user", "require_admin"} & deps):
+            # `require_live_principal` counts: it is the scope-aware variant of
+            # `require_active_user`, used by the one route that serves both an
+            # admin and a user token (`/api/v1/auth/me`). It loads a live row
+            # from whichever table the token names and refuses a missing or
+            # disabled one, so it is a genuine live-state guard rather than a
+            # bypass — not an exemption, which is why it is added to the set
+            # rather than to `_PUBLIC_PATHS`.
+            live_guards = {"require_active_user", "require_admin", "require_live_principal"}
+            if not (live_guards & deps):
                 offenders.append(f"{sorted(route.methods)} {route.path}")
         assert checked >= 15, f"route discovery looks wrong (only found {checked})"
         assert offenders == [], f"routes missing a live-state guard: {offenders}"

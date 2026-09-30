@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from conftest import ADMIN_ID
-
 # --------------------------------------------------------------------------- #
 # helpers
 # --------------------------------------------------------------------------- #
@@ -33,10 +31,8 @@ def _mk_user_token(client, phone: str) -> str:
     return client.activate(phone)
 
 
-def _admin_headers() -> dict:
-    from app.core.security import create_access_token
-
-    return {"Authorization": "Bearer " + create_access_token({"sub": ADMIN_ID, "role": "ADMIN"})}
+def _admin_headers(client) -> dict:
+    return client.admin_headers()
 
 
 def _h(token: str) -> dict:
@@ -64,12 +60,12 @@ def _make_active(client, phone: str, deposit: str = "500.00") -> dict:
     driver_id = _register(client, token, phone)
     client.post(
         f"/api/v1/admin/drivers/{driver_id}/review",
-        headers=_admin_headers(),
+        headers=_admin_headers(client),
         json={"decision": "approve"},
     )
     client.post(
         f"/api/v1/admin/drivers/{driver_id}/deposit/grant",
-        headers=_admin_headers(),
+        headers=_admin_headers(client),
         json={"amount_hkd": deposit},
     )
     return {"token": token, "driver_id": driver_id, "phone": phone}
@@ -78,7 +74,7 @@ def _make_active(client, phone: str, deposit: str = "500.00") -> dict:
 def _mk_fleet(client, name: str = "星群的士", discount: str = "0", license_no: str | None = None):
     r = client.post(
         "/api/v1/admin/fleets",
-        headers=_admin_headers(),
+        headers=_admin_headers(client),
         json={
             "name": name,
             "license_no": license_no or f"FLEET-{name}",
@@ -92,7 +88,7 @@ def _mk_fleet(client, name: str = "星群的士", discount: str = "0", license_n
 def _add_member(client, fleet_id: str, driver_id: str, role: str = "MEMBER"):
     return client.post(
         f"/api/v1/admin/fleets/{fleet_id}/members",
-        headers=_admin_headers(),
+        headers=_admin_headers(client),
         json={"driver_profile_id": driver_id, "member_role": role},
     )
 
@@ -116,14 +112,14 @@ def _run_fleet_settlement(client, fleet_id: str, period: str | None = None):
     url = f"/api/v1/admin/fleets/{fleet_id}/settlement/run"
     if period:
         url += f"?period={period}"
-    return client.post(url, headers=_admin_headers())
+    return client.post(url, headers=_admin_headers(client))
 
 
 def _run_platform_settlement(client, period: str | None = None):
     url = "/api/v1/admin/settlement/weekly/run"
     if period:
         url += f"?period={period}"
-    return client.post(url, headers=_admin_headers())
+    return client.post(url, headers=_admin_headers(client))
 
 
 # --------------------------------------------------------------------------- #
@@ -153,7 +149,7 @@ class TestFleetManagement:
         _mk_fleet(client, "八達通車隊", license_no="L-1")
         r = client.post(
             "/api/v1/admin/fleets",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
             json={"name": "八達通車隊", "license_no": "L-2"},
         )
         assert r.status_code == 400, r.text
@@ -164,7 +160,7 @@ class TestFleetManagement:
         _mk_fleet(client, "A 車隊", license_no="SAME")
         r = client.post(
             "/api/v1/admin/fleets",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
             json={"name": "B 車隊", "license_no": "SAME"},
         )
         assert r.status_code == 400, r.text
@@ -173,7 +169,7 @@ class TestFleetManagement:
     def test_discount_outside_zero_to_hundred_is_rejected(self, client):
         r = client.post(
             "/api/v1/admin/fleets",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
             json={"name": "Too Generous", "license_no": "L-3", "weekly_fee_discount_percent": 120},
         )
         assert r.status_code == 422, r.text
@@ -183,7 +179,7 @@ class TestFleetManagement:
         driver = _make_active(client, "+85260000002")
         _add_member(client, fleet["id"], driver["driver_id"])
 
-        r = client.get("/api/v1/admin/fleets", headers=_admin_headers())
+        r = client.get("/api/v1/admin/fleets", headers=_admin_headers(client))
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["total"] == 1
@@ -208,7 +204,7 @@ class TestFleetManagement:
         driver = _make_active(client, "+85260000012")
         assert _add_member(client, solo["id"], driver["driver_id"]).status_code == 201
 
-        r = client.get("/api/v1/admin/fleets", headers=_admin_headers())
+        r = client.get("/api/v1/admin/fleets", headers=_admin_headers(client))
         assert r.status_code == 200, r.text
         counts = {item["id"]: item["member_count"] for item in r.json()["items"]}
 
@@ -222,7 +218,7 @@ class TestFleetManagement:
         fleet = _mk_fleet(client, "調整車隊", discount="0")
         r = client.patch(
             f"/api/v1/admin/fleets/{fleet['id']}",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
             json={"weekly_fee_discount_percent": "25", "status": "SUSPENDED"},
         )
         assert r.status_code == 200, r.text
@@ -239,7 +235,9 @@ class TestRoster:
         assert r.json()["member_role"] == "MANAGER"
         assert r.json()["status"] == "ACTIVE"
 
-        roster = client.get(f"/api/v1/admin/fleets/{fleet['id']}/members", headers=_admin_headers())
+        roster = client.get(
+            f"/api/v1/admin/fleets/{fleet['id']}/members", headers=_admin_headers(client)
+        )
         assert roster.status_code == 200, roster.text
         assert len(roster.json()["items"]) == 1
 
@@ -273,20 +271,20 @@ class TestRoster:
 
         r = client.delete(
             f"/api/v1/admin/fleets/{fleet['id']}/members/{driver['driver_id']}",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
         )
         assert r.status_code == 200, r.text
         assert r.json()["status"] == "REMOVED"
         assert r.json()["left_at"] is not None
 
         active = client.get(
-            f"/api/v1/admin/fleets/{fleet['id']}/members", headers=_admin_headers()
+            f"/api/v1/admin/fleets/{fleet['id']}/members", headers=_admin_headers(client)
         ).json()
         assert active["items"] == []
         # The history is still there — an operator dispute needs it.
         full = client.get(
             f"/api/v1/admin/fleets/{fleet['id']}/members?include_left=true",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
         ).json()
         assert len(full["items"]) == 1
         assert full["items"][0]["status"] == "REMOVED"
@@ -298,7 +296,7 @@ class TestRoster:
         _add_member(client, first["id"], driver["driver_id"])
         client.delete(
             f"/api/v1/admin/fleets/{first['id']}/members/{driver['driver_id']}",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
         )
         assert _add_member(client, second["id"], driver["driver_id"]).status_code == 201
 
@@ -308,7 +306,7 @@ class TestRoster:
         driver = _make_active(client, "+85260000008")
         _add_member(client, fleet["id"], driver["driver_id"])
         row = client.get(
-            f"/api/v1/admin/fleets/{fleet['id']}/members", headers=_admin_headers()
+            f"/api/v1/admin/fleets/{fleet['id']}/members", headers=_admin_headers(client)
         ).json()["items"][0]
         assert "hk_id_last4" not in row
         assert "taxi_driver_plate_no" not in row
@@ -411,7 +409,7 @@ class TestFleetSettlement:
         assert _fee_entries(client, driver["token"]) == []
 
         history = client.get(
-            f"/api/v1/admin/fleets/{fleet['id']}/settlement", headers=_admin_headers()
+            f"/api/v1/admin/fleets/{fleet['id']}/settlement", headers=_admin_headers(client)
         ).json()
         assert len(history["items"]) == 1
         assert history["items"][0]["member_count"] == 1
@@ -441,7 +439,7 @@ class TestFleetSettlement:
         _run_fleet_settlement(client, fleet["id"], period="2026-W31")
 
         history = client.get(
-            f"/api/v1/admin/fleets/{fleet['id']}/settlement", headers=_admin_headers()
+            f"/api/v1/admin/fleets/{fleet['id']}/settlement", headers=_admin_headers(client)
         ).json()
         assert len(history["items"]) == 1
         assert history["items"][0]["period"] == "2026-W31"
@@ -462,7 +460,7 @@ class TestFleetSettlement:
         _add_member(client, fleet["id"], driver["driver_id"])
         client.patch(
             f"/api/v1/admin/fleets/{fleet['id']}",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
             json={"status": "SUSPENDED"},
         )
 
@@ -489,7 +487,7 @@ class TestFleetSettlement:
         _add_member(client, fleet["id"], driver["driver_id"])
         client.delete(
             f"/api/v1/admin/fleets/{fleet['id']}/members/{driver['driver_id']}",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
         )
 
         r = _run_fleet_settlement(client, fleet["id"], period="2026-W34")
@@ -552,7 +550,7 @@ class TestFleetBillingBoundary:
         _add_member(client, fleet["id"], driver["driver_id"])
         client.delete(
             f"/api/v1/admin/fleets/{fleet['id']}/members/{driver['driver_id']}",
-            headers=_admin_headers(),
+            headers=_admin_headers(client),
         )
 
         platform_run = _run_platform_settlement(client, period="2026-W42").json()
@@ -602,7 +600,7 @@ class TestSettlementIntegrity:
         assert body["collected_hkd"] == "0.00"
 
         history = client.get(
-            f"/api/v1/admin/fleets/{fleet['id']}/settlement", headers=_admin_headers()
+            f"/api/v1/admin/fleets/{fleet['id']}/settlement", headers=_admin_headers(client)
         ).json()
         assert history["items"][0]["tampered"] == 1
 

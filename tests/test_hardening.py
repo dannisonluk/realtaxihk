@@ -26,12 +26,8 @@ def _mk_user_token(client: TestClient, phone: str) -> str:
     return client.activate(phone)
 
 
-def _admin_headers() -> dict:
-    from conftest import ADMIN_ID
-
-    from app.core.security import create_access_token
-
-    return {"Authorization": "Bearer " + create_access_token({"sub": ADMIN_ID, "role": "ADMIN"})}
+def _admin_headers(client) -> dict:
+    return client.admin_headers()
 
 
 _ORDER = {
@@ -63,12 +59,19 @@ def _register_driver(client: TestClient, token: str, phone: str) -> str:
 
 class TestB1AuthMeDeletedUser:
     def test_me_404_not_500(self, client):
-        """B1: /auth/me with a valid JWT for a missing user -> guarded, no NameError."""
+        """B1: /auth/me with a valid JWT for a missing user -> guarded, no NameError.
+
+        A 404, not a 403: the token is well-formed and its signature is good, so
+        the honest answer is "that account does not exist" rather than "you may
+        not do this". `require_live_principal` raises it, so the check still
+        happens before the handler body — the property under test is that
+        nothing reaches an unguarded `session.get(...).phone_e164`.
+        """
         from app.core.security import create_access_token
 
         ghost = create_access_token({"sub": str(uuid.uuid4()), "role": "PASSENGER"})
         r = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {ghost}"})
-        assert r.status_code == 403  # require_active_user: account not found
+        assert r.status_code == 404
         assert r.json()["code"] != "INTERNAL_ERROR"
 
 
@@ -79,7 +82,7 @@ class TestB2LedgerConcurrency:
         phone = f"+85251{uuid.uuid4().int % 1000000:06d}"
         token = _mk_user_token(client, phone)
         did = _register_driver(client, token, phone)
-        h = _admin_headers()
+        h = _admin_headers(client)
         client.post(f"/api/v1/admin/drivers/{did}/review", headers=h, json={"decision": "approve"})
 
         factory = client.db_factory
@@ -180,7 +183,14 @@ class TestP0Deactivation:
         assert r.status_code == 403
 
     def test_admin_requires_real_row(self, client):
-        """P0-3: ADMIN claim without a real active admin row -> 403."""
+        """P0-3: ADMIN claim without a real active admin row -> 403.
+
+        Two flavours now, because there are two ways the claim can be hollow: an
+        id that exists nowhere at all, and an id that names a `users` row whose
+        role happens to be ADMIN. The second is the legacy console identity, and
+        it must not open `/api/v1/admin/*` — only an `admin_accounts` row with a
+        proven second factor does.
+        """
         from app.core.security import create_access_token
 
         token = create_access_token({"sub": str(uuid.uuid4()), "role": "ADMIN"})
@@ -189,6 +199,20 @@ class TestP0Deactivation:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert r.status_code == 403
+
+        legacy_id = uuid.uuid4()
+        client.exec_sql(
+            "INSERT INTO users "
+            "(id, phone_e164, role, is_active, account_status, created_at, updated_at) "
+            "VALUES (:id, '+85281000999', 'ADMIN', true, 'ACTIVE', now(), now())",
+            {"id": legacy_id},
+        )
+        legacy = create_access_token({"sub": str(legacy_id), "role": "ADMIN"})
+        r = client.get(
+            "/api/v1/admin/drivers",
+            headers={"Authorization": f"Bearer {legacy}"},
+        )
+        assert r.status_code == 403, r.text
 
 
 class TestP0Health:

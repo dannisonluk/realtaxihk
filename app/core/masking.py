@@ -12,3 +12,20 @@ def mask_phone(phone_e164: str) -> str:
 
 def mask_driver_id_last4(last4: str) -> str:
     return f"****{last4}"
+
+
+def mask_email(email: str) -> str:
+    """`dannison@example.com` -> `d******n@example.com`.
+
+    The local part is masked and the domain is kept: the domain is what tells an
+    operator which account they are looking at (and it is not the identifier),
+    while the local part is the part that is guessable and would be the whole
+    address on a short one. A one-character local part is masked entirely rather
+    than left visible, since showing it would give away the entire local part.
+    """
+    local, sep, domain = email.partition("@")
+    if not sep:
+        return "***"
+    if len(local) <= 2:
+        return f"{'*' * len(local)}@{domain}"
+    return f"{local[0]}{'*' * (len(local) - 2)}{local[-1]}@{domain}"

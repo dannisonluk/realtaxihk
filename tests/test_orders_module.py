@@ -20,12 +20,8 @@ def _mk_user_token(client, phone: str) -> str:
     return client.activate(phone)
 
 
-def _admin_headers() -> dict:
-    from conftest import ADMIN_ID
-
-    from app.core.security import create_access_token
-
-    return {"Authorization": "Bearer " + create_access_token({"sub": ADMIN_ID, "role": "ADMIN"})}
+def _admin_headers(client) -> dict:
+    return client.admin_headers()
 
 
 def _mk_active_driver(client, phone: str) -> dict:
@@ -44,12 +40,12 @@ def _mk_active_driver(client, phone: str) -> dict:
     driver_id = r.json()["id"]
     client.post(
         f"/api/v1/admin/drivers/{driver_id}/review",
-        headers=_admin_headers(),
+        headers=_admin_headers(client),
         json={"decision": "approve"},
     )
     client.post(
         f"/api/v1/admin/drivers/{driver_id}/deposit/grant",
-        headers=_admin_headers(),
+        headers=_admin_headers(client),
         json={"amount_hkd": "500.00"},
     )
     # fetch user_id via /auth/me

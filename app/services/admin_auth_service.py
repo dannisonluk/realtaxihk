@@ -706,8 +706,13 @@ def issue_admin_access_token(account: AdminAccount) -> str:
     is an admin by virtue of being in `admin_accounts`, and deriving the claim
     from the table it came from removes any path where a passed-in value could
     grant a different role.
+
+    `scope` is what makes `sub` unambiguous. `sub` is an `admin_accounts.id`,
+    which lives in a different UUID space from `users.id`, so without this claim
+    a guard cannot tell which table to load — and `require_admin` loading `users`
+    rejected every admin token with a 403. See `app/core/deps.py`.
     """
-    return create_access_token({"sub": str(account.id), "role": "ADMIN"})
+    return create_access_token({"sub": str(account.id), "role": "ADMIN", "scope": "admin"})
 
 
 __all__ = [

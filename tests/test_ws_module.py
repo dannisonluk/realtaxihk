@@ -29,12 +29,10 @@ def _mk_user_token(client, phone: str) -> str:
     return client.activate(phone)
 
 
-def _admin_token() -> str:
-    from conftest import ADMIN_ID
-
-    from app.core.security import create_access_token
-
-    return create_access_token({"sub": ADMIN_ID, "role": "ADMIN"})
+def _admin_token(client) -> str:
+    # `admin_headers()` returns a bearer header; the call sites below build
+    # their own `f"Bearer {...}"`, so hand back the bare token.
+    return client.admin_headers()["Authorization"].split(" ", 1)[1]
 
 
 def _mk_active_driver(client, phone: str) -> dict:
@@ -53,12 +51,12 @@ def _mk_active_driver(client, phone: str) -> dict:
     driver_id = r.json()["id"]
     client.post(
         f"/api/v1/admin/drivers/{driver_id}/review",
-        headers={"Authorization": f"Bearer {_admin_token()}"},
+        headers={"Authorization": f"Bearer {_admin_token(client)}"},
         json={"decision": "approve"},
     )
     client.post(
         f"/api/v1/admin/drivers/{driver_id}/deposit/grant",
-        headers={"Authorization": f"Bearer {_admin_token()}"},
+        headers={"Authorization": f"Bearer {_admin_token(client)}"},
         json={"amount_hkd": "500.00"},
     )
     me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}).json()

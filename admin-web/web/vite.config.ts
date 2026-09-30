@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 // The console is served by `admin-web/serve.py`, which reverse-proxies `/api/*`
@@ -11,6 +11,16 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   base: './',
+  test: {
+    // `jsdom`, because the regression this suite guards is about the DOM and
+    // the address bar agreeing: the console rendered 找不到頁面 while
+    // `location.hash` already read `#/`. A node-environment test cannot see
+    // that mismatch, so it cannot catch the bug being tested for.
+    environment: 'jsdom',
+    include: ['src/**/*.test.{ts,tsx}'],
+    // The console ships no test helpers; these tests drive React directly.
+    globals: false,
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

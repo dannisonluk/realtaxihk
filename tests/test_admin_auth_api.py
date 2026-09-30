@@ -14,6 +14,7 @@ router and `main.py` shows up here and nowhere else.
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 
 import pytest
@@ -145,7 +146,17 @@ def test_correct_password_and_code_returns_a_working_access_token(client):
 
 
 def test_full_sign_in_and_use_the_token(client):
-    """Seed → login → verify TOTP → call a guarded admin route."""
+    """Seed → login → verify TOTP → call a guarded admin route.
+
+    This previously asserted `me.status_code in (403, 404)` with the comment
+    "the `users` table has no row for this id — the admin identity is separate".
+    The observation was right and the conclusion was wrong: the separation is
+    real, but that is *why* the lookups had to move to `admin_accounts`, not a
+    reason for the console's own bootstrap call to fail. The old assertion made
+    the suite green while **every** console route 403'd behind a valid login —
+    the defect the UI verifier found. An assertion that a working token is
+    refused is not a security property; it is the bug, written down.
+    """
     _, secret = _seed_admin(client)
     assert secret is not None
 
@@ -156,9 +167,123 @@ def test_full_sign_in_and_use_the_token(client):
     assert verified.status_code == 200, verified.text
 
     token = verified.json()["access_token"]
-    me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
-    # The `users` table has no row for this id — the admin identity is separate.
-    assert me.status_code in (403, 404), me.text
+    headers = {"Authorization": f"Bearer {token}"}
+
+    me = client.get("/api/v1/auth/me", headers=headers)
+    assert me.status_code == 200, me.text
+    assert me.json()["role"] == "ADMIN"
+    assert me.json()["username"] == USERNAME
+    # The email is masked: `/me` is not a place to hand back a full address.
+    assert "@" in me.json()["email_masked"]
+    assert EMAIL not in me.text
+
+
+def test_the_access_token_can_actually_reach_the_console(client):
+    """The regression this exists for: a valid admin token opened **nothing**.
+
+    Every console route hangs off `require_admin`, which resolved the principal
+    against `users`. An admin token's `sub` is an `admin_accounts.id`, so the
+    lookup always missed and the guard answered 403 — a fully successful login
+    followed by an entirely dead console. Nothing in the suite caught it, because
+    the one test that touched this path asserted the 403 was expected.
+
+    A spread of routes rather than one: the bug was in the shared dependency, so
+    a single probe would have been enough *here*, but asserting several is what
+    tells a future reader the whole surface was checked and not just sampled.
+    """
+    _, secret = _seed_admin(client)
+    assert secret is not None
+
+    challenge = _login(client).json()["challenge_token"]
+    token = (
+        client.post(
+            f"{BASE}/totp/verify",
+            json={"challenge_token": challenge, "code": _totp_now(secret)},
+        )
+        .json()["access_token"]
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+
+    for path in ("/api/v1/admin/drivers", "/api/v1/admin/fleets", "/api/v1/admin/refunds"):
+        response = client.get(path, headers=headers)
+        assert response.status_code == 200, f"{path} -> {response.status_code}: {response.text}"
+
+
+def test_an_otp_user_token_cannot_reach_admin_routes(client):
+    """The converse, so the fix cannot be "accept any well-formed principal".
+
+    An operator's token and a passenger's token are different in kind, and the
+    guard is the only thing that says so — if it were relaxed to "does the row
+    exist", a passenger would reach the refund queue.
+    """
+    token = client.activate("+85281000077", username="realtaxi_regression_user")
+    response = client.get(
+        "/api/v1/admin/drivers", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 403, response.text
+
+
+def test_a_user_token_carrying_an_admin_role_claim_is_still_refused(client):
+    """`role=ADMIN` on a user token is not enough — the `scope` claim is.
+
+    The legacy identity from `scripts/create_admin.py` sets `users.role = ADMIN`.
+    That row is a real, active user row, so a guard that only checked
+    "row exists and role is ADMIN" would let it straight in. `scope` is what
+    distinguishes the two, and it must not be forgeable from the outside.
+    """
+    import jwt as pyjwt
+
+    from app.core.config import get_settings
+
+    user_id = uuid.uuid4()
+    client.exec_sql(
+        "INSERT INTO users "
+        "(id, phone_e164, role, is_active, account_status, created_at, updated_at) "
+        "VALUES (:id, '+85281000088', 'ADMIN', true, 'ACTIVE', now(), now())",
+        {"id": user_id},
+    )
+
+    settings = get_settings()
+    forged = pyjwt.encode(
+        {"sub": str(user_id), "role": "ADMIN", "iat": int(time.time())},
+        settings.jwt_secret_key,
+        algorithm="HS256",
+    )
+    response = client.get(
+        "/api/v1/admin/drivers", headers={"Authorization": f"Bearer {forged}"}
+    )
+    assert response.status_code == 403, response.text
+
+
+def test_an_admin_token_with_no_enrolment_is_refused(client):
+    """A row that never proved its second factor must not open the console.
+
+    An enrolled admin's token can only be minted after the TOTP step, so an
+    un-enrolled row holding a token means either a hand-edited database or a
+    minting path that skipped the factor. Both should read as "no admin here".
+    """
+    admin_id, secret = _seed_admin(client, username="unproven", email="unproven@realtaxi.hk")
+    assert secret is not None
+
+    challenge = _login(client, username="unproven").json()["challenge_token"]
+    token = (
+        client.post(
+            f"{BASE}/totp/verify",
+            json={"challenge_token": challenge, "code": _totp_now(secret)},
+        )
+        .json()["access_token"]
+    )
+
+    # Enrolment is cleared *after* the token exists, which is the only way to
+    # hold a valid token for a row that claims no enrolment.
+    client.exec_sql(
+        "UPDATE admin_accounts SET totp_enrolled_at = NULL WHERE id = :id", {"id": admin_id}
+    )
+
+    response = client.get(
+        "/api/v1/admin/drivers", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 403, response.text
 
 
 # ---------------------------------------------------------------- #

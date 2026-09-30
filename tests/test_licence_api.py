@@ -79,17 +79,19 @@ def _auth(token: str) -> dict:
 
 
 def _make_admin(client, phone: str = PHONE_ADMIN) -> str:
-    """Promote an account to ADMIN and return a token that carries the claim.
+    """A real console admin's bearer token, for the decision endpoint.
 
-    The order matters: `require_admin` re-reads the live row **and** compares
-    `row.role` against the role in the JWT claim (`row.role != user.role`), so a
-    token minted before the UPDATE still says PASSENGER and is refused. Promote
-    first, then sign in — which is also what a real console operator experiences,
-    since the P-1 admin login mints `role="ADMIN"` into the token directly.
+    Was: create a `users` row and `UPDATE users SET role = 'ADMIN'` on it. That
+    promoted the *passenger* identity, which no longer opens `/api/v1/admin/*` —
+    `require_admin` now resolves against `admin_accounts` and requires the
+    `scope=admin` claim that only the console login sets. A `users` row with the
+    ADMIN role is a different thing from an administrator (see the
+    `AdminAccount` docstring), and the licence queue is an administrator surface.
+
+    `phone` is kept in the signature because callers still pass it to build the
+    driver side of the fixture; it no longer names the admin.
     """
-    _sign_in(client, phone)  # creates the row
-    _exec(client, "UPDATE users SET role = 'ADMIN' WHERE phone_e164 = :p", {"p": phone})
-    return _sign_in(client, phone)  # fresh token, now with the ADMIN claim
+    return client.admin_headers()["Authorization"].split(" ", 1)[1]
 
 
 async def _run_sql(client, sql: str, params: dict | None = None, *, fetch: bool = False):

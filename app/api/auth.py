@@ -25,12 +25,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.db import get_session
-from app.core.deps import Principal, require_active_user
+from app.core.deps import Principal, require_active_user, require_live_principal
 from app.core.exceptions import BusinessRuleError
-from app.core.masking import mask_phone
+from app.core.masking import mask_email, mask_phone
 from app.core.security import create_access_token
 from app.core.token_revocation import revoke_user_tokens
-from app.models import User, UserRole
+from app.models import AdminAccount, User, UserRole
 from app.services import phone_reverify_service as phone_reverify
 from app.services.otp_service import OtpService
 from app.services.refresh_service import RefreshService
@@ -257,9 +257,34 @@ async def logout(
 
 @router.get("/me")
 async def me(
-    user: Principal = Depends(require_active_user),
+    user: Principal = Depends(require_live_principal),
     session: AsyncSession = Depends(get_session),
 ):
+    """Who is this token?
+
+    Gated by `require_live_principal` rather than `require_active_user`. The
+    console shell calls this on boot to decide whether the session it has in
+    storage is still good, and it carries an **admin** token — so resolving the
+    principal against `users` (which `require_active_user` does) reported
+    "account not found" for a perfectly valid admin session. The guard reads the
+    row from whichever table the token's `scope` names, so the liveness check is
+    not skipped, just performed against the right table.
+    """
+    if user.is_admin:
+        # Re-read rather than trusting `user` for the display fields. Not an
+        # `assert` that the row exists: `assert` is stripped under `-O`, and
+        # this is a lookup that can genuinely miss if the row is deleted between
+        # the dependency and the handler.
+        admin = await session.get(AdminAccount, user.id)
+        if admin is None:
+            raise HTTPException(status_code=404, detail="admin not found")
+        return {
+            "id": str(admin.id),
+            "username": admin.username,
+            "email_masked": mask_email(admin.email),
+            "role": UserRole.ADMIN.value,
+        }
+
     db_user = await session.get(User, user.id)
     if db_user is None:
         raise HTTPException(status_code=404, detail="user not found")
