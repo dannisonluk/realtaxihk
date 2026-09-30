@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/theme/app_theme.dart';
 import '../../data/trip_repository.dart';
 import '../../models/enums.dart';
 import '../../models/order.dart';
@@ -200,11 +201,11 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
                 top: 12,
                 child: Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(AppTheme.space3),
                     child: Row(
                       children: <Widget>[
                         StatusChip.order(order.status, context),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: AppTheme.space3),
                         Expanded(
                           child: Text(
                             _statusHint(order.status, _socketAlive),
@@ -224,7 +225,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
                   child: Card(
                     color: theme.colorScheme.errorContainer,
                     child: Padding(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(AppTheme.space3),
                       child: Row(
                         children: <Widget>[
                           Icon(
@@ -232,7 +233,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
                             size: 18,
                             color: theme.colorScheme.onErrorContainer,
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: AppTheme.space3 - 2),
                           Expanded(
                             child: Text(
                               '即時位置連線中斷（${_socketNote ?? '未知原因'}），已改用輪詢更新。',
@@ -252,7 +253,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
         SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppTheme.space4),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
@@ -263,7 +264,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
                     MoneyText(order.estimatedTotalHkd, style: theme.textTheme.headlineSmall),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppTheme.space1),
                 DetailRow(label: '的士種類', value: order.taxiType.labelZh),
                 DetailRow(label: '下單時間', value: _createdAt(order)),
                 if (driver != null)
@@ -271,14 +272,14 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
                     label: '司機位置',
                     value: '${driver.lat.toStringAsFixed(5)}, ${driver.lng.toStringAsFixed(5)}',
                   ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppTheme.space3),
                 if (!order.status.isTerminal)
                   OutlinedButton.icon(
                     onPressed: () => _confirmCancel(order),
                     icon: const Icon(Icons.close),
                     label: const Text('取消行程'),
                   ),
-                const SizedBox(height: 6),
+                const SizedBox(height: AppTheme.space2 - 2),
                 Text(
                   order.fare.disclaimerZh,
                   style: theme.textTheme.bodySmall?.copyWith(

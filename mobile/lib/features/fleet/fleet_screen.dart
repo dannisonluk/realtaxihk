@@ -74,24 +74,24 @@ class _FleetBody extends ConsumerWidget {
     );
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppTheme.space4),
       children: <Widget>[
         _FleetCard(fleet: fleet, membership: membership),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppTheme.space4),
         Text('每週車隊收費', style: theme.textTheme.titleSmall),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.space2),
         Text(
           fleet.isFullyDiscounted ? '此車隊每週服務費全免，系統仍會記錄每週結算。' : '車隊成員每週按折扣後的車隊費用收費，不會另外收取平台劃一費用。',
           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.space2),
         Card(
           child: AsyncValueView<List<FleetSettlementRun>>(
             value: history,
             onRetry: () => ref.invalidate(fleetSettlementProvider(fleet.id)),
             builder: (List<FleetSettlementRun> runs) => runs.isEmpty
                 ? const Padding(
-                    padding: EdgeInsets.all(24),
+                    padding: EdgeInsets.all(AppTheme.space6),
                     child: Center(child: Text('還沒有結算紀錄')),
                   )
                 : Column(
@@ -104,16 +104,16 @@ class _FleetBody extends ConsumerWidget {
                   ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppTheme.space4),
         Text('車隊成員', style: theme.textTheme.titleSmall),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.space2),
         Card(
           child: AsyncValueView<List<FleetMember>>(
             value: roster,
             onRetry: () => ref.invalidate(fleetMembersProvider(fleet.id)),
             builder: (List<FleetMember> members) => members.isEmpty
                 ? const Padding(
-                    padding: EdgeInsets.all(24),
+                    padding: EdgeInsets.all(AppTheme.space6),
                     child: Center(child: Text('名單上沒有其他成員')),
                   )
                 : Column(
@@ -144,7 +144,7 @@ class _FleetCard extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTheme.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -154,7 +154,7 @@ class _FleetCard extends StatelessWidget {
                 StatusChip(label: fleet.status.labelZh, color: _statusColor(fleet.status, context)),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTheme.space3),
             DetailRow(label: '車隊牌照', value: fleet.licenseNo),
             DetailRow(label: '每週費用折扣', value: fleet.discountLabel),
             if (fleet.memberCount != null) DetailRow(label: '成員人數', value: '${fleet.memberCount}'),
@@ -165,7 +165,7 @@ class _FleetCard extends StatelessWidget {
             if (fleet.contactPhone != null && fleet.contactPhone!.isNotEmpty)
               DetailRow(label: '聯絡電話', value: fleet.contactPhone),
             if (!fleet.status.isBillable) ...<Widget>[
-              const SizedBox(height: 12),
+              const SizedBox(height: AppTheme.space3),
               Text(
                 '此車隊已${fleet.status.labelZh}，暫時不會產生每週收費。',
                 style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),

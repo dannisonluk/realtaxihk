@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/theme/app_theme.dart';
 import '../features/shared/widgets.dart';
 import '../state/providers.dart';
 
@@ -28,9 +29,9 @@ class SplashScreen extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Icon(Icons.local_taxi_rounded, size: 64, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(height: 20),
+            const SizedBox(height: AppTheme.space6 - 4),
             Text('RealTaxi HK', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 28),
+            const SizedBox(height: AppTheme.space8 - 4),
             const SizedBox(
               width: 24,
               height: 24,

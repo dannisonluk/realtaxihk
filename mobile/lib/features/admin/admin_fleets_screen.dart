@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/enums.dart';
 import '../../models/fleet.dart';
 import '../../router/app_router.dart';
@@ -86,7 +87,10 @@ class _AdminFleetsScreenState extends ConsumerState<AdminFleetsScreen> {
         children: <Widget>[
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppTheme.space4,
+              vertical: AppTheme.space3,
+            ),
             child: Row(
               children: <Widget>[
                 ChoiceChip(
@@ -95,7 +99,7 @@ class _AdminFleetsScreenState extends ConsumerState<AdminFleetsScreen> {
                   onSelected: (bool _) => setState(() => _filter = null),
                 ),
                 for (final FleetStatus status in FleetStatus.values) ...<Widget>[
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppTheme.space2),
                   ChoiceChip(
                     label: Text(status.labelZh),
                     selected: _filter == status,
@@ -117,10 +121,15 @@ class _AdminFleetsScreenState extends ConsumerState<AdminFleetsScreen> {
                       action: FilledButton.tonal(onPressed: _create, child: const Text('新增車隊')),
                     )
                   : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      padding: const EdgeInsets.fromLTRB(
+                        AppTheme.space4,
+                        0,
+                        AppTheme.space4,
+                        AppTheme.space6,
+                      ),
                       itemCount: items.length,
                       separatorBuilder: (BuildContext context, int index) =>
-                          const SizedBox(height: 10),
+                          const SizedBox(height: AppTheme.space3 - 2),
                       itemBuilder: (BuildContext context, int index) =>
                           _FleetTile(fleet: items[index]),
                     ),
@@ -250,12 +259,12 @@ class _CreateFleetDialogState extends State<_CreateFleetDialog> {
               controller: _name,
               decoration: const InputDecoration(labelText: '車隊名稱', hintText: '星群的士'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTheme.space3),
             TextField(
               controller: _license,
               decoration: const InputDecoration(labelText: '車隊牌照號碼', hintText: '由運輸署發出'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTheme.space3),
             TextField(
               controller: _discount,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -264,18 +273,18 @@ class _CreateFleetDialogState extends State<_CreateFleetDialog> {
                 helperText: '0–100。成員按折扣後的車隊費用收費。',
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTheme.space3),
             TextField(
               controller: _contactName,
               decoration: const InputDecoration(labelText: '聯絡人（選填）'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTheme.space3),
             TextField(
               controller: _contactPhone,
               decoration: const InputDecoration(labelText: '聯絡電話（選填）'),
             ),
             if (_error != null) ...<Widget>[
-              const SizedBox(height: 12),
+              const SizedBox(height: AppTheme.space3),
               Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
           ],

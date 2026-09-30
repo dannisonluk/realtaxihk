@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/theme/app_theme.dart';
 import '../../models/driver.dart';
 import '../../models/enums.dart';
 import '../../router/app_router.dart';
@@ -29,11 +30,11 @@ class AccountScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('帳戶')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTheme.space4),
         children: <Widget>[
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppTheme.space4),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
@@ -41,7 +42,7 @@ class AccountScreen extends ConsumerWidget {
                     ref.watch(currentUserProvider)?.phoneMasked ?? '—',
                     style: theme.textTheme.titleLarge,
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: AppTheme.space3 - 2),
                   StatusChip(
                     label: switch (ref.watch(currentUserProvider)?.role) {
                       UserRole.admin => '管理員',
@@ -54,9 +55,9 @@ class AccountScreen extends ConsumerWidget {
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppTheme.space4),
           Text('司機', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTheme.space2),
           Card(
             child: AsyncValueView<DriverProfile?>(
               value: profile,
@@ -65,9 +66,9 @@ class AccountScreen extends ConsumerWidget {
                   _DriverSection(profile: data, driverMode: driverMode),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppTheme.space4),
           Text('帳戶操作', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTheme.space2),
           Card(
             child: Column(
               children: <Widget>[
@@ -80,7 +81,7 @@ class AccountScreen extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppTheme.space6),
           Center(
             child: Text(
               'RealTaxi HK  ·  車費為估算，實際以錶收費為準',
@@ -138,17 +139,22 @@ class _DriverSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          padding: const EdgeInsets.fromLTRB(
+            AppTheme.space4,
+            AppTheme.space4,
+            AppTheme.space4,
+            AppTheme.space2,
+          ),
           child: Row(
             children: <Widget>[
               StatusChip.driver(driver.status, context),
-              const SizedBox(width: 10),
+              const SizedBox(width: AppTheme.space3 - 2),
               Text(driver.taxiType.labelZh, style: theme.textTheme.bodyMedium),
             ],
           ),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: AppTheme.space4),
           child: Column(
             children: <Widget>[
               DetailRow(label: '的士證號', value: driver.taxiDriverPlateNo),

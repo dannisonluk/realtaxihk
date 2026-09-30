@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/theme/app_theme.dart';
 import '../../state/providers.dart';
 import '../shared/widgets.dart';
 
@@ -108,7 +109,12 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
       appBar: AppBar(title: const Text('輸入驗證碼')),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
+          padding: const EdgeInsets.fromLTRB(
+            AppTheme.space6,
+            AppTheme.space8,
+            AppTheme.space6,
+            AppTheme.space8,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
@@ -118,7 +124,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: AppTheme.space8 - 4),
               TextField(
                 controller: _code,
                 autofocus: true,
@@ -137,7 +143,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                   hintText: '000000',
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppTheme.space6),
               FilledButton(
                 onPressed: _busy ? null : _verify,
                 child: _busy
@@ -148,7 +154,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                       )
                     : const Text('確認'),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppTheme.space3),
               TextButton(
                 onPressed: (_busy || _cooldown > 0) ? null : _resend,
                 child: Text(_cooldown > 0 ? '重新發送（$_cooldown 秒）' : '重新發送驗證碼'),

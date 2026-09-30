@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/enums.dart';
 import '../../models/order.dart';
 import '../../router/app_router.dart';
@@ -95,11 +96,12 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
                 ref.read(orderHistoryControllerProvider(_role).notifier).refresh(),
             child: ListView.separated(
               controller: _scroll,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppTheme.space4),
               // One extra row for the footer: the spinner, the retry, or the
               // end-of-list marker.
               itemCount: page.items.length + 1,
-              separatorBuilder: (BuildContext context, int index) => const SizedBox(height: 10),
+              separatorBuilder: (BuildContext context, int index) =>
+                  const SizedBox(height: AppTheme.space3 - 2),
               itemBuilder: (BuildContext context, int index) {
                 if (index == page.items.length) {
                   return _Footer(state: page);
@@ -127,14 +129,14 @@ class _Footer extends ConsumerWidget {
 
     if (state.loadingMore) {
       return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
+        padding: EdgeInsets.symmetric(vertical: AppTheme.space6),
         child: Center(child: CircularProgressIndicator()),
       );
     }
 
     if (state.error != null) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: AppTheme.space4),
         child: Center(
           child: Column(
             children: <Widget>[
@@ -143,7 +145,7 @@ class _Footer extends ConsumerWidget {
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppTheme.space2),
               // Retrying the failed page keeps the pages already loaded — the
               // alternative (a full refresh) would throw away the user's scroll
               // position for a transient network blip.
@@ -162,11 +164,11 @@ class _Footer extends ConsumerWidget {
     if (!state.exhausted) {
       // Nothing to say yet — more rows exist and nothing is in flight, which is
       // the normal state while scrolling.
-      return const SizedBox(height: 8);
+      return const SizedBox(height: AppTheme.space2);
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 20),
+      padding: const EdgeInsets.symmetric(vertical: AppTheme.space6 - 4),
       child: Center(
         child: Text(
           '沒有更多行程了',
@@ -189,7 +191,10 @@ class _OrderTile extends StatelessWidget {
 
     return Card(
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppTheme.space4,
+          vertical: AppTheme.space2,
+        ),
         title: Row(
           children: <Widget>[
             StatusChip.order(order.status, context),
@@ -198,7 +203,7 @@ class _OrderTile extends StatelessWidget {
           ],
         ),
         subtitle: Padding(
-          padding: const EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.only(top: AppTheme.space2),
           child: Text(
             <String>[
               order.taxiType.labelZh,

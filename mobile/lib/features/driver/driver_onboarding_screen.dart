@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/driver.dart';
 import '../../models/enums.dart';
 import '../../router/app_router.dart';
@@ -103,15 +104,15 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
   Widget _registrationForm(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppTheme.space4),
       children: <Widget>[
         Text('登記成為司機', style: theme.textTheme.titleLarge),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.space2),
         Text(
           '提交後進入身份審核。審核通過後需繳交按金，按金達標即會自動啟用接單功能。',
           style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: AppTheme.space6),
         TextField(
           controller: _idLast4,
           keyboardType: TextInputType.number,
@@ -122,20 +123,20 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
             hintText: '1234',
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppTheme.space4),
         TextField(
           controller: _plate,
           decoration: const InputDecoration(labelText: '的士司機證號碼', hintText: '例如 123456'),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppTheme.space4),
         TextField(
           controller: _regMark,
           textCapitalization: TextCapitalization.characters,
           decoration: const InputDecoration(labelText: '車輛登記號碼', hintText: '例如 AB1234'),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: AppTheme.space6 - 4),
         Text('的士種類', style: theme.textTheme.titleSmall),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.space2),
         SegmentedButton<TaxiType>(
           segments: <ButtonSegment<TaxiType>>[
             for (final TaxiType type in TaxiType.values)
@@ -144,7 +145,7 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
           selected: <TaxiType>{_taxiType},
           onSelectionChanged: (Set<TaxiType> value) => setState(() => _taxiType = value.first),
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: AppTheme.space8 - 4),
         FilledButton(
           onPressed: _busy ? null : _register,
           child: _busy
@@ -164,11 +165,11 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
     final DriverDeposit? deposit = profile.deposit;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppTheme.space4),
       children: <Widget>[
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppTheme.space4),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
@@ -183,18 +184,18 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppTheme.space2),
                 Text(_statusExplanation(profile.status), style: theme.textTheme.bodyMedium),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppTheme.space4),
         Text('車輛資料', style: theme.textTheme.titleSmall),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.space2),
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppTheme.space4),
             child: Column(
               children: <Widget>[
                 DetailRow(label: '的士種類', value: profile.taxiType.labelZh),
@@ -205,12 +206,12 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
           ),
         ),
         if (deposit != null) ...<Widget>[
-          const SizedBox(height: 16),
+          const SizedBox(height: AppTheme.space4),
           Text('按金', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTheme.space2),
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppTheme.space4),
               child: Column(
                 children: <Widget>[
                   DetailRow(label: '目前餘額', valueWidget: MoneyText(deposit.balanceHkd)),
@@ -218,7 +219,7 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
                   DetailRow(label: '要求金額', valueWidget: MoneyText(deposit.requiredHkd)),
                   if (!deposit.isFulfilled)
                     DetailRow(label: '尚欠', valueWidget: MoneyText(deposit.shortfall)),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppTheme.space2),
                   LinearProgressIndicator(
                     value: deposit.requiredHkd.asDouble <= 0
                         ? 0
@@ -227,7 +228,7 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
                             1.0,
                           ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppTheme.space2),
                   Text(
                     '按金由平台管理員以銀行轉帳方式入帳，App 內不設付款。',
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -239,10 +240,10 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
             ),
           ),
         ],
-        const SizedBox(height: 24),
+        const SizedBox(height: AppTheme.space6),
         if (profile.status.canDrive)
           FilledButton(onPressed: () => context.go(Routes.driverJobs), child: const Text('開始接單')),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.space2),
         OutlinedButton(onPressed: () => context.go(Routes.request), child: const Text('返回乘客模式')),
       ],
     );

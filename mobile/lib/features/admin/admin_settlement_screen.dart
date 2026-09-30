@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/admin.dart';
 import '../../state/providers.dart';
 import '../shared/widgets.dart';
@@ -64,20 +65,20 @@ class _AdminSettlementScreenState extends ConsumerState<AdminSettlementScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('每週結算')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTheme.space4),
         children: <Widget>[
           Text('手動執行每週服務費', style: theme.textTheme.titleLarge),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTheme.space2),
           Text(
             '系統每 7 天自動執行一次。此處可補跑指定週次；同一週重複執行不會重複收費。',
             style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppTheme.space6),
           TextField(
             controller: _period,
             decoration: const InputDecoration(labelText: 'ISO 週次（留空為本週）', hintText: '2026-W38'),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: AppTheme.space6 - 4),
           FilledButton(
             onPressed: _busy ? null : _run,
             child: _busy
@@ -89,16 +90,16 @@ class _AdminSettlementScreenState extends ConsumerState<AdminSettlementScreen> {
                 : const Text('執行結算'),
           ),
           if (run != null) ...<Widget>[
-            const SizedBox(height: 24),
+            const SizedBox(height: AppTheme.space6),
             Card(
               color: run.hasAnomaly ? theme.colorScheme.errorContainer : null,
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppTheme.space4),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text('結果  ·  ${run.period}', style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppTheme.space3),
                     DetailRow(label: '服務費', valueWidget: MoneyText(run.feeHkd)),
                     DetailRow(label: '合資格司機', value: '${run.eligibleDrivers}'),
                     DetailRow(label: '車隊成員（未收費）', value: '${run.fleetManaged}'),
@@ -107,7 +108,7 @@ class _AdminSettlementScreenState extends ConsumerState<AdminSettlementScreen> {
                     DetailRow(label: '失敗', value: '${run.failed}'),
                     DetailRow(label: '帳目異常', value: '${run.tampered}'),
                     if (run.fleetManaged > 0) ...<Widget>[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: AppTheme.space3),
                       Text(
                         '車隊成員由所屬車隊的結算以折扣價收費，因此不在此次劃一收費之內，'
                         '避免同一週被收費兩次。',
@@ -117,7 +118,7 @@ class _AdminSettlementScreenState extends ConsumerState<AdminSettlementScreen> {
                       ),
                     ],
                     if (run.tampered > 0) ...<Widget>[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: AppTheme.space3),
                       Text(
                         '帳目異常代表該週的 ledger reference 被其他帳目佔用，'
                         '系統刻意未收費，需要人手核對。',

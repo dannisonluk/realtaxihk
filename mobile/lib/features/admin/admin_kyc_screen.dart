@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/admin.dart';
 import '../../models/enums.dart';
 import '../../state/data_providers.dart';
@@ -136,7 +137,10 @@ class _AdminKycScreenState extends ConsumerState<AdminKycScreen> {
         children: <Widget>[
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppTheme.space4,
+              vertical: AppTheme.space3,
+            ),
             child: Row(
               children: <Widget>[
                 ChoiceChip(
@@ -145,7 +149,7 @@ class _AdminKycScreenState extends ConsumerState<AdminKycScreen> {
                   onSelected: (bool _) => setState(() => _filter = null),
                 ),
                 for (final DriverStatus status in DriverStatus.values) ...<Widget>[
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppTheme.space2),
                   ChoiceChip(
                     label: Text(status.labelZh),
                     selected: _filter == status,
@@ -167,10 +171,15 @@ class _AdminKycScreenState extends ConsumerState<AdminKycScreen> {
                 return RefreshIndicator(
                   onRefresh: () async => ref.invalidate(adminDriversProvider),
                   child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    padding: const EdgeInsets.fromLTRB(
+                      AppTheme.space4,
+                      0,
+                      AppTheme.space4,
+                      AppTheme.space4,
+                    ),
                     itemCount: page.items.length,
                     separatorBuilder: (BuildContext context, int index) =>
-                        const SizedBox(height: 10),
+                        const SizedBox(height: AppTheme.space3 - 2),
                     itemBuilder: (BuildContext context, int index) =>
                         _driverCard(page.items[index]),
                   ),
@@ -187,22 +196,22 @@ class _AdminKycScreenState extends ConsumerState<AdminKycScreen> {
     final ThemeData theme = Theme.of(context);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTheme.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Row(
               children: <Widget>[
                 StatusChip.driver(driver.status, context),
-                const SizedBox(width: 10),
+                const SizedBox(width: AppTheme.space3 - 2),
                 Text(driver.taxiType.labelZh, style: theme.textTheme.bodyMedium),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTheme.space3),
             DetailRow(label: '的士司機證', value: driver.taxiDriverPlateNo),
             DetailRow(label: '車輛登記', value: driver.vehicleRegMark),
             DetailRow(label: 'Profile ID', value: driver.id),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTheme.space3),
             Wrap(
               spacing: 8,
               runSpacing: 8,

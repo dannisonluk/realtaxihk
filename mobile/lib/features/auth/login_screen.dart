@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/theme/app_theme.dart';
 import '../../router/app_router.dart';
 import '../../state/providers.dart';
 import '../shared/widgets.dart';
@@ -66,21 +67,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 64, 24, 32),
+          padding: const EdgeInsets.fromLTRB(AppTheme.space6, 64, AppTheme.space6, AppTheme.space8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               Icon(Icons.local_taxi_rounded, size: 56, color: theme.colorScheme.primary),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppTheme.space6),
               Text('RealTaxi HK', style: theme.textTheme.headlineMedium),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppTheme.space2),
               Text(
                 '輸入電話號碼，我們會以 WhatsApp 發送驗證碼。',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: AppTheme.space8 + 8),
               TextField(
                 controller: _phone,
                 autofocus: true,
@@ -99,7 +100,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   hintText: '91234567',
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppTheme.space6),
               FilledButton(
                 onPressed: _busy ? null : _sendCode,
                 child: _busy
@@ -110,7 +111,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       )
                     : const Text('發送驗證碼'),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppTheme.space4),
               Text(
                 '新號碼會自動註冊為乘客帳戶。',
                 textAlign: TextAlign.center,

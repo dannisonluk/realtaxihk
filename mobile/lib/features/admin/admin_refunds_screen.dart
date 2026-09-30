@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/admin.dart';
 import '../../models/enums.dart';
 import '../../models/refund.dart';
@@ -76,7 +77,12 @@ class _AdminRefundsScreenState extends ConsumerState<AdminRefundsScreen> {
       body: Column(
         children: <Widget>[
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            padding: const EdgeInsets.fromLTRB(
+              AppTheme.space4,
+              AppTheme.space3,
+              AppTheme.space4,
+              AppTheme.space3,
+            ),
             child: SegmentedButton<RefundStatus?>(
               segments: const <ButtonSegment<RefundStatus?>>[
                 ButtonSegment<RefundStatus?>(value: null, label: Text('全部')),
@@ -100,10 +106,15 @@ class _AdminRefundsScreenState extends ConsumerState<AdminRefundsScreen> {
                 return RefreshIndicator(
                   onRefresh: () async => ref.invalidate(adminRefundsProvider),
                   child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    padding: const EdgeInsets.fromLTRB(
+                      AppTheme.space4,
+                      0,
+                      AppTheme.space4,
+                      AppTheme.space4,
+                    ),
                     itemCount: page.items.length,
                     separatorBuilder: (BuildContext context, int index) =>
-                        const SizedBox(height: 10),
+                        const SizedBox(height: AppTheme.space3 - 2),
                     itemBuilder: (BuildContext context, int index) =>
                         _refundCard(page.items[index]),
                   ),
@@ -122,7 +133,7 @@ class _AdminRefundsScreenState extends ConsumerState<AdminRefundsScreen> {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTheme.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -133,7 +144,7 @@ class _AdminRefundsScreenState extends ConsumerState<AdminRefundsScreen> {
                 MoneyText(refund.amountHkd, style: theme.textTheme.titleLarge),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTheme.space3),
             DetailRow(label: '申請時間', value: _format(refund.createdAt)),
             DetailRow(label: '司機 Profile', value: refund.driverProfileId),
             if (refund.note != null && refund.note!.isNotEmpty)
@@ -143,7 +154,7 @@ class _AdminRefundsScreenState extends ConsumerState<AdminRefundsScreen> {
             if (refund.decisionNote != null && refund.decisionNote!.isNotEmpty)
               DetailRow(label: '批核備註', value: refund.decisionNote),
             if (pending) ...<Widget>[
-              const SizedBox(height: 12),
+              const SizedBox(height: AppTheme.space3),
               Row(
                 children: <Widget>[
                   Expanded(
@@ -152,7 +163,7 @@ class _AdminRefundsScreenState extends ConsumerState<AdminRefundsScreen> {
                       child: const Text('拒絕'),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppTheme.space3),
                   Expanded(
                     child: FilledButton(
                       onPressed: _busy ? null : () => _decide(refund, true),

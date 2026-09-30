@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format/money.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/enums.dart';
 import '../../models/ledger.dart';
 import '../../models/refund.dart';
@@ -41,12 +42,12 @@ class DriverEarningsScreen extends ConsumerWidget {
         value: ledger,
         onRetry: () => ref.invalidate(ledgerProvider),
         builder: (List<LedgerEntry> entries) => ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppTheme.space4),
           children: <Widget>[
             _BalanceCard(entries: entries),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTheme.space4),
             Text('按金退回', style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppTheme.space2),
             Card(
               child: AsyncValueView<RefundRequest?>(
                 value: refund,
@@ -54,13 +55,13 @@ class DriverEarningsScreen extends ConsumerWidget {
                 builder: (RefundRequest? data) => _RefundSection(refund: data),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTheme.space4),
             Text('帳目紀錄', style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppTheme.space2),
             if (entries.isEmpty)
               const Card(
                 child: Padding(
-                  padding: EdgeInsets.all(24),
+                  padding: EdgeInsets.all(AppTheme.space6),
                   child: Center(child: Text('還沒有任何帳目紀錄')),
                 ),
               )
@@ -96,7 +97,7 @@ class _BalanceCard extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(AppTheme.space6 - 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -106,12 +107,12 @@ class _BalanceCard extends StatelessWidget {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: AppTheme.space2 - 2),
             MoneyText(
               latest?.balanceAfterHkd ?? const Money('0.0'),
               style: theme.textTheme.displaySmall,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppTheme.space2),
             Text(
               '每週服務費會自動由此餘額扣除。',
               style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
@@ -175,12 +176,12 @@ class _RefundSectionState extends ConsumerState<_RefundSection> {
 
     if (refund == null) {
       return Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTheme.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text('尚未申請過退款。', style: theme.textTheme.bodyMedium),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTheme.space3),
             OutlinedButton(onPressed: _busy ? null : _request, child: const Text('申請退回按金')),
           ],
         ),
@@ -188,7 +189,7 @@ class _RefundSectionState extends ConsumerState<_RefundSection> {
     }
 
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppTheme.space4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -199,14 +200,14 @@ class _RefundSectionState extends ConsumerState<_RefundSection> {
               MoneyText(refund.amountHkd),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppTheme.space3),
           DetailRow(label: '申請時間', value: _format(refund.createdAt)),
           if (refund.decidedAt != null) DetailRow(label: '批核時間', value: _format(refund.decidedAt)),
           if (refund.note != null && refund.note!.isNotEmpty)
             DetailRow(label: '申請備註', value: refund.note),
           if (refund.decisionNote != null && refund.decisionNote!.isNotEmpty)
             DetailRow(label: '批核備註', value: refund.decisionNote),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTheme.space2),
           Text(switch (refund.status) {
             RefundStatus.pending => '等待平台批核。批核前不會有任何款項變動。',
             RefundStatus.approved => '已批核並完成退款，帳戶已終止。',

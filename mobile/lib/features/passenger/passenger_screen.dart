@@ -37,9 +37,13 @@ class PassengerScreen extends StatelessWidget {
         ],
       ),
       // A live trip is one tap away from any tab.
+      //
+      // Deliberately not `FloatingActionButton.small`: that is 40dp, under the
+      // 44pt minimum `layout.md` sets for a touch target, and this button is
+      // the primary action for the whole app.
       floatingActionButton: shell.currentIndex == 0
           ? null
-          : FloatingActionButton.small(
+          : FloatingActionButton(
               onPressed: () => context.go(Routes.request),
               tooltip: '叫車',
               child: const Icon(Icons.add),

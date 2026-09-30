@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/theme/app_theme.dart';
 import '../../router/app_router.dart';
 import '../../state/data_providers.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Driver shell.
 ///
@@ -27,14 +28,14 @@ class DriverScreen extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               const Icon(Icons.lock_outline, size: 40),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppTheme.space4),
               const Text('司機帳戶尚未啟用'),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppTheme.space4),
               FilledButton.tonal(
                 onPressed: () => context.push(Routes.driverOnboarding),
                 child: const Text('查看狀態'),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppTheme.space2),
               TextButton(onPressed: () => context.go(Routes.request), child: const Text('返回乘客模式')),
             ],
           ),

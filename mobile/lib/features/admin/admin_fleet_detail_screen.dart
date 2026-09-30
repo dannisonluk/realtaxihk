@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format/money.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/admin.dart';
 import '../../models/enums.dart';
 import '../../models/fleet.dart';
@@ -178,12 +179,12 @@ class _AdminFleetDetailScreenState extends ConsumerState<AdminFleetDetailScreen>
             return const EmptyView(icon: Icons.search_off, title: '找不到此車隊', subtitle: '請返回列表重新整理。');
           }
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppTheme.space4),
             children: <Widget>[
               _FleetHeader(fleet: fleet, onEdit: () => _edit(fleet)),
-              const SizedBox(height: 20),
+              const SizedBox(height: AppTheme.space6 - 4),
               Text('每週結算', style: theme.textTheme.titleSmall),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppTheme.space2),
               Text(
                 '同一週重複執行不會重複收費；已收過的成員會計入「略過」。'
                 '車隊必須為營運中才會收費。',
@@ -191,12 +192,12 @@ class _AdminFleetDetailScreenState extends ConsumerState<AdminFleetDetailScreen>
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppTheme.space3),
               TextField(
                 controller: _period,
                 decoration: const InputDecoration(labelText: 'ISO 週次（留空為本週）', hintText: '2026-W38'),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppTheme.space3),
               FilledButton(
                 onPressed: _running ? null : _runSettlement,
                 child: _running
@@ -208,19 +209,19 @@ class _AdminFleetDetailScreenState extends ConsumerState<AdminFleetDetailScreen>
                     : const Text('執行本週車隊結算'),
               ),
               if (_lastRun != null) ...<Widget>[
-                const SizedBox(height: 12),
+                const SizedBox(height: AppTheme.space3),
                 _RunResultCard(run: _lastRun!),
               ],
-              const SizedBox(height: 20),
+              const SizedBox(height: AppTheme.space6 - 4),
               Text('結算紀錄', style: theme.textTheme.titleSmall),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppTheme.space2),
               Card(
                 child: AsyncValueView<List<FleetSettlementRun>>(
                   value: ref.watch(fleetSettlementProvider(fleet.id)),
                   onRetry: () => ref.invalidate(fleetSettlementProvider(fleet.id)),
                   builder: (List<FleetSettlementRun> runs) => runs.isEmpty
                       ? const Padding(
-                          padding: EdgeInsets.all(24),
+                          padding: EdgeInsets.all(AppTheme.space6),
                           child: Center(child: Text('還沒有結算紀錄')),
                         )
                       : Column(
@@ -233,7 +234,7 @@ class _AdminFleetDetailScreenState extends ConsumerState<AdminFleetDetailScreen>
                         ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: AppTheme.space6 - 4),
               Row(
                 children: <Widget>[
                   Text('成員名單', style: theme.textTheme.titleSmall),
@@ -251,7 +252,7 @@ class _AdminFleetDetailScreenState extends ConsumerState<AdminFleetDetailScreen>
                   onRetry: () => ref.invalidate(fleetMembersProvider(fleet.id)),
                   builder: (List<FleetMember> members) => members.isEmpty
                       ? const Padding(
-                          padding: EdgeInsets.all(24),
+                          padding: EdgeInsets.all(AppTheme.space6),
                           child: Center(child: Text('名單上還沒有成員')),
                         )
                       : Column(
@@ -295,7 +296,7 @@ class _FleetHeader extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTheme.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -309,7 +310,7 @@ class _FleetHeader extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppTheme.space2),
             DetailRow(label: '狀態', value: fleet.status.labelZh),
             DetailRow(label: '車隊牌照', value: fleet.licenseNo),
             DetailRow(label: '每週費用折扣', value: fleet.discountLabel),
@@ -319,7 +320,7 @@ class _FleetHeader extends StatelessWidget {
             if (fleet.contactPhone != null && fleet.contactPhone!.isNotEmpty)
               DetailRow(label: '聯絡電話', value: fleet.contactPhone),
             if (!fleet.status.isBillable) ...<Widget>[
-              const SizedBox(height: 12),
+              const SizedBox(height: AppTheme.space3),
               Text(
                 '車隊非營運中，結算會被拒絕。',
                 style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
@@ -346,12 +347,12 @@ class _RunResultCard extends StatelessWidget {
     return Card(
       color: run.hasAnomaly ? theme.colorScheme.errorContainer : null,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTheme.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text('結果  ·  ${run.period}', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTheme.space3),
             if (gross != null) DetailRow(label: '平台劃一費用', valueWidget: MoneyText(gross)),
             DetailRow(label: '車隊每位費用', valueWidget: MoneyText(run.feeHkd)),
             if (saving != null && !saving.isZero)
@@ -363,7 +364,7 @@ class _RunResultCard extends StatelessWidget {
             DetailRow(label: '帳目異常', value: '${run.tampered}'),
             DetailRow(label: '實收總額', valueWidget: MoneyText(run.collectedHkd)),
             if (run.hasAnomaly) ...<Widget>[
-              const SizedBox(height: 12),
+              const SizedBox(height: AppTheme.space3),
               Text(
                 '帳目異常代表該週的 ledger reference 被其他帳目佔用，系統刻意未收費，'
                 '需要人手核對；重試不會解決。',
@@ -500,18 +501,18 @@ class _EditFleetDialogState extends State<_EditFleetDialog> {
               controller: _name,
               decoration: const InputDecoration(labelText: '車隊名稱'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTheme.space3),
             TextField(
               controller: _discount,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(labelText: '每週費用折扣（%）', helperText: '由下一次結算起生效。'),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTheme.space4),
             Align(
               alignment: Alignment.centerLeft,
               child: Text('營運狀態', style: Theme.of(context).textTheme.labelLarge),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppTheme.space2),
             Wrap(
               spacing: 8,
               children: <Widget>[
@@ -524,7 +525,7 @@ class _EditFleetDialogState extends State<_EditFleetDialog> {
               ],
             ),
             if (_error != null) ...<Widget>[
-              const SizedBox(height: 12),
+              const SizedBox(height: AppTheme.space3),
               Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
           ],

@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../core/config/app_config.dart';
 import '../../core/location/location_service.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/theme/app_theme.dart';
 import '../../data/order_repository.dart';
 import '../../data/trip_repository.dart';
 import '../../models/enums.dart';
@@ -206,11 +207,11 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
                 top: 12,
                 child: Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(AppTheme.space3),
                     child: Row(
                       children: <Widget>[
                         StatusChip.order(order.status, context),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: AppTheme.space3),
                         Expanded(
                           child: Text(
                             _socketNote ?? (_channel == null ? '連線中…' : '位置推送中'),
@@ -232,7 +233,7 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
         SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppTheme.space4),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
@@ -243,9 +244,9 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
                     MoneyText(order.estimatedTotalHkd, style: theme.textTheme.headlineSmall),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppTheme.space2),
                 DetailRow(label: '的士種類', value: order.taxiType.labelZh),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppTheme.space3),
                 ..._actions(order),
               ],
             ),
@@ -264,7 +265,7 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
           onPressed: _busy ? null : () => _transition('已標記到達', repo.arrive),
           child: const Text('已到達上車點'),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.space2),
         OutlinedButton(
           onPressed: _busy ? null : () => _confirmCancel(),
           child: const Text('取消（可能被扣罰款）'),
@@ -275,7 +276,7 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
           onPressed: _busy ? null : () => _transition('行程已開始', repo.start),
           child: const Text('開始行程'),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.space2),
         OutlinedButton(
           onPressed: _busy ? null : () => _confirmCancel(),
           child: const Text('取消（可能被扣罰款）'),
@@ -290,14 +291,14 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
       OrderStatus.completed || OrderStatus.cancelled => <Widget>[
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppTheme.space4),
             child: Text(
               order.status == OrderStatus.completed ? '行程已完成。' : '行程已取消。',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.space2),
         FilledButton.tonal(
           onPressed: () => Navigator.of(context).maybePop(),
           child: const Text('返回接單'),

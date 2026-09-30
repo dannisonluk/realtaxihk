@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/format/money.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/enums.dart';
 import '../../models/fare.dart';
 import '../../models/order.dart';
@@ -48,23 +49,23 @@ class TripDetailScreen extends ConsumerWidget {
         builder: (Order o) => RefreshIndicator(
           onRefresh: () async => ref.invalidate(orderDetailProvider(orderId)),
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppTheme.space4),
             children: <Widget>[
               _Headline(order: o),
               // Only an in-flight order has a live channel to open. A terminal
               // one would land on a map that never updates, which reads as a
               // broken screen rather than an old order.
               if (o.status.hasDriver && !o.status.isTerminal) ...<Widget>[
-                const SizedBox(height: 12),
+                const SizedBox(height: AppTheme.space3),
                 FilledButton.icon(
                   onPressed: () => context.push('${Routes.trackTrip}/${o.id}'),
                   icon: const Icon(Icons.map_outlined),
                   label: const Text('查看即時位置'),
                 ),
               ],
-              const SizedBox(height: 20),
+              const SizedBox(height: AppTheme.space6 - 4),
               _StatusTimeline(status: o.status),
-              const SizedBox(height: 20),
+              const SizedBox(height: AppTheme.space6 - 4),
               _FareBreakdown(order: o),
             ],
           ),
@@ -86,7 +87,7 @@ class _Headline extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTheme.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -97,7 +98,7 @@ class _Headline extends StatelessWidget {
                 MoneyText(order.estimatedTotalHkd, style: theme.textTheme.headlineSmall),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTheme.space3),
             DetailRow(label: '的士類型', value: order.taxiType.labelZh),
             DetailRow(label: '建立時間', value: Format.dateTime(order.createdAt)),
             // Absent until the trip actually completes, which is a normal state
@@ -148,12 +149,12 @@ class _StatusTimeline extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTheme.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text('狀態', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTheme.space3),
             for (int i = 0; i < steps.length; i++)
               _Step(
                 label: steps[i].labelZh,
@@ -202,7 +203,7 @@ class _Step extends StatelessWidget {
               Container(
                 width: 12,
                 height: 12,
-                margin: const EdgeInsets.only(top: 4),
+                margin: const EdgeInsets.only(top: AppTheme.space1),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: done || current ? accent : Colors.transparent,
@@ -215,10 +216,10 @@ class _Step extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppTheme.space3),
           Expanded(
             child: Padding(
-              padding: EdgeInsets.only(bottom: last ? 0 : 18),
+              padding: EdgeInsets.only(bottom: last ? 0 : AppTheme.space4 + 2),
               child: Text(
                 label,
                 style: TextStyle(
@@ -253,7 +254,7 @@ class _FareBreakdown extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTheme.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -267,10 +268,13 @@ class _FareBreakdown extends StatelessWidget {
                 // cannot outlive the field.
                 if (fare.isEstimate)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppTheme.space2,
+                      vertical: AppTheme.space1 - 2,
+                    ),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.secondaryContainer,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusField - 4),
                     ),
                     child: Text(
                       '估價',
@@ -282,7 +286,7 @@ class _FareBreakdown extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppTheme.space2),
 
             DetailRow(label: '錶費', valueWidget: MoneyText(fare.meterFare)),
             if (fare.hasDiscount)
@@ -311,7 +315,7 @@ class _FareBreakdown extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTheme.space4),
             _Disclaimer(fare: fare),
           ],
         ),
@@ -339,18 +343,18 @@ class _Disclaimer extends StatelessWidget {
     );
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppTheme.space3),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppTheme.radiusField - 2),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(fare.disclaimerZh, style: style),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTheme.space2),
           Text(fare.disclaimerEn, style: style),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTheme.space2),
           Text(
             '收費標準版本：${fare.tariffVersion}',
             style: style?.copyWith(fontFeatures: const <FontFeature>[FontFeature.tabularFigures()]),
