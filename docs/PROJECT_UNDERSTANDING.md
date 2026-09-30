@@ -1,8 +1,9 @@
 # realtaxihk — 專案架構理解摘要
 
-- **日期**：2026-09-30
+- **日期**：2026-09-30（**2026-09-30 傍晚更新**：原快照係 `446b7ee`，其後 18 個
+  commit 未反映。數字已按 `4333f2a` 更正；完整工作總覽見 `docs/WORK_SUMMARY.md`）
 - **方法**：實際讀取全部源碼 + 實跑驗證（pytest、alembic、prod_boot_drill、Dart contract/tests/analyzer、瀏覽器 UI verifier），非只讀文檔。
-- **當前狀態**：`origin/main` 已同步，working tree clean，HEAD = `446b7ee`。
+- **當前狀態**：`origin/main` 已同步至 `542fc6b`；本地 HEAD = `4333f2a`（**1 未推**）；working tree clean。
 
 ---
 
@@ -13,9 +14,9 @@
 
 | 交付物 | 位置 | 規模 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | 38 endpoints, 221 tests | ✅ 生產就緒 |
-| Flutter App | `mobile/` | 54 files, 8,645 LOC | ✅ 三角色完整 |
-| Web 管理後台 | `admin-web/` | 10 modules, 2,513 LOC | ✅ 全部路由通過 |
+| 後端 API | `app/` | 40 paths / 44 operations, 245 tests | ✅ 生產就緒 |
+| Flutter App | `mobile/` | 56 files, 9,738 LOC（21 畫面） | ✅ 三角色完整 |
+| Web 管理後台 | `admin-web/` | React + Vite（`web/`，4,433 LOC）＋ legacy JS | ✅ 全部路由通過 |
 
 **重要**：題目要求的「任務 1」與「任務 2」**已經存在且已完成**。以下計畫是「識別餘下可延伸的缺口」，而非從零開發。
 

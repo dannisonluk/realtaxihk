@@ -7,10 +7,13 @@ Money math is exact (`Decimal`, never float); every fare response carries biling
 Cap. 374D disclaimers; every estimate embeds a `tariff_version` so historical orders
 stay auditable.
 
-**Status: production-hardened.** 120/120 tests green, live smoke 9/9, prod boot drill
-PASS. Full audit + fix log: [`docs/PRODUCTION_READINESS.md`](docs/PRODUCTION_READINESS.md)
+**Status: production-hardened.** 245 backend tests green (+ 93 mobile, 54 contract
+fixtures, browser UI verifier PASS). Start with
+[`docs/WORK_SUMMARY.md`](docs/WORK_SUMMARY.md) for the whole picture — what's built,
+what's verified, and what still needs credentials or a deployment target.
+Full audit + fix log: [`docs/PRODUCTION_READINESS.md`](docs/PRODUCTION_READINESS.md)
 (4 bugs, 7 P0, 10 P1, 10 P2 — all closed). Lint gate + cleanup log:
-[`docs/LINTING.md`](docs/LINTING.md).
+[`docs/LINTING.md`](docs/LINTING.md). Security: [`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md).
 
 ## Quick start
 
@@ -58,7 +61,8 @@ scripts/          # dev tooling — serve_and_probe, verify_api, stop_server,
 tests/            # pytest — unit + module + WS streaming + hardening regression
 mobile/           # Flutter client (Android first) — driver, passenger and admin surfaces
 admin-web/        # zero-build ES-module console for the management and admin teams
-docs/             # PRODUCTION_READINESS.md (audit + fix log), LINTING.md
+docs/             # WORK_SUMMARY.md (overview), PRODUCTION_READINESS.md (audit),
+                  #   SECURITY_AUDIT.md (SEC-01..31), LINTING.md, PROJECT_UNDERSTANDING.md
 ```
 
 ## API
