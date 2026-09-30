@@ -18,6 +18,7 @@ import '../features/driver/driver_screen.dart';
 import '../features/fleet/fleet_screen.dart';
 import '../features/passenger/passenger_screen.dart';
 import '../features/passenger/request_ride_screen.dart';
+import '../features/passenger/trip_detail_screen.dart';
 import '../features/passenger/trip_history_screen.dart';
 import '../features/passenger/trip_tracking_screen.dart';
 import '../features/shared/account_screen.dart';
@@ -112,6 +113,14 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (BuildContext context, GoRouterState state) =>
             TripTrackingScreen(orderId: state.pathParameters['orderId']!),
+      ),
+      GoRoute(
+        // Also on the root navigator: reached from the history list and from
+        // the live map, so it must not be tied to a single shell branch.
+        path: '${Routes.tripDetail}/:orderId',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (BuildContext context, GoRouterState state) =>
+            TripDetailScreen(orderId: state.pathParameters['orderId']!),
       ),
 
       // ---- driver --------------------------------------------------------

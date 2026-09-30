@@ -16,9 +16,11 @@ class FareSnapshot {
     required this.surchargesTotal,
     required this.tip,
     required this.totalFare,
+    required this.discountPercent,
     required this.tunnels,
     required this.crossesHarbour,
     required this.tariffVersion,
+    required this.isEstimate,
     required this.disclaimerEn,
     required this.disclaimerZh,
     required this.surcharges,
@@ -30,9 +32,11 @@ class FareSnapshot {
     surchargesTotal: Money.parse(json['surcharges_total']),
     tip: Money.parse(json['tip']),
     totalFare: Money.parse(json['total_fare']),
+    discountPercent: asDouble(json['discount_percent'], 'fare.discount_percent'),
     tunnels: asEnumList(json['tunnels'], 'tunnels', Tunnel.fromWire),
     crossesHarbour: asBool(json['crosses_harbour'], 'crosses_harbour'),
     tariffVersion: asString(json['tariff_version'], 'tariff_version'),
+    isEstimate: asBool(json['is_estimate'], 'fare.is_estimate'),
     disclaimerEn: asString(json['disclaimer_en'], 'disclaimer_en'),
     disclaimerZh: asString(json['disclaimer_zh'], 'disclaimer_zh'),
     surcharges: asObjectList(json['surcharges'], 'surcharges', FareSurcharge.fromJson),
@@ -43,12 +47,30 @@ class FareSnapshot {
   final Money surchargesTotal;
   final Money tip;
   final Money totalFare;
+
+  /// The discount the passenger asked for, applied to the meter only. Zero for
+  /// an order placed without one, so the receipt hides the line rather than
+  /// showing `-HK$0.00`.
+  final double discountPercent;
+
   final List<Tunnel> tunnels;
   final bool crossesHarbour;
   final String tariffVersion;
+
+  /// Always true server-side (`order_service.fare_snapshot`), and the reason the
+  /// receipt must be labelled an estimate rather than a quote — Cap. 374D, the
+  /// platform is an information intermediary and the final fare is agreed
+  /// between passenger and driver. Rendered, not assumed: if the server ever
+  /// stops stamping it, the label should disappear with it.
+  final bool isEstimate;
+
   final String disclaimerEn;
   final String disclaimerZh;
   final List<FareSurcharge> surcharges;
+
+  /// The meter had a discount applied — so the receipt shows both the original
+  /// meter fare and the discounted one, instead of one unexplained number.
+  bool get hasDiscount => discountPercent > 0;
 }
 
 /// `order_out()` in `app/services/order_service.py` — the shape returned by

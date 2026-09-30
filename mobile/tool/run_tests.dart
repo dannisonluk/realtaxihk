@@ -558,6 +558,10 @@ Map<String, dynamic> _orderJson(String id) => <String, dynamic>{
     'surcharges_total': '50.0',
     'tip': '5.0',
     'total_fare': '130.2',
+    // Both strings on the wire: `discount_percent` is a Decimal, `is_estimate`
+    // is stamped true by `order_service.fare_snapshot`.
+    'discount_percent': '0',
+    'is_estimate': true,
     'tunnels': <Object?>['cross_harbour'],
     'crosses_harbour': true,
     'tariff_version': 'meter:2024-07-14;tolls:2025-09-21',
@@ -578,6 +582,28 @@ void _modelTests() {
       expect(order.estimatedTotalHkd.hkd, r'HK$130.2');
       expect(order.completedAt, null);
       expectTrue(order.createdAt != null);
+    });
+
+    test('carries the estimate flag and discount the receipt renders', () {
+      // `is_estimate` drives the Cap. 374D "估價" badge on the detail screen and
+      // `discount_percent` decides whether the receipt shows the original meter
+      // fare alongside the discounted one. Both are on the wire; neither is
+      // optional, so a server that stopped sending one must fail here rather
+      // than render an unlabelled quote.
+      final Order order = Order.fromJson(_orderJson('with-discount'));
+      expectTrue(order.fare.isEstimate, reason: 'is_estimate');
+      expect(order.fare.discountPercent, 0);
+      expectFalse(order.fare.hasDiscount, reason: 'no discount -> hide the line');
+
+      // A discounted order: the discounted meter differs from the original.
+      final Map<String, dynamic> discounted = _orderJson('discounted');
+      (discounted['fare']! as Map<String, dynamic>)['discount_percent'] = '20';
+      (discounted['fare']! as Map<String, dynamic>)['meter_after_discount'] = '60.2';
+      final Order withDiscount = Order.fromJson(discounted);
+      expect(withDiscount.fare.discountPercent, 20);
+      expectTrue(withDiscount.fare.hasDiscount);
+      expect(withDiscount.fare.meterFare.hkd, r'HK$75.2');
+      expect(withDiscount.fare.meterAfterDiscount.hkd, r'HK$60.2');
     });
 
     test('defaults `degraded` when the geo index is healthy', () {

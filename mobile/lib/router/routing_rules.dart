@@ -22,6 +22,11 @@ abstract final class Routes {
   static const String passengerAccount = '/passenger/account';
   static const String trackTrip = '/passenger/trip';
 
+  /// The frozen receipt for one order. A sibling of [trackTrip] rather than a
+  /// child of it: the live map and the record answer different questions, and a
+  /// terminal order only has the latter.
+  static const String tripDetail = '/passenger/order';
+
   static const String driverOnboarding = '/driver/onboarding';
   static const String driverJobs = '/driver/jobs';
   static const String driverAccount = '/driver/account';
