@@ -168,6 +168,16 @@ function Boot() {
    */
   useLayoutEffect(() => {
     const base = window.location.pathname + window.location.search;
+    // `checking` must be a no-op, and this early return is the whole of the
+    // deep-link fix. A cold load of `#/analytics` with a stored session starts
+    // in `checking`; without this branch the code below fell through to the
+    // signed-out case and rewrote the hash to `#/login`, and the later
+    // `checking -> in` transition then saw `#/login` and normalised it to `#/`.
+    // Every deep link — `#/analytics`, `#/kyc`, `#/fleets/<id>` — therefore
+    // landed on the dashboard, and the address bar agreed with the wrong page.
+    // While the session is still being validated the hash is not ours to write:
+    // we do not yet know which side of the login we are on.
+    if (phase === 'checking') return;
     if (phase === 'in') {
       if (window.location.hash === '' || window.location.hash === '#/login') {
         window.history.replaceState(null, '', `${base}#/`);

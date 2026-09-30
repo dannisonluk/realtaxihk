@@ -199,6 +199,34 @@ describe('the boot gate', () => {
     expect(heading()).toBe(DASHBOARD);
   });
 
+  /**
+   * A deep link must survive the boot gate.
+   *
+   * This is the regression the UI verifier caught *after* the 找不到頁面 fix
+   * landed: the hash-reconciling layout effect had no `checking` branch, so a
+   * cold load of `#/analytics` with a stored session fell through to the
+   * signed-out case, rewrote the hash to `#/login`, and then normalised that to
+   * `#/` on the way in. Every deep link — and every reload of one — silently
+   * became the dashboard, which is why the verifier's route checks all read the
+   * same body text and every screenshot came out identical.
+   *
+   * The assertion that matters is the pair: the *screen* and the *hash*. A test
+   * that checked only the screen would pass on a fix that redirected to the
+   * dashboard and then rendered it, which is a different bug.
+   */
+  it('keeps a deep link instead of falling back to the dashboard', async () => {
+    window.location.hash = '#/analytics';
+    seedSession();
+    // Slow, for the same reason as the first test: the clobber happened during
+    // the `checking` window, so that window has to be wide enough to exist.
+    stubTransport({ '/auth/me': ADMIN_ME }, 10);
+
+    await renderAndSettle(root);
+
+    expect(heading()).toBe('表現分析');
+    expect(window.location.hash).toBe('#/analytics');
+  });
+
   /** Signed out: the form renders, and the form owns the hash. */
   it('renders the login form when there is no session', async () => {
     window.history.replaceState(null, '', window.location.pathname + window.location.search);

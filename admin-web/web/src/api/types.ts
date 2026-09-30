@@ -8,11 +8,28 @@
  * page will render `NaN` after arithmetic.
  */
 
-/** `GET /api/v1/auth/me` */
+/**
+ * `GET /api/v1/auth/me` — and the shape differs by token scope.
+ *
+ * A passenger/driver token resolves against `users` and carries `phone_masked`.
+ * An admin token resolves against `admin_accounts` and carries `username` and
+ * `email_masked` instead; there is no phone on an admin account at all.
+ *
+ * The fields are therefore optional rather than a union of two interfaces: the
+ * console reads them defensively (`user?.username ?? user?.phone_masked`), and
+ * a union would force a discriminant the server does not send. Declaring only
+ * `phone_masked` — as this type used to — is what made the sidebar render `—`
+ * for every admin, because the field it read is never present on an admin.
+ */
 export interface AdminIdentity {
   id: string;
-  phone_masked: string;
   role: string;
+  /** Passenger/driver scope only. */
+  phone_masked?: string;
+  /** Admin scope only. The login identifier. */
+  username?: string;
+  /** Admin scope only, masked server-side (`o***r@example.com`). */
+  email_masked?: string;
 }
 
 export interface AuthTokens {

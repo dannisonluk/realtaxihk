@@ -50,7 +50,13 @@ export function Shell() {
         })}
 
         <div className="sidebar__foot">
-          <div>{user?.phone_masked ?? '—'}</div>
+          {/*
+            Scope-aware, because `/auth/me` answers differently per token scope:
+            an admin has a `username` and a masked email, a passenger has a
+            masked phone. Reading only `phone_masked` — as this did — left every
+            admin staring at an em dash where their account should be.
+          */}
+          <div>{user?.username ?? user?.phone_masked ?? '—'}</div>
           <button type="button" className="btn btn--sm" onClick={() => void signOut()}>
             登出
           </button>

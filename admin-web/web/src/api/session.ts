@@ -24,13 +24,21 @@
  * No secrets are written to disk, and nothing is logged.
  */
 
+import type { AdminIdentity } from './types';
+
 const KEY = 'realtaxi.admin.session';
 
-export interface AdminUser {
-  id: string;
-  phone_masked: string;
-  role: string;
-}
+/**
+ * The signed-in account, as `GET /auth/me` describes it.
+ *
+ * An alias rather than a second declaration. There were two structurally
+ * identical-but-separately-maintained types for this — `AdminIdentity` in
+ * `types.ts` and this one — and they drifted: `AdminIdentity` was widened for
+ * admin scope while this copy kept `phone_masked` required and never gained
+ * `username`, so the sidebar compiled against a shape the server does not send.
+ * One definition, imported, means they cannot disagree again.
+ */
+export type AdminUser = AdminIdentity;
 
 export interface StoredSession {
   accessToken: string;
