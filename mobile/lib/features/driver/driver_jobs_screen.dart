@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/location/location_service.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/enums.dart';
 import '../../models/order.dart';
 import '../../router/app_router.dart';
@@ -124,33 +125,52 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
       ),
       body: Column(
         children: <Widget>[
-          Card(
-            margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: SwitchListTile(
-              value: _online,
-              onChanged: _busy ? null : (bool value) => unawaited(_toggleOnline(value)),
-              title: Text(_online ? '已上線' : '已離線'),
-              subtitle: Text(
-                _online ? '正在接收附近訂單' : '上線後才會顯示附近訂單',
-                style: theme.textTheme.bodySmall,
-              ),
-              secondary: Icon(
-                _online ? Icons.wifi_tethering : Icons.wifi_tethering_off,
-                color: _online ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-              ),
+          SafeArea(
+            bottom: false,
+            child: Column(
+              children: <Widget>[
+                Card(
+                  margin: const EdgeInsets.fromLTRB(
+                    AppTheme.space4,
+                    AppTheme.space3,
+                    AppTheme.space4,
+                    0,
+                  ),
+                  child: SwitchListTile(
+                    value: _online,
+                    onChanged: _busy ? null : (bool value) => unawaited(_toggleOnline(value)),
+                    title: Text(_online ? '已上線' : '已離線'),
+                    subtitle: Text(
+                      _online ? '正在接收附近訂單' : '上線後才會顯示附近訂單',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    secondary: Icon(
+                      _online ? Icons.wifi_tethering : Icons.wifi_tethering_off,
+                      color: _online
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                if (_locationNote != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppTheme.space4,
+                      AppTheme.space3,
+                      AppTheme.space4,
+                      0,
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        Icon(Icons.location_off, size: 16, color: theme.colorScheme.error),
+                        const SizedBox(width: AppTheme.space2),
+                        Expanded(child: Text(_locationNote!, style: theme.textTheme.bodySmall)),
+                      ],
+                    ),
+                  ),
+              ],
             ),
           ),
-          if (_locationNote != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Row(
-                children: <Widget>[
-                  Icon(Icons.location_off, size: 16, color: theme.colorScheme.error),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(_locationNote!, style: theme.textTheme.bodySmall)),
-                ],
-              ),
-            ),
           Expanded(
             child: !_online
                 ? const EmptyView(
@@ -199,14 +219,15 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
         return RefreshIndicator(
           onRefresh: () async => ref.invalidate(nearbyOrdersProvider),
           child: ListView.separated(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppTheme.space4),
             itemCount: data.items.length,
-            separatorBuilder: (BuildContext context, int index) => const SizedBox(height: 10),
+            separatorBuilder: (BuildContext context, int index) =>
+                const SizedBox(height: AppTheme.space3),
             itemBuilder: (BuildContext context, int index) {
               final Order order = data.items[index];
               return Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(AppTheme.space4),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
@@ -220,13 +241,13 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
                           MoneyText(order.estimatedTotalHkd),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppTheme.space2),
                       if (order.fare.tunnels.isNotEmpty)
                         Text(
                           '經 ${order.fare.tunnels.map((Tunnel t) => t.labelZh).join('、')}',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: AppTheme.space3),
                       FilledButton(
                         onPressed: _busy ? null : () => _grab(order),
                         child: const Text('接單'),

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/location/location_service.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/enums.dart';
 import '../../models/fare.dart';
 import '../../models/order.dart';
@@ -217,159 +218,171 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
             ),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: <Widget>[
-                SegmentedButton<_Target>(
-                  segments: const <ButtonSegment<_Target>>[
-                    ButtonSegment<_Target>(
-                      value: _Target.pickup,
-                      label: Text('上車點'),
-                      icon: Icon(Icons.trip_origin),
-                    ),
-                    ButtonSegment<_Target>(
-                      value: _Target.dropoff,
-                      label: Text('落車點'),
-                      icon: Icon(Icons.place_outlined),
-                    ),
-                  ],
-                  selected: <_Target>{_target},
-                  onSelectionChanged: (Set<_Target> value) => setState(() => _target = value.first),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '點選地圖設定${_target == _Target.pickup ? '上車' : '落車'}位置',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+            child: SafeArea(
+              top: false,
+              child: ListView(
+                padding: const EdgeInsets.all(AppTheme.space4),
+                children: <Widget>[
+                  SegmentedButton<_Target>(
+                    segments: const <ButtonSegment<_Target>>[
+                      ButtonSegment<_Target>(
+                        value: _Target.pickup,
+                        label: Text('上車點'),
+                        icon: Icon(Icons.trip_origin),
+                      ),
+                      ButtonSegment<_Target>(
+                        value: _Target.dropoff,
+                        label: Text('落車點'),
+                        icon: Icon(Icons.place_outlined),
+                      ),
+                    ],
+                    selected: <_Target>{_target},
+                    onSelectionChanged: (Set<_Target> value) =>
+                        setState(() => _target = value.first),
                   ),
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: AppTheme.space2),
+                  Text(
+                    '點選地圖設定${_target == _Target.pickup ? '上車' : '落車'}位置',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: AppTheme.space4),
 
-                Text('的士種類', style: theme.textTheme.titleSmall),
-                const SizedBox(height: 8),
-                SegmentedButton<TaxiType>(
-                  segments: <ButtonSegment<TaxiType>>[
-                    for (final TaxiType type in TaxiType.values)
-                      ButtonSegment<TaxiType>(value: type, label: Text(type.labelZh)),
-                  ],
-                  selected: <TaxiType>{_taxiType},
-                  onSelectionChanged: (Set<TaxiType> value) => setState(() {
-                    _taxiType = value.first;
-                    _estimate = null;
-                  }),
-                ),
-                const SizedBox(height: 16),
+                  Text('的士種類', style: theme.textTheme.titleSmall),
+                  const SizedBox(height: AppTheme.space2),
+                  SegmentedButton<TaxiType>(
+                    segments: <ButtonSegment<TaxiType>>[
+                      for (final TaxiType type in TaxiType.values)
+                        ButtonSegment<TaxiType>(value: type, label: Text(type.labelZh)),
+                    ],
+                    selected: <TaxiType>{_taxiType},
+                    onSelectionChanged: (Set<TaxiType> value) => setState(() {
+                      _taxiType = value.first;
+                      _estimate = null;
+                    }),
+                  ),
+                  const SizedBox(height: AppTheme.space4),
 
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: TextField(
-                        controller: _distance,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        onChanged: (String _) => setState(() => _estimate = null),
-                        decoration: const InputDecoration(
-                          labelText: '行車距離（公里）',
-                          helperText: '由座標估算，可手動修正',
-                          suffixText: 'km',
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: TextField(
+                          controller: _distance,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (String _) => setState(() => _estimate = null),
+                          decoration: const InputDecoration(
+                            labelText: '行車距離（公里）',
+                            helperText: '由座標估算，可手動修正',
+                            suffixText: 'km',
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _tip,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        onChanged: (String _) => setState(() => _estimate = null),
-                        decoration: const InputDecoration(labelText: '貼士', prefixText: 'HK\$ '),
+                      const SizedBox(width: AppTheme.space3),
+                      Expanded(
+                        child: TextField(
+                          controller: _tip,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (String _) => setState(() => _estimate = null),
+                          decoration: const InputDecoration(labelText: '貼士', prefixText: 'HK\$ '),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
+                    ],
+                  ),
+                  const SizedBox(height: AppTheme.space4),
 
-                Text('隧道', style: theme.textTheme.titleSmall),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: <Widget>[
-                    for (final Tunnel tunnel in Tunnel.values)
-                      FilterChip(
-                        label: Text(tunnel.labelZh),
-                        selected: _tunnels.contains(tunnel),
-                        onSelected: (bool selected) => setState(() {
-                          // SEC-09: the server rejects more than 8, and the enum
-                          // has exactly 8 members, so this cannot exceed it.
-                          if (selected) {
-                            _tunnels.add(tunnel);
-                          } else {
-                            _tunnels.remove(tunnel);
-                          }
+                  Text('隧道', style: theme.textTheme.titleSmall),
+                  const SizedBox(height: AppTheme.space2),
+                  Wrap(
+                    spacing: AppTheme.space2,
+                    runSpacing: AppTheme.space1,
+                    children: <Widget>[
+                      for (final Tunnel tunnel in Tunnel.values)
+                        FilterChip(
+                          label: Text(tunnel.labelZh),
+                          selected: _tunnels.contains(tunnel),
+                          onSelected: (bool selected) => setState(() {
+                            // SEC-09: the server rejects more than 8, and the enum
+                            // has exactly 8 members, so this cannot exceed it.
+                            if (selected) {
+                              _tunnels.add(tunnel);
+                            } else {
+                              _tunnels.remove(tunnel);
+                            }
+                            _estimate = null;
+                          }),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: AppTheme.space2),
+                  // The two surcharge toggles are one grouped card, which is how
+                  // iOS presents a run of related switches.
+                  GroupedSection(
+                    title: '附加費',
+                    footnote: '過海附加費與回程隧道費會即時反映在報價內。',
+                    children: <Widget>[
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: _crossesHarbour,
+                        onChanged: (bool value) => setState(() {
+                          _crossesHarbour = value;
                           _estimate = null;
                         }),
+                        title: const Text('過海'),
+                        subtitle: const Text('加入過海隧道附加費'),
                       ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _crossesHarbour,
-                  onChanged: (bool value) => setState(() {
-                    _crossesHarbour = value;
-                    _estimate = null;
-                  }),
-                  title: const Text('過海'),
-                  subtitle: const Text('加入過海隧道附加費'),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _atCrossHarbourStand,
-                  onChanged: (bool value) => setState(() {
-                    _atCrossHarbourStand = value;
-                    _estimate = null;
-                  }),
-                  title: const Text('於過海的士站上車'),
-                  subtitle: const Text('可豁免回程隧道費'),
-                ),
-
-                if (_estimate != null) ...<Widget>[
-                  const SizedBox(height: 8),
-                  _FareBreakdownCard(estimate: _estimate!),
-                ],
-
-                const SizedBox(height: 20),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: (_busy || !_ready) ? null : _quote,
-                        child: const Text('取得報價'),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: _atCrossHarbourStand,
+                        onChanged: (bool value) => setState(() {
+                          _atCrossHarbourStand = value;
+                          _estimate = null;
+                        }),
+                        title: const Text('於過海的士站上車'),
+                        subtitle: const Text('可豁免回程隧道費'),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: (_busy || !_ready) ? null : _placeOrder,
-                        child: _busy
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('確認叫車'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '車費為估算，實際以錶收費為準。下單後車費會即時凍結於訂單內。',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                    ],
                   ),
-                ),
-              ],
+
+                  if (_estimate != null) ...<Widget>[
+                    const SizedBox(height: AppTheme.space4),
+                    _FareBreakdownCard(estimate: _estimate!),
+                  ],
+
+                  const SizedBox(height: AppTheme.space6),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: (_busy || !_ready) ? null : _quote,
+                          child: const Text('取得報價'),
+                        ),
+                      ),
+                      const SizedBox(width: AppTheme.space3),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: (_busy || !_ready) ? null : _placeOrder,
+                          child: _busy
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text('確認叫車'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppTheme.space3),
+                  Text(
+                    '車費為估算，實際以錶收費為準。下單後車費會即時凍結於訂單內。',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -389,7 +402,7 @@ class _FareBreakdownCard extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTheme.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -400,7 +413,7 @@ class _FareBreakdownCard extends StatelessWidget {
                 MoneyText(estimate.totalFare, style: theme.textTheme.headlineSmall),
               ],
             ),
-            const Divider(height: 20),
+            const Divider(height: AppTheme.space6),
             DetailRow(label: '起錶', valueWidget: MoneyText(estimate.meterFare, showSymbol: false)),
             if (!estimate.meterDiscount.isZero)
               DetailRow(label: '折扣', valueWidget: MoneyText(estimate.meterDiscount, signed: true)),
@@ -416,7 +429,7 @@ class _FareBreakdownCard extends StatelessWidget {
               ),
             if (!estimate.tip.isZero)
               DetailRow(label: '貼士', valueWidget: MoneyText(estimate.tip, showSymbol: false)),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppTheme.space2),
             Text(
               estimate.disclaimerZh,
               style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),

@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/location/location_service.dart';
+import '../../core/theme/app_theme.dart';
 
 /// A map marker, or a plain coordinate, in one type.
 ///
@@ -138,40 +139,46 @@ class _MapUnavailable extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     return Container(
       color: theme.colorScheme.surfaceContainerHighest,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(AppTheme.space6),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(Icons.map_outlined, size: 40, color: theme.colorScheme.onSurfaceVariant),
-            const SizedBox(height: 12),
+            Icon(
+              Icons.map_outlined,
+              size: 44,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: AppTheme.space3),
             Text('未設定 Google Maps 金鑰', style: theme.textTheme.titleSmall),
-            const SizedBox(height: 6),
+            const SizedBox(height: AppTheme.space2),
             Text(
               '以 --dart-define=GOOGLE_MAPS_API_KEY=… 重新建置即可顯示地圖。',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
-            const SizedBox(height: 16),
-            _coord('中心', centre),
-            for (final MapPoint marker in markers) _coord(marker.label, marker),
+            const SizedBox(height: AppTheme.space4),
+            _coord(context, '中心', centre),
+            for (final MapPoint marker in markers) _coord(context, marker.label, marker),
           ],
         ),
       ),
     );
   }
 
-  Widget _coord(String label, MapPoint point) {
+  Widget _coord(BuildContext context, String label, MapPoint point) {
+    final ThemeData theme = Theme.of(context);
     final bool outside = !LocationService.isInHongKong(point.lat, point.lng);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: AppTheme.space1 / 2),
       child: Text(
         '$label  ${point.lat.toStringAsFixed(5)}, ${point.lng.toStringAsFixed(5)}'
         '${outside ? '  (香港範圍外，API 會拒絕)' : ''}',
-        style: TextStyle(
-          fontSize: 12,
+        // Labels are 12pt on Apple's scale; `labelMedium` is that slot, so this
+        // stays in step if the scale is ever retuned.
+        style: theme.textTheme.labelMedium?.copyWith(
           fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
-          color: outside ? Colors.red : null,
+          color: outside ? theme.colorScheme.error : null,
         ),
       ),
     );
