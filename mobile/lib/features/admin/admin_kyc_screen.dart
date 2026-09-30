@@ -28,18 +28,14 @@ class _AdminKycScreenState extends ConsumerState<AdminKycScreen> {
   Future<void> _review(AdminDriverRow driver, String decision) async {
     final bool destructive = decision == 'reject' || decision == 'terminate';
     if (destructive) {
-      final bool? confirmed = await showDialog<bool>(
-        context: context,
-        builder: (BuildContext context) => AlertDialog(
-          title: Text('確定要${decision == 'reject' ? '拒絕' : '終止'}此司機？'),
-          content: const Text('帳戶會進入 TERMINATED，無法透過 App 回復。'),
-          actions: <Widget>[
-            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('確定')),
-          ],
-        ),
+      final bool confirmed = await confirmDestructive(
+        context,
+        title: '確定要${decision == 'reject' ? '拒絕' : '終止'}此司機？',
+        message: '帳戶會進入 TERMINATED，無法透過 App 回復。',
+        confirmLabel: '確定',
+        cancelLabel: '取消',
       );
-      if (!(confirmed ?? false)) {
+      if (!confirmed) {
         return;
       }
     }

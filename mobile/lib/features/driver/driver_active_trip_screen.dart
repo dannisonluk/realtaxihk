@@ -308,18 +308,13 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
   }
 
   Future<void> _confirmCancel() async {
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('取消已接的訂單？'),
-        content: const Text('在已接單或已到達的狀態下由司機取消，平台會在你的按金中扣除一筆違規罰款。'),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('返回')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('確認取消')),
-        ],
-      ),
+    final bool confirmed = await confirmDestructive(
+      context,
+      title: '取消已接的訂單？',
+      message: '在已接單或已到達的狀態下由司機取消，平台會在你的按金中扣除一筆違規罰款。',
+      confirmLabel: '確認取消',
     );
-    if (!(confirmed ?? false) || !mounted) {
+    if (!confirmed || !mounted) {
       return;
     }
     await _transition(

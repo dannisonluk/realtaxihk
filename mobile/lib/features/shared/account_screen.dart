@@ -93,18 +93,14 @@ class AccountScreen extends ConsumerWidget {
   }
 
   Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('登出？'),
-        content: const Text('伺服器會撤銷所有 access token 及 refresh token，需要重新以驗證碼登入。'),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('登出')),
-        ],
-      ),
+    final bool confirmed = await confirmDestructive(
+      context,
+      title: '登出？',
+      message: '伺服器會撤銷所有 access token 及 refresh token，需要重新以驗證碼登入。',
+      confirmLabel: '登出',
+      cancelLabel: '取消',
     );
-    if (confirmed ?? false) {
+    if (confirmed) {
       await ref.read(authControllerProvider.notifier).signOut();
     }
   }

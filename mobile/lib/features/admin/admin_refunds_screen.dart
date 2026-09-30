@@ -27,23 +27,16 @@ class _AdminRefundsScreenState extends ConsumerState<AdminRefundsScreen> {
   bool _busy = false;
 
   Future<void> _decide(RefundRequest refund, bool approve) async {
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: Text(approve ? '批准退款？' : '拒絕退款？'),
-        content: Text(
-          approve ? '會即時付出 ${refund.amountHkd.hkd}，司機帳戶將終止，無法復原。' : '會解除按金凍結，司機帳戶回復啟用。',
-        ),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(approve ? '確認批准' : '確認拒絕'),
-          ),
-        ],
-      ),
+    final bool confirmed = await confirmDestructive(
+      context,
+      title: approve ? '批准退款？' : '拒絕退款？',
+      message: approve
+          ? '會即時付出 ${refund.amountHkd.hkd}，司機帳戶將終止，無法復原。'
+          : '會解除按金凍結，司機帳戶回復啟用。',
+      confirmLabel: approve ? '確認批准' : '確認拒絕',
+      cancelLabel: '取消',
     );
-    if (!(confirmed ?? false) || !mounted) {
+    if (!confirmed || !mounted) {
       return;
     }
 

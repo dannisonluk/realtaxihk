@@ -309,18 +309,13 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
   };
 
   Future<void> _confirmCancel(Order order) async {
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('取消行程？'),
-        content: const Text('取消後無法復原，需要重新叫車。'),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('返回')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('確認取消')),
-        ],
-      ),
+    final bool confirmed = await confirmDestructive(
+      context,
+      title: '取消行程？',
+      message: '取消後無法復原，需要重新叫車。',
+      confirmLabel: '確認取消',
     );
-    if (!(confirmed ?? false) || !mounted) {
+    if (!confirmed || !mounted) {
       return;
     }
     try {

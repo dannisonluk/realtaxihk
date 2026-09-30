@@ -130,21 +130,14 @@ class _AdminFleetDetailScreenState extends ConsumerState<AdminFleetDetailScreen>
   }
 
   Future<void> _removeMember(FleetMember member) async {
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('移出車隊名單？'),
-        content: Text(
-          '${member.shortId} 將由下一次結算起，回復按平台劃一費用收費。'
-          '紀錄會保留，不會刪除。',
-        ),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('移出')),
-        ],
-      ),
+    final bool confirmed = await confirmDestructive(
+      context,
+      title: '移出車隊名單？',
+      message: '${member.shortId} 將由下一次結算起，回復按平台劃一費用收費。紀錄會保留，不會刪除。',
+      confirmLabel: '移出',
+      cancelLabel: '取消',
     );
-    if (!(confirmed ?? false) || !mounted) {
+    if (!confirmed || !mounted) {
       return;
     }
 

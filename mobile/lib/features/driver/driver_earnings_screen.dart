@@ -136,21 +136,16 @@ class _RefundSectionState extends ConsumerState<_RefundSection> {
   bool _busy = false;
 
   Future<void> _request() async {
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('申請退回按金？'),
-        content: const Text(
+    final bool confirmed = await confirmDestructive(
+      context,
+      title: '申請退回按金？',
+      message:
           '申請後會凍結整筆按金並暫停接單，每週服務費亦會暫停。'
           '實際退款需要平台管理員批核，批核後帳戶會終止。',
-        ),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('確認申請')),
-        ],
-      ),
+      confirmLabel: '確認申請',
+      cancelLabel: '取消',
     );
-    if (!(confirmed ?? false) || !mounted) {
+    if (!confirmed || !mounted) {
       return;
     }
 

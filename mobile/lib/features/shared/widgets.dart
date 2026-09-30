@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoAlertDialog, CupertinoDialogAction;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -336,4 +337,54 @@ void showInfo(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(message)));
+}
+
+/// Ask before an irreversible action, and return whether the user agreed.
+///
+/// This replaces the `AlertDialog` this app used to build at each call site.
+/// Two things were wrong with those (`alerts.md`):
+///
+///  1. The destructive choice was a *filled* button — the same visual weight as
+///     the confirming action elsewhere in the app — so the option that loses
+///     money or closes an account was the most inviting thing on screen. Apple
+///     marks it `isDestructive`, which renders it red and unemphasised.
+///  2. Material's dialog puts the buttons side by side with no platform
+///     default, so each site had invented its own order. `CupertinoAlertDialog`
+///     stacks them and places the cancel action last with `isDefaultAction`,
+///     which is the iOS convention: the safe way out is the one under your
+///     thumb.
+///
+/// [title] is a question ("取消已接的訂單？") and [message] says what the
+/// consequence is — the thing the user cannot undo, not a restatement of the
+/// title.
+Future<bool> confirmDestructive(
+  BuildContext context, {
+  required String title,
+  required String message,
+  required String confirmLabel,
+  String cancelLabel = '返回',
+}) async {
+  final bool? confirmed = await showDialog<bool>(
+    context: context,
+    builder: (BuildContext context) => CupertinoAlertDialog(
+      title: Text(title),
+      content: Padding(
+        padding: const EdgeInsets.only(top: AppTheme.space2),
+        child: Text(message),
+      ),
+      actions: <Widget>[
+        CupertinoDialogAction(
+          isDestructiveAction: true,
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(confirmLabel),
+        ),
+        CupertinoDialogAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(cancelLabel),
+        ),
+      ],
+    ),
+  );
+  return confirmed ?? false;
 }
