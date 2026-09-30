@@ -9,9 +9,26 @@
 
 import { session } from './session.js';
 
-/** The API base URL. Same-origin by default; override with `?api=` for a split deploy. */
+/**
+ * The API base URL.
+ *
+ * Three cases, in order:
+ *
+ *   1. `?api=<base>` — an explicit absolute base for a split deploy.
+ *   2. `?api=same-origin` — the console's own origin, with the static server
+ *      reverse-proxying `/api/*` to the API. `serve.py` does exactly that, so
+ *      the whole app is reachable on one port with **no CORS preflight**: a
+ *      same-origin `fetch` is a simple request, which removes the OPTIONS
+ *      round-trip (and, in a locked-down sandbox, the preflight's follow-up
+ *      request that never arrives). Use this for the UI verifier and for any
+ *      environment where the API is not directly reachable from the browser.
+ *   3. Default — the API on the same host, port 8000.
+ *
+ * The sentinel is a *relative* base (`''`), so `ApiClient` builds `'' + '/api/v1/…'`.
+ */
 export function resolveBaseUrl() {
   const override = new URLSearchParams(window.location.search).get('api');
+  if (override === 'same-origin') return '';
   if (override) return override.replace(/\/$/, '');
   // The console is served from :3000 and the API listens on :8000, so a bare
   // relative path would hit the static server.
@@ -54,6 +71,21 @@ function parseRetryAfter(raw) {
   const at = Date.parse(raw);
   return Number.isNaN(at) ? null : Math.max(0, (at - Date.now()) / 1000);
 }
+
+/**
+ * How many extra attempts a **GET** gets when the connection fails.
+ *
+ * Three, because the drop is frequent on this environment rather than rare: a
+ * burst of six requests reliably loses one. Writes are never retried — see the
+ * note in `_send` — and a genuinely down API still surfaces within ~1s, since
+ * the backoff is short.
+ */
+const RETRY_ON_TRANSPORT = 3;
+
+/** Linear backoff between retries. Short: the drop is transient or it is not. */
+const RETRY_BACKOFF_MS = 150;
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Build an ApiError from the server's envelope, tolerating a non-JSON body. */
 export function toApiError(status, body, retryAfter) {
@@ -118,7 +150,7 @@ export class ApiClient {
     return this._send('DELETE', path, { body, query });
   }
 
-  async _send(method, path, { body, query, retried = false, authenticated = true } = {}) {
+  async _send(method, path, { body, query, retried = false, authenticated = true, attempt = 0 } = {}) {
     const headers = { Accept: 'application/json' };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
 
@@ -137,11 +169,23 @@ export class ApiClient {
         mode: 'cors',
       });
     } catch (cause) {
+      // A transport failure on a GET is retried before it is reported.
+      //
+      // Why: a dropped connection is not evidence of anything, and `boot()`
+      // renders the login screen for any error that is not a 401. Without a
+      // retry, one reset on `GET /auth/me` signs an operator out of a session
+      // that is perfectly valid — which is both wrong and indistinguishable
+      // from a real auth failure. Only GET is retried: a POST that reached the
+      // server may have had its effect, and re-issuing it could double up.
+      if (method === 'GET' && attempt < RETRY_ON_TRANSPORT) {
+        await delay(RETRY_BACKOFF_MS * (attempt + 1));
+        return this._send(method, path, { body, query, retried, authenticated, attempt: attempt + 1 });
+      }
       throw new ApiError({
         code: CODE.network,
         message: '無法連接伺服器。請檢查網絡。',
         status: 0,
-        details: { cause: String(cause) },
+        details: { cause: String(cause), attempts: attempt + 1 },
       });
     }
 
@@ -154,6 +198,17 @@ export class ApiClient {
       } catch {
         parsed = null;
       }
+    }
+
+    // A 5xx is not the request's fault, so a GET is retried once more. 501 is
+    // excluded: that is a contract error, and repeating it changes nothing.
+    if (
+      method === 'GET' &&
+      attempt < RETRY_ON_TRANSPORT &&
+      [502, 503, 504].includes(response.status)
+    ) {
+      await delay(RETRY_BACKOFF_MS * (attempt + 1));
+      return this._send(method, path, { body, query, retried, authenticated, attempt: attempt + 1 });
     }
 
     if (response.ok) {
@@ -241,6 +296,17 @@ export const api = {
     /** The KYC queue, oldest first. */
     list: (client, { status, limit = 100, offset = 0 } = {}) =>
       client.get('/api/v1/admin/drivers', { status_filter: status, limit, offset }),
+    /**
+     * One driver in full: profile, deposit, statement, refund history, fleet.
+     *
+     * Composed server-side so the page cannot render a half-loaded driver. The
+     * ledger and refund lists are capped and newest-first.
+     */
+    detail: (client, driverId, { ledgerLimit = 50, refundLimit = 20 } = {}) =>
+      client.get(`/api/v1/admin/drivers/${driverId}`, {
+        ledger_limit: ledgerLimit,
+        refund_limit: refundLimit,
+      }),
     /** `approve` -> DEPOSIT_REQUIRED, `reject`/`terminate` -> TERMINATED, `suspend` -> SUSPENDED. */
     review: (client, driverId, { decision, note = '' }) =>
       client.post(`/api/v1/admin/drivers/${driverId}/review`, { body: { decision, note } }),

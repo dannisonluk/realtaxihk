@@ -75,6 +75,30 @@ to do nothing — extend that list. (Serving from `127.0.0.1` rather than `local
 is deliberate: on Windows `localhost` resolves to `::1` first, the published Docker
 ports are IPv4-only, and the connect hangs for ~2s before falling back.)
 
+### Same-origin mode (no CORS at all)
+
+`serve.py` reverse-proxies `/api/*` and `/health` to `--api-target`
+(default `http://127.0.0.1:8000`). Open the console with `?api=same-origin` and it
+talks to that proxy instead of to `:8000` directly:
+
+```
+http://127.0.0.1:8081/?api=same-origin
+```
+
+The whole app is then one origin, so every call is a *simple* request — no
+`OPTIONS` preflight at all. Two reasons to prefer it:
+
+* **The API is not directly reachable from the browser** (a tunnel, a container
+  network, a production reverse proxy). One port, one origin, no CORS list to keep
+  in sync.
+* **No preflight to go wrong.** A preflighted request is two round-trips, and any
+  layer that answers the `OPTIONS` but drops the follow-up `GET` breaks the
+  console in a way that looks like a product bug. The UI verifier runs this way
+  for exactly that reason.
+
+It is a deployment convenience, not a replacement for CORS: leave `cors_origins`
+populated so the split-origin setup keeps working.
+
 ## Verifying it
 
 There are no unit tests for the console — it is DOM code, and DOM code that is only
@@ -115,6 +139,88 @@ That deletes the rate-limit counters and the stale `otp_codes` rows for the numb
 The rows matter as much as the counters: `verify_otp` reads the *newest* row, so a
 leftover consumed row makes the next correct code fail with "OTP already used". The
 script refuses to run when `APP_ENV=prod` without `--yes`.
+
+### Re-running it: the sandbox drops one response in a burst
+
+On the machine this was built on, a uvicorn process **intermittently** stops
+answering after roughly nine requests, and a request already accepted blocks in
+`getresponse()` for 90s+ instead of failing. It comes and goes — the same probe
+that reports `9/20 ok` on one run reports `15/15 ok` minutes later — so it tracks
+machine load (a security agent inspecting loopback traffic is the prime suspect),
+not anything in this repository. It is **not** the console and **not** the proxy:
+the decisive probes below run with neither in the picture.
+
+The clearest measurement: 15 sequential requests straight at the API, no browser
+and no proxy.
+
+```
+  conn  0  200  0.06s
+  ...
+  conn  8  200  0.02s        <- nine answered
+  conn  9  FAIL TimeoutError 10.02s   <- and then every later one, permanently
+  conn 10  FAIL TimeoutError 10.01s
+```
+
+The same shape shows through the proxy on the verifier's own sign-in flow —
+`otp/request`, `otp/verify`, `auth/me` and six dashboard calls are exactly nine
+requests, so the burst spends the whole budget and the first route check dies.
+The server logs the nine 200s and then nothing for the tenth:
+
+```
+GET  /api/v1/admin/fleets?limit=100&offset=0            -> 200 17.6ms
+GET  /api/v1/admin/fleets?status_filter=ACTIVE...       -> API unreachable: [WinError 10054]
+```
+
+Evidence, all reproducible with the scripts in `scripts/`:
+
+| Probe | Result |
+|---|---|
+| `scripts/probe_sequential.py` (20 requests, one after another) | 9 ok, then **every** later request times out |
+| `scripts/probe_concurrency.py` (10 at once) | 9 ok, 1 times out at 30s |
+| `scripts/probe_retry.py` (3 retries each) | the wedged requests fail **all three** times |
+| `scripts/probe_fleet_http.py` (the console's 6 calls, direct) | server logs 6×200 in ~80ms; one client times out at 90s |
+| bare `http.server` on the **same port** (20 requests) | **20/20 ok** — the OS loopback stack is fine |
+| 20 requests over **one reused** connection | still stops at 9 — it is not a connection count |
+| a fresh API process, same probe | a fresh run of up to 15+ requests |
+
+Because the wedge is per-connection, a **fresh** connection is a real second
+chance. Four mitigations exploit that rather than pretending to fix it:
+
+1. **The proxy fails fast, and fast is load-bearing.** `serve.py` bounds the
+   upstream at `UPSTREAM_TIMEOUT_S` (default **3s**, `SERVE_PROXY_TIMEOUT` to
+   override) and answers `502` when it is exceeded.
+
+   The number is not cosmetic. Chromium opens at most **six** sockets to one
+   origin, and while six forwarded requests are parked on a wedged upstream those
+   six sockets are held for the whole timeout. At 10s, a route that fires six
+   calls at once parks the entire pool for ten seconds and the *next* request —
+   even a static file — cannot get a socket; the run then stalls after a handful
+   of routes, in the browser rather than in this server. That is exactly the
+   failure that was observed (death after the third route, every time). 3s is
+   still an order of magnitude above the p100 for a healthy request (<200ms), so
+   it never fires on a working API, and a wedged batch frees the pool three times
+   sooner.
+2. **The API is restarted, not just retried.** `scripts/api_supervisor.py`
+   health-checks the API and restarts uvicorn the moment it stops answering; a
+   fresh process serves a fresh budget. `scripts/serve_and_run_browser.py` starts
+   the API this way. Without it the console cannot code around a server that has
+   stopped answering, and a retry just re-hits the dead process.
+3. **The client retries.** `api.js` retries a **GET** up to three times on a
+   transport failure *and* on `502/503/504`, each on a new connection. Writes are
+   never retried.
+4. **The verifier retries the load.** `loadWithRetry` in `tool/verify_ui.mjs`
+   re-loads a route up to three times and reports how many attempts it took, so a
+   run that is short one response still passes while a genuinely broken route
+   still fails all three.
+
+`SERVE_PROXY_TIMING=1` prints a line per proxied request
+(`proxy GET /api/v1/… -> 200 16ms`). It is the only way to tell a stall in the
+console from a stall in the browser, and the verifier harness turns it on by
+default.
+
+A run that fails at sign-in is worth repeating once. If it keeps failing, the
+first thing to check is whether a security agent is filtering loopback
+connections, and the second is `reset_signin_budget.py` (above).
 
 ## Rules the code holds to
 

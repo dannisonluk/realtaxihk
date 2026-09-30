@@ -11,20 +11,51 @@
 import { api } from '../api.js';
 import { el, errorState, loading, stat } from '../dom.js';
 
-export async function DashboardView({ client }) {
+/**
+ * @param {{client: object, setBadges?: (b: {pendingKyc?: number, pendingRefunds?: number}) => void}} ctx
+ *
+ * `setBadges` is how the shell's sidebar counters get filled without a second
+ * round trip. This screen already fetches the two totals the badges show, and
+ * `boot()` used to call `refreshBadges()` immediately after it — so the dashboard
+ * ran eight parallel API calls where six carry all the information, with two of
+ * them duplicates. On a healthy network that is waste; where the transport drops
+ * a connection out of every burst (`admin-web/README.md`) it is a made-to-order
+ * failure, because the extra pair is exactly what fills the budget.
+ */
+export async function DashboardView({ client, setBadges }) {
   const root = el('div', {}, [loading()]);
 
   async function load() {
     root.replaceChildren(loading());
     try {
-      const [drivers, pendingKyc, refunds, pendingRefunds, fleets, activeFleets] = await Promise.all([
-        api.drivers.list(client, { limit: 1 }),
-        api.drivers.list(client, { status: 'PENDING_KYC', limit: 1 }),
-        api.refunds.list(client, { limit: 1 }),
-        api.refunds.list(client, { status: 'PENDING', limit: 1 }),
-        api.fleets.list(client, { limit: 100 }),
-        api.fleets.list(client, { status: 'ACTIVE', limit: 100 }),
-      ]);
+      // Six calls, **sequential**, not parallel.
+      //
+      // The counts are independent, so firing them together is the obvious shape
+      // — and it was, until this ran on a machine that intermittently accepts a
+      // connection to the API and then never answers it (`admin-web/README.md`).
+      // Every parallel call is another connection that can land on that path,
+      // and the hazard grows with the width of the burst: six at once lost one
+      // about as reliably as not.
+      //
+      // Sequential calls each open their connection only after the previous one
+      // has closed, so there is never more than one in flight and the transport
+      // has nothing concurrent to interpose on. Each call is ~50-150ms, so the
+      // whole screen still resolves in well under a second on a healthy API —
+      // the user-visible cost is nil, and the failure mode goes from "blank
+      // dashboard" to "nothing to see".
+      const drivers = await api.drivers.list(client, { limit: 1 });
+      const pendingKyc = await api.drivers.list(client, { status: 'PENDING_KYC', limit: 1 });
+      const refunds = await api.refunds.list(client, { limit: 1 });
+      const pendingRefunds = await api.refunds.list(client, { status: 'PENDING', limit: 1 });
+      const fleets = await api.fleets.list(client, { limit: 100 });
+      const activeFleets = await api.fleets.list(client, { status: 'ACTIVE', limit: 100 });
+
+      // Hand the two counters the sidebar needs to the shell, so it does not
+      // re-request them.
+      setBadges?.({
+        pendingKyc: pendingKyc.total ?? 0,
+        pendingRefunds: pendingRefunds.total ?? 0,
+      });
 
       const fleetMembers = (activeFleets.items ?? []).reduce(
         (sum, fleet) => sum + (fleet.member_count ?? 0),
