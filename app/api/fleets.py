@@ -262,9 +262,11 @@ async def list_fleets(
     fleet_status = FleetStatus(status_filter) if status_filter else None
     service = FleetService(session)
     rows, total = await service.list_page(status=fleet_status, limit=limit, offset=offset)
-    counts = {fleet.id: await service.active_member_count(fleet.id) for fleet in rows}
+    # One grouped COUNT for the whole page. A `active_member_count` per fleet is
+    # an N+1 — see `FleetService.active_member_counts` for why that mattered.
+    counts = await service.active_member_counts([fleet.id for fleet in rows])
     return {
-        "items": [_fleet_out(fleet, member_count=counts[fleet.id]) for fleet in rows],
+        "items": [_fleet_out(fleet, member_count=counts.get(fleet.id, 0)) for fleet in rows],
         "total": total,
         "limit": limit,
         "offset": offset,

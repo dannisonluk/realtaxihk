@@ -188,6 +188,35 @@ class TestFleetManagement:
         assert body["total"] == 1
         assert body["items"][0]["member_count"] == 1
 
+    def test_listing_counts_each_fleet_independently(self, client):
+        """One grouped COUNT must not smear one fleet's roster onto another.
+
+        The list page used to call `active_member_count` per row — an N+1 that
+        made `limit=100` a 17.5s page on a cold pool. It was replaced by a single
+        grouped query, and a grouped query is exactly the shape that goes wrong
+        by returning one total for every row, so this pins the per-fleet split.
+        """
+        big = _mk_fleet(client, "一號車隊", license_no="FLEET-A")
+        empty = _mk_fleet(client, "二號車隊", license_no="FLEET-B")
+        solo = _mk_fleet(client, "三號車隊", license_no="FLEET-C")
+
+        for phone in ("+85260000010", "+85260000011"):
+            driver = _make_active(client, phone)
+            assert _add_member(client, big["id"], driver["driver_id"]).status_code == 201
+
+        driver = _make_active(client, "+85260000012")
+        assert _add_member(client, solo["id"], driver["driver_id"]).status_code == 201
+
+        r = client.get("/api/v1/admin/fleets", headers=_admin_headers())
+        assert r.status_code == 200, r.text
+        counts = {item["id"]: item["member_count"] for item in r.json()["items"]}
+
+        assert counts[big["id"]] == 2
+        assert counts[solo["id"]] == 1
+        # A fleet with no active members is simply absent from a GROUP BY result,
+        # so the endpoint must default it to 0 rather than crash on a missing key.
+        assert counts[empty["id"]] == 0
+
     def test_updating_a_fleet_changes_the_discount(self, client):
         fleet = _mk_fleet(client, "調整車隊", discount="0")
         r = client.patch(
