@@ -1,12 +1,12 @@
 {
   "items": [
     {
-      "driver_profile_id": "8a9d3fa7-8088-4a37-aadb-3d9c8faa883f",
+      "driver_profile_id": "ca0b793c-0349-425e-96ac-354f22c5398e",
       "taxi_type": "URBAN",
       "driver_status": "ACTIVE",
       "member_role": "MEMBER",
       "status": "ACTIVE",
-      "joined_at": "2026-09-29T13:08:16.078803+00:00",
+      "joined_at": "2026-09-29T22:56:35.407929+00:00",
       "left_at": null
     }
   ]

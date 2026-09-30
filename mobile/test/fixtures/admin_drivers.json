@@ -113,14 +113,21 @@
       "vehicle_reg_mark": "SM4001"
     },
     {
-      "id": "8a9d3fa7-8088-4a37-aadb-3d9c8faa883f",
+      "id": "d84a6500-f29c-4ed3-8918-c79e31666814",
+      "status": "PENDING_KYC",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "123456",
+      "vehicle_reg_mark": "SM1234"
+    },
+    {
+      "id": "ca0b793c-0349-425e-96ac-354f22c5398e",
       "status": "PENDING_KYC",
       "taxi_type": "URBAN",
       "taxi_driver_plate_no": "123456",
       "vehicle_reg_mark": "AB1234"
     }
   ],
-  "total": 17,
+  "total": 18,
   "limit": 50,
   "offset": 0
 }

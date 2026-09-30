@@ -4,7 +4,7 @@
   "refresh_token": "<redacted>",
   "created": false,
   "user": {
-    "id": "12b133ee-6e12-48df-9ab9-89068654ae8d",
+    "id": "e50fd667-e6e0-460c-92c1-a5e150d2a55f",
     "phone_masked": "+852****0001",
     "role": "ADMIN"
   }
