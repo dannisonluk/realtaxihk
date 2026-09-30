@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.deps import Principal, require_active_user
+from app.core.money import money_str
 from app.models import DriverDeposit, DriverProfile, DriverStatus, LedgerEntry, RefundRequest
 from app.services.refund_service import RefundService
 
@@ -33,12 +34,20 @@ class DriverRegisterIn(BaseModel):
 
 
 def _deposit_out(dep: DriverDeposit | None) -> dict | None:
+    """The driver's own deposit figures, at the platform's canonical 2-dp wire form.
+
+    These went through a local `quantize(Decimal("0.1"))` — the same rounding as
+    `money_str`, but with `quantize`'s default `ROUND_HALF_EVEN`, so a tie
+    (`150.45`) rounded *down* here and *up* in the admin view of the same row.
+    Routing through `money_str` makes a driver's statement and an operator's
+    view of it agree to the cent, and keeps the rounding mode in one place.
+    """
     if dep is None:
         return None
     return {
-        "balance_hkd": str(Decimal(dep.balance_hkd).quantize(Decimal("0.1"))),
-        "held_hkd": str(Decimal(dep.held_hkd).quantize(Decimal("0.1"))),
-        "required_hkd": str(Decimal(dep.required_hkd).quantize(Decimal("0.1"))),
+        "balance_hkd": money_str(dep.balance_hkd),
+        "held_hkd": money_str(dep.held_hkd),
+        "required_hkd": money_str(dep.required_hkd),
         "is_fulfilled": dep.is_fulfilled,
     }
 
@@ -104,7 +113,7 @@ async def my_driver_profile(
     out = _profile_out(profile)
     out["deposit"] = _deposit_out(deposit)
     if deposit is None:
-        out["deposit"] = {"required_hkd": "500.0", "is_fulfilled": False}
+        out["deposit"] = {"required_hkd": money_str(Decimal("500")), "is_fulfilled": False}
     return out
 
 
@@ -140,8 +149,8 @@ async def my_ledger(
             {
                 "id": r.id,
                 "entry_type": r.entry_type.value,
-                "amount_hkd": str(Decimal(r.amount_hkd).quantize(Decimal("0.1"))),
-                "balance_after_hkd": str(Decimal(r.balance_after_hkd).quantize(Decimal("0.1"))),
+                "amount_hkd": money_str(r.amount_hkd),
+                "balance_after_hkd": money_str(r.balance_after_hkd),
                 "order_id": str(r.order_id) if r.order_id else None,
                 "note": r.note,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
@@ -159,7 +168,7 @@ class RefundRequestIn(BaseModel):
 def _refund_out(r: RefundRequest) -> dict:
     return {
         "id": str(r.id),
-        "amount_hkd": str(Decimal(r.amount_hkd).quantize(Decimal("0.1"))),
+        "amount_hkd": money_str(r.amount_hkd),
         "status": r.status.value,
         "note": r.note,
         "decision_note": r.decision_note,

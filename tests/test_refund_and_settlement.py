@@ -128,7 +128,7 @@ class TestWeeklySettlement:
         assert body["eligible_drivers"] == 1
         assert body["fee_hkd"] == "200"
 
-        assert _deposit(client, active["token"])["balance_hkd"] == "300.0"
+        assert _deposit(client, active["token"])["balance_hkd"] == "300.00"
         # The unfunded driver has no deposit row at all — no balance to charge.
         assert "balance_hkd" not in _deposit(client, token_dr)
 
@@ -148,7 +148,7 @@ class TestWeeklySettlement:
         assert second["skipped"] == 1
 
         # Charged exactly once, not twice.
-        assert _deposit(client, d["token"])["balance_hkd"] == "300.0"
+        assert _deposit(client, d["token"])["balance_hkd"] == "300.00"
 
     def test_distinct_periods_are_charged_separately(self, client):
         d = _make_active(client, "+85293000121")
@@ -156,7 +156,7 @@ class TestWeeklySettlement:
         for period in ("2026-W40", "2026-W41"):
             r = client.post(f"/api/v1/admin/settlement/weekly/run?period={period}", headers=admin)
             assert r.json()["charged"] == 1
-        assert _deposit(client, d["token"])["balance_hkd"] == "100.0"
+        assert _deposit(client, d["token"])["balance_hkd"] == "100.00"
 
     def test_arrears_allowed_and_driver_stays_active(self, client):
         """A fee may push the balance negative — the driver keeps dispatching."""
@@ -165,7 +165,7 @@ class TestWeeklySettlement:
         for period in ("2026-W40", "2026-W41", "2026-W42"):
             client.post(f"/api/v1/admin/settlement/weekly/run?period={period}", headers=admin)
 
-        assert _deposit(client, d["token"])["balance_hkd"] == "-100.0"
+        assert _deposit(client, d["token"])["balance_hkd"] == "-100.00"
         me = client.get("/api/v1/drivers/me", headers=_h(d["token"])).json()
         assert me["status"] == "ACTIVE"
 
@@ -175,8 +175,8 @@ class TestWeeklySettlement:
         r = client.get("/api/v1/drivers/me/ledger", headers=_h(d["token"]))
         entries = r.json()["items"]
         assert [e["entry_type"] for e in entries] == ["DEPOSIT_TOPUP", "WEEKLY_FEE_DEDUCTION"]
-        assert entries[-1]["amount_hkd"] == "-200.0"
-        assert entries[-1]["balance_after_hkd"] == "300.0"
+        assert entries[-1]["amount_hkd"] == "-200.00"
+        assert entries[-1]["balance_after_hkd"] == "300.00"
 
     def test_non_admin_cannot_trigger(self, client):
         d = _make_active(client, "+85293000151")
@@ -199,12 +199,12 @@ class TestRefundRequest:
         assert r.status_code == 201, r.text
         body = r.json()
         assert body["status"] == "PENDING"
-        assert body["amount_hkd"] == "500.0"
+        assert body["amount_hkd"] == "500.00"
         assert body["note"] == "leaving HK"
 
         dep = _deposit(client, active_driver["token"])
-        assert dep["balance_hkd"] == "0.0"  # moved out of available...
-        assert dep["held_hkd"] == "500.0"  # ...into held, not paid out
+        assert dep["balance_hkd"] == "0.00"  # moved out of available...
+        assert dep["held_hkd"] == "500.00"  # ...into held, not paid out
         assert dep["is_fulfilled"] is False
 
         me = client.get("/api/v1/drivers/me", headers=_h(active_driver["token"])).json()
@@ -295,7 +295,7 @@ class TestRefundRequest:
             "/api/v1/admin/settlement/weekly/run?period=2026-W40", headers=_admin_headers()
         )
         assert r.json()["charged"] == 0
-        assert _deposit(client, active_driver["token"])["held_hkd"] == "500.0"
+        assert _deposit(client, active_driver["token"])["held_hkd"] == "500.00"
 
     @pytest.mark.asyncio
     async def test_min_amount_floor_blocks_a_trivial_payout(self, client, active_driver):
@@ -363,8 +363,8 @@ class TestRefundDecision:
         assert r.json()["decided_by"] == ADMIN_ID
 
         dep = _deposit(client, active_driver["token"])
-        assert dep["balance_hkd"] == "0.0"
-        assert dep["held_hkd"] == "0.0"
+        assert dep["balance_hkd"] == "0.00"
+        assert dep["held_hkd"] == "0.00"
 
         me = client.get("/api/v1/drivers/me", headers=_h(active_driver["token"])).json()
         assert me["status"] == "TERMINATED"
@@ -373,8 +373,8 @@ class TestRefundDecision:
         r = client.get("/api/v1/drivers/me/ledger", headers=_h(active_driver["token"]))
         entries = r.json()["items"]
         assert entries[-1]["entry_type"] == "REFUND"
-        assert entries[-1]["amount_hkd"] == "-500.0"
-        assert entries[-1]["balance_after_hkd"] == "0.0"
+        assert entries[-1]["amount_hkd"] == "-500.00"
+        assert entries[-1]["balance_after_hkd"] == "0.00"
         assert _ledger_total(client, active_driver["token"]) == Decimal("0")
 
     def test_reject_releases_hold_and_reactivates(self, client, active_driver):
@@ -388,8 +388,8 @@ class TestRefundDecision:
         assert r.json()["status"] == "REJECTED"
 
         dep = _deposit(client, active_driver["token"])
-        assert dep["balance_hkd"] == "500.0"
-        assert dep["held_hkd"] == "0.0"
+        assert dep["balance_hkd"] == "500.00"
+        assert dep["held_hkd"] == "0.00"
         assert dep["is_fulfilled"] is True
 
         me = client.get("/api/v1/drivers/me", headers=_h(active_driver["token"])).json()
@@ -470,8 +470,8 @@ class TestRefundDecision:
             headers=_admin_headers(),
             json={"decision": "approve"},
         )
-        assert r.json()["amount_hkd"] == "300.0"
-        assert _deposit(client, d["token"])["balance_hkd"] == "0.0"
+        assert r.json()["amount_hkd"] == "300.00"
+        assert _deposit(client, d["token"])["balance_hkd"] == "0.00"
         assert _ledger_total(client, d["token"]) == Decimal("0")
 
 
@@ -552,8 +552,8 @@ class TestRefundConcurrency:
         assert sum(results) == 1
 
         dep = _deposit(client, active_driver["token"])
-        assert dep["balance_hkd"] == "0.0"
-        assert dep["held_hkd"] == "500.0"  # held once, not 5x
+        assert dep["balance_hkd"] == "0.00"
+        assert dep["held_hkd"] == "500.00"  # held once, not 5x
         assert _ledger_total(client, active_driver["token"]) == Decimal("500.0")
 
     @pytest.mark.asyncio
@@ -588,8 +588,8 @@ class TestRefundConcurrency:
         assert sum(results) == 1
 
         dep = _deposit(client, active_driver["token"])
-        assert dep["balance_hkd"] == "0.0"
-        assert dep["held_hkd"] == "0.0"
+        assert dep["balance_hkd"] == "0.00"
+        assert dep["held_hkd"] == "0.00"
         # Paid exactly once.
         assert _ledger_total(client, active_driver["token"]) == Decimal("0")
 

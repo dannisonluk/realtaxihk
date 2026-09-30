@@ -15,16 +15,22 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import get_settings
 from app.core.exceptions import BusinessRuleError
+from app.core.money import meter_str
 from app.services.fare_calculator import TaxiType, Tunnel, calculate_fare
 
 router = APIRouter(prefix="/api/v1/fare", tags=["fare"])
 
-_CENT = Decimal("0.1")  # smallest meter tick; canonical wire precision
 _MAX_TUNNELS = 8  # the Tunnel enum has exactly 8 members
 
 
-def _money_str(v: Decimal) -> str:
-    return str(v.quantize(_CENT))
+def _meter_str(v: Decimal) -> str:
+    """Fare figures, at the meter's own 1-dp tick.
+
+    Delegates to `app.core.money.meter_str`, which owns the rounding rule. Kept
+    as a module-local alias because every call site in this file is a meter
+    reading, and the short name keeps the response construction readable.
+    """
+    return meter_str(v)
 
 
 class FareEstimateRequest(BaseModel):
@@ -131,22 +137,22 @@ async def estimate_fare(
         taxi_type=breakdown.taxi_type,
         distance_km=breakdown.distance_km,
         waiting_min=breakdown.waiting_min,
-        meter_fare=_money_str(breakdown.meter_fare),
+        meter_fare=_meter_str(breakdown.meter_fare),
         discount_percent=str(breakdown.discount_percent),
-        meter_discount=_money_str(breakdown.meter_discount),
-        meter_after_discount=_money_str(breakdown.meter_after_discount),
+        meter_discount=_meter_str(breakdown.meter_discount),
+        meter_after_discount=_meter_str(breakdown.meter_after_discount),
         surcharges=[
             {
                 "code": s.code,
                 "name_en": s.name_en,
                 "name_zh": s.name_zh,
-                "amount": _money_str(s.amount),
+                "amount": _meter_str(s.amount),
             }
             for s in breakdown.surcharges
         ],
-        surcharges_total=_money_str(breakdown.surcharges_total),
-        tip=_money_str(breakdown.tip),
-        total_fare=_money_str(breakdown.total_fare),
+        surcharges_total=_meter_str(breakdown.surcharges_total),
+        tip=_meter_str(breakdown.tip),
+        total_fare=_meter_str(breakdown.total_fare),
         tariff_version=breakdown.tariff_version,
         is_estimate=breakdown.is_estimate,
         disclaimer_en=breakdown.disclaimer_en,

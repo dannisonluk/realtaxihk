@@ -74,6 +74,13 @@ Two things that are easy to get wrong:
 
 - **Money is a `string` on the wire** (the server formats it with `money_str`).
   Typing it as `number` renders `NaN` after the first arithmetic.
+- **Two different precisions, and they are not interchangeable.** *Stored* money
+  — deposits, ledger amounts, refunds, order totals — matches its
+  `Numeric(10, 2)` column and arrives at **2 dp** (`"500.00"`, `"0.05"`). A
+  *meter* figure — a fare, a toll, a surcharge — comes from the tariff table and
+  arrives at **1 dp** (`"147.1"`). Both render through `Money`, which does not
+  care, but do not assume a money string always has two decimals when comparing
+  or parsing.
 - **`FleetStatus` ends in `DISSOLVED`, not `TERMINATED`** — a fleet is wound up,
   a *driver* is terminated.
 

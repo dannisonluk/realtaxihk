@@ -174,7 +174,7 @@ class TestDriverKycApi:
         # driver cannot become ACTIVE without deposit
         r = client.get("/api/v1/drivers/me", headers={"Authorization": f"Bearer {token}"})
         assert r.json()["status"] == "DEPOSIT_REQUIRED"
-        assert r.json()["deposit"]["required_hkd"] == "500.0"
+        assert r.json()["deposit"]["required_hkd"] == "500.00"
 
     def test_admin_required(self, client):
         token = self._new_user_token(client, "+85291230003")

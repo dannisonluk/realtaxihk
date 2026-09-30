@@ -51,7 +51,7 @@ class TestDepositGrant:
             json={"amount_hkd": "500.00", "note": "cash topup"},
         )
         assert r.status_code == 200
-        assert r.json()["balance_hkd"] == "500.0"
+        assert r.json()["balance_hkd"] == "500.00"
         assert r.json()["is_fulfilled"] is True
         assert r.json()["driver_status"] == "ACTIVE"
 
@@ -62,7 +62,7 @@ class TestDepositGrant:
             json={"amount_hkd": "300.00"},
         )
         assert r.status_code == 200
-        assert r.json()["balance_hkd"] == "300.0"
+        assert r.json()["balance_hkd"] == "300.00"
         assert r.json()["is_fulfilled"] is False
         assert r.json()["driver_status"] == "DEPOSIT_REQUIRED"
 
@@ -72,7 +72,7 @@ class TestDepositGrant:
             headers={"Authorization": f"Bearer {_admin_token()}"},
             json={"amount_hkd": "200.00"},
         )
-        assert r.json()["balance_hkd"] == "500.0"
+        assert r.json()["balance_hkd"] == "500.00"
         assert r.json()["driver_status"] == "ACTIVE"
 
     def test_grant_negative_rejected(self, client, pending_driver):
@@ -108,8 +108,8 @@ class TestLedger:
         assert len(items) == 1
         entry = items[0]
         assert entry["entry_type"] == "DEPOSIT_TOPUP"
-        assert entry["amount_hkd"] == "500.0"
-        assert entry["balance_after_hkd"] == "500.0"
+        assert entry["amount_hkd"] == "500.00"
+        assert entry["balance_after_hkd"] == "500.00"
 
     def test_ledger_requires_driver_profile(self, client):
         token = _mk_user_token(client, "+85291400002")
@@ -134,7 +134,7 @@ class TestLedger:
             headers={"Authorization": f"Bearer {pending_driver['token']}"},
         )
         balances = [i["balance_after_hkd"] for i in r.json()["items"]]
-        assert balances == ["300.0", "550.0"]
+        assert balances == ["300.00", "550.00"]
 
 
 class TestAdminDriverDetail:
@@ -168,7 +168,7 @@ class TestAdminDriverDetail:
         # Every key the view reads must exist, even when empty.
         assert set(body) >= {"deposit", "ledger", "refunds", "fleet"}
         assert body["ledger"]["items"][0]["entry_type"] == "DEPOSIT_TOPUP"
-        assert body["deposit"]["balance_hkd"] == "500.0"
+        assert body["deposit"]["balance_hkd"] == "500.00"
         assert body["deposit"]["is_fulfilled"] is True
         assert body["refunds"]["items"] == []
         assert body["fleet"] is None
@@ -184,10 +184,10 @@ class TestAdminDriverDetail:
         assert r.status_code == 200
         deposit = r.json()["deposit"]
         assert deposit["has_account"] is False
-        assert deposit["balance_hkd"] == "0.0"
-        assert deposit["required_hkd"] == "500.0"
+        assert deposit["balance_hkd"] == "0.00"
+        assert deposit["required_hkd"] == "500.00"
         assert deposit["is_fulfilled"] is False
-        assert deposit["shortfall_hkd"] == "500.0"
+        assert deposit["shortfall_hkd"] == "500.00"
 
     def test_shortfall_closes_as_the_balance_grows(self, client, pending_driver):
         admin = {"Authorization": f"Bearer {_admin_token()}"}
@@ -198,7 +198,7 @@ class TestAdminDriverDetail:
             json={"amount_hkd": "300.00"},
         )
         r = client.get(f"/api/v1/admin/drivers/{did}", headers=admin)
-        assert r.json()["deposit"]["shortfall_hkd"] == "200.0"
+        assert r.json()["deposit"]["shortfall_hkd"] == "200.00"
 
     def test_unknown_driver_is_404_not_empty(self, client):
         admin = {"Authorization": f"Bearer {_admin_token()}"}
@@ -219,3 +219,80 @@ class TestAdminDriverDetail:
             headers={"Authorization": f"Bearer {pending_driver['token']}"},
         )
         assert r.status_code == 403
+
+
+class TestMoneyWirePrecision:
+    """The wire contract for stored money is 2 dp, matching `Numeric(10, 2)`.
+
+    Regression guard for a defect that was invisible to every test in this
+    suite: the money columns hold cents exactly, but the API serialised them
+    through a 1-dp quantiser, so `0.05` left as `"0.1"` and `0.01` left as
+    `"0.0"`. The console renders `Math.abs(v).toFixed(2)`, so a cent balance was
+    displayed as `HK$0.10` or, worse, as `HK$0.00` — a real credit shown as
+    nothing. Every pre-existing assertion used whole-dollar amounts, where 1 dp
+    and 2 dp agree, which is exactly why the suite stayed green.
+
+    Two different precisions are legitimate and must not be conflated:
+    stored money (`money_str`, 2 dp) and the meter tick (`meter_str`, 1 dp).
+    """
+
+    def test_sub_dollar_grant_keeps_its_cents(self, client, pending_driver):
+        admin = {"Authorization": f"Bearer {_admin_token()}"}
+        did = pending_driver["driver_id"]
+
+        for amount, expected in (("0.05", "0.05"), ("0.01", "0.06")):
+            r = client.post(
+                f"/api/v1/admin/drivers/{did}/deposit/grant",
+                headers=admin,
+                json={"amount_hkd": amount},
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["balance_hkd"] == expected
+
+        me = client.get(
+            "/api/v1/drivers/me",
+            headers={"Authorization": f"Bearer {pending_driver['token']}"},
+        )
+        assert me.json()["deposit"]["balance_hkd"] == "0.06"
+
+    def test_ledger_entries_keep_their_cents(self, client, pending_driver):
+        admin = {"Authorization": f"Bearer {_admin_token()}"}
+        client.post(
+            f"/api/v1/admin/drivers/{pending_driver['driver_id']}/deposit/grant",
+            headers=admin,
+            json={"amount_hkd": "0.25"},
+        )
+        r = client.get(
+            "/api/v1/drivers/me/ledger",
+            headers={"Authorization": f"Bearer {pending_driver['token']}"},
+        )
+        entry = r.json()["items"][0]
+        assert entry["amount_hkd"] == "0.25"
+        assert entry["balance_after_hkd"] == "0.25"
+
+    def test_percent_of_a_dollar_is_not_rounded_away(self, client, pending_driver):
+        """The specific value the old format turned into a false `HK$0.00`."""
+        r = client.post(
+            f"/api/v1/admin/drivers/{pending_driver['driver_id']}/deposit/grant",
+            headers={"Authorization": f"Bearer {_admin_token()}"},
+            json={"amount_hkd": "0.04"},
+        )
+        # 1 dp would yield "0.0" — indistinguishable from an empty account.
+        assert r.json()["balance_hkd"] == "0.04"
+
+    def test_whole_dollars_carry_two_decimals(self, client, pending_driver):
+        r = client.post(
+            f"/api/v1/admin/drivers/{pending_driver['driver_id']}/deposit/grant",
+            headers={"Authorization": f"Bearer {_admin_token()}"},
+            json={"amount_hkd": "500.00"},
+        )
+        assert r.json()["balance_hkd"] == "500.00"
+
+        # `required_hkd` is not on the grant response — it comes from the
+        # driver's own view, where 1 dp used to render the threshold as "500.0".
+        me = client.get(
+            "/api/v1/drivers/me",
+            headers={"Authorization": f"Bearer {pending_driver['token']}"},
+        )
+        assert me.json()["deposit"]["required_hkd"] == "500.00"
+        assert me.json()["deposit"]["is_fulfilled"] is True

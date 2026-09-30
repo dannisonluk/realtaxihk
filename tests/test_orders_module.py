@@ -163,7 +163,7 @@ class TestOrderLifecycle:
         assert r.status_code == 200
         ledger = client.get("/api/v1/drivers/me/ledger", headers=h).json()["items"]
         penalties = [i for i in ledger if i["entry_type"] == "PENALTY_DEDUCTION"]
-        assert penalties and penalties[0]["amount_hkd"] == "-50.0"
+        assert penalties and penalties[0]["amount_hkd"] == "-50.00"
         assert penalties[0]["order_id"] == oid
 
 
