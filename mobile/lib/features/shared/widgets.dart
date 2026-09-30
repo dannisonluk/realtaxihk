@@ -39,6 +39,12 @@ class AsyncValueView<T> extends StatelessWidget {
 
 /// A failure with the server's own message and, where it helps, a hint about
 /// what to do next.
+///
+/// The shape follows Apple's guidance for a status screen (`feedback.md`,
+/// `writing.md`): an icon, what happened, what to do about it, and one action.
+/// The message is the server's own, because a generic "something went wrong"
+/// tells a driver on the street nothing they can act on. Copy follows the
+/// interface's voice — it says what happened, not that it is sorry.
 class ErrorView extends StatelessWidget {
   const ErrorView({required this.error, this.onRetry, super.key});
 
@@ -62,26 +68,25 @@ class ErrorView extends StatelessWidget {
 
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(AppTheme.space8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Icon(Icons.error_outline, size: 44, color: theme.colorScheme.error),
-            const SizedBox(height: 16),
-            Text(error.userMessage, textAlign: TextAlign.center, style: theme.textTheme.bodyLarge),
+            const SizedBox(height: AppTheme.space4),
+            Text(
+              error.userMessage,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyLarge,
+            ),
             if (hint.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 8),
-              Text(
-                hint,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
+              const SizedBox(height: AppTheme.space2),
+              Text(hint, textAlign: TextAlign.center, style: theme.textTheme.bodySmall),
             ],
             if (onRetry != null) ...<Widget>[
-              const SizedBox(height: 24),
-              FilledButton.tonal(onPressed: onRetry, child: const Text('Try again')),
+              const SizedBox(height: AppTheme.space6),
+              // A prominent action, per `buttons.md`: one obvious thing to do.
+              FilledButton.tonal(onPressed: onRetry, child: const Text('Try Again')),
             ],
           ],
         ),
@@ -91,6 +96,10 @@ class ErrorView extends StatelessWidget {
 }
 
 /// An empty state with an optional call to action.
+///
+/// Apple's rule (`writing.md › Empty states`): an empty screen invites the next
+/// action rather than reporting an absence. Where there is a natural next step,
+/// [action] is that step, not a "dismiss".
 class EmptyView extends StatelessWidget {
   const EmptyView({required this.icon, required this.title, this.subtitle, this.action, super.key});
 
@@ -104,27 +113,76 @@ class EmptyView extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(AppTheme.space8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Icon(icon, size: 44, color: theme.colorScheme.onSurfaceVariant),
-            const SizedBox(height: 16),
-            Text(title, style: theme.textTheme.titleMedium),
+            const SizedBox(height: AppTheme.space4),
+            Text(title, style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
             if (subtitle != null) ...<Widget>[
-              const SizedBox(height: 6),
-              Text(
-                subtitle!,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
+              const SizedBox(height: AppTheme.space2),
+              Text(subtitle!, textAlign: TextAlign.center, style: theme.textTheme.bodySmall),
             ],
-            if (action != null) ...<Widget>[const SizedBox(height: 20), action!],
+            if (action != null) ...<Widget>[const SizedBox(height: AppTheme.space6), action!],
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A grouped list section: a titled card holding a run of rows.
+///
+/// This is iOS's grouped table (`lists-and-tables.md`): related rows share one
+/// rounded surface, the section has a small uppercase-ish header, and the seam
+/// between sections is the background showing through. Grouping is what tells a
+/// reader which rows belong together — Apple calls it out in `layout.md ›
+/// Visual hierarchy` ("Group related items to clearly express related
+/// information or functions").
+class GroupedSection extends StatelessWidget {
+  const GroupedSection({required this.title, required this.children, this.footnote, super.key});
+
+  final String title;
+  final List<Widget> children;
+
+  /// A short line under the card, for a caveat or a source. Optional.
+  final String? footnote;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.only(left: AppTheme.space4, bottom: AppTheme.space2),
+          child: Text(
+            title,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppTheme.space4,
+              vertical: AppTheme.space3,
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+          ),
+        ),
+        if (footnote != null)
+          Padding(
+            padding: const EdgeInsets.only(
+              left: AppTheme.space4,
+              right: AppTheme.space4,
+              top: AppTheme.space2,
+            ),
+            child: Text(footnote!, style: theme.textTheme.labelMedium),
+          ),
+      ],
     );
   }
 }
@@ -206,16 +264,21 @@ class StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    // 13 pt / w600 is Footnote with an emphasis, which is the size iOS uses for
+    // a status pill. The tint is a fill plus a border rather than text colour
+    // alone, so the state survives for someone who cannot tell the hues apart
+    // (`accessibility.md › Vision`: convey information with more than colour).
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: AppTheme.space3, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(999),
         border: Border.all(color: color.withValues(alpha: 0.5)),
       ),
       child: Text(
         label,
-        style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
+        style: theme.textTheme.labelLarge?.copyWith(color: color, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -223,6 +286,11 @@ class StatusChip extends StatelessWidget {
 
 /// A label/value row used across the detail and receipt screens.
 /// Supply either [value] or [valueWidget], whichever fits.
+///
+/// The label column is fixed rather than intrinsic so stacked rows align — the
+/// value edge is the thing a reader scans down, and it has to be straight
+/// (`layout.md › Visual hierarchy`: "Align elements to make them easier to
+/// scan").
 class DetailRow extends StatelessWidget {
   const DetailRow({required this.label, this.value, this.valueWidget, super.key});
 
@@ -234,18 +302,13 @@ class DetailRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: AppTheme.space2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           SizedBox(
             width: 132,
-            child: Text(
-              label,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
+            child: Text(label, style: theme.textTheme.bodyMedium),
           ),
           Expanded(
             child:
