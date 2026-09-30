@@ -25,6 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api.admin import router as admin_router
+from app.api.admin_auth import router as admin_auth_router
 from app.api.auth import router as auth_router
 from app.api.drivers import router as drivers_router
 from app.api.fare import router as fare_router
@@ -165,6 +166,9 @@ def create_app() -> FastAPI:
     app.include_router(fare_router)
     app.include_router(auth_router)
     app.include_router(drivers_router)
+    # Mounted before the platform `admin_router` so `/api/v1/admin/auth/*` is
+    # matched by the admin-auth handlers rather than falling into a catch-all.
+    app.include_router(admin_auth_router)
     app.include_router(admin_router)
     app.include_router(fleets_router)
     app.include_router(admin_fleets_router)

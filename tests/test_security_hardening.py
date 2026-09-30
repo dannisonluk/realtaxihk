@@ -210,6 +210,19 @@ _PUBLIC_PATHS = {
     "/api/v1/auth/otp/request",
     "/api/v1/auth/otp/verify",
     "/api/v1/auth/refresh",
+    # Admin sign-in. Pre-authentication by definition — there is no account
+    # state to read yet, and the second factor is what substitutes for the live
+    # guard. Each of these is protected by the challenge token instead:
+    # `/login` rate-limits per account and per IP before touching the database;
+    # the other four all resolve a short-lived, single-purpose challenge that
+    # `_resolve_challenge` re-checks `is_active` and `is_locked` against on every
+    # call. An expired or replayed challenge is a 401, so a disabled admin cannot
+    # reach the authenticated surface through them.
+    "/api/v1/admin/auth/login",
+    "/api/v1/admin/auth/totp/verify",
+    "/api/v1/admin/auth/recovery",
+    "/api/v1/admin/auth/totp/enrol",
+    "/api/v1/admin/auth/totp/enrol/confirm",
 }
 
 

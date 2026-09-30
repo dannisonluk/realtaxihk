@@ -101,10 +101,18 @@ async def _ensure_template() -> None:
             await conn.run_sync(Base.metadata.create_all)
             # The admin every *_admin_token() helper signs for. Random id, one
             # per session — see the module docstring.
+            #
+            # `account_status` is named explicitly: the migration drops the
+            # server_default after backfilling (so a future INSERT that forgets
+            # the column cannot silently mint an ACTIVE account), which means a
+            # raw INSERT here must supply it. tests/test_admin_auth_api.py
+            # asserts that the default really is gone.
             await conn.execute(
                 text(
-                    "INSERT INTO users (id, phone_e164, role, is_active, created_at) "
-                    "VALUES (:id, :phone, 'ADMIN', true, now()) ON CONFLICT (id) DO NOTHING"
+                    "INSERT INTO users (id, phone_e164, role, is_active, created_at, "
+                    "account_status) "
+                    "VALUES (:id, :phone, 'ADMIN', true, now(), 'ACTIVE') "
+                    "ON CONFLICT (id) DO NOTHING"
                 ),
                 {"id": ADMIN_ID, "phone": ADMIN_PHONE},
             )

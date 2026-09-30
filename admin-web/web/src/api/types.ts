@@ -21,6 +21,42 @@ export interface AuthTokens {
   user: AdminIdentity;
 }
 
+/**
+ * `POST /api/v1/admin/auth/login` — step 1 of admin sign-in.
+ *
+ * There is deliberately no `access_token` here. A password alone cannot produce
+ * one; the second factor has to be proven first. `enrolment` is present only on
+ * a first login, and the secret is returned exactly once.
+ */
+export interface AdminLoginResult {
+  next: 'totp_required' | 'enrolment_required';
+  challenge_token: string;
+  enrolment?: AdminEnrolment;
+}
+
+export interface AdminEnrolment {
+  /** Base32, for manual entry when the QR cannot be scanned. */
+  secret: string;
+  /** `otpauth://totp/...` — a standard key URI any TOTP app accepts. */
+  otpauth_uri: string;
+  recovery_codes: string[];
+}
+
+/** What a successful step 2 returns. */
+export interface AdminSession {
+  access_token: string;
+  token_type: string;
+  admin: AdminConsoleUser;
+}
+
+export interface AdminConsoleUser {
+  id: string;
+  username: string;
+  email: string;
+  full_name: string;
+  totp_enrolled: boolean;
+}
+
 export type DriverStatus =
   | 'PENDING_KYC'
   | 'DEPOSIT_REQUIRED'

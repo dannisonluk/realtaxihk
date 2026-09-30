@@ -22,6 +22,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
@@ -86,6 +87,33 @@ class RefundStatus(str, enum.Enum):
     REJECTED = "REJECTED"
 
 
+class Gender(str, enum.Enum):
+    """Optional, and never inferred. Kept as a small closed set rather than
+    free text so the client can render a picker and the data stays queryable.
+    `UNDISCLOSED` is a real choice, not a missing value — which is why it is a
+    member rather than NULL."""
+
+    MALE = "MALE"
+    FEMALE = "FEMALE"
+    OTHER = "OTHER"
+    UNDISCLOSED = "UNDISCLOSED"
+
+
+class AccountStatus(str, enum.Enum):
+    """Whether an account may be used at all.
+
+    Distinct from `is_active`, which is the admin's ban switch. `AccountStatus`
+    is the *self-service* lifecycle: an account registers, proves its email and
+    phone, and only then is ACTIVE. Keeping them separate means "banned by an
+    admin" and "has not finished signing up" stay distinguishable in the audit
+    trail — collapsing them loses that.
+    """
+
+    UNVERIFIED = "UNVERIFIED"  # registered; email and/or phone not yet proven
+    ACTIVE = "ACTIVE"  # both proven; the account works
+    SUSPENDED = "SUSPENDED"  # admin action; see is_active + the audit log
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -101,6 +129,41 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    # --- Registration identity (Uber-shaped). Every column is nullable because
+    # the table predates this scheme: accounts created by phone-OTP alone have
+    # no username, email or password until they claim credentials on next login
+    # (the grandfathering path). A NOT NULL here would break every existing row.
+    username: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
+    given_name: Mapped[str | None] = mapped_column(String(60))
+    family_name: Mapped[str | None] = mapped_column(String(60))
+    gender: Mapped[Gender | None] = mapped_column(
+        SAEnum(Gender, name="gender", native_enum=False)
+    )
+    # Cloudflare R2 object key, not a URL: the bucket and host are deployment
+    # config, and storing a full URL bakes a CDN hostname into user rows that
+    # then cannot be changed without a data migration.
+    avatar_key: Mapped[str | None] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(254), unique=True, index=True)
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Mirrors `password_hash` on AdminAccount; argon2id string, ~97 chars today
+    # but the encoded form grows with parameters, so leave headroom.
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+
+    account_status: Mapped[AccountStatus] = mapped_column(
+        SAEnum(AccountStatus, name="account_status", native_enum=False),
+        default=AccountStatus.UNVERIFIED,
+    )
+
+    # P-4: monthly phone re-verification. `phone_reverify_due_at` is the
+    # deadline; NULL on a grandfathered row means "not yet scheduled", which the
+    # guard treats as due rather than as unlimited — failing closed.
+    phone_reverify_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Password/username lockout state. Separate from `is_active` (an admin ban)
+    # so a brute-force lock is self-clearing and never needs manual unbanning.
+    failed_login_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     driver_profile: Mapped[DriverProfile | None] = relationship(back_populates="user")
 
@@ -461,3 +524,127 @@ class FleetSettlementRun(Base):
     )
 
     __table_args__ = (UniqueConstraint("fleet_id", "period", name="uq_fleet_settlement_period"),)
+
+
+class AdminAccount(Base):
+    """An administrator / management-team account — a **separate identity type**.
+
+    Deliberately not a `users` row with extra columns, and not reachable through
+    the phone-OTP login path. The reasons are load-bearing:
+
+    1. **Different credential.** A user is identified by a unique *phone*; an
+       admin by a unique *username* plus a unique *email*. Sharing one table
+       means three uniquely-constrained columns that are all nullable and whose
+       meaning depends on `role` — a shape where a bug produces an admin with no
+       phone, or a passenger with an email that collides with an admin's.
+
+    2. **Different second factor.** Admins require TOTP. There is no passenger
+       equivalent, so `totp_secret` would sit NULL on ~all user rows.
+
+    3. **Blast radius.** This account can move money (`ADJUSTMENT`, refund
+       approval, fleet settlement). Keeping it in its own table means a bug in
+       passenger registration cannot mint an admin, and `require_admin` has
+       exactly one table to check.
+
+    The Trade-off accepted: an admin cannot also be a passenger on the same
+    account. That is intentional — it keeps "who can move money" unambiguous.
+    """
+
+    __tablename__ = "admin_accounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    # Lower-cased on write by the service layer, so uniqueness is
+    # case-insensitive without a functional index (which would need CITEXT or
+    # a migration-specific expression index).
+    username: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    email: Mapped[str] = mapped_column(String(254), unique=True, index=True)
+    full_name: Mapped[str | None] = mapped_column(String(120))
+    password_hash: Mapped[str] = mapped_column(String(255))
+
+    # --- TOTP (RFC 6238). Enrolled on first login; see `AdminTotpService`.
+    # NULL until enrolment completes, which is the state that makes the login
+    # flow a state machine: password is proven, TOTP is not yet configured.
+    totp_secret: Mapped[str | None] = mapped_column(String(64))
+    totp_enrolled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Replay protection: the last accepted 30-second step. A code at or before
+    # this counter is refused, making each code single-use. Without it the
+    # ±1-step window leaves a code replayable for up to 90 seconds.
+    totp_last_counter: Mapped[int | None] = mapped_column(BigInteger)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Brute-force lockout, self-clearing. Kept off `is_active` so an automated
+    # lock never looks like an admin ban in the audit trail.
+    failed_login_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Which admin created this one, for the audit trail.
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    recovery_codes: Mapped[list[AdminRecoveryCode]] = relationship(
+        back_populates="admin", cascade="all, delete-orphan"
+    )
+
+
+class AdminRecoveryCode(Base):
+    """Single-use codes for when the authenticator device is lost.
+
+    Without these, a lost phone is a locked-out administrator and a hand-edited
+    database row — which is how a security control becomes an operational
+    incident, and why second-factor rollouts get quietly abandoned.
+
+    Stored one-way (SHA-256; the code is 50 bits of CSPRNG output, so there is
+    no dictionary to attack and no need for a slow KDF on the login path).
+    `used_at` rather than deletion keeps the fact that a code *was* used, which
+    is exactly what you want to see when investigating an account takeover.
+    """
+
+    __tablename__ = "admin_recovery_codes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    admin_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("admin_accounts.id", ondelete="CASCADE"), index=True
+    )
+    code_hash: Mapped[str] = mapped_column(String(64), index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    admin: Mapped[AdminAccount] = relationship(back_populates="recovery_codes")
+
+    __table_args__ = (UniqueConstraint("admin_id", "code_hash", name="uq_admin_recovery_code"),)
+
+
+class AdminAuditLog(Base):
+    """Append-only record of privileged actions and authentication events.
+
+    A separate table from the driver/staff audit needs because the questions are
+    different: this one answers "who logged in, from where, and did they move
+    money", which is the first thing asked after an incident and the one thing
+    the application logs (JSON to stdout) are worst at — logs rotate, this does
+    not.
+
+    There is no UPDATE or DELETE path in the application. `created_at` is
+    indexed because every real query is "since when".
+    """
+
+    __tablename__ = "admin_audit_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    # Nullable: a failed login for a username that does not exist still has to
+    # be recorded, or credential stuffing is invisible.
+    admin_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), index=True)
+    # Denormalised on purpose: the row must stay readable after the account is
+    # deleted, and it is what makes a failed-login row attributable.
+    username_attempted: Mapped[str | None] = mapped_column(String(64))
+    event: Mapped[str] = mapped_column(String(48), index=True)
+    outcome: Mapped[str] = mapped_column(String(16))  # SUCCESS / FAILURE
+    detail: Mapped[str | None] = mapped_column(String(255))
+    ip_address: Mapped[str | None] = mapped_column(String(45))  # 45 = IPv6 max
+    user_agent: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )

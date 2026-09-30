@@ -11,6 +11,8 @@ import type {
   AdjustResult,
   AdminDriverRow,
   AdminIdentity,
+  AdminLoginResult,
+  AdminSession,
   AuthTokens,
   DriverProfileDetail,
   DriverStatus,
@@ -28,6 +30,36 @@ import type {
 
 export const endpoints = {
   auth: {
+    /**
+     * Admin sign-in, step 1: username + password.
+     *
+     * Returns a **challenge**, never an access token. `next` says what step 2
+     * is: `totp_required` for an enrolled admin, `enrolment_required` for a
+     * first login (which also carries the QR material).
+     */
+    adminLogin: (client: ApiClient, username: string, password: string) =>
+      client.post<AdminLoginResult>('/api/v1/admin/auth/login', {
+        body: { username, password },
+        authenticated: false,
+      }),
+    /** Step 2a: the 6-digit authenticator code. This is what mints the token. */
+    adminVerifyTotp: (client: ApiClient, challengeToken: string, code: string) =>
+      client.post<AdminSession>('/api/v1/admin/auth/totp/verify', {
+        body: { challenge_token: challengeToken, code },
+        authenticated: false,
+      }),
+    /** Step 2b: a single-use recovery code, for a lost phone. */
+    adminUseRecovery: (client: ApiClient, challengeToken: string, code: string) =>
+      client.post<AdminSession>('/api/v1/admin/auth/recovery', {
+        body: { challenge_token: challengeToken, code },
+        authenticated: false,
+      }),
+    /** Step 2c (first login): prove one code from the pending secret. */
+    adminConfirmEnrolment: (client: ApiClient, challengeToken: string, code: string) =>
+      client.post<AdminSession>('/api/v1/admin/auth/totp/enrol/confirm', {
+        body: { challenge_token: challengeToken, code },
+        authenticated: false,
+      }),
     requestOtp: (client: ApiClient, phone: string) =>
       client.post<{ sent: boolean }>('/api/v1/auth/otp/request', {
         body: { phone_e164: phone },
