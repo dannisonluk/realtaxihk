@@ -473,8 +473,12 @@ class TestResponseHygiene:
 # --------------------------------------------------------------------------- #
 class TestCursorScoping:
     def test_foreign_before_id_is_not_an_existence_oracle(self, client):
-        owner = _login(client, _phone())
-        other = _login(client, _phone())
+        # `client.activate` rather than `_login`: this test is about the cursor
+        # being scoped, and the P-2/P-4 gates would refuse the order first and
+        # hide the behaviour under test. `_login` stays as-is for the tests that
+        # genuinely exercise the auth routes.
+        owner = {"access_token": client.activate(_phone())}
+        other = {"access_token": client.activate(_phone())}
         created = client.post(
             "/api/v1/orders",
             headers={"Authorization": f"Bearer {owner['access_token']}"},

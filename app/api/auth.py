@@ -31,6 +31,7 @@ from app.core.masking import mask_phone
 from app.core.security import create_access_token
 from app.core.token_revocation import revoke_user_tokens
 from app.models import User, UserRole
+from app.services import phone_reverify_service as phone_reverify
 from app.services.otp_service import OtpService
 from app.services.refresh_service import RefreshService
 
@@ -180,6 +181,18 @@ async def otp_verify(
         raise
     except ValueError as exc:
         raise BusinessRuleError(str(exc)) from exc
+
+    # P-4: a login OTP proves the number just as a dedicated re-verify does, so it
+    # must reset the monthly clock too. Omitting this would produce the worst
+    # version of the bug: users who log in every day are the most obviously
+    # reachable, yet their deadline only moves if they happen to walk into the
+    # re-verify screen. Newly created accounts already got a deadline in
+    # `verify_otp`; this covers the existing ones, whose window is either expired
+    # or approaching.
+    if not auth.created:
+        await phone_reverify.mark_verified(session, auth.user)
+        await session.commit()
+
     token = create_access_token({"sub": str(auth.user.id), "role": auth.user.role.value})
     refresh = await RefreshService(session).issue(auth.user.id)
     return {

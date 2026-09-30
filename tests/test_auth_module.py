@@ -117,12 +117,15 @@ class TestAuthApi:
 
 class TestDriverKycApi:
     def _new_user_token(self, client, phone: str) -> str:
-        client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
-        r = client.post(
-            "/api/v1/auth/otp/verify",
-            json={"phone_e164": phone, "code": client.otp_inbox[phone]},
-        )
-        return r.json()["access_token"]
+        """A fully verified, ACTIVE account's token.
+
+        Was a bare OTP login, which no longer reaches driver registration: P-2
+        gates on `AccountStatus.ACTIVE` and P-4 layers a phone deadline on top.
+        These tests are about the KYC flow that follows registration, so they
+        clear those gates first — the gates themselves are covered by
+        `test_identity_api` and `test_phone_reverify`.
+        """
+        return client.activate(phone)
 
     def test_register_driver_pending_kyc(self, client):
         token = self._new_user_token(client, "+85291230001")

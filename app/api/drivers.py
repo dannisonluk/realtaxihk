@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.db import get_session
-from app.core.deps import Principal, require_active_user
+from app.core.deps import Principal, require_active_user, require_phone_current
 from app.core.money import money_str
 from app.models import DriverDeposit, DriverProfile, DriverStatus, LedgerEntry, RefundRequest
 from app.services.refund_service import RefundService
@@ -75,7 +75,7 @@ async def _get_profile(session: AsyncSession, user_id) -> DriverProfile | None:
 @router.post("/register", status_code=201)
 async def register_driver(
     payload: DriverRegisterIn,
-    user: Principal = Depends(require_active_user),
+    user: Principal = Depends(require_phone_current),
     session: AsyncSession = Depends(get_session),
 ):
     if await _get_profile(session, user.id) is not None:
@@ -180,7 +180,7 @@ def _refund_out(r: RefundRequest) -> dict:
 @router.post("/me/refund/request", status_code=201)
 async def request_refund(
     payload: RefundRequestIn,
-    user: Principal = Depends(require_active_user),
+    user: Principal = Depends(require_phone_current),
     session: AsyncSession = Depends(get_session),
 ):
     """Ask to withdraw the whole remaining deposit.

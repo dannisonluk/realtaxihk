@@ -234,6 +234,23 @@ def client(otp_inbox) -> TestClient:
             tc.db_url = _db_url(dbname)  # service-level concurrency tests
             tc.db_factory = factory
             tc.otp_inbox = otp_inbox  # helpers read the code the app really sent
+
+            # Account helpers, bound to this client's database. Attached rather
+            # than exposed as fixtures so a legacy helper can become
+            # `client.activate(phone)` with a one-line change, instead of every
+            # call site needing a new fixture threaded through its signature.
+            def _sign_in(phone: str) -> str:
+                return sign_in(tc, phone)
+
+            def _activate(phone: str, *, username: str | None = None) -> str:
+                return activate(tc, phone, username=username)
+
+            def _exec(sql: str, params: dict | None = None) -> None:
+                return _exec_sync(tc, sql, params)
+
+            tc.sign_in = _sign_in
+            tc.activate = _activate
+            tc.exec_sql = _exec
             yield tc
     finally:
         asyncio.run(engine.dispose())
@@ -253,3 +270,103 @@ async def db_session():
     finally:
         await engine.dispose()
         await _drop_test_db(dbname)
+
+
+# --------------------------------------------------------------------------- #
+# Shared account helpers
+# --------------------------------------------------------------------------- #
+
+
+def _exec_sync(client, sql: str, params: dict | None = None) -> None:
+    """Run one statement on the test's own database, synchronously.
+
+    Uses its own engine — not the app's, which is bound to the TestClient's
+    event loop and would deadlock if driven from here.
+
+    `asyncio.run` cannot be called from inside a running loop, and some tests are
+    `async def` (they need `db_session`). Those get the statement executed on a
+    worker thread with its own loop, which is the only way to reach the database
+    from sync code in that situation. Detected via a try/except rather than
+    `asyncio.get_running_loop()` so the sync path stays the cheap, common one.
+    """
+
+    async def _inner():
+        engine = create_async_engine(client.db_url, poolclass=NullPool)
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(sql), params or {})
+        finally:
+            await engine.dispose()
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(_inner())
+        return
+
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(asyncio.run, _inner()).result()
+
+
+def sign_in(client, phone: str) -> str:
+    """Phone-OTP login, returning an access token. Creates the account if new.
+
+    Backdates the previous OTP rows first. A code is single-use and a resend
+    cooldown blocks a fresh request while one is recent — both are production
+    behaviour, and both make a *second* sign-in in one test impossible without
+    this. Backdating is arrangement, not a bypass: the app under test still sees
+    a genuine single-use code inside its cooldown window.
+    """
+    _exec_sync(
+        client,
+        "UPDATE otp_codes SET created_at = created_at - interval '10 minutes', "
+        "consumed_at = NULL WHERE phone_e164 = :p",
+        {"p": phone},
+    )
+    r = client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
+    assert r.status_code == 200, r.text
+    r = client.post(
+        "/api/v1/auth/otp/verify",
+        json={"phone_e164": phone, "code": client.otp_inbox[phone]},
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["access_token"]
+
+
+def activate(client, phone: str, *, username: str | None = None) -> str:
+    """Sign in and bring the account to ACTIVE, returning its access token.
+
+    P-2 gates every business route on `AccountStatus.ACTIVE` via
+    `require_verified_account`, and P-4 layers a phone-deadline check on top
+    (`require_phone_current`). A test that is *about* fleets, settlement or
+    orders has to clear those gates first, or it asserts the wrong refusal.
+
+    Writing the row directly rather than walking the profile + email-verify
+    endpoints is deliberate: this helper is about getting an account out of the
+    way, and doing it through the API would couple every unrelated test file to
+    whatever P-2's registration flow looks like next month. The flows themselves
+    are covered by `test_identity_api.py` and `test_phone_reverify.py`.
+    """
+    token = sign_in(client, phone)
+    _exec_sync(
+        client,
+        "UPDATE users SET account_status = 'ACTIVE', "
+        "phone_verified_at = COALESCE(phone_verified_at, now()), "
+        "phone_reverify_due_at = now() + make_interval(days => :d), "
+        "email = COALESCE(email, :e), "
+        "email_verified_at = COALESCE(email_verified_at, now()), "
+        "username = COALESCE(username, :u) WHERE phone_e164 = :p",
+        {
+            "p": phone,
+            "u": username or ("u" + phone[-6:]),
+            "e": f"{phone.lstrip('+')}@example.hk",
+            "d": get_settings().phone_reverify_interval_days,
+        },
+    )
+    # A fresh token: `require_active_user` compares the JWT role claim against
+    # the live row, and the UPDATE above does not change the role — this
+    # re-sign-in exists so callers that promote to ADMIN afterwards get a token
+    # minted against current state, matching the pattern the helper documents.
+    return token

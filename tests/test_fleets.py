@@ -22,14 +22,15 @@ from conftest import ADMIN_ID
 
 
 def _mk_user_token(client, phone: str) -> str:
-    r = client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
-    assert r.status_code == 200, r.text
-    r = client.post(
-        "/api/v1/auth/otp/verify",
-        json={"phone_e164": phone, "code": client.otp_inbox[phone]},
-    )
-    assert r.status_code == 200, r.text
-    return r.json()["access_token"]
+    """A fully verified, ACTIVE account's token.
+
+    Was a bare OTP login, which no longer reaches any business route: P-2 gates
+    on `AccountStatus.ACTIVE` (`require_verified_account`) and P-4 adds a phone
+    deadline on top (`require_phone_current`). This test file is about fleet
+    billing, not about those gates, so it clears them and moves on — the gates
+    themselves are covered by `test_identity_api` and `test_phone_reverify`.
+    """
+    return client.activate(phone)
 
 
 def _admin_headers() -> dict:

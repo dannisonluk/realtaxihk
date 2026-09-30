@@ -64,12 +64,26 @@ def register_exception_handlers(app: FastAPI) -> None:
             status.HTTP_429_TOO_MANY_REQUESTS: "RATE_LIMITED",
             status.HTTP_503_SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
         }
+        # A `detail` that is already a structured dict goes to `details`, not
+        # into `message`. `str()` on it produced Python repr — `{'reason':
+        # 'PHONE_REVERIFY_DUE'}` with single quotes and braces — which is not
+        # JSON, so a client could not parse the machine-readable reason the
+        # guards go to the trouble of attaching. Every structured refusal
+        # (ACCOUNT_UNVERIFIED, PHONE_REVERIFY_DUE, the map in
+        # `app.api.geo._reject`) was flattened this way.
+        if isinstance(exc.detail, dict):
+            payload = dict(exc.detail)
+            message = payload.pop("message", "Request failed.")
+            details: Any = payload
+        else:
+            message = str(exc.detail)
+            details = None
         # SEC: `WWW-Authenticate` and `Retry-After` are part of the contract for
         # 401/429/503 — dropping them makes clients (and load balancers) behave
         # worse than the status code alone implies.
         return JSONResponse(
             status_code=exc.status_code,
-            content=_error(code_map.get(exc.status_code, "HTTP_ERROR"), str(exc.detail)),
+            content=_error(code_map.get(exc.status_code, "HTTP_ERROR"), message, details),
             headers=getattr(exc, "headers", None),
         )
 

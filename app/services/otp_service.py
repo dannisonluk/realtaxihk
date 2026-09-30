@@ -34,6 +34,7 @@ from app.core.config import get_settings
 from app.core.exceptions import BusinessRuleError
 from app.models import OtpCode, User, UserRole
 from app.services.notify import get_whatsapp_provider
+from app.services.phone_reverify_service import next_deadline
 
 _PHONE_RE = re.compile(r"^\+852\d{8}$")
 _MAX_ATTEMPTS = 5
@@ -100,6 +101,31 @@ class OtpService:
         return {"sent": True, "expires_in": ttl_seconds}
 
     async def verify_otp(self, phone_e164: str, code: str) -> AuthResult:
+        user, created = await self._consume(phone_e164, code)
+        return AuthResult(user=user, created=created)
+
+    async def verify_otp_for_user(self, user: User, code: str) -> bool:
+        """P-4: prove that `user` still controls the number on their account.
+
+        Returns `created` so the caller can mirror `verify_otp`'s shape, but the
+        point is different: this asserts an *existing* binding rather than
+        establishing one. `verify_otp` looks the user up *by* the phone, so it
+        cannot tell "I am proving my own number" from "I am logging in as whoever
+        owns this number" — and a re-verification endpoint that accepted either
+        would let a stolen OTP move a stranger's deadline, or worse, let a caller
+        act on a row that is not the one their token belongs to.
+
+        `_consume` still creates the row if the number is somehow ownerless;
+        that branch is unreachable from the API, which loads the caller's row
+        first, but leaving the shared helper uniform beats forking it and having
+        two behaviours quietly drift.
+        """
+        found, created = await self._consume(user.phone_e164, code)
+        if found.id != user.id:
+            raise BusinessRuleError("OTP does not belong to this account")
+        return created
+
+    async def _consume(self, phone_e164: str, code: str) -> tuple[User, bool]:
         if not _PHONE_RE.fullmatch(phone_e164 or ""):
             raise ValueError("phone_e164 must be an HK number in E.164 form (+852XXXXXXXX)")
 
@@ -143,11 +169,16 @@ class OtpService:
         )
         created = user is None
         if created:
+            # The first deadline is set at creation, not left NULL. A NULL column
+            # is treated as "due" by the P-4 guard (fail-closed for grandfathered
+            # rows), so leaving it empty would make a brand-new account show a
+            # spurious "re-verify your number" prompt on its first order.
             user = User(
                 phone_e164=phone_e164,
                 role=UserRole.PASSENGER,
                 phone_verified_at=_now(),
+                phone_reverify_due_at=next_deadline(),
             )
             self.session.add(user)
             await self.session.flush()
-        return AuthResult(user=user, created=created)
+        return user, created

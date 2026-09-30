@@ -7,6 +7,7 @@ there on the first successful OTP verify; this router finishes it.
     GET  /api/v1/identity/username-check   — availability, for live form feedback
     POST /api/v1/identity/email/request    — send a verification link
     POST /api/v1/identity/email/confirm    — consume the link
+    POST /api/v1/identity/phone/reverify   — P-4: re-prove the phone, reset the clock
     GET  /api/v1/identity/me               — the full profile
 
 The confirm endpoint is deliberately **unauthenticated**. The link is usually
@@ -29,6 +30,7 @@ from app.core.deps import Principal, require_active_user
 from app.core.exceptions import BusinessRuleError
 from app.core.masking import mask_phone
 from app.models import Gender, User
+from app.services import phone_reverify_service as phone_reverify
 from app.services.identity_service import IdentityService
 
 logger = logging.getLogger("realtaxihk.identity")
@@ -39,6 +41,8 @@ _EMAIL_IP_RATE_LIMIT = 10  # verification emails per IP per window
 _EMAIL_IP_WINDOW_S = 3600
 _CHECK_IP_RATE_LIMIT = 120  # username availability, polled as the user types
 _CHECK_IP_WINDOW_S = 60
+_PHONE_REVERIFY_IP_RATE_LIMIT = 20  # lower than login's 60: this is not a launch path
+_PHONE_REVERIFY_IP_WINDOW_S = 3600
 
 
 class ProfileIn(BaseModel):
@@ -75,6 +79,7 @@ def _client_ip(request: Request) -> str:
 
 
 def _profile_out(user: User) -> dict:
+    state = phone_reverify.evaluate(user)
     return {
         "id": str(user.id),
         "username": user.username,
@@ -89,6 +94,11 @@ def _profile_out(user: User) -> dict:
         "phone_reverify_due_at": (
             user.phone_reverify_due_at.isoformat() if user.phone_reverify_due_at else None
         ),
+        # P-4: the derived state, not just the raw deadline. `is_due` and
+        # `is_blocked` are separate on purpose — a reminder and a soft block are
+        # different moments a week apart, and the client needs to tell them
+        # apart to decide between a banner and a modal.
+        **state.as_dict(),
         "account_status": user.account_status.value,
         "role": user.role.value,
     }
@@ -209,3 +219,60 @@ async def confirm_email(
         "email": row.email,
         "account_status": row.account_status.value,
     }
+
+
+class PhoneReverifyIn(BaseModel):
+    phone_e164: str = Field(pattern=r"^\+852\d{8}$")
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+@router.post("/phone/reverify")
+async def reverify_phone(
+    payload: PhoneReverifyIn,
+    request: Request,
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """P-4: re-prove the phone number and push the next deadline out a month.
+
+    Deliberately guarded by `require_active_user` and **not** by
+    `require_phone_current`. The whole point of a soft block is that an overdue
+    account can still fix itself: gating the remedy behind the condition would
+    make an overdue account permanently unable to clear it, which is the one way
+    a soft block becomes a lockout.
+
+    The OTP itself is verified by `OtpService`, the same code path as login — the
+    number has to be proven by a code sent to it, not merely asserted. What is
+    new here is the second half: `mark_verified` moves `phone_reverify_due_at`
+    forward. Without that the caller would verify and stay blocked.
+    """
+    from app.services.otp_service import OtpService
+
+    limiter = request.app.state.rate_limiter
+    if not await limiter.allow(
+        f"identity:phone-reverify:{_client_ip(request)}",
+        _PHONE_REVERIFY_IP_RATE_LIMIT,
+        _PHONE_REVERIFY_IP_WINDOW_S,
+    ):
+        raise HTTPException(status_code=429, detail="too many verification attempts")
+
+    row = await session.get(User, user.id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    if payload.phone_e164 != row.phone_e164:
+        # A re-verify proves a number you already own. Accepting a new one here
+        # would make this endpoint a silent phone-change primitive, bypassing
+        # whatever safeguards a real change-of-number flow needs.
+        raise HTTPException(
+            status_code=400, detail="this number is not the one on your account"
+        )
+
+    created = await _run(OtpService(session).verify_otp_for_user(row, payload.code), session)
+    # `verify_otp_for_user` refuses unless the code was issued for *this* row's
+    # number, so the deadline can be moved with confidence: the code proved the
+    # phone on this account, not merely that someone somewhere held a valid OTP.
+    await phone_reverify.mark_verified(session, row)
+    await session.commit()
+    logger.info("phone re-verified user=%s created=%s", row.id, created)
+    return {"verified": True, "created": created, **_profile_out(row)}

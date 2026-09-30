@@ -15,6 +15,15 @@ Security wave (docs/SECURITY_AUDIT.md):
   every subsequent list call re-sent);
 - SEC-26 the `before_id` keyset cursor is scoped to the caller's own orders, so
   it can no longer be used to probe whether an arbitrary order id exists.
+
+P-4 monthly phone re-verification, applied as a **soft** block:
+- `create_order` and `grab_order` run `require_phone_current`, not
+  `require_active_user`. These are the two routes that *start new business*, and
+  an overdue phone number refuses exactly those.
+- The lifecycle routes (`arrive`/`start`/`complete`) and `cancel` deliberately
+  keep the looser guard. A driver who is already on a trip must be able to finish
+  it, and a passenger must always be able to cancel. Blocking either would strand
+  a real journey to enforce a reminder, which is not a trade worth making.
 """
 
 from __future__ import annotations
@@ -29,7 +38,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session, get_session_factory
-from app.core.deps import Principal, require_active_user
+from app.core.deps import Principal, require_active_user, require_phone_current
 from app.core.exceptions import BusinessRuleError
 from app.models import (
     DriverProfile,
@@ -126,7 +135,7 @@ async def _driver_profile_of(session: AsyncSession, user_id) -> DriverProfile | 
 async def create_order(
     payload: OrderCreateIn,
     request: Request,
-    user: Principal = Depends(require_active_user),
+    user: Principal = Depends(require_phone_current),
     session: AsyncSession = Depends(get_session),
 ):
     limiter = request.app.state.rate_limiter
@@ -240,7 +249,7 @@ async def order_detail(
 @router.post("/{order_id}/grab")
 async def grab_order(
     order_id: str,
-    user: Principal = Depends(require_active_user),
+    user: Principal = Depends(require_phone_current),
     session: AsyncSession = Depends(get_session),
     factory=Depends(get_session_factory),
     redis=Depends(_redis),

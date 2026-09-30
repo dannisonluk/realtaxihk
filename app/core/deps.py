@@ -25,6 +25,7 @@ from app.core.db import get_session
 from app.core.security import decode_access_token
 from app.core.token_revocation import is_token_revoked
 from app.models import AccountStatus, User, UserRole
+from app.services import phone_reverify_service as phone_reverify
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -150,6 +151,45 @@ async def require_verified_account(
                 "message": "account verification is incomplete",
                 "reason": "ACCOUNT_UNVERIFIED",
                 "missing": missing,
+            },
+        )
+    return user
+
+
+async def require_phone_current(
+    user: Principal = Depends(require_verified_account),
+    session: AsyncSession = Depends(get_session),
+) -> Principal:
+    """P-4: the monthly phone re-verification, as a **soft** block.
+
+    Attached only to the routes that *start new business* — creating an order,
+    accepting one, going online. Not to reads, and not to `require_verified_account`
+    itself, because the point of a soft block is precisely that the account keeps
+    working: a driver mid-shift can still see their current trip, their statement
+    and their profile while their number is overdue. They just cannot take on
+    anything new until it is re-proven.
+
+    That distinction is the whole reason this is a separate dependency rather than
+    another branch in `require_verified_account`. Hanging it on the verified gate
+    would turn a reminder into a lockout, which is the failure mode the grace
+    window exists to avoid.
+
+    The 403 carries `reason: PHONE_REVERIFY_DUE` plus the deadline, so the client
+    can show "re-verify to keep accepting orders" with the date rather than a
+    generic refusal.
+    """
+    row = await session.get(User, user.id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="account not found")
+
+    state = phone_reverify.evaluate(row)
+    if state.is_blocked:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "message": "phone re-verification is overdue",
+                "reason": phone_reverify.REASON_PHONE_REVERIFY_DUE,
+                **state.as_dict(),
             },
         )
     return user

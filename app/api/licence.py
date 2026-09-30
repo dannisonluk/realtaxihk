@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
-from app.core.deps import Principal, require_active_user
+from app.core.deps import Principal, require_active_user, require_phone_current
 from app.core.exceptions import BusinessRuleError
 from app.models import DocumentKind
 from app.services.licence_service import MAX_SUBMISSIONS_PER_DAY, LicenceService
@@ -144,7 +144,7 @@ async def presign_upload(
 @router.post("/submissions", status_code=status.HTTP_201_CREATED)
 async def submit_licence(
     payload: SubmitIn,
-    user: Principal = Depends(require_active_user),
+    user: Principal = Depends(require_phone_current),
     session: AsyncSession = Depends(get_session),
 ):
     """Open a licence submission for manual review.
