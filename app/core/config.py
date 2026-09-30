@@ -149,6 +149,48 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""  # optional error tracking (P2-4)
     prometheus_enabled: bool = False  # mounts /metrics when true AND metrics_token set
 
+    # --- Email delivery (P-2: registration verification) ---
+    # SMTP rather than a vendor API: the verification link is low-volume and
+    # transactional, and SMTP works with any provider (SES, Postmark, a mailbox)
+    # without adding an SDK and a second credential format to manage.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""  # e.g. "RealTaxi HK <no-reply@realtaxihk.com>"
+    smtp_starttls: bool = True
+    # How long a verification link stays usable. Long enough to survive an email
+    # sitting in a queue, short enough that a leaked link is not permanent.
+    email_verify_ttl_hours: int = 24
+    # The base URL the verification link points at (the app's public origin).
+    # A missing value in prod is caught by `_fail_closed` below, because a link
+    # built from a default would send users to the wrong host.
+    public_base_url: str = "http://127.0.0.1:8000"
+
+    # --- Object storage (P-2: avatars, P-3: licence photos) ---
+    # Cloudflare R2 via its S3-compatible API. `endpoint_url` is the account
+    # endpoint (`https://<account_id>.r2.cloudflarestorage.com`).
+    r2_endpoint_url: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket: str = ""
+    # Public read host for the bucket, if one is configured. Empty means the
+    # API serves images through a signed redirect instead.
+    r2_public_base_url: str = ""
+    # Uploads are presigned by the API and sent straight to R2 by the client, so
+    # the API never proxies a 5 MB photo through its own worker.
+    upload_url_ttl_s: int = 900
+    max_avatar_bytes: int = 5 * 1024 * 1024
+
+    # --- Account lifecycle (P-2 / P-4) ---
+    # P-4: how often a user must re-prove the phone number.
+    phone_reverify_interval_days: int = 30
+    # Once due, how long the account keeps working before new business is
+    # blocked. A grace window rather than an immediate block: the re-verify is
+    # triggered by the app, and locking a driver out mid-shift because a
+    # notification was missed is worse than a day of grace.
+    phone_reverify_grace_days: int = 7
+
     driver_deposit_default_hkd: int = 500
     no_show_penalty_hkd: int = 50
 
@@ -186,6 +228,23 @@ class Settings(BaseSettings):
             # SEC-02: the dev OTP shortcut is not a prod option, ever.
             if self.allow_dev_otp:
                 raise ValueError("ALLOW_DEV_OTP must not be enabled when APP_ENV=prod")
+
+            # P-2: a verification email is only usable if it can be sent and the
+            # link points at the real host. Both fail *silently* at runtime — the
+            # user simply never gets an email, or gets one pointing at localhost —
+            # so refuse to start instead.
+            if not self.smtp_host or not self.smtp_from:
+                raise ValueError(
+                    "SMTP_HOST and SMTP_FROM must be set when APP_ENV=prod — "
+                    "registration cannot verify an email address without them."
+                )
+            if not self.public_base_url.startswith("https://"):
+                raise ValueError(
+                    f"PUBLIC_BASE_URL must be an https:// URL in prod, got "
+                    f"{self.public_base_url!r}. A verification link built on http "
+                    "travels in cleartext and points at the wrong host if this is "
+                    "still the default."
+                )
 
         # 3) SEC-04: a secret must exist and carry real entropy. Length alone is not
         #    enough — "x" * 64 is 64 chars and zero entropy.

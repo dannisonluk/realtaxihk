@@ -223,6 +223,12 @@ _PUBLIC_PATHS = {
     "/api/v1/admin/auth/recovery",
     "/api/v1/admin/auth/totp/enrol",
     "/api/v1/admin/auth/totp/enrol/confirm",
+    # P-2: the email verification link is opened from an inbox, usually in a
+    # different browser or on a different device from the app session, so it
+    # cannot require a bearer token. The 256-bit single-use token in the link is
+    # the credential instead — stored only as a SHA-256 digest, expiring, and
+    # stamped on use. It grants exactly one thing: marking one address verified.
+    "/api/v1/identity/email/confirm",
 }
 
 

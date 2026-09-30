@@ -1,0 +1,211 @@
+"""Registration identity API (P-2): profile completion and email verification.
+
+Complements `app.api.auth`, which owns the phone-OTP half. An account is created
+there on the first successful OTP verify; this router finishes it.
+
+    POST /api/v1/identity/profile          — username, names, gender, avatar key
+    GET  /api/v1/identity/username-check   — availability, for live form feedback
+    POST /api/v1/identity/email/request    — send a verification link
+    POST /api/v1/identity/email/confirm    — consume the link
+    GET  /api/v1/identity/me               — the full profile
+
+The confirm endpoint is deliberately **unauthenticated**. The link is usually
+opened in a different browser or on a different device from the app session, and
+requiring a bearer token would make it unusable exactly when it is needed. The
+token in the link is the credential — 256 bits, single-use, expiring — which is
+why it can stand alone.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.db import get_session
+from app.core.deps import Principal, require_active_user
+from app.core.exceptions import BusinessRuleError
+from app.core.masking import mask_phone
+from app.models import Gender, User
+from app.services.identity_service import IdentityService
+
+logger = logging.getLogger("realtaxihk.identity")
+
+router = APIRouter(prefix="/api/v1/identity", tags=["identity"])
+
+_EMAIL_IP_RATE_LIMIT = 10  # verification emails per IP per window
+_EMAIL_IP_WINDOW_S = 3600
+_CHECK_IP_RATE_LIMIT = 120  # username availability, polled as the user types
+_CHECK_IP_WINDOW_S = 60
+
+
+class ProfileIn(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    given_name: str = Field(min_length=1, max_length=60)
+    family_name: str = Field(min_length=1, max_length=60)
+    gender: Gender | None = None
+    # An R2 object key, never a URL — the service rejects anything with a scheme
+    # so a `javascript:` value cannot reach an `<img src>`.
+    avatar_key: str | None = Field(default=None, max_length=255)
+
+
+class EmailIn(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
+class ConfirmIn(BaseModel):
+    token: str = Field(min_length=16, max_length=512)
+
+
+def _client_ip(request: Request) -> str:
+    """Caller address; X-Forwarded-For only behind a trusted proxy (SEC-07)."""
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    if settings.trusted_proxy_count > 0:
+        fwd = request.headers.get("x-forwarded-for")
+        if fwd:
+            hops = [h.strip() for h in fwd.split(",") if h.strip()]
+            if hops:
+                idx = max(0, len(hops) - settings.trusted_proxy_count)
+                return hops[idx]
+    return request.client.host if request.client else "unknown"
+
+
+def _profile_out(user: User) -> dict:
+    return {
+        "id": str(user.id),
+        "username": user.username,
+        "given_name": user.given_name,
+        "family_name": user.family_name,
+        "gender": user.gender.value if user.gender else None,
+        "avatar_key": user.avatar_key,
+        "email": user.email,
+        "email_verified": user.email_verified_at is not None,
+        "phone_masked": mask_phone(user.phone_e164),
+        "phone_verified": user.phone_verified_at is not None,
+        "phone_reverify_due_at": (
+            user.phone_reverify_due_at.isoformat() if user.phone_reverify_due_at else None
+        ),
+        "account_status": user.account_status.value,
+        "role": user.role.value,
+    }
+
+
+async def _run(coro, session: AsyncSession):
+    """Map a service refusal onto HTTP, **committing the audit-relevant writes**.
+
+    Commits before raising for the same reason as `app.api.admin_auth._run`:
+    `get_session` rolls back on exception, and a refusal is an exception. Without
+    this, a `consumed_at` stamp written just before a later check fails would be
+    silently discarded — the token would stay usable.
+    """
+    try:
+        return await coro
+    except BusinessRuleError as exc:
+        await session.commit()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/me")
+async def me(
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    row = await session.get(User, user.id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    return _profile_out(row)
+
+
+@router.post("/profile")
+async def complete_profile(
+    payload: ProfileIn,
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    row = await session.get(User, user.id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    _result = await _run(
+        IdentityService(session).complete_profile(
+            row,
+            username=payload.username,
+            given_name=payload.given_name,
+            family_name=payload.family_name,
+            gender=payload.gender,
+            avatar_key=payload.avatar_key,
+        ),
+        session,
+    )
+    await session.commit()
+    # The full profile, not just the echoed username: completing it may be what
+    # flipped the account to ACTIVE, and the client needs to see that.
+    return _profile_out(row)
+
+
+@router.get("/username-check")
+async def username_check(
+    username: str,
+    request: Request,
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Availability for live form feedback.
+
+    Rate-limited because it is an unauthenticated-in-spirit enumeration surface
+    otherwise: polled on every keystroke, it would let anyone walk the username
+    space. The limiter caps that without making the field feel broken.
+    """
+    limiter = request.app.state.rate_limiter
+    if not await limiter.allow(
+        f"identity:username-check:{_client_ip(request)}",
+        _CHECK_IP_RATE_LIMIT,
+        _CHECK_IP_WINDOW_S,
+    ):
+        raise HTTPException(status_code=429, detail="too many checks — slow down")
+
+    available = await IdentityService(session).username_available(username)
+    return {"username": username.strip().lower(), "available": available}
+
+
+@router.post("/email/request")
+async def request_email(
+    payload: EmailIn,
+    request: Request,
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    limiter = request.app.state.rate_limiter
+    if not await limiter.allow(
+        f"identity:email:{_client_ip(request)}", _EMAIL_IP_RATE_LIMIT, _EMAIL_IP_WINDOW_S
+    ):
+        raise HTTPException(status_code=429, detail="too many verification emails — try later")
+
+    row = await session.get(User, user.id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    result = await _run(
+        IdentityService(session).request_email_verification(row, payload.email), session
+    )
+    await session.commit()
+    return result
+
+
+@router.post("/email/confirm")
+async def confirm_email(
+    payload: ConfirmIn,
+    session: AsyncSession = Depends(get_session),
+):
+    """Consume a verification link. No bearer token — see the module docstring."""
+    row = await _run(IdentityService(session).confirm_email(payload.token), session)
+    await session.commit()
+    return {
+        "verified": True,
+        "email": row.email,
+        "account_status": row.account_status.value,
+    }

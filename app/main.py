@@ -31,6 +31,7 @@ from app.api.drivers import router as drivers_router
 from app.api.fare import router as fare_router
 from app.api.fleets import admin_router as admin_fleets_router
 from app.api.fleets import router as fleets_router
+from app.api.identity import router as identity_router
 from app.api.orders import router as orders_router
 from app.api.tracking import router as tracking_router
 from app.api.trips import router as trips_router
@@ -165,6 +166,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(fare_router)
     app.include_router(auth_router)
+    app.include_router(identity_router)
     app.include_router(drivers_router)
     # Mounted before the platform `admin_router` so `/api/v1/admin/auth/*` is
     # matched by the admin-auth handlers rather than falling into a catch-all.

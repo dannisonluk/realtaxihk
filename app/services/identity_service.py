@@ -1,0 +1,366 @@
+"""Registration identity: email verification, and the Uber-shaped profile.
+
+What "registration" means here
+------------------------------
+There is no signup form that creates an account out of nothing. An account is
+born the moment a phone number proves itself with an OTP (`OtpService.verify_otp`
+creates a `users` row with `account_status = UNVERIFIED`). Everything after that
+is *completing a profile and proving an email*, which is why this module has no
+`register()` — the phone is step one and it already works.
+
+That ordering is deliberate. It means an account always has a verified phone
+before it has anything else, so there is never a half-registered row with no
+reachable owner, and it makes the grandfathering path trivial: every pre-existing
+row is already in the right state, just without a username.
+
+The two gates
+-------------
+`account_status` is `UNVERIFIED` until **both** an email and a phone are proven.
+The user's requirement was "only verified with OTP and email can be used", so the
+gate is enforced in one place — `require_verified_account` in `app/core/deps.py`
+— rather than scattered across endpoints.
+
+Email is proven by a **link**, not a code
+-----------------------------------------
+A code would have to be typed back into an app session that may not exist yet
+(the user could be on a laptop). A link works everywhere, and the token can
+carry the intent. The token is stored as a SHA-256 digest, single-use, and
+expiring, so a leaked database row is not a working link.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+import re
+import secrets
+import unicodedata
+import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import get_settings
+from app.core.exceptions import BusinessRuleError
+from app.models import AccountStatus, EmailVerificationToken, Gender, User
+from app.services.notify import get_email_provider
+
+logger = logging.getLogger("realtaxihk.identity")
+
+# Local part per RFC 5321 allows a lot; this is deliberately stricter because
+# the value is echoed in a URL and stored, and nothing legitimate needs the
+# exotic cases. Quoted local parts and comments are rejected on purpose.
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,189}\.[A-Za-z]{2,}$")
+# Same shape as the admin rule, for the same reason: lowercase, no spaces, so
+# uniqueness is case-insensitive without a functional index.
+_USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,31}$")
+# A URI scheme prefix: `javascript:`, `data:`, `http:`, `file:` … Rejecting
+# anything that looks like one keeps the value a plain object key.
+_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*:")
+
+MAX_USERNAME_ATTEMPTS = 5
+_TOKEN_BYTES = 32  # 256 bits — this is a bearer credential in an email
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _as_aware(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def normalize_username(raw: str) -> str:
+    """Lowercase and strip. No NFKC folding beyond that — see `_assert_username`."""
+    return (raw or "").strip().lower()
+
+
+def normalize_email(raw: str) -> str:
+    """Lowercase the domain only, never the local part.
+
+    RFC 5321 §2.3.11 says the local part is case-SENSITIVE and only the domain is
+    case-insensitive. Lowercasing the whole address (the usual shortcut) merges
+    `A@x.com` and `a@x.com`, which are technically different mailboxes — and more
+    practically, it means the address the user typed is not the one we deliver to.
+    """
+    value = (raw or "").strip()
+    local, _, domain = value.partition("@")
+    if not domain:
+        return value.lower()
+    return f"{local}@{domain.lower()}"
+
+
+def _hash_token(raw: str) -> str:
+    """Plain SHA-256, not argon2.
+
+    The token is 256 bits of CSPRNG output, so there is no dictionary to attack
+    and no benefit to a memory-hard KDF — while argon2 at 64 MiB would run on
+    every click of a verification link, which is a trivial way to make the
+    endpoint a resource-exhaustion lever.
+    """
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+@dataclass(frozen=True)
+class ProfileOut:
+    user_id: uuid.UUID
+    username: str
+
+
+class IdentityService:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    # ------------------------------------------------------------------ #
+    # Email verification
+    # ------------------------------------------------------------------ #
+
+    async def request_email_verification(self, user: User, email: str) -> dict:
+        """Issue (or re-issue) a verification link for `email`.
+
+        Returns the TTL, never the token. In dev the link is logged by
+        `DevEmailProvider`; in prod it only exists in the message.
+        """
+        address = normalize_email(email)
+        self._assert_email(address)
+
+        # Uniqueness is checked here as well as by the index, so the caller gets
+        # a sentence instead of an IntegrityError. The index is still the
+        # authority — this check races, the index does not.
+        taken = (
+            await self.session.execute(
+                select(User.id).where(User.email == address, User.id != user.id)
+            )
+        ).scalar_one_or_none()
+        if taken is not None:
+            raise BusinessRuleError("that email address is already in use")
+
+        settings = get_settings()
+        raw = secrets.token_urlsafe(_TOKEN_BYTES)
+        self.session.add(
+            EmailVerificationToken(
+                user_id=user.id,
+                email=address,
+                token_hash=_hash_token(raw),
+                expires_at=_now() + timedelta(hours=settings.email_verify_ttl_hours),
+            )
+        )
+
+        # Stored immediately, but `email_verified_at` is NOT set: an unverified
+        # address on the row is what lets the UI say "we sent it to X". The
+        # account gate reads `email_verified_at`, not `email`.
+        user.email = address
+        await self.session.flush()
+
+        link = f"{settings.public_base_url.rstrip('/')}/verify-email?token={raw}"
+        await get_email_provider().send_verification_email(address, link)
+
+        return {
+            "sent": True,
+            "expires_in_hours": settings.email_verify_ttl_hours,
+            "email": _mask_email(address),
+        }
+
+    async def confirm_email(self, raw_token: str) -> User:
+        """Consume a verification token and mark the address proven."""
+        if not raw_token:
+            raise BusinessRuleError("verification token is required")
+
+        row = (
+            await self.session.execute(
+                select(EmailVerificationToken).where(
+                    EmailVerificationToken.token_hash == _hash_token(raw_token)
+                )
+            )
+        ).scalar_one_or_none()
+
+        # One message for every failure mode — unknown, expired, already used.
+        # Distinguishing them tells an attacker who holds a stolen token whether
+        # it was ever real, and tells nobody else anything useful.
+        invalid = BusinessRuleError("this verification link is invalid or has expired")
+        if row is None or row.consumed_at is not None:
+            raise invalid
+        if _now() >= _as_aware(row.expires_at):
+            raise invalid
+
+        user = await self.session.get(User, row.user_id)
+        if user is None:
+            raise invalid
+
+        row.consumed_at = _now()
+        # Re-check against the LIVE row, not the token: the address may have been
+        # changed (or claimed by someone else) between issue and click.
+        still_free = (
+            await self.session.execute(
+                select(User.id).where(User.email == row.email, User.id != user.id)
+            )
+        ).scalar_one_or_none()
+        if still_free is not None:
+            raise BusinessRuleError(
+                "that email address was claimed by another account in the meantime"
+            )
+
+        user.email = row.email
+        user.email_verified_at = _now()
+        self._promote_if_ready(user)
+        await self.session.flush()
+
+        logger.info("email verified user_id=%s", user.id)
+        return user
+
+    # ------------------------------------------------------------------ #
+    # Profile
+    # ------------------------------------------------------------------ #
+
+    async def complete_profile(
+        self,
+        user: User,
+        *,
+        username: str,
+        given_name: str,
+        family_name: str,
+        gender: Gender | str | None = None,
+        avatar_key: str | None = None,
+    ) -> ProfileOut:
+        handle = normalize_username(username)
+        self._assert_username(handle)
+
+        conflict = (
+            await self.session.execute(
+                select(User.id).where(User.username == handle, User.id != user.id)
+            )
+        ).scalar_one_or_none()
+        if conflict is not None:
+            raise BusinessRuleError("that username is taken")
+
+        # Names are normalised to NFC for the same reason passwords are: an
+        # accented name composed two ways must not render as mojibake, and must
+        # not compare unequal against itself.
+        user.username = handle
+        user.given_name = _clean_name(given_name, "given name")
+        user.family_name = _clean_name(family_name, "family name")
+        if gender is not None:
+            user.gender = _coerce_gender(gender)
+        if avatar_key is not None:
+            user.avatar_key = _assert_avatar_key(avatar_key)
+
+        # `display_name` predates this schema and several read paths still use
+        # it, so keep it in step rather than leaving two names that disagree.
+        user.display_name = f"{user.given_name} {user.family_name}".strip()[:80]
+
+        self._promote_if_ready(user)
+        await self.session.flush()
+        return ProfileOut(user_id=user.id, username=handle)
+
+    async def username_available(self, raw: str) -> bool:
+        handle = normalize_username(raw)
+        try:
+            self._assert_username(handle)
+        except BusinessRuleError:
+            return False
+        found = (
+            await self.session.execute(select(User.id).where(User.username == handle))
+        ).scalar_one_or_none()
+        return found is None
+
+    # ------------------------------------------------------------------ #
+    # Internals
+    # ------------------------------------------------------------------ #
+
+    def _promote_if_ready(self, user: User) -> None:
+        """UNVERIFIED -> ACTIVE once both factors are proven.
+
+        Called from both gates, because either may complete last: a user can
+        verify their email before finishing their profile, or the reverse. Doing
+        it in one helper means there is a single definition of "ready" rather
+        than two that can drift.
+        """
+        ready = (
+            user.phone_verified_at is not None
+            and user.email_verified_at is not None
+            and user.username is not None
+        )
+        if ready and user.account_status == AccountStatus.UNVERIFIED:
+            user.account_status = AccountStatus.ACTIVE
+            logger.info("account activated user_id=%s", user.id)
+
+    @staticmethod
+    def _assert_email(address: str) -> None:
+        if not _EMAIL_RE.fullmatch(address or ""):
+            raise BusinessRuleError("that does not look like an email address")
+        if len(address) > 254:
+            raise BusinessRuleError("email address is too long")
+
+    @staticmethod
+    def _assert_username(handle: str) -> None:
+        if not _USERNAME_RE.fullmatch(handle or ""):
+            raise BusinessRuleError(
+                "username must be 3-32 characters, using lowercase letters, "
+                "digits, dot, underscore or hyphen, and start with a letter or digit"
+            )
+        # Reserved because they make a naive router or log line ambiguous — a
+        # username that contains a path separator would otherwise let a profile
+        # URL point somewhere else.
+        if handle in {"admin", "root", "support", "system", "realtaxi", "me", "null", "undefined"}:
+            raise BusinessRuleError("that username is reserved")
+
+
+def _clean_name(value: str, label: str) -> str:
+    cleaned = unicodedata.normalize("NFC", (value or "").strip())
+    if not cleaned:
+        raise BusinessRuleError(f"{label} is required")
+    if len(cleaned) > 60:
+        raise BusinessRuleError(f"{label} is too long")
+    # Control characters would let a name break a log line or a CSV export.
+    # `unicodedata.category(ch) == "Cc"` is the actual test — `str` has no
+    # `iscontrol`, and `str.isprintable()` is too broad (it rejects the
+    # zero-width joiner and RTL marks that legitimate names use).
+    if any(unicodedata.category(ch) == "Cc" for ch in cleaned):
+        raise BusinessRuleError(f"{label} contains invalid characters")
+    return cleaned
+
+
+def _coerce_gender(value: Gender | str) -> Gender:
+    if isinstance(value, Gender):
+        return value
+    try:
+        return Gender(str(value).strip().upper())
+    except ValueError as exc:
+        allowed = ", ".join(g.value for g in Gender)
+        raise BusinessRuleError(f"gender must be one of: {allowed}") from exc
+
+
+def _assert_avatar_key(key: str) -> str:
+    """An object key, never a URL.
+
+    Two attacks this closes: a `javascript:` or `data:` value rendered into an
+    `<img src>` (stored XSS), and an absolute URL pointing at another host.
+
+    The scheme test is against the *prefix before the first slash*, not `"://" in
+    value`: `javascript:alert(1)` and `data:text/html,...` contain no `//` at all,
+    so a naive substring check passes them straight through. A key has no scheme
+    by construction, so anything matching `^[a-z][a-z0-9+.-]*:` is rejected.
+    """
+    value = (key or "").strip()
+    if not value:
+        raise BusinessRuleError("avatar key must not be empty")
+    if _SCHEME_RE.match(value):
+        raise BusinessRuleError("avatar key must be an object key, not a URL")
+    if value.startswith("/") or value.startswith("\\"):
+        raise BusinessRuleError("avatar key must be a relative path")
+    if ".." in value.split("/"):
+        raise BusinessRuleError("avatar key must not contain '..'")
+    if any(unicodedata.category(ch) == "Cc" for ch in value):
+        raise BusinessRuleError("avatar key contains invalid characters")
+    if len(value) > 255:
+        raise BusinessRuleError("avatar key is too long")
+    return value
+
+
+def _mask_email(address: str) -> str:
+    local, _, domain = (address or "").partition("@")
+    return f"{local[:1]}*******@{domain}" if domain else "***"

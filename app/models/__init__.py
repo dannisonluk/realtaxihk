@@ -648,3 +648,39 @@ class AdminAuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+
+
+class EmailVerificationToken(Base):
+    """A single-use link token proving ownership of an email address (P-2).
+
+    Stored as a SHA-256 digest, never the raw token: the raw value is a bearer
+    credential that travels through email, so a leaked table (a backup, a
+    replica, a log of a bad query) must not yield working links.
+
+    SHA-256 rather than argon2, unlike passwords: the token is 256 bits of
+    CSPRNG output, so there is no dictionary and no need for a memory-hard KDF —
+    while argon2 at 64 MiB per click would turn the verify endpoint into a
+    resource-exhaustion lever.
+
+    `email` is denormalised whatever the user row says at issue time. The address
+    can change between issue and click, and the click must prove the address the
+    link was SENT to, not the one currently on the profile.
+    """
+
+    __tablename__ = "email_verification_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    email: Mapped[str] = mapped_column(String(254))
+    # Unique so a digest collision (or a replayed insert) cannot create a second
+    # live token for the same secret.
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    # Stamped rather than deleted: "this link was used at T, from this IP" is the
+    # audit trail for an account takeover. Same reasoning as the recovery codes.
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
