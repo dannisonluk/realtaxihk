@@ -1,11 +1,11 @@
 {
-  "id": "ad970058-0a9c-40bb-bd9d-c6e0475b6619",
-  "driver_profile_id": "66a6d687-8463-4623-bea5-0c593af48279",
-  "amount_hkd": "500.0",
+  "id": "9c4f5c80-e8e6-48e1-a7e1-340465f78e0c",
+  "driver_profile_id": "0d4db075-f405-4b9a-bcfd-4089f1ab7aee",
+  "amount_hkd": "500.00",
   "status": "APPROVED",
   "note": "leaving",
   "decision_note": "fixture",
-  "decided_by": "e50fd667-e6e0-460c-92c1-a5e150d2a55f",
-  "decided_at": "2026-09-29T22:56:35.598804+00:00",
-  "created_at": "2026-09-29T22:56:35.561956+00:00"
+  "decided_by": "1dac49a0-74a7-425b-86e8-46215f9e14b8",
+  "decided_at": "2026-09-30T04:17:33.930031+00:00",
+  "created_at": "2026-09-30T04:17:33.890482+00:00"
 }

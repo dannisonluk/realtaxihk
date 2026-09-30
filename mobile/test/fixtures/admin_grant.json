@@ -1,7 +1,7 @@
 {
-  "id": "ca0b793c-0349-425e-96ac-354f22c5398e",
+  "id": "a313c32f-083b-4812-97f0-fb50477de078",
   "driver_status": "ACTIVE",
-  "balance_hkd": "500.0",
+  "balance_hkd": "500.00",
   "is_fulfilled": true,
-  "reference": "grant:ca0b793c-0349-425e-96ac-354f22c5398e:fixture-1"
+  "reference": "grant:a313c32f-083b-4812-97f0-fb50477de078:fixture-1"
 }

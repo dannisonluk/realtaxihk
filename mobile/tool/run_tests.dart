@@ -151,9 +151,16 @@ void _moneyTests() {
       expectClose(Money.parse('200').asDouble, 200);
     });
 
-    test('drops a trailing .0 but keeps a real decimal', () {
+    test('drops a trailing .0 but keeps real cents', () {
       expect(Money.parse('12.0').display, '12');
-      expect(Money.parse('12.34').display, '12.3');
+      expect(Money.parse('12.00').display, '12');
+      // Stored money is Numeric(10,2) server-side, so a cent is a real value and
+      // must survive rendering. This used to assert '12.3' — the truncation that
+      // showed a 0.05 deposit as HK$0.1.
+      expect(Money.parse('12.34').display, '12.34');
+      expect(Money.parse('0.05').display, '0.05');
+      expect(Money.parse('0.04').display, '0.04');
+      expect(Money.parse('0.01').display, '0.01');
     });
 
     test('formats with the HK\$ prefix', () {

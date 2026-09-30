@@ -2,19 +2,25 @@ import 'package:intl/intl.dart';
 
 /// HKD money, kept in the server's canonical form.
 ///
-/// Every amount on the wire is a **string** produced by the backend's
-/// `Decimal.quantize(Decimal("0.1"))` — `money_str()` in `app/core/money.py`
-/// and the identical helpers in `app/api/fare.py` / `app/api/drivers.py`. The
-/// server never sends a JSON number, so parsing into `double` at the edge and
-/// formatting back would round-trip through binary floating point for no
-/// benefit. [canonical] keeps the exact string; [asDouble] exists only for
-/// arithmetic the UI genuinely needs (map radius, chart scaling).
+/// Every amount on the wire is a **string** produced by the backend, which
+/// serialises `Decimal` rather than emitting a JSON number. Two precisions are
+/// in play and they are not interchangeable:
+///
+/// * **stored money** — deposits, ledger amounts, refunds, order totals — is
+///   `Numeric(10, 2)` in the database and arrives at **2 dp** (`money_str` in
+///   `app/core/money.py`): `"500.00"`, `"0.05"`.
+/// * **meter figures** — fares, tolls, surcharges — come from the tariff table
+///   and arrive at **1 dp** (`meter_str`): `"147.1"`.
+///
+/// [canonical] keeps the exact string, so neither precision is lost here.
+/// [asDouble] exists only for arithmetic the UI genuinely needs (map radius,
+/// chart scaling).
 class Money implements Comparable<Money> {
   const Money(this.canonical);
 
   factory Money.parse(Object? raw) {
     if (raw == null) {
-      return const Money('0.0');
+      return const Money('0.00');
     }
     if (raw is num) {
       return Money(raw.toString());
@@ -22,7 +28,7 @@ class Money implements Comparable<Money> {
     return Money(raw.toString());
   }
 
-  /// The exact decimal string as the server sent it, e.g. `"184.5"`.
+  /// The exact decimal string as the server sent it, e.g. `"184.50"`.
   final String canonical;
 
   double get asDouble => double.tryParse(canonical) ?? 0;
@@ -31,22 +37,32 @@ class Money implements Comparable<Money> {
 
   bool get isNegative => asDouble < 0;
 
-  /// Signed display with the HK$ prefix and no trailing `.0` noise: `HK$184.5`.
+  /// Signed display with the HK$ prefix: `HK$184.50`, `+HK$500.00`.
   String get hkd => 'HK\$$display';
 
   /// Two decimal places, always: `184.50`.
   String get fixed => asDouble.toStringAsFixed(2);
 
-  /// Up to one decimal place — the meter's own precision. `184.5`, `12`.
+  /// Cents when they are present, whole dollars when they are not.
+  ///
+  /// This used to truncate to one decimal place, which silently hid stored
+  /// money: a `0.05` deposit rendered as `HK$0.1` and a `0.04` balance as
+  /// `HK$0`. It now matches the precision the value actually carries — `500.00`
+  /// -> `500`, `0.05` -> `0.05`, `147.1` -> `147.1`.
   String get display {
     final double value = asDouble;
+    final String trimmed = canonical.contains('.')
+        ? canonical.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '')
+        : canonical;
+    // A value with real cents keeps both of them; a whole/decile value is
+    // shown exactly as the server sent it.
     if (value == value.roundToDouble()) {
       return value.toStringAsFixed(0);
     }
-    return value.toStringAsFixed(1);
+    return trimmed.isEmpty ? '0' : trimmed;
   }
 
-  /// For a ledger row: `+HK$500` / `-HK$50`.
+  /// For a ledger row: `+HK$500` / `-HK$50.00`.
   String get signedHkd =>
       '${isNegative ? '-' : '+'}HK\$${Money(canonical.replaceFirst('-', '')).display}';
 
