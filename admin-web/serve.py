@@ -39,7 +39,7 @@ import os
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 # Per-request proxy timings, off by default.
 #
@@ -122,8 +122,16 @@ class Handler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def send_head(self):
-        """Refuse anything that resolves outside the served directory."""
-        raw = self.path.split("?", 1)[0].split("#", 1)[0]
+        """Refuse anything that resolves outside the served directory.
+
+        The path has to be **percent-decoded before** it is resolved. A literal
+        `..` segment is caught by `resolve()`, but `%2e%2e%2f` is not: resolving
+        the still-encoded string treats it as one odd *filename* that sits
+        harmlessly inside the root, so the containment test passes and the
+        request only escapes later, inside `SimpleHTTPRequestHandler`'s own
+        decode. Decoding here makes both spellings take the same path.
+        """
+        raw = unquote(self.path.split("?", 1)[0].split("#", 1)[0])
         try:
             resolved = (SERVE_ROOT / raw.lstrip("/")).resolve()
         except (OSError, ValueError):
@@ -137,6 +145,10 @@ class Handler(SimpleHTTPRequestHandler):
             # the server — but a *refresh* on the Vite dev-server path, or an
             # asset reference that moved between builds, should still land on the
             # app rather than a bare 404 with no way back.
+            #
+            # Only for a request that was *itself* contained: a traversal attempt
+            # is answered 404 above and must stay a 404, not be quietly turned
+            # into an index page that hides a misconfiguration.
             fallback = SERVE_ROOT / "index.html"
             if fallback.is_file() and not raw.startswith(("/api/", "/health")):
                 self.path = "/index.html"
