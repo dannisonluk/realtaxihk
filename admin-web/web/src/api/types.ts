@@ -349,3 +349,76 @@ export interface LicenceDecisionResult {
   /** `true` only for a first approval that moved the driver out of PENDING_KYC. */
   driver_promoted?: boolean;
 }
+
+/** Bucket width for the analytics table. Matches the server's `Granularity`. */
+export type AnalyticsGranularity = 'day' | 'week' | 'month' | 'year';
+
+/** Columns the analytics table can be sorted by. Matches the server allow-list. */
+export type AnalyticsSortBy = 'bucket' | 'orders' | 'earnings' | 'avg_fare' | 'distance';
+
+export type SortDir = 'asc' | 'desc';
+
+/** One row of the analytics table. Money is always a 2-dp string, never a float. */
+export interface AnalyticsBucket {
+  /** ISO date of the bucket's start, in Hong Kong time. */
+  bucket: string;
+  orders: number;
+  earnings_hkd: string;
+  avg_fare_hkd: string;
+  distance_km: string;
+}
+
+export interface AnalyticsTotals {
+  orders: number;
+  earnings_hkd: string;
+  avg_fare_hkd: string;
+  distance_km: string;
+  buckets: number;
+  days: number;
+}
+
+export interface AnalyticsRange {
+  from: string;
+  to: string;
+  granularity: AnalyticsGranularity;
+  taxi_type: string | null;
+  timezone: string;
+}
+
+export interface AnalyticsSummary {
+  range: AnalyticsRange;
+  totals: AnalyticsTotals;
+  buckets: AnalyticsBucket[];
+  sort: { by: AnalyticsSortBy; dir: SortDir };
+}
+
+/** One hour of the day in the heat map. */
+export interface AnalyticsHourSlot {
+  /** 0-23, in Hong Kong time. */
+  hour: number;
+  /** Mean earnings in this hour across every day in the range — the charted value. */
+  avg_per_day_hkd: string;
+  /** Mean earnings on the days this hour was actually worked. */
+  avg_per_active_day_hkd: string;
+  earnings_hkd: string;
+  orders: number;
+  active_days: number;
+  avg_orders_per_day: string;
+}
+
+export interface AnalyticsHeatmap {
+  range: {
+    from: string;
+    to: string;
+    taxi_type: string | null;
+    timezone: string;
+    days: number;
+  };
+  /** Always 24 entries, including hours with no trips. */
+  hours: AnalyticsHourSlot[];
+  max_avg_per_day_hkd: string;
+  peak_hour: number;
+  busiest_hour: number;
+  /** The y-axis maximum for the chart. Zero when there is nothing to draw. */
+  scale_max_hkd: string;
+}

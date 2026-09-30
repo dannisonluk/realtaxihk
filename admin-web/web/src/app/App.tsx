@@ -29,6 +29,7 @@ import { LoginPage } from '../pages/LoginPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { KycPage } from '../pages/KycPage';
 import { LicencePage } from '../pages/LicencePage';
+import { AnalyticsPage } from '../pages/AnalyticsPage';
 import { RefundsPage } from '../pages/RefundsPage';
 import { SettlementPage } from '../pages/SettlementPage';
 import { FleetsPage } from '../pages/FleetsPage';
@@ -68,6 +69,7 @@ function buildRouter() {
         { path: 'drivers/:driverId', element: <DriverDetailPage /> },
         { path: 'kyc', element: <KycPage /> },
         { path: 'licences', element: <LicencePage /> },
+        { path: 'analytics', element: <AnalyticsPage /> },
         { path: 'refunds', element: <RefundsPage /> },
         { path: 'settlement', element: <SettlementPage /> },
         { path: 'fleets', element: <FleetsPage /> },

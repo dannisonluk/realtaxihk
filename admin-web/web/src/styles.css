@@ -649,3 +649,91 @@ table.data tbody tr:hover { background: var(--surface-2); }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* ------------------------------------------------------------- analytics --- */
+
+/* The day chart. `position: relative` anchors the hover tooltip, which is
+   absolutely placed so it never pushes the chart's own height around as the
+   pointer moves between bars. */
+.chart {
+  position: relative;
+}
+
+.chart__tip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  box-shadow: var(--shadow);
+  padding: var(--space-2) var(--space-3);
+  font-size: 12px;
+  line-height: 1.5;
+  min-width: 190px;
+  z-index: 2;
+}
+
+/* The heat map strip: 24 equal cells on one row. `min-width: 0` on the cell
+   lets them shrink evenly instead of the last ones overflowing on a narrow
+   card, and the row scrolls rather than wrapping — wrapping would break the
+   left-to-right reading of the hours. */
+.heat {
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  gap: 2px;
+  border-radius: var(--radius-field);
+  overflow: hidden;
+}
+
+.heat__cell {
+  height: 40px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 3px;
+  min-width: 0;
+}
+
+.heat__hour {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.heat__scale {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.heat__swatch {
+  width: 22px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+/* A sortable column header. The button fills the cell so the whole header is
+   clickable, and inherits the table's type rather than the control default. */
+.th-sort {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font: inherit;
+  color: inherit;
+  width: 100%;
+  justify-content: inherit;
+}
+
+.th-sort:hover { color: var(--brand); }
+.th-sort:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.th-sort__mark {
+  font-size: 9px;
+  opacity: 0.55;
+}

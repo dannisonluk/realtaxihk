@@ -1,0 +1,578 @@
+/**
+ * Analytics: how the fleet is performing, and when.
+ *
+ * Two views over the same completed trips, driven by one set of filters:
+ *
+ *  1. **The day chart** — 24 hour slots, each drawn as a rectangle whose height
+ *     is the money booked in that hour. This is the shape an operator reads to
+ *     answer "when should I be on the road".
+ *  2. **The heat map** — the same 24 slots as a colour strip, intensity by
+ *     average daily earnings. It answers the same question at a glance, and it
+ *     is the one that survives being looked at on a phone.
+ *
+ * The bars and the strip deliberately share an x-axis and the same numbers, so
+ * a discrepancy between them is impossible by construction rather than by
+ * discipline.
+ *
+ * Everything is in **Hong Kong time** — the server buckets that way, and the
+ * `range.timezone` it returns is shown in the header so nobody has to guess.
+ * A chart of "peak hour" that silently used UTC would point at the wrong shift.
+ *
+ * Money arrives as a 2-dp **string** and stays one. Parsing to `Number` for
+ * display would reintroduce exactly the float error the server avoids, and
+ * `Money`/`toNum` below exist so no view has to make that call itself.
+ */
+
+import { useState } from 'react';
+import type {
+  AnalyticsGranularity,
+  AnalyticsHeatmap,
+  AnalyticsSortBy,
+  AnalyticsSummary,
+  SortDir,
+} from '../api/types';
+import { endpoints } from '../api/endpoints';
+import { Card, Chip, Empty, Loading, Money, Stat } from '../components/primitives';
+import { ErrorState } from '../components/states';
+import { useApp } from '../app/AppContext';
+import { useLoad } from '../app/useLoad';
+import { PageHead } from '../app/Shell';
+
+/** Today as `YYYY-MM-DD` in the operator's own timezone, for the date inputs. */
+function today(): string {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+function daysAgo(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+/**
+ * A money string to a number, for geometry only.
+ *
+ * Used exclusively to size a rectangle or pick a colour — never to display and
+ * never to total. The displayed value is always the original string, so a
+ * rounding artefact here can shift a bar by a pixel but cannot corrupt a figure
+ * an operator reads off the screen.
+ */
+function toNum(value: string): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+const TAXI_TYPES = [
+  { value: '', label: '全部車型' },
+  { value: 'URBAN', label: '市區的士' },
+  { value: 'NT', label: '新界的士' },
+  { value: 'LANTAU', label: '大嶼山的士' },
+];
+
+const GRANULARITIES: { value: AnalyticsGranularity; label: string }[] = [
+  { value: 'day', label: '每日' },
+  { value: 'week', label: '每週' },
+  { value: 'month', label: '每月' },
+  { value: 'year', label: '每年' },
+];
+
+/** Column definitions for the sortable table, so the header and sort agree. */
+const COLUMNS: { key: AnalyticsSortBy; label: string; align: 'start' | 'end' }[] = [
+  { key: 'bucket', label: '期間', align: 'start' },
+  { key: 'orders', label: '訂單', align: 'end' },
+  { key: 'earnings', label: '收入', align: 'end' },
+  { key: 'avg_fare', label: '平均車費', align: 'end' },
+  { key: 'distance', label: '總里程 (km)', align: 'end' },
+];
+
+export function AnalyticsPage() {
+  const { client } = useApp();
+
+  const [from, setFrom] = useState(daysAgo(29));
+  const [to, setTo] = useState(today());
+  const [granularity, setGranularity] = useState<AnalyticsGranularity>('day');
+  const [taxiType, setTaxiType] = useState('');
+  const [sortBy, setSortBy] = useState<AnalyticsSortBy>('bucket');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  // The filters the *requests* are keyed on. Kept separate from the input state
+  // so typing a partial date does not fire a request per keystroke — the
+  // controls only commit on blur or change, and the range inputs additionally
+  // have a minimum width before they are considered complete.
+  const summaryFilters = { from, to, granularity, taxiType, sortBy, sortDir };
+
+  const summary = useLoad<AnalyticsSummary>(
+    () => endpoints.analytics.summary(client, summaryFilters),
+    [from, to, granularity, taxiType, sortBy, sortDir],
+  );
+
+  // The heat map ignores granularity and sort: it is always 24 hourly slots.
+  const heatmap = useLoad<AnalyticsHeatmap>(
+    () => endpoints.analytics.heatmap(client, { from, to, taxiType }),
+    [from, to, taxiType],
+  );
+
+  /**
+   * Clicking a sorted column flips the direction; clicking a new one starts
+   * ascending, except for the money and count columns, where the interesting
+   * end is the top. Making "收入" descend on first click saves a second click on
+   * the one column people actually sort by.
+   */
+  function toggleSort(key: AnalyticsSortBy) {
+    if (key === sortBy) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortBy(key);
+    setSortDir(key === 'bucket' ? 'asc' : 'desc');
+  }
+
+  const buckets = summary.data?.buckets ?? [];
+  const hours = heatmap.data?.hours ?? [];
+  const scaleMax = toNum(heatmap.data?.scale_max_hkd ?? '0');
+
+  return (
+    <>
+      <PageHead
+        title="表現分析"
+        subtitle="以完成的行程計算收入與時段分佈。所有時間為香港時間（HKT）。"
+      />
+
+      <Card>
+        <div className="filters">
+          <div className="field">
+            <label className="field__label" htmlFor="an-from">
+              由
+            </label>
+            <input
+              id="an-from"
+              type="date"
+              value={from}
+              max={to}
+              onChange={(event) => setFrom(event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="an-to">
+              至
+            </label>
+            <input
+              id="an-to"
+              type="date"
+              value={to}
+              min={from}
+              onChange={(event) => setTo(event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="an-granularity">
+              統計單位
+            </label>
+            <select
+              id="an-granularity"
+              value={granularity}
+              onChange={(event) => setGranularity(event.target.value as AnalyticsGranularity)}
+            >
+              {GRANULARITIES.map((g) => (
+                <option key={g.value} value={g.value}>
+                  {g.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="an-taxi">
+              的士類型
+            </label>
+            <select
+              id="an-taxi"
+              value={taxiType}
+              onChange={(event) => setTaxiType(event.target.value)}
+            >
+              {TAXI_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <div className="field__label">快速範圍</div>
+            <div className="actions">
+              {[7, 30, 90].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className="btn btn--sm"
+                  onClick={() => {
+                    setFrom(daysAgo(n - 1));
+                    setTo(today());
+                  }}
+                >
+                  近 {n} 日
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {summary.error ? (
+        <div style={{ marginTop: 16 }}>
+          <ErrorState error={summary.error} onRetry={summary.reload} />
+        </div>
+      ) : null}
+
+      {summary.data ? (
+        <div className="grid" style={{ marginTop: 16 }}>
+          <Stat
+            label="總收入"
+            value={<Money value={summary.data.totals.earnings_hkd} />}
+            hint={`${summary.data.totals.days} 日 · ${summary.data.totals.buckets} 個期間`}
+          />
+          <Stat label="完成訂單" value={summary.data.totals.orders} />
+          <Stat
+            label="平均車費"
+            value={<Money value={summary.data.totals.avg_fare_hkd} />}
+          />
+          <Stat
+            label="平均每日收入"
+            value={
+              <Money
+                value={(
+                  toNum(summary.data.totals.earnings_hkd) / summary.data.totals.days
+                ).toFixed(2)}
+              />
+            }
+            hint="總收入 ÷ 範圍內日數"
+          />
+        </div>
+      ) : null}
+
+      {/* ---- The day chart ---- */}
+      <div style={{ marginTop: 16 }}>
+        <Card>
+          <div className="page-head__text" style={{ marginBottom: 4 }}>
+            <h2 className="t-title3" style={{ margin: 0 }}>
+              時段分佈
+            </h2>
+            <p className="page-head__sub">
+              每個時段的長方形高度代表該時段的平均每日收入；下方色帶為同一組數字的熱力圖。
+            </p>
+          </div>
+
+          {heatmap.loading ? <Loading label="載入時段數據…" /> : null}
+          {heatmap.error ? (
+            <ErrorState error={heatmap.error} onRetry={heatmap.reload} />
+          ) : null}
+
+          {heatmap.data ? (
+            <>
+              <div className="actions" style={{ margin: '8px 0 16px', flexWrap: 'wrap' }}>
+                <Chip tone="brand">最高收入時段 {heatmap.data.peak_hour}:00</Chip>
+                <Chip>最多訂單 {heatmap.data.busiest_hour}:00</Chip>
+                <Chip>平均每日最高 {heatmap.data.max_avg_per_day_hkd} HKD</Chip>
+                <span className="dim t-footnote">
+                  平均每日 = 總收入 ÷ {heatmap.data.range.days} 日
+                </span>
+              </div>
+
+              <HourBarChart hours={hours} scaleMax={scaleMax} />
+              <HourHeatStrip hours={hours} scaleMax={scaleMax} />
+
+              <p className="dim t-footnote" style={{ marginTop: 12 }}>
+                沒有訂單的時段會顯示為 0，而非略去 —— 空白本身就是資料。
+              </p>
+            </>
+          ) : null}
+        </Card>
+      </div>
+
+      {/* ---- The sortable table ---- */}
+      <div style={{ marginTop: 16 }}>
+        <Card>
+          <h2 className="t-title3" style={{ margin: '0 0 12px' }}>
+            期間明細
+          </h2>
+
+          {summary.loading ? <Loading label="載入中…" /> : null}
+
+          {summary.data && buckets.length === 0 ? (
+            <Empty
+              title="此範圍內沒有完成的行程"
+              hint="試著放寬日期範圍，或改用「全部車型」。"
+            />
+          ) : null}
+
+          {buckets.length > 0 ? (
+            <div className="table-wrap">
+              <table className="data">
+                <thead>
+                  <tr>
+                    {COLUMNS.map((col) => (
+                      <th
+                        key={col.key}
+                        style={{ textAlign: col.align }}
+                        aria-sort={
+                          sortBy === col.key
+                            ? sortDir === 'asc'
+                              ? 'ascending'
+                              : 'descending'
+                            : 'none'
+                        }
+                      >
+                        <button
+                          type="button"
+                          className="th-sort"
+                          onClick={() => toggleSort(col.key)}
+                        >
+                          {col.label}
+                          <span className="th-sort__mark" aria-hidden="true">
+                            {sortBy === col.key ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
+                          </span>
+                        </button>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {buckets.map((row) => (
+                    <tr key={row.bucket}>
+                      <td>{row.bucket}</td>
+                      <td className="num" style={{ textAlign: 'end' }}>
+                        {row.orders}
+                      </td>
+                      <td className="num" style={{ textAlign: 'end' }}>
+                        <Money value={row.earnings_hkd} />
+                      </td>
+                      <td className="num" style={{ textAlign: 'end' }}>
+                        <Money value={row.avg_fare_hkd} />
+                      </td>
+                      <td className="num" style={{ textAlign: 'end' }}>
+                        {row.distance_km}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </Card>
+      </div>
+    </>
+  );
+}
+
+/**
+ * The day chart: 24 bars, height by earnings.
+ *
+ * Hand-drawn SVG rather than a charting library. The console ships no chart
+ * dependency, and this is 24 rectangles with a linear scale — adding a library
+ * to draw that would cost more in bundle size than the whole page.
+ *
+ * `viewBox` with `width: 100%` makes it scale to the card without re-measuring,
+ * and the plot is padded on the left for the y-axis labels rather than being
+ * absolutely positioned, so the labels can never overlap the bars.
+ */
+function HourBarChart({
+  hours,
+  scaleMax,
+}: {
+  hours: AnalyticsHeatmap['hours'];
+  scaleMax: number;
+}) {
+  const [hover, setHover] = useState<number | null>(null);
+
+  const W = 720;
+  const H = 240;
+  const padLeft = 52;
+  const padRight = 8;
+  const padTop = 12;
+  const plotH = 168;
+  const plotW = W - padLeft - padRight;
+  const slot = plotW / 24;
+  const barW = slot * 0.68;
+
+  // A zero maximum means no data in range. Falling back to 1 keeps every bar at
+  // zero height instead of producing NaN geometry that renders as nothing at
+  // all — a blank chart is a better answer than a broken one.
+  const max = scaleMax > 0 ? scaleMax : 1;
+
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({
+    value: max * f,
+    y: padTop + plotH - plotH * f,
+  }));
+
+  return (
+    <div className="chart">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        role="img"
+        aria-label="每個時段的平均每日收入"
+        style={{ display: 'block', overflow: 'visible' }}
+      >
+        {ticks.map((t) => (
+          <g key={t.y}>
+            <line
+              x1={padLeft}
+              x2={W - padRight}
+              y1={t.y}
+              y2={t.y}
+              stroke="var(--border)"
+              strokeWidth={1}
+            />
+            <text
+              x={padLeft - 8}
+              y={t.y + 4}
+              textAnchor="end"
+              fontSize={10}
+              fill="var(--text-dim)"
+            >
+              {t.value >= 1000 ? `${Math.round(t.value / 100) / 10}k` : Math.round(t.value)}
+            </text>
+          </g>
+        ))}
+
+        {hours.map((slotData, index) => {
+          const value = toNum(slotData.avg_per_day_hkd);
+          const h = (value / max) * plotH;
+          const x = padLeft + index * slot + (slot - barW) / 2;
+          const y = padTop + plotH - h;
+          const isHovered = hover === index;
+          return (
+            <g key={slotData.hour}>
+              {/* A full-height transparent hit area, so a zero-height bar is
+                  still hoverable — otherwise the quiet hours, which are the
+                  ones worth inspecting, would be the only ones you cannot. */}
+              <rect
+                x={padLeft + index * slot}
+                y={padTop}
+                width={slot}
+                height={plotH}
+                fill="transparent"
+                onMouseEnter={() => setHover(index)}
+                onMouseLeave={() => setHover(null)}
+              />
+              <rect
+                x={x}
+                y={y}
+                width={barW}
+                height={Math.max(h, value > 0 ? 1 : 0)}
+                rx={2}
+                fill={isHovered ? 'var(--brand)' : 'var(--brand)'}
+                opacity={isHovered ? 1 : 0.72}
+                pointerEvents="none"
+              />
+              {index % 2 === 0 ? (
+                <text
+                  x={padLeft + index * slot + slot / 2}
+                  y={padTop + plotH + 16}
+                  textAnchor="middle"
+                  fontSize={10}
+                  fill="var(--text-dim)"
+                >
+                  {slotData.hour}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+
+        <text
+          x={padLeft + plotW / 2}
+          y={H - 6}
+          textAnchor="middle"
+          fontSize={11}
+          fill="var(--text-dim)"
+        >
+          時段（香港時間，0–23 時）
+        </text>
+      </svg>
+
+      {hover !== null && hours[hover] ? (
+        <div className="chart__tip" role="status">
+          <strong>
+            {hours[hover].hour}:00 – {(hours[hover].hour + 1) % 24}:00
+          </strong>
+          <div>
+            平均每日 <Money value={hours[hover].avg_per_day_hkd} />
+          </div>
+          <div className="dim">
+            {hours[hover].orders} 張訂單 · 有營運 {hours[hover].active_days} 日 · 該時段日均{' '}
+            <Money value={hours[hover].avg_per_active_day_hkd} />
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The heat map: the same 24 slots as a colour strip.
+ *
+ * The ramp is `color-mix` against `--surface`, so it darkens in the light theme
+ * and lightens in the dark one without a second palette — the console's theme
+ * is a media query, not a class, so a hard-coded ramp would be unreadable in one
+ * of the two modes.
+ *
+ * A zero value renders as the bare surface colour rather than the lightest step
+ * of the ramp, so "no trips" reads as absence instead of as a very small number.
+ */
+function HourHeatStrip({
+  hours,
+  scaleMax,
+}: {
+  hours: AnalyticsHeatmap['hours'];
+  scaleMax: number;
+}) {
+  const max = scaleMax > 0 ? scaleMax : 1;
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div className="dim t-footnote" style={{ marginBottom: 6 }}>
+        熱力圖 · 平均每日收入
+      </div>
+      <div className="heat" role="img" aria-label="各時段平均每日收入熱力圖">
+        {hours.map((slot) => {
+          const value = toNum(slot.avg_per_day_hkd);
+          const ratio = value / max;
+          // Floor the ramp at 12% so a non-zero hour is always visible against
+          // the surface, then scale the rest of the way.
+          const strength = value > 0 ? 12 + ratio * 88 : 0;
+          return (
+            <div
+              key={slot.hour}
+              className="heat__cell"
+              title={`${slot.hour}:00 — 平均每日 ${slot.avg_per_day_hkd} HKD（${slot.orders} 張訂單）`}
+              style={{
+                background:
+                  value > 0
+                    ? `color-mix(in srgb, var(--brand) ${strength.toFixed(0)}%, var(--surface))`
+                    : 'var(--surface-2)',
+              }}
+            >
+              <span className="heat__hour">{slot.hour}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="heat__scale">
+        <span className="dim t-footnote">低</span>
+        {[0.15, 0.35, 0.55, 0.75, 1].map((f) => (
+          <span
+            key={f}
+            className="heat__swatch"
+            style={{
+              background: `color-mix(in srgb, var(--brand) ${(12 + f * 88).toFixed(0)}%, var(--surface))`,
+            }}
+          />
+        ))}
+        <span className="dim t-footnote">高 · {scaleMax} HKD</span>
+      </div>
+    </div>
+  );
+}

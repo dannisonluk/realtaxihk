@@ -19,6 +19,13 @@ dependencies = [
     "prometheus-client>=0.20",
     "argon2-cffi>=23.1",
     "boto3>=1.35",
+    # The IANA timezone database, for `zoneinfo` on platforms that do not ship
+    # one. Linux has it in the OS, so the production image needs nothing extra —
+    # but Windows has none, and `ZoneInfo("Asia/Hong_Kong")` raises
+    # `ZoneInfoNotFoundError` there, which would break the analytics date range
+    # for every developer and for the test suite. It is a small pure-data wheel,
+    # and depending on it unconditionally is cheaper than a platform branch.
+    "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]

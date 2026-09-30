@@ -13,6 +13,10 @@ import type {
   AdminIdentity,
   AdminLoginResult,
   AdminSession,
+  AnalyticsGranularity,
+  AnalyticsHeatmap,
+  AnalyticsSortBy,
+  AnalyticsSummary,
   AuthTokens,
   DriverProfileDetail,
   DriverStatus,
@@ -30,6 +34,7 @@ import type {
   RefundRow,
   RefundStatus,
   SettlementRunResult,
+  SortDir,
 } from './types';
 
 export const endpoints = {
@@ -294,5 +299,46 @@ export const endpoints = {
       }
       return { fleet, members: members.items, settlement: settlement.items };
     },
+  },
+
+  /**
+   * Operational analytics. Read-only, admin-guarded.
+   *
+   * Both calls take the same filters so a page can drive the table and the
+   * chart from one set of controls. `undefined` values are dropped by
+   * `buildQuery`, which is what lets the server apply its own defaults — the
+   * range defaults to the last 30 days, so an empty filter object is a valid
+   * request rather than a 422.
+   */
+  analytics: {
+    summary: (
+      client: ApiClient,
+      filters: {
+        from?: string;
+        to?: string;
+        granularity?: AnalyticsGranularity;
+        taxiType?: string | null;
+        sortBy?: AnalyticsSortBy;
+        sortDir?: SortDir;
+      } = {},
+    ) =>
+      client.get<AnalyticsSummary>('/api/v1/admin/analytics', {
+        from: filters.from,
+        to: filters.to,
+        granularity: filters.granularity,
+        taxi_type: filters.taxiType ?? undefined,
+        sort_by: filters.sortBy,
+        sort_dir: filters.sortDir,
+      }),
+
+    heatmap: (
+      client: ApiClient,
+      filters: { from?: string; to?: string; taxiType?: string | null } = {},
+    ) =>
+      client.get<AnalyticsHeatmap>('/api/v1/admin/analytics/heatmap', {
+        from: filters.from,
+        to: filters.to,
+        taxi_type: filters.taxiType ?? undefined,
+      }),
   },
 };

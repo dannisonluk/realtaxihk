@@ -18,6 +18,9 @@ const NAV = [
   { path: '/refunds', label: '退款', badge: 'pendingRefunds' as const, end: false },
   { path: '/settlement', label: '每週結算', badge: null, end: false },
   { path: '/fleets', label: '車隊', badge: null, end: false },
+  // Last, because it is the one entry nobody needs during a shift: the review
+  // queues are work to be cleared, while this is a question you go and ask.
+  { path: '/analytics', label: '表現分析', badge: null, end: false },
 ];
 
 export function Shell() {
