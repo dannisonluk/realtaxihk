@@ -188,6 +188,10 @@ class TestAdminDriverDetail:
         assert deposit["required_hkd"] == "500.00"
         assert deposit["is_fulfilled"] is False
         assert deposit["shortfall_hkd"] == "500.00"
+        # `held_hkd` on this branch is a fallback, not a column read. It used to
+        # be the literal "0.0", which put the page's only 1-dp money value next
+        # to four 2-dp ones.
+        assert deposit["held_hkd"] == "0.00"
 
     def test_shortfall_closes_as_the_balance_grows(self, client, pending_driver):
         admin = {"Authorization": f"Bearer {_admin_token()}"}

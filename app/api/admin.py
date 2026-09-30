@@ -154,7 +154,10 @@ def _deposit_detail_out(dep: DriverDeposit | None) -> dict:
     balance = Decimal(dep.balance_hkd) if dep is not None else Decimal(0)
     return {
         "balance_hkd": money_str(balance),
-        "held_hkd": money_str(Decimal(dep.held_hkd)) if dep is not None else "0.0",
+        # `money_str(0)`, not the literal "0.0": this branch fires for every
+        # driver who has never been credited, so a 1-dp literal here would put
+        # the only 1-dp money value on the page next to four 2-dp ones.
+        "held_hkd": money_str(Decimal(dep.held_hkd)) if dep is not None else money_str(Decimal(0)),
         "required_hkd": money_str(required),
         "is_fulfilled": dep.is_fulfilled if dep is not None else False,
         "has_account": dep is not None,
