@@ -109,7 +109,7 @@ if self.app_env == "prod":
 另外 `otp_service.py` 將 dev_code 判斷改為 `app_env not in ("dev", "test")` 反向寫法（default-deny）。
 
 ### P0-3. `is_active` 從未被執行 — 封禁唔存在
-grep 證實 `is_active` 只喺 `app/models/__init__.py:87` 出現，**零使用**。User 被停用後：
+grep 證實 `is_active` 只喺 `app/models/user.py:147` 出現，**零使用**。User 被停用後：
 - 所有 REST endpoint 照樣過（JWT stateless、2 小時有效）；
 - WS 照樣連到。
 平台冇任何手段趕走壞人。`/me` 有 DB 重查但其他 endpoint 冇。

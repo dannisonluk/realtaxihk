@@ -14,7 +14,7 @@
 
 **這是全份簡報最重要的一段。**
 
-`app/models/__init__.py` 用 `geoalchemy2.Geography`；migration
+`app/models/user.py` 用 `geoalchemy2.Geography`；migration
 `9307e944a592` 建的是真正的 **PostGIS `geography(POINT, 4326)`** 欄位
 （`drivers.current_location`、trips 的 `pickup_location` / `dropoff_location`），
 而且 `app/api/trips.py` 與 `trip_service.py` 在 SQL 層直接呼叫 **`ST_AsText`**。

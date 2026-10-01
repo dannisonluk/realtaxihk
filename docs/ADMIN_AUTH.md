@@ -101,10 +101,13 @@ otpauth://totp/RealTaxi%20HK:<username>?secret=<base32>&issuer=RealTaxi+HK&digit
 
 ## 3. 已知缺口
 
-1. **Console 沒有渲染 QR code。**
-   `LoginPage.tsx` 把 `otpauth_uri` 當純文字顯示在 input 裡，admin 要手動把 secret 打進 app，
-   或自己把 URI 丟進外部 QR 產生器。標準做法是前端直接把 URI 畫成 QR 讓手機掃。
-   建議：加一個約 2 KB 的 QR 產生庫在 client 端渲染（secret 不應為此再經過任何第三方服務）。
+1. ✅ **Console 沒有渲染 QR code —— 已完成。**
+   `LoginPage.tsx` 原本只把 `otpauth_uri` 當純文字顯示，admin 要手動把 secret 打進
+   app，或自己把 URI 丟進外部 QR 產生器（後者會把 secret 交給第三方）。
+   現已加入 `qrcode.react`（零 runtime 依賴、ISC license）在 **client 端**渲染 SVG，
+   secret 不經過任何外部服務。二維碼下方仍保留 secret 與 URI 文字，供無法掃碼時手動輸入。
+   驗證方式：Playwright 截圖（明暗兩主題）＋ **獨立解碼器**讀回像素，
+   解出的正是伺服器送出的 `otpauth_uri`。
 2. **Secret 以明文顯示在畫面上。** 這是 enrol 階段的必要之惡（admin 必須看到才能輸入），
    但意味著 enrol 畫面不應被截圖或錄屏分享。已用 5 分鐘 TTL 限制暴露窗口。
 3. **TOTP 的時鐘漂移沒有自助校正。** 如果某台裝置時鐘偏差超過 ±30 秒，該 admin 只能用
@@ -112,4 +115,4 @@ otpauth://totp/RealTaxi%20HK:<username>?secret=<base32>&issuer=RealTaxi+HK&digit
    server 時間提示。
 4. **Recovery code 用掉後不會自動補發。** 8 個用完就沒有了，需要人工重設。
 
-以上四點都不阻塞上線，但第 1 點直接影響 admin 第一次登入的體驗，建議優先處理。
+第 1 點（最影響首次登入體驗）已解決；其餘三點不阻塞上線。
