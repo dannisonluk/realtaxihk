@@ -398,9 +398,9 @@ def admin_headers(client, *, username: str | None = None) -> AdminHeaders:
         client,
         "INSERT INTO admin_accounts "
         "(id, username, email, full_name, password_hash, totp_secret, totp_enrolled_at, "
-        " is_active, failed_login_count, created_at, updated_at) "
+        " is_active, failed_login_count, role, created_at, updated_at) "
         "VALUES (:id, :u, :e, 'Test Admin', :pw, CAST(:secret AS text), now(), "
-        " true, 0, now(), now())",
+        " true, 0, 'SUPER_ADMIN', now(), now())",
         {
             "id": admin_id,
             "u": name,

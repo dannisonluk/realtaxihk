@@ -13,12 +13,13 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.schemas import (
+    AuditPageOut,
     DepositAdjustOut,
     DepositGrantOut,
     DriverDetailOut,
@@ -30,9 +31,11 @@ from app.api.schemas import (
 )
 from app.core.config import get_settings
 from app.core.db import get_session, get_session_factory
-from app.core.deps import Principal, require_admin
+from app.core.deps import Principal, require_admin, require_role
 from app.core.money import money_str
 from app.models import (
+    AdminAuditLog,
+    AdminRole,
     DriverDeposit,
     DriverProfile,
     DriverStatus,
@@ -44,6 +47,14 @@ from app.models import (
     RefundRequest,
     RefundStatus,
 )
+from app.services.audit_service import (
+    EV_DEPOSIT_ADJUST,
+    EV_DEPOSIT_GRANT,
+    EV_KYC_DECISION,
+    EV_REFUND_DECISION,
+    EV_SETTLEMENT_RUN,
+    record_audit,
+)
 from app.services.ledger_service import (
     LedgerService,
     reference_for_adjustment,
@@ -54,6 +65,20 @@ from app.services.settlement_service import SettlementService
 from app.services.state_machine import assert_driver_transition
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
+
+# Who may do what, expressed once. Read endpoints stay on `require_admin` —
+# every role may look. Only the write endpoints below are narrowed, so this
+# change is purely additive: a route that missed a guard is merely wide, never
+# open, and the route-table audit in `tests/test_security_hardening.py` proves
+# each one still carries a live-state guard.
+#
+#   KYC / driver state  -> OPERATIONS  (a compliance judgement, not a money one)
+#   money movement      -> FINANCE     (grant, adjust, settlement, refund)
+#
+# Deliberately NOT `SUPPORT`: answering a question and deciding one are
+# different jobs, and merged, front-line support inherits the KYC gate.
+_require_operations = require_role(AdminRole.OPERATIONS)
+_require_finance = require_role(AdminRole.FINANCE)
 
 
 class DriverReviewIn(BaseModel):
@@ -286,7 +311,8 @@ async def driver_detail(
 async def review_driver(
     driver_id: str,
     payload: DriverReviewIn,
-    admin: Principal = Depends(require_admin),
+    request: Request,
+    admin: Principal = Depends(_require_operations),
     session: AsyncSession = Depends(get_session),
 ):
     dp = await session.get(DriverProfile, driver_id)
@@ -294,9 +320,26 @@ async def review_driver(
         raise HTTPException(status_code=404, detail="driver not found")
     target = _DECISION_TARGET[payload.decision]
     assert_driver_transition(dp.status, target)
+    previous = dp.status.value
     dp.status = target
     dp.kyc_reviewed_by = admin.id
     dp.kyc_reviewed_at = datetime.now(UTC)
+    # Same session, so the audit row commits or rolls back with the decision it
+    # records. An audit entry for a rollback would be worse than none.
+    await record_audit(
+        session,
+        event=EV_KYC_DECISION,
+        actor_id=admin.id,
+        detail=f"{payload.decision} driver {dp.id}",
+        request=request,
+        payload={
+            "driver_profile_id": str(dp.id),
+            "decision": payload.decision,
+            "before": {"status": previous},
+            "after": {"status": target.value},
+            "note": payload.note or None,
+        },
+    )
     await session.flush()
     return {"id": str(dp.id), "status": dp.status.value}
 
@@ -314,7 +357,8 @@ class DepositGrantIn(BaseModel):
 async def grant_deposit(
     driver_id: str,
     payload: DepositGrantIn,
-    admin: Principal = Depends(require_admin),
+    request: Request,
+    admin: Principal = Depends(_require_finance),
     session: AsyncSession = Depends(get_session),
 ):
     dp = await session.get(DriverProfile, driver_id)
@@ -336,9 +380,29 @@ async def grant_deposit(
     )
 
     # Fulfilment activates the driver (DEPOSIT_REQUIRED -> ACTIVE).
+    activated = False
     if deposit.is_fulfilled and dp.status == DriverStatus.DEPOSIT_REQUIRED:
         assert_driver_transition(dp.status, DriverStatus.ACTIVE)
         dp.status = DriverStatus.ACTIVE
+        activated = True
+
+    await record_audit(
+        session,
+        event=EV_DEPOSIT_GRANT,
+        actor_id=admin.id,
+        detail=f"grant {money_str(payload.amount_hkd)} to driver {dp.id}",
+        request=request,
+        payload={
+            "driver_profile_id": str(dp.id),
+            "amount_hkd": money_str(payload.amount_hkd),
+            "balance_after_hkd": money_str(Decimal(entry.balance_after_hkd)),
+            "reference": entry.reference,
+            "note": payload.note or None,
+            # Recorded because it is a side effect an operator may not realise
+            # this endpoint has: a grant can move the driver to ACTIVE.
+            "activated_driver": activated,
+        },
+    )
 
     return {
         "id": str(dp.id),
@@ -369,7 +433,8 @@ class DepositAdjustIn(BaseModel):
 async def adjust_deposit(
     driver_id: str,
     payload: DepositAdjustIn,
-    admin: Principal = Depends(require_admin),
+    request: Request,
+    admin: Principal = Depends(_require_finance),
     session: AsyncSession = Depends(get_session),
 ):
     """Post a manual `ADJUSTMENT` to a driver's deposit ledger.
@@ -408,6 +473,26 @@ async def adjust_deposit(
         reference=reference,
     )
 
+    # The `reason` is already mandatory on the request and is the human
+    # explanation, but it lives only on the ledger row — which is visible only
+    # to someone already reading that driver's ledger. The audit row is what
+    # makes a manual balance change findable by *who did it* rather than by
+    # *whose balance moved*, which is the direction an investigation runs.
+    await record_audit(
+        session,
+        event=EV_DEPOSIT_ADJUST,
+        actor_id=admin.id,
+        detail=f"adjust {money_str(payload.amount_hkd)} on driver {dp.id}: {payload.reason}"[:255],
+        request=request,
+        payload={
+            "driver_profile_id": str(dp.id),
+            "amount_hkd": money_str(payload.amount_hkd),
+            "balance_after_hkd": money_str(Decimal(entry.balance_after_hkd)),
+            "reference": entry.reference,
+            "reason": payload.reason,
+        },
+    )
+
     return {
         "id": str(dp.id),
         "driver_status": dp.status.value,
@@ -421,7 +506,7 @@ async def adjust_deposit(
 @router.post("/settlement/weekly/run", response_model=SettlementRunOut)
 async def run_weekly_settlement(
     period: Annotated[str | None, Query(pattern=r"^\d{4}-W\d{2}$")] = None,
-    admin: Principal = Depends(require_admin),
+    admin: Principal = Depends(_require_finance),
     session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
 ):
     """Run the weekly service-fee settlement by hand (idempotent per ISO week).
@@ -431,7 +516,32 @@ async def run_weekly_settlement(
     database. Re-running an already-settled period charges nobody.
     """
     settings = get_settings()
-    return await SettlementService(session_factory).run_weekly(settings.weekly_fee_hkd, period)
+    result = await SettlementService(session_factory).run_weekly(
+        settings.weekly_fee_hkd, period
+    )
+    # Audited on its own session, deliberately. `run_weekly` commits per driver
+    # in its own transactions, so by the time this returns the money has already
+    # moved — writing the audit row on a session that could still be rolled back
+    # would leave real charges with no record of who ran them. Recording after
+    # the fact is the honest ordering here; the alternative is an audit row for
+    # a run that did not happen.
+    async with session_factory() as audit_session:
+        await record_audit(
+            audit_session,
+            event=EV_SETTLEMENT_RUN,
+            actor_id=admin.id,
+            detail=f"weekly settlement run for {period or 'current period'}",
+            payload={
+                "period": period,
+                "weekly_fee_hkd": money_str(settings.weekly_fee_hkd),
+                "result": {
+                    k: (money_str(v) if isinstance(v, Decimal) else v)
+                    for k, v in (result or {}).items()
+                },
+            },
+        )
+        await audit_session.commit()
+    return result
 
 
 def _refund_out(r: RefundRequest) -> dict:
@@ -481,7 +591,8 @@ class RefundDecisionIn(BaseModel):
 async def decide_refund(
     refund_id: uuid.UUID,
     payload: RefundDecisionIn,
-    admin: Principal = Depends(require_admin),
+    request: Request,
+    admin: Principal = Depends(_require_finance),
     session: AsyncSession = Depends(get_session),
 ):
     """Approve (pays out, driver TERMINATED) or reject (releases hold, driver ACTIVE).
@@ -496,4 +607,83 @@ async def decide_refund(
         admin_id=admin.id,
         decision_note=payload.note or None,
     )
+    # Both outcomes are audited, not just the payout. A refusal is also a
+    # decision somebody may later have to justify, and it leaves no ledger trace
+    # at all — which is precisely why `refund.decided_by` alone was not enough.
+    await record_audit(
+        session,
+        event=EV_REFUND_DECISION,
+        actor_id=admin.id,
+        detail=f"{payload.decision} refund {refund_id}",
+        request=request,
+        payload={
+            "refund_id": str(refund_id),
+            "driver_profile_id": str(refund.driver_profile_id),
+            "decision": payload.decision,
+            "amount_hkd": money_str(Decimal(refund.amount_hkd)),
+            "note": payload.note or None,
+        },
+    )
     return _refund_out(refund)
+
+
+def _audit_out(row: AdminAuditLog) -> dict:
+    return {
+        "id": str(row.id),
+        "actor_id": str(row.admin_id) if row.admin_id else None,
+        "actor_username": row.username_attempted,
+        "event": row.event,
+        "outcome": row.outcome,
+        "detail": row.detail,
+        "payload": row.payload,
+        "ip_address": row.ip_address,
+        "user_agent": row.user_agent,
+        "created_at": row.created_at.isoformat() if row.created_at else "",
+    }
+
+
+@router.get("/audit", response_model=AuditPageOut)
+async def list_audit_log(
+    event: Annotated[str | None, Query(max_length=48)] = None,
+    admin_id: uuid.UUID | None = None,
+    since: Annotated[datetime | None, Query()] = None,
+    until: Annotated[datetime | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    admin: Principal = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Read the audit trail. Newest first, filterable by event / actor / range.
+
+    Readable by **every** admin role, including SUPPORT, and that is
+    intentional. The audit log is a record of what was done by whom; restricting
+    its reading would mean the people least able to change anything are also the
+    least able to notice that something was changed. It contains no secrets —
+    no password, no TOTP secret, no token — only decisions and their actors.
+
+    `since`/`until` are half-open (`created_at >= since`, `< until`), matching
+    the analytics range convention, so an operator paging day by day does not
+    see the boundary row twice.
+    """
+    q = select(AdminAuditLog).order_by(AdminAuditLog.created_at.desc())
+    count_q = select(func.count()).select_from(AdminAuditLog)
+    filters = []
+    if event:
+        filters.append(AdminAuditLog.event == event)
+    if admin_id is not None:
+        filters.append(AdminAuditLog.admin_id == admin_id)
+    if since is not None:
+        filters.append(AdminAuditLog.created_at >= since)
+    if until is not None:
+        filters.append(AdminAuditLog.created_at < until)
+    for f in filters:
+        q = q.where(f)
+        count_q = count_q.where(f)
+    rows = (await session.execute(q.limit(limit).offset(offset))).scalars().all()
+    total = (await session.execute(count_q)).scalar_one()
+    return {
+        "items": [_audit_out(r) for r in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }

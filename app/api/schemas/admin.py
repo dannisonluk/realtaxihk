@@ -6,6 +6,8 @@ operator needs the review state and the money at once, in one request.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel
 
 from app.api.schemas.driver import RefundOut
@@ -14,6 +16,8 @@ __all__ = [
     "AdminAccountOut",
     "AdminDepositDetailOut",
     "AdminLedgerRowOut",
+    "AuditPageOut",
+    "AuditRowOut",
     "DepositAdjustOut",
     "DepositGrantOut",
     "DriverDetailOut",
@@ -239,3 +243,43 @@ class AdminAccountOut(BaseModel):
     totp_enrolled: bool
     last_login_at: str | None
     created_at: str
+
+
+class AuditRowOut(BaseModel):
+    """One `admin_audit_log` row, as the console's audit page reads it.
+
+    `payload` is the structured before/after and is `dict | None` rather than a
+    typed model, deliberately: the shape differs per event, and pinning it to
+    one event's fields would make every other event render as an empty object.
+    The console renders it as key/value pairs. It is additive — rows written
+    before the column existed, and the login events, carry `None`.
+
+    `actor_username` is the *attempted* username, denormalised on the row. It
+    is present even when `actor_id` is null, which is the case for a failed
+    login against a username that does not exist — the row must stay readable
+    and attributable after the account it names is gone.
+    """
+
+    id: str
+    actor_id: str | None
+    actor_username: str | None
+    event: str
+    outcome: str
+    detail: str | None
+    payload: dict[str, Any] | None
+    ip_address: str | None
+    user_agent: str | None
+    created_at: str
+
+
+class AuditPageOut(BaseModel):
+    """`GET /admin/audit` — offset-paginated audit trail, newest first.
+
+    Same reasoning as `DriverPageOut`: typed rather than the generic
+    `PageEnvelope`, so the element shape is documented instead of `items: {}`.
+    """
+
+    items: list[AuditRowOut]
+    total: int
+    limit: int
+    offset: int

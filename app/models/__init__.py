@@ -86,13 +86,13 @@ from app.models.user import (
 configure_mappers()
 
 __all__ = [
+    "DEFAULT_ADMIN_ROLE",
     "AccountStatus",
     "AdminAccount",
     "AdminAuditLog",
     "AdminRecoveryCode",
     "AdminRefreshToken",
     "AdminRole",
-    "DEFAULT_ADMIN_ROLE",
     "Base",
     "DocumentKind",
     "DriverDeposit",
