@@ -4,7 +4,7 @@
   個 commit；本文所有數字皆為**實跑得出**，非沿用舊值）。
 - **方法**：實際讀取全部源碼 + 實跑驗證（pytest、alembic、OpenAPI、
   response-model 審計、ruff、Dart contract/tests/analyzer、瀏覽器 UI verifier）。
-- **當前狀態**：本地 HEAD = `1df6856`；`origin/main..HEAD` = **4 未推**
+- **當前狀態**：本地 HEAD = `7a7d620`；`origin/main..HEAD` = **6 未推**
   （push 被 PAT 權限擋住，已由用戶豁免；見 `docs/WORK_SUMMARY.md` §5）。
   working tree clean。
 - **總覽索引**：`docs/WORK_SUMMARY.md`（每次改動後同步）。
