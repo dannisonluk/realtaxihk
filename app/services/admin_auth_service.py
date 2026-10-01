@@ -67,7 +67,8 @@ from app.core.totp import (
     provisioning_uri,
     verify_totp,
 )
-from app.models import AdminAccount, AdminAuditLog, AdminRecoveryCode
+from app.models import AdminAccount, AdminRecoveryCode
+from app.services.audit_service import record_audit
 
 logger = logging.getLogger("realtaxihk.admin_auth")
 
@@ -187,24 +188,23 @@ class AdminAuthService:
         """Append an audit row. Never raises: an audit failure must not fail
         a login, or a full disk becomes an outage.
 
-        Truncation rather than rejection — a long User-Agent must not lose the
-        event.
+        Delegates to `app.services.audit_service.record_audit`, which is the
+        single implementation. This method stays because the login path already
+        resolves the client address through the trusted-proxy rules and holds
+        it as a plain string; passing it straight through avoids handing over a
+        `Request` object only for the shared writer to re-derive what this
+        caller already knows.
         """
-        try:
-            self.session.add(
-                AdminAuditLog(
-                    admin_id=admin_id,
-                    username_attempted=(username or None) and username[:64],
-                    event=event,
-                    outcome=outcome,
-                    detail=(detail or None) and detail[:255],
-                    ip_address=(ip or None) and ip[:45],
-                    user_agent=(user_agent or None) and user_agent[:255],
-                )
-            )
-            await self.session.flush()
-        except Exception:
-            logger.exception("failed to write admin audit row event=%s", event)
+        await record_audit(
+            self.session,
+            event=event,
+            outcome=outcome,
+            actor_id=admin_id,
+            username=username,
+            detail=detail,
+            ip=ip,
+            user_agent=user_agent,
+        )
 
     # ------------------------------------------------------------------ #
     # Lookup and lockout
