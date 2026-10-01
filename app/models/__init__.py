@@ -39,10 +39,12 @@ from sqlalchemy.orm import configure_mappers
 
 from app.models._base import Base
 from app.models.admin import (
+    DEFAULT_ADMIN_ROLE,
     AdminAccount,
     AdminAuditLog,
     AdminRecoveryCode,
     AdminRefreshToken,
+    AdminRole,
     EmailVerificationToken,
 )
 from app.models.fleet import (
@@ -89,6 +91,8 @@ __all__ = [
     "AdminAuditLog",
     "AdminRecoveryCode",
     "AdminRefreshToken",
+    "AdminRole",
+    "DEFAULT_ADMIN_ROLE",
     "Base",
     "DocumentKind",
     "DriverDeposit",

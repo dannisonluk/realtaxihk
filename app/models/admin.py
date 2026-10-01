@@ -16,6 +16,7 @@ registration, and it is read on the same paths as the recovery codes.
 
 from __future__ import annotations
 
+import enum
 import uuid
 from datetime import datetime
 
@@ -29,7 +30,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models._base import Base
@@ -39,12 +40,69 @@ __all__ = [
     "AdminAuditLog",
     "AdminRecoveryCode",
     "AdminRefreshToken",
+    "AdminRole",
     "EmailVerificationToken",
 ]
 
 
 def _uuid() -> uuid.UUID:
     return uuid.uuid4()
+
+
+class AdminRole(str, enum.Enum):
+    """Who an administrator is allowed to be, ordered by blast radius.
+
+    Four levels, not three, for two separations that matter:
+
+    * `SUPPORT` and `OPERATIONS` are apart because customer support's job is
+      to *record* a problem and operations' job is to *decide* one. Merged,
+      front-line support inherits KYC approval — a compliance judgement about
+      whether a driver may operate, which is not a first-line task.
+    * `OPERATIONS` and `FINANCE` are apart because KYC must not be loosened by
+      whoever benefits from more drivers being online, and money must not be
+      moved by whoever approved the paperwork. Standard separation of duties.
+
+    `SUPER_ADMIN` is the only role that may change a role. If `OPERATIONS` or
+    `FINANCE` could, the hierarchy would be bypassable by self-promotion and
+    every other boundary here would be decorative. That is the one hole RBAC
+    cannot close by discipline, so it is closed by the dependency instead.
+
+    **Rank comparison, not set membership.** Permission checks ask
+    `role.rank >= AdminRole.FINANCE.rank`. A set would mean every new role
+    requires re-reading every tuple that enumerates roles, and one missed
+    tuple is an open route. Rank makes the default-deny direction automatic:
+    a role added later at the bottom cannot reach anything above it.
+    """
+
+    SUPPORT = "SUPPORT"
+    OPERATIONS = "OPERATIONS"
+    FINANCE = "FINANCE"
+    SUPER_ADMIN = "SUPER_ADMIN"
+
+    @property
+    def rank(self) -> int:
+        """Position in the hierarchy; higher means more authority."""
+        return _ADMIN_ROLE_RANK[self]
+
+    def at_least(self, other: AdminRole) -> bool:
+        return self.rank >= other.rank
+
+
+# Deliberately a module-level dict rather than `IntEnum` or a class attribute:
+# the ordering must be readable in one place, and `str, enum.Enum` is what the
+# rest of the codebase already stores (SQLAlchemy maps it to a VARCHAR).
+_ADMIN_ROLE_RANK: dict[AdminRole, int] = {
+    AdminRole.SUPPORT: 0,
+    AdminRole.OPERATIONS: 1,
+    AdminRole.FINANCE: 2,
+    AdminRole.SUPER_ADMIN: 3,
+}
+
+# The default for a newly created admin. Deliberately the *lowest* role and not
+# `SUPER_ADMIN`: a new account must start with the least authority, and the
+# safe direction is one somebody has to deliberately widen. The opposite
+# default fails silently — nobody notices that the new hire can approve refunds.
+DEFAULT_ADMIN_ROLE = AdminRole.SUPPORT
 
 
 class AdminAccount(Base):
@@ -82,6 +140,18 @@ class AdminAccount(Base):
     full_name: Mapped[str | None] = mapped_column(String(120))
     password_hash: Mapped[str] = mapped_column(String(255))
 
+    # Coarse role. Stored as VARCHAR rather than a Postgres enum for the same
+    # reason the audit `event` column is a string: adding a role should not
+    # require a migration on a table that every authenticated request reads.
+    #
+    # The stored value is *not* the authority. `require_role` reads this column
+    # live on every request rather than trusting the `admin_role` claim in the
+    # access token, so a demotion takes effect on the next request instead of
+    # whenever a 15-minute token happens to expire. See `app/core/deps.py`.
+    role: Mapped[str] = mapped_column(
+        String(16), default=DEFAULT_ADMIN_ROLE.value, server_default="SUPPORT", index=True
+    )
+
     # --- TOTP (RFC 6238). Enrolled on first login; see `AdminTotpService`.
     # NULL until enrolment completes, which is the state that makes the login
     # flow a state machine: password is proven, TOTP is not yet configured.
@@ -109,6 +179,22 @@ class AdminAccount(Base):
     recovery_codes: Mapped[list[AdminRecoveryCode]] = relationship(
         back_populates="admin", cascade="all, delete-orphan"
     )
+
+    @property
+    def admin_role(self) -> AdminRole:
+        """The stored role as an enum, failing *closed* on an unknown value.
+
+        A row carrying a value this build does not recognise — a downgrade, a
+        hand-edited row, a role added by a newer deploy — must not be treated
+        as whatever it happens to sort like. `SUPPORT` is the floor, so an
+        unrecognised role collapses to the least authority rather than the
+        most. Raising instead would turn a data problem into an outage for
+        every request that touches this account.
+        """
+        try:
+            return AdminRole(self.role)
+        except ValueError:
+            return DEFAULT_ADMIN_ROLE
 
 
 class AdminRecoveryCode(Base):
@@ -217,6 +303,11 @@ class AdminAuditLog(Base):
     event: Mapped[str] = mapped_column(String(48), index=True)
     outcome: Mapped[str] = mapped_column(String(16))  # SUCCESS / FAILURE
     detail: Mapped[str | None] = mapped_column(String(255))
+    # Structured before/after values for events whose interesting content does
+    # not fit a 255-char sentence — "adjust HK$-1,200" is legible in `detail`,
+    # but "which fields changed and to what" is not. Nullable and additive:
+    # read it as `{"before": {...}, "after": {...}}` when present.
+    payload: Mapped[dict | None] = mapped_column(JSONB)
     ip_address: Mapped[str | None] = mapped_column(String(45))  # 45 = IPv6 max
     user_agent: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(
