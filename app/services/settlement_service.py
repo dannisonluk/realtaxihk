@@ -173,10 +173,36 @@ class SettlementService:
                     )
                     await session.commit()
                     charged += 1
-            except BusinessRuleError:
-                # Lost a same-reference race — the unique index did its job.
-                logger.debug("weekly settlement: %s already charged for %s", period, driver_id)
-                skipped += 1
+            except BusinessRuleError as exc:
+                # Two different failures land here and they must NOT be counted
+                # the same way (see the module docstring on SEC-13):
+                #
+                #  * "duplicate ledger reference" — the pre-check above passed
+                #    but `append()` lost the insert race to a concurrent run.
+                #    The fee IS collected exactly once, so this really is a skip.
+                #  * anything else — e.g. "driver deposit account not found",
+                #    which `append()` raises when the deposit row was deleted
+                #    between the pre-check and the append. That driver was NOT
+                #    charged, so counting it as `skipped` would report a clean
+                #    run while the platform silently lost the fee.
+                #
+                # `exc.message` is the discriminator. It is a poor one — a
+                # stringly-typed check on a message — which is why it is
+                # commented: a future change to either message must revisit
+                # this branch.
+                if "duplicate ledger reference" in exc.message:
+                    logger.debug("weekly settlement: %s already charged for %s", period, driver_id)
+                    skipped += 1
+                else:
+                    # `exception` (not `error`) so the traceback is attached —
+                    # this branch means a driver was silently NOT charged, and
+                    # the stack is the only thing that says why.
+                    logger.exception(
+                        "weekly settlement: charge failed for driver %s: %s",
+                        driver_id,
+                        exc.message,
+                    )
+                    failed += 1
             except Exception:
                 # Never let one driver abort the whole settlement run.
                 logger.exception("weekly settlement failed for driver %s", driver_id)

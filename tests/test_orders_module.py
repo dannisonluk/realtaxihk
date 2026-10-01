@@ -200,3 +200,90 @@ class TestAtomicGrab:
         assert len(trues) == 1, outcomes
         for o in outcomes:
             assert o is True or o is False, f"unexpected outcome: {o!r}"
+
+
+class TestStateMachineInvariants:
+    """Structural properties of `ORDER_TRANSITIONS`, not of any one endpoint.
+
+    These are cheap to assert and expensive to break silently. A bad edit to the
+    dict — the kind that looks like tidying — makes the machine self-inconsistent
+    without failing any behavioural test, because the affected transition simply
+    never gets exercised.
+
+    Every invariant here corresponds to a claim in the `state_machine` module
+    docstring. If one is being deliberately relaxed, that docstring has to change
+    in the same commit.
+    """
+
+    def test_terminal_states_have_no_outgoing_edges(self):
+        """COMPLETED and CANCELLED are dead ends.
+
+        A non-empty row would let a finished trip be reopened, and every
+        earnings figure derived from `orders` (weekly settlement, analytics)
+        would then be computed over a moving target.
+        """
+        from app.models import OrderStatus
+        from app.services.state_machine import ORDER_TRANSITIONS
+
+        for terminal in (OrderStatus.COMPLETED, OrderStatus.CANCELLED):
+            assert ORDER_TRANSITIONS[terminal] == set(), (
+                f"{terminal.value} is terminal but has outgoing edges: "
+                f"{ORDER_TRANSITIONS[terminal]}"
+            )
+
+    def test_cancelled_is_unreachable_once_the_trip_is_under_way(self):
+        """A started trip ends by completion, never by cancellation.
+
+        P4 will add INTERRUPTED for the mid-trip case; CANCELLED must stay
+        unreachable from IN_TRIP even then, otherwise the two overlap and a
+        cancelled trip could still carry in-trip ledger entries.
+        """
+        from app.models import OrderStatus
+        from app.services.state_machine import ORDER_TRANSITIONS
+
+        assert OrderStatus.CANCELLED not in ORDER_TRANSITIONS[OrderStatus.IN_TRIP]
+
+    def test_every_status_is_a_key(self):
+        """No status may be missing from the table.
+
+        `.get(current, set())` in the assert helper means a missing key reads as
+        "nothing is legal from here" — a silent, total lockout of that state
+        rather than an error. Requiring a key makes forgetting one a test
+        failure instead of a production dead end.
+        """
+        from app.models import OrderStatus
+        from app.services.state_machine import ORDER_TRANSITIONS
+
+        missing = set(OrderStatus) - set(ORDER_TRANSITIONS)
+        assert not missing, f"statuses with no transition row: {missing}"
+
+    def test_every_target_is_a_known_status(self):
+        """No edge points at a status outside the enum."""
+        from app.models import OrderStatus
+        from app.services.state_machine import ORDER_TRANSITIONS
+
+        known = set(OrderStatus)
+        for source, targets in ORDER_TRANSITIONS.items():
+            unknown = targets - known
+            assert not unknown, f"{source.value} -> unknown targets {unknown}"
+
+    def test_completed_is_only_reachable_from_in_trip(self):
+        """Exactly one path to COMPLETED.
+
+        A second inbound edge would mean a trip could be marked complete without
+        ever having been started, which is the shape a fare-fraud attempt takes:
+        complete an order that was never driven.
+        """
+        from app.models import OrderStatus
+        from app.services.state_machine import ORDER_TRANSITIONS
+
+        sources = {
+            src for src, targets in ORDER_TRANSITIONS.items() if OrderStatus.COMPLETED in targets
+        }
+        assert sources == {OrderStatus.IN_TRIP}, sources
+
+    def test_driver_terminated_is_terminal(self):
+        from app.models import DriverStatus
+        from app.services.state_machine import DRIVER_TRANSITIONS
+
+        assert DRIVER_TRANSITIONS[DriverStatus.TERMINATED] == set()

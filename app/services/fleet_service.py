@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -71,7 +71,7 @@ def discounted_fee(fee_hkd: Decimal, discount_percent: Decimal) -> Decimal:
             {"discount_percent": str(discount)},
         )
     net = Decimal(fee_hkd) * (Decimal(100) - discount) / Decimal(100)
-    return net.quantize(_CENT)
+    return net.quantize(_CENT, rounding=ROUND_HALF_UP)
 
 
 class FleetService:
@@ -485,7 +485,7 @@ class FleetSettlementService:
             # there when nobody is charged — without this a zero-collection week
             # reports "0" while a partial one reports "150.00", and the operator
             # UI would have to special-case the difference.
-            "collected_hkd": str(collected.quantize(_CENT)),
+            "collected_hkd": str(collected.quantize(_CENT, rounding=ROUND_HALF_UP)),
         }
 
         # Upsert the aggregate: one row per (fleet, week), so a re-run updates

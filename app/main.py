@@ -204,7 +204,7 @@ def create_app() -> FastAPI:
     attach_request_logging(app)
 
     app.state.redis_factory = get_redis
-    app.state.rate_limiter = RateLimiter(get_redis(), namespace="realtaxi:")
+    app.state.rate_limiter = RateLimiter(get_redis(), namespace=settings.redis_key_namespace)
     # SEC-18: the revocation check sits on the hot path of EVERY authenticated
     # request. It used to call `get_redis()` per request, which opened a socket
     # each time (measured at 2s before the 127.0.0.1 fix, ~3ms after — churn

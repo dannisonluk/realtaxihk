@@ -202,6 +202,98 @@ class TestInputCaps:
         assert r.status_code == 200
 
 
+class TestHttpErrorCodeMap:
+    """Every status the API raises must have a stable machine-readable `code`.
+
+    The client branches on `code`, not on `status` (`admin-web/web/src/api/
+    client.ts`). An unmapped status silently degrades to the generic
+    `HTTP_ERROR`, so a refusal the caller is supposed to *handle differently*
+    becomes indistinguishable from any other.
+
+    `423` is the case that matters: P4 returns it for a driver whose deposit is
+    in arrears (`DEPOSIT_INSUFFICIENT`), deliberately not 403, because 403 means
+    "you may not" and 423 means "not while this is true" — the driver can fix it
+    by topping up. Before this test the constant was simply absent from
+    `code_map`, so the whole distinction was lost on the wire while every
+    backend test stayed green.
+    """
+
+    @staticmethod
+    def _probe(status_code: int, detail):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from starlette.exceptions import HTTPException as StarletteHTTPException
+
+        from app.core.exceptions import register_exception_handlers
+
+        probe = FastAPI()
+        register_exception_handlers(probe)
+
+        @probe.get("/probe")
+        async def _raise():
+            raise StarletteHTTPException(status_code=status_code, detail=detail)
+
+        with TestClient(probe, raise_server_exceptions=False) as c:
+            return c.get("/probe")
+
+    def test_locked_maps_to_locked_not_the_generic_code(self):
+        r = self._probe(423, {"reason": "DEPOSIT_INSUFFICIENT"})
+        assert r.status_code == 423
+        assert r.json()["code"] == "LOCKED"
+
+    def test_structured_detail_without_message_promotes_reason(self):
+        """The guards send `{"reason": ...}` and no `message`.
+
+        Without the fallback the operator saw the literal "Request failed."
+        while the actual reason sat unread in `details`.
+        """
+        r = self._probe(423, {"reason": "DEPOSIT_INSUFFICIENT", "balance_hkd": "-120.00"})
+        body = r.json()
+        assert body["message"] == "DEPOSIT_INSUFFICIENT"
+        assert body["details"]["balance_hkd"] == "-120.00"
+
+    def test_explicit_message_still_wins_over_reason(self):
+        r = self._probe(403, {"message": "account disabled", "reason": "PHONE_REVERIFY_DUE"})
+        assert r.json()["message"] == "account disabled"
+
+    def test_rate_limited_keeps_retry_after(self):
+        """429 is a *time* verdict, so the header is part of the contract."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from starlette.exceptions import HTTPException as StarletteHTTPException
+
+        from app.core.exceptions import register_exception_handlers
+
+        probe = FastAPI()
+        register_exception_handlers(probe)
+
+        @probe.get("/probe")
+        async def _raise():
+            raise StarletteHTTPException(
+                status_code=429, detail={"reason": "COOLDOWN"}, headers={"Retry-After": "900"}
+            )
+
+        with TestClient(probe, raise_server_exceptions=False) as c:
+            r = c.get("/probe")
+        assert r.status_code == 429
+        assert r.json()["code"] == "RATE_LIMITED"
+        assert r.headers["retry-after"] == "900"
+
+    def test_413_uses_the_non_deprecated_constant(self):
+        """Guards against a silent regression to the deprecated spelling.
+
+        `HTTP_413_REQUEST_ENTITY_TOO_LARGE` still *works* but emits a
+        `StarletteDeprecationWarning` on every access, which buries real
+        warnings in the suite output. The mapping must survive the rename —
+        only the constant moves, not the wire value.
+        """
+        from starlette import status
+
+        assert status.HTTP_413_CONTENT_TOO_LARGE == 413
+        r = self._probe(413, "too large")
+        assert r.json()["code"] == "PAYLOAD_TOO_LARGE"
+
+
 # --------------------------------------------------------------------------- #
 # SEC-12 — every non-public /api/v1 route must enforce live account state
 # --------------------------------------------------------------------------- #
@@ -299,7 +391,23 @@ class TestRouteAuthzCoverage:
             # disabled one, so it is a genuine live-state guard rather than a
             # bypass — not an exemption, which is why it is added to the set
             # rather than to `_PUBLIC_PATHS`.
-            live_guards = {"require_active_user", "require_admin", "require_live_principal"}
+            #
+            # `require_live_admin_refresh_session` is the same shape for the two
+            # cookie-authenticated admin routes (`/admin/auth/refresh` and
+            # `/admin/auth/logout`). They carry no bearer token by design — the
+            # HttpOnly refresh cookie is the credential — and the handler reads
+            # the live `admin_accounts` row before it will rotate or revoke, so
+            # a disabled admin is refused. The lookup cannot be hoisted into the
+            # dependency without splitting the rotation's transaction, so the
+            # dependency *declares* the check the handler performs; that is what
+            # keeps this audit meaningful for cookie-authenticated routes
+            # instead of forcing them onto an exemption list.
+            live_guards = {
+                "require_active_user",
+                "require_admin",
+                "require_live_principal",
+                "require_live_admin_refresh_session",
+            }
             if not (live_guards & deps):
                 offenders.append(f"{sorted(route.methods)} {route.path}")
         assert checked >= 15, f"route discovery looks wrong (only found {checked})"

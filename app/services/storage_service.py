@@ -124,10 +124,7 @@ class StorageService:
     def is_configured(self) -> bool:
         s = self._settings
         return bool(
-            s.r2_endpoint_url
-            and s.r2_access_key_id
-            and s.r2_secret_access_key
-            and s.r2_bucket
+            s.r2_endpoint_url and s.r2_access_key_id and s.r2_secret_access_key and s.r2_bucket
         )
 
     def _require_configured(self) -> None:
@@ -261,9 +258,7 @@ class StorageService:
         from botocore.exceptions import ClientError
 
         try:
-            resp = self.client().head_object(
-                Bucket=self._settings.r2_bucket, Key=object_key
-            )
+            resp = self.client().head_object(Bucket=self._settings.r2_bucket, Key=object_key)
         except ClientError as exc:
             code = (exc.response.get("Error") or {}).get("Code", "")
             if code in ("404", "NoSuchKey", "NotFound"):

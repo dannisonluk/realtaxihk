@@ -94,9 +94,9 @@ def _as_hkt(year: int, month: int, day: int, hour: int, minute: int = 0) -> date
     """
     from datetime import timezone
 
-    return datetime(
-        year, month, day, hour, minute, tzinfo=timezone(timedelta(hours=8))
-    ).astimezone(UTC)
+    return datetime(year, month, day, hour, minute, tzinfo=timezone(timedelta(hours=8))).astimezone(
+        UTC
+    )
 
 
 @pytest.fixture()
@@ -111,9 +111,7 @@ class TestAnalyticsAccess:
 
     def test_a_passenger_token_is_refused(self, client):
         token = client.activate("+85291700001")
-        r = client.get(
-            "/api/v1/admin/analytics", headers={"Authorization": f"Bearer {token}"}
-        )
+        r = client.get("/api/v1/admin/analytics", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 403
 
     def test_defaults_to_the_last_thirty_days(self, client, admin):
@@ -149,9 +147,7 @@ class TestAnalyticsAccess:
         assert r.status_code == 422
 
     def test_a_bad_taxi_type_is_rejected(self, client, admin):
-        r = client.get(
-            "/api/v1/admin/analytics", headers=admin, params={"taxi_type": "HELICOPTER"}
-        )
+        r = client.get("/api/v1/admin/analytics", headers=admin, params={"taxi_type": "HELICOPTER"})
         assert r.status_code == 422
 
 
@@ -257,10 +253,9 @@ class TestEarningsAggregation:
         assert nt["totals"]["earnings_hkd"] == "300.00"
 
         # The parts must add back up to the whole, or the filter is leaking.
-        assert (
-            float(urban["totals"]["earnings_hkd"]) + float(nt["totals"]["earnings_hkd"])
-            == float(everything["totals"]["earnings_hkd"])
-        )
+        assert float(urban["totals"]["earnings_hkd"]) + float(
+            nt["totals"]["earnings_hkd"]
+        ) == float(everything["totals"]["earnings_hkd"])
 
     def test_granularity_month_rolls_days_up(self, client, admin):
         _insert_completed_order(client, completed_at=_as_hkt(2026, 6, 5, 10), fare="100.00")
@@ -497,7 +492,10 @@ class TestSorting:
         buckets = [
             b["earnings_hkd"]
             for b in self._get(
-                client, admin, sort_by="earnings", sort_dir="desc",
+                client,
+                admin,
+                sort_by="earnings",
+                sort_dir="desc",
             )["buckets"]
         ]
         assert buckets == ["100.00", "9.00"], f"lexical sort leaked through: {buckets}"
@@ -507,7 +505,10 @@ class TestSorting:
         ascending = [
             b["earnings_hkd"]
             for b in self._get(
-                client, admin, sort_by="earnings", sort_dir="asc",
+                client,
+                admin,
+                sort_by="earnings",
+                sort_dir="asc",
             )["buckets"]
         ]
         assert ascending == ["9.00", "100.00"]

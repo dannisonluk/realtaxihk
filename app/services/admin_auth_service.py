@@ -49,6 +49,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.exceptions import BusinessRuleError
 from app.core.passwords import (
     burn_password_time,
@@ -106,6 +107,28 @@ class AdminAuthError(BusinessRuleError):
     """Authentication failure. Message is deliberately generic to the caller."""
 
 
+class AdminAuthThrottled(AdminAuthError):
+    """A rate limit or account lockout refused this attempt.
+
+    A distinct type rather than a message convention, because the router has to
+    map it to a *different HTTP status* (429) than an ordinary credential
+    rejection (401). Deriving that from `"too many" in str(exc)` coupled a
+    security-relevant status code to English wording: rewording a message, or
+    adding a new one that happened to contain the substring, would silently
+    change the status — in either direction. The type makes the mapping
+    structural.
+    """
+
+
+class AdminAccountLocked(AdminAuthThrottled):
+    """The account is inside its lockout window, not merely rate-limited.
+
+    A subclass of the throttle, so callers that treat "throttled" as 429 keep
+    working, but distinguishable by a client that wants to report "locked until
+    HH:MM" rather than "slow down".
+    """
+
+
 @dataclass(frozen=True)
 class LoginOutcome:
     """What `login` decided, so the router does not re-derive it."""
@@ -137,10 +160,14 @@ def _as_aware(value: dt.datetime | None) -> dt.datetime | None:
 class AdminAuthService:
     """Stateless apart from the session and Redis handles it is given."""
 
-    def __init__(self, session: AsyncSession, redis, *, namespace: str = "realtaxi:") -> None:
+    def __init__(self, session: AsyncSession, redis, *, namespace: str | None = None) -> None:
         self.session = session
         self.redis = redis
-        self.limiter = RateLimiter(redis, namespace=namespace)
+        # Defaults to the configured namespace rather than a hard-coded
+        # `realtaxi:`, so a test process can scope its own counters (and only
+        # them) — see `Settings.redis_key_namespace`. Callers that pass an
+        # explicit namespace keep that override.
+        self.limiter = RateLimiter(redis, namespace=namespace or get_settings().redis_key_namespace)
 
     # ------------------------------------------------------------------ #
     # Audit
@@ -261,7 +288,7 @@ class AdminAuthService:
             await self.audit(
                 EV_LOGIN_FAILED, "FAILURE", username=username_key, detail="ip rate limit", ip=ip
             )
-            raise AdminAuthError("too many attempts — try again later")
+            raise AdminAuthThrottled("too many attempts — try again later")
         if not await self.limiter.allow(
             f"admin:login:user:{username_key}", LOGIN_ACCOUNT_LIMIT, LOGIN_ACCOUNT_WINDOW_S
         ):
@@ -272,7 +299,7 @@ class AdminAuthService:
                 detail="account rate limit",
                 ip=ip,
             )
-            raise AdminAuthError("too many attempts — try again later")
+            raise AdminAuthThrottled("too many attempts — try again later")
 
         account = await self.find_by_username(username_key)
         if account is None:
@@ -293,7 +320,7 @@ class AdminAuthService:
                 detail="locked",
                 ip=ip,
             )
-            raise AdminAuthError("account temporarily locked")
+            raise AdminAccountLocked("account temporarily locked")
 
         if not verify_password(account.password_hash, password):
             await self._register_failure(account)
@@ -383,7 +410,7 @@ class AdminAuthService:
         account = await self._resolve_challenge(challenge_token, CHALLENGE_PURPOSE)
 
         if not await self.limiter.allow(f"admin:totp:ip:{ip}", TOTP_IP_LIMIT, TOTP_IP_WINDOW_S):
-            raise AdminAuthError("too many attempts — try again later")
+            raise AdminAuthThrottled("too many attempts — try again later")
 
         if account.totp_secret is None:
             raise AdminAuthError("TOTP is not enrolled")
@@ -571,7 +598,7 @@ class AdminAuthService:
         account = await self._resolve_challenge(challenge_token, CHALLENGE_PURPOSE)
 
         if not await self.limiter.allow(f"admin:totp:ip:{ip}", TOTP_IP_LIMIT, TOTP_IP_WINDOW_S):
-            raise AdminAuthError("too many attempts — try again later")
+            raise AdminAuthThrottled("too many attempts — try again later")
 
         digest = hash_recovery_code(code)
         result = await self.session.execute(
@@ -601,7 +628,11 @@ class AdminAuthService:
         await self.session.flush()
 
         await self.audit(
-            EV_RECOVERY_USED, "SUCCESS", admin_id=account.id, username=account.username, ip=ip,
+            EV_RECOVERY_USED,
+            "SUCCESS",
+            admin_id=account.id,
+            username=account.username,
+            ip=ip,
             user_agent=user_agent,
         )
         return account
@@ -658,7 +689,7 @@ class AdminAuthService:
         if account is None or not account.is_active:
             raise AdminAuthError("account not found")
         if self.is_locked(account):
-            raise AdminAuthError("account temporarily locked")
+            raise AdminAccountLocked("account temporarily locked")
         return account
 
 
@@ -728,8 +759,10 @@ __all__ = [
     "LOCKOUT_MINUTES",
     "MAX_FAILED_LOGINS",
     "RECOVERY_CODE_COUNT",
+    "AdminAccountLocked",
     "AdminAuthError",
     "AdminAuthService",
+    "AdminAuthThrottled",
     "EnrolmentOut",
     "LoginOutcome",
     "issue_admin_access_token",

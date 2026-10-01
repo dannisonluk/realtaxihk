@@ -115,6 +115,14 @@ class LedgerService:
         # Idempotent replay: same reference -> the SAME entry, or an error.
         # SEC-13: returning an arbitrary existing row here is what let a planted
         # reference silently swallow a charge.
+        #
+        # Note this SELECT is deliberately *not* `with_for_update()`, while the
+        # deposit read below is. That asymmetry is correct: a concurrent
+        # same-reference insert is not prevented here at all (there is no lock
+        # that can hold a row that does not exist yet) — the partial UNIQUE
+        # index on `reference` is what stops it, and the `IntegrityError` branch
+        # at the bottom translates that into a BusinessRuleError. This lookup is
+        # the fast path that avoids the insert-then-fail round trip.
         if reference:
             existing = (
                 (

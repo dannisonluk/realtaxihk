@@ -95,18 +95,22 @@ class LicenceReviewService:
         # relationship load: the queue row needs one column from the profile,
         # and eager-loading the whole row per item turns a 50-row page into 50
         # extra selects for data the list does not render.
-        driver_status = {
-            dp.id: dp.status
-            for dp in (
-                await self.session.execute(
-                    select(DriverProfile).where(
-                        DriverProfile.id.in_([r.driver_profile_id for r in rows])
+        driver_status = (
+            {
+                dp.id: dp.status
+                for dp in (
+                    await self.session.execute(
+                        select(DriverProfile).where(
+                            DriverProfile.id.in_([r.driver_profile_id for r in rows])
+                        )
                     )
                 )
-            )
-            .scalars()
-            .all()
-        } if rows else {}
+                .scalars()
+                .all()
+            }
+            if rows
+            else {}
+        )
 
         return {
             "items": [

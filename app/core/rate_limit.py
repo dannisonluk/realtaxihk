@@ -22,7 +22,20 @@ class RateLimiter:
         self.namespace = namespace
 
     async def count(self, key: str, window_s: int) -> int:
-        """Increment the window counter and return the new value."""
+        """Increment the window counter and return the new value.
+
+        Fixed-window, not sliding. The window key embeds `time // window_s`, so
+        the counter rotates on a wall-clock boundary rather than on first use.
+        A caller can therefore get up to `2 * limit` requests across a boundary
+        (limit at the end of one window, limit at the start of the next). That
+        is accepted here: every use is a coarse abuse brake, not a quota, and a
+        sliding window would cost a sorted set per key on the hot path.
+
+        The `expire` is only set when the counter is created (`count == 1`), and
+        the extra 5s covers clock skew between the app and Redis. It is not set
+        on every call on purpose — re-`EXPIRE`-ing would keep pushing the TTL
+        out and turn a rotating window into a never-expiring key.
+        """
         window = int(time.time()) // window_s
         rkey = f"rl:{self.namespace}{key}:{window}"
         count = await self.redis.incr(rkey)

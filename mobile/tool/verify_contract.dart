@@ -1,10 +1,24 @@
 /// Decodes every captured response in `test/fixtures/` with the **real** models.
 ///
 /// `scripts/gen_mobile_fixtures.py` boots the API and writes raw responses to
-/// `test/fixtures/`; this is the other half of that loop. It exists because
-/// `/openapi.json` types almost nothing — 28 paths, and all but one response
-/// schema is `{}` — so every Dart model is an assumption about a hand-built
-/// dict. An assumption checked only by reading the Python is not checked.
+/// `test/fixtures/`; this is the other half of that loop.
+///
+/// **Why it still exists now that the API declares response models.** It was
+/// written when `/openapi.json` typed almost nothing — 28 paths, all but one
+/// response schema `{}` — so every Dart model was an assumption about a
+/// hand-built dict. That is no longer true: all 69 operations now declare a
+/// real `response_model=` (`app/api/schemas/`). This tool is kept because it
+/// checks a **different** thing: the Python schemas are validated against the
+/// *handlers*, this validates the **Dart decoders** against the *bytes*. A
+/// `response_model=` can be perfectly faithful to the handler and still be a
+/// shape the client cannot read — a field renamed in both the model and the
+/// handler passes every Python test and breaks the app. This is the only check
+/// that would catch that.
+///
+/// The Python-side counterpart is `scripts/audit_response_models.py`, which
+/// proves each fixture's keys survive its `response_model=` (a response model is
+/// a filter, and a missing field silently deletes data from the response). Run
+/// both after a backend change — they fail in different places.
 ///
 /// Three things this caught that reading the source did not make obvious:
 ///

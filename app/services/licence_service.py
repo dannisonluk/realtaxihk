@@ -456,8 +456,10 @@ class LicenceService:
         if expires_on <= now + timedelta(days=MIN_REMAINING_VALIDITY_DAYS):
             raise BusinessRuleError(
                 "this licence expires too soon to be accepted",
-                {"expires_on": expires_on.date().isoformat(),
-                 "minimum_remaining_days": MIN_REMAINING_VALIDITY_DAYS},
+                {
+                    "expires_on": expires_on.date().isoformat(),
+                    "minimum_remaining_days": MIN_REMAINING_VALIDITY_DAYS,
+                },
             )
 
         by_kind = self._index_documents(documents)

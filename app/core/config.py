@@ -75,6 +75,17 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://127.0.0.1:6379/0"
 
+    # Prefix for every rate-limit key: `rl:{redis_key_namespace}{key}:{window}`.
+    #
+    # Production never changes this — it exists so a *second* process sharing
+    # the same Redis cannot delete this one's counters. The test suite sets it
+    # per process (see `tests/conftest.py`), because `_clear_rate_limits()`
+    # sweeps `rl:<namespace>*` between tests and a shared namespace turns that
+    # sweep into a cross-process reset. A dedicated Redis DB (or a unique
+    # `redis_url`) would also work and is the better answer at scale; a key
+    # prefix keeps the suite working on the single local Redis the stack ships.
+    redis_key_namespace: str = "realtaxi:"
+
     # SEC-04: no default — must be provided and must have entropy.
     jwt_secret_key: str = ""
     jwt_algorithm: str = "HS256"

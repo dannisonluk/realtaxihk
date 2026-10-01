@@ -368,9 +368,7 @@ async def test_schedule_for_existing_targets_only_null_rows(db_session):
         (
             await db_session.execute(
                 select(User.phone_e164, User.phone_reverify_due_at).where(
-                    User.phone_e164.in_(
-                        [never.phone_e164, proven.phone_e164, settled.phone_e164]
-                    )
+                    User.phone_e164.in_([never.phone_e164, proven.phone_e164, settled.phone_e164])
                 )
             )
         ).all()
@@ -572,9 +570,7 @@ def test_reverify_refuses_a_number_that_is_not_on_the_account(client):
     other = "+85290003399"
     code = _fresh_code(client, other)
 
-    response = client.post(
-        REVERIFY, json={"phone_e164": other, "code": code}, headers=_auth(token)
-    )
+    response = client.post(REVERIFY, json={"phone_e164": other, "code": code}, headers=_auth(token))
 
     assert response.status_code == 400, response.text
     assert "not the one on your account" in response.text

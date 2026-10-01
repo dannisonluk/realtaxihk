@@ -56,7 +56,7 @@ from typing import Any, Literal
 from sqlalchemy import Date, Select, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.money import money_str
+from app.core.money import money_str, ratio_str
 from app.models import Order, OrderStatus
 
 # Hong Kong is UTC+8 with no daylight saving, but the name is used rather than a
@@ -134,11 +134,13 @@ def _ratio_2dp(numerator: int, denominator: int) -> str:
 
     `money_str` is deliberately not used: it exists to fix the wire form of a
     *stored amount*, and labelling a trip count as money would invite a reader
-    to treat it as one.
+    to treat it as one. `ratio_str` is the right entry point instead — it is the
+    half-up rule without the money claim, and using it here is what keeps this
+    ratio rounding the same way as the money beside it.
     """
     if not denominator:
         return "0.00"
-    return str((Decimal(numerator) / denominator).quantize(Decimal("0.01")))
+    return ratio_str(Decimal(numerator) / denominator)
 
 
 class AnalyticsService:
@@ -188,7 +190,7 @@ class AnalyticsService:
                 "orders": int(row.orders),
                 "earnings_hkd": money_str(Decimal(row.earnings)),
                 "avg_fare_hkd": money_str(Decimal(row.avg_fare)),
-                "distance_km": f"{Decimal(row.distance).quantize(Decimal('0.01'))}",
+                "distance_km": ratio_str(Decimal(row.distance)),
             }
             for row in rows
         ]
@@ -221,7 +223,7 @@ class AnalyticsService:
                 "avg_fare_hkd": money_str(
                     total_earnings / total_orders if total_orders else Decimal("0")
                 ),
-                "distance_km": str(total_distance.quantize(Decimal("0.01"))),
+                "distance_km": ratio_str(total_distance),
                 "buckets": len(buckets),
                 "days": (day_to - day_from).days + 1,
             },

@@ -129,9 +129,7 @@ def test_challenge_token_cannot_be_used_as_a_bearer_token(client):
     _seed_admin(client)
     challenge = _login(client).json()["challenge_token"]
 
-    response = client.get(
-        "/api/v1/admin/drivers", headers={"Authorization": f"Bearer {challenge}"}
-    )
+    response = client.get("/api/v1/admin/drivers", headers={"Authorization": f"Bearer {challenge}"})
     assert response.status_code == 401, response.text
 
 
@@ -195,13 +193,10 @@ def test_the_access_token_can_actually_reach_the_console(client):
     assert secret is not None
 
     challenge = _login(client).json()["challenge_token"]
-    token = (
-        client.post(
-            f"{BASE}/totp/verify",
-            json={"challenge_token": challenge, "code": _totp_now(secret)},
-        )
-        .json()["access_token"]
-    )
+    token = client.post(
+        f"{BASE}/totp/verify",
+        json={"challenge_token": challenge, "code": _totp_now(secret)},
+    ).json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     for path in ("/api/v1/admin/drivers", "/api/v1/admin/fleets", "/api/v1/admin/refunds"):
@@ -217,9 +212,7 @@ def test_an_otp_user_token_cannot_reach_admin_routes(client):
     exist", a passenger would reach the refund queue.
     """
     token = client.activate("+85281000077", username="realtaxi_regression_user")
-    response = client.get(
-        "/api/v1/admin/drivers", headers={"Authorization": f"Bearer {token}"}
-    )
+    response = client.get("/api/v1/admin/drivers", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 403, response.text
 
 
@@ -249,9 +242,7 @@ def test_a_user_token_carrying_an_admin_role_claim_is_still_refused(client):
         settings.jwt_secret_key,
         algorithm="HS256",
     )
-    response = client.get(
-        "/api/v1/admin/drivers", headers={"Authorization": f"Bearer {forged}"}
-    )
+    response = client.get("/api/v1/admin/drivers", headers={"Authorization": f"Bearer {forged}"})
     assert response.status_code == 403, response.text
 
 
@@ -266,13 +257,10 @@ def test_an_admin_token_with_no_enrolment_is_refused(client):
     assert secret is not None
 
     challenge = _login(client, username="unproven").json()["challenge_token"]
-    token = (
-        client.post(
-            f"{BASE}/totp/verify",
-            json={"challenge_token": challenge, "code": _totp_now(secret)},
-        )
-        .json()["access_token"]
-    )
+    token = client.post(
+        f"{BASE}/totp/verify",
+        json={"challenge_token": challenge, "code": _totp_now(secret)},
+    ).json()["access_token"]
 
     # Enrolment is cleared *after* the token exists, which is the only way to
     # hold a valid token for a row that claims no enrolment.
@@ -280,9 +268,7 @@ def test_an_admin_token_with_no_enrolment_is_refused(client):
         "UPDATE admin_accounts SET totp_enrolled_at = NULL WHERE id = :id", {"id": admin_id}
     )
 
-    response = client.get(
-        "/api/v1/admin/drivers", headers={"Authorization": f"Bearer {token}"}
-    )
+    response = client.get("/api/v1/admin/drivers", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 403, response.text
 
 
@@ -663,16 +649,28 @@ def test_the_audit_log_never_records_a_password_or_a_secret(client):
 
 
 def test_repeated_logins_are_rate_limited(client):
-    """Per-account budget, on top of the lockout.
+    """The limiter fires once the per-account budget is exhausted.
 
-    The lockout is 5 attempts; the limiter is a coarser budget that also covers
-    usernames that do not exist. Either may fire first, so assert on the set of
-    outcomes rather than a specific status.
+    This asserts **429 specifically**, not `401 or 429`.
+
+    It used to be `assert 429 in statuses or 401 in statuses`, which the comment
+    justified as "either may fire first". That is true about *which request* —
+    the 5-attempt lockout trips before the coarser limiter, so the early
+    refusals are legitimately 401 — but as written the assertion also passes if
+    **no** request is ever 429, i.e. it could not detect the limiter breaking
+    entirely. It was a tautology on any run where something returned 401.
+
+    Now that the 401/429 split is decided by exception *type* rather than by
+    substring-matching the message (see `app/api/admin_auth.py::_run`), the
+    intended outcome is knowable and worth pinning: the last request in the
+    burst must be 429.
     """
     _seed_admin(client)
     statuses = [_login(client, password="wrong-password-here-42").status_code for _ in range(12)]
-    assert 429 in statuses or 401 in statuses
-    assert statuses[-1] in (401, 429)
+    assert statuses[-1] == 429, f"limiter never tripped: {statuses}"
+    # The lockout (5 attempts) legitimately answers 401 first, so the run is a
+    # mix; the point is that the limiter does eventually refuse with 429.
+    assert 429 in statuses
 
 
 def test_a_bad_password_never_creates_a_token_even_under_load(client):
@@ -696,6 +694,7 @@ def test_account_status_has_no_server_default(client):
     instead of silently creating an ACTIVE account. If someone re-adds the
     default, this catches it.
     """
+
     async def _inner():
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
         from sqlalchemy.pool import NullPool

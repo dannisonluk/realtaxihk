@@ -72,9 +72,7 @@ def _norm_email(value: str) -> str:
 async def _list_admins() -> int:
     factory = get_session_factory()
     async with factory() as session:
-        result = await session.execute(
-            select(AdminAccount).order_by(AdminAccount.username)
-        )
+        result = await session.execute(select(AdminAccount).order_by(AdminAccount.username))
         rows = list(result.scalars())
     print(f"target: {_target()}")
     if not rows:
@@ -176,9 +174,7 @@ async def _run(args: argparse.Namespace) -> int:
     # dispose on a different loop than the one holding the connections, which
     # surfaces as `AttributeError: 'NoneType' object has no attribute 'send'`.
     try:
-        return await _create(
-            args.username, args.email, args.name, password, yes=bool(args.yes)
-        )
+        return await _create(args.username, args.email, args.name, password, yes=bool(args.yes))
     finally:
         await dispose_engine()
 

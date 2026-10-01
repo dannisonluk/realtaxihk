@@ -67,9 +67,7 @@ def _sign_in(client, phone: str) -> str:
     )
     client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
     code = client.otp_inbox.get(phone, CODE)
-    response = client.post(
-        "/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": code}
-    )
+    response = client.post("/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": code})
     assert response.status_code == 200, response.text
     return response.json()["access_token"]
 
@@ -221,9 +219,7 @@ def test_presign_returns_a_scoped_key_and_never_writes_a_row(client):
 
     assert key.startswith(f"documents/{driver_id}/")
 
-    rows = _fetch(
-        client, "SELECT id FROM driver_documents WHERE object_key = :k", {"k": key}
-    )
+    rows = _fetch(client, "SELECT id FROM driver_documents WHERE object_key = :k", {"k": key})
     assert rows == [], "presign created a document row before the upload happened"
 
 
@@ -428,9 +424,7 @@ def test_a_driver_can_withdraw_and_resubmit(client):
     token, _ = _register_driver(client)
     first = _submit(client, token).json()
 
-    withdrawn = client.post(
-        f"{SUBMISSIONS}/{first['id']}/withdraw", headers=_auth(token)
-    )
+    withdrawn = client.post(f"{SUBMISSIONS}/{first['id']}/withdraw", headers=_auth(token))
     assert withdrawn.status_code == 200, withdrawn.text
     assert withdrawn.json()["status"] == "SUPERSEDED"
 
@@ -459,9 +453,7 @@ def test_a_decided_submission_cannot_be_withdrawn(client):
         headers=_auth(admin_token),
     )
 
-    response = client.post(
-        f"{SUBMISSIONS}/{submitted['id']}/withdraw", headers=_auth(token)
-    )
+    response = client.post(f"{SUBMISSIONS}/{submitted['id']}/withdraw", headers=_auth(token))
     assert response.status_code == 400, response.text
     assert "already rejected" in response.json()["message"]
 
@@ -489,10 +481,7 @@ def test_a_driver_cannot_reach_the_admin_queue(client):
     submitted = _submit(client, token).json()
 
     assert client.get(ADMIN_QUEUE, headers=_auth(token)).status_code == 403
-    assert (
-        client.get(f"{ADMIN_QUEUE}/{submitted['id']}", headers=_auth(token)).status_code
-        == 403
-    )
+    assert client.get(f"{ADMIN_QUEUE}/{submitted['id']}", headers=_auth(token)).status_code == 403
     decide = client.post(
         f"{ADMIN_QUEUE}/{submitted['id']}/decide",
         json={"approve": True},
@@ -559,9 +548,7 @@ def test_approving_a_pending_kyc_driver_promotes_them(client):
     submitted = _submit(client, token).json()
     admin_token = _make_admin(client)
 
-    before = _one(
-        client, "SELECT status FROM driver_profiles WHERE id = :d", {"d": driver_id}
-    )
+    before = _one(client, "SELECT status FROM driver_profiles WHERE id = :d", {"d": driver_id})
     assert before["status"] == "PENDING_KYC"
 
     decided = client.post(
@@ -591,8 +578,7 @@ def test_the_decision_records_who_made_it(client):
 
     row = _one(
         client,
-        "SELECT reviewed_by, reviewed_at, status FROM driver_licence_submissions "
-        "WHERE id = :i",
+        "SELECT reviewed_by, reviewed_at, status FROM driver_licence_submissions WHERE id = :i",
         {"i": submitted["id"]},
     )
     assert row["status"] == "APPROVED"
@@ -678,8 +664,7 @@ def test_an_expired_licence_cannot_be_approved(client):
     # Age the row past its expiry, as if the decision came much later.
     _exec(
         client,
-        "UPDATE driver_licence_submissions "
-        "SET expires_on = now() - interval '1 day' WHERE id = :i",
+        "UPDATE driver_licence_submissions SET expires_on = now() - interval '1 day' WHERE id = :i",
         {"i": submitted["id"]},
     )
 

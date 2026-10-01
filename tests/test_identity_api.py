@@ -38,9 +38,7 @@ def _sign_in(client, phone: str = PHONE) -> str:
     """
     client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
     code = client.otp_inbox.get(phone, CODE)
-    response = client.post(
-        "/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": code}
-    )
+    response = client.post("/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": code})
     assert response.status_code == 200, response.text
     return response.json()["access_token"]
 
@@ -73,15 +71,19 @@ async def _read_user(client, phone: str = PHONE) -> dict:
         maker = async_sessionmaker(engine, expire_on_commit=False)
         async with maker() as session:
             row = (
-                await session.execute(
-                    text(
-                        "SELECT username, given_name, family_name, gender, avatar_key, "
-                        "email, email_verified_at, account_status, display_name "
-                        "FROM users WHERE phone_e164 = :p"
-                    ),
-                    {"p": phone},
+                (
+                    await session.execute(
+                        text(
+                            "SELECT username, given_name, family_name, gender, avatar_key, "
+                            "email, email_verified_at, account_status, display_name "
+                            "FROM users WHERE phone_e164 = :p"
+                        ),
+                        {"p": phone},
+                    )
                 )
-            ).mappings().first()
+                .mappings()
+                .first()
+            )
             return dict(row) if row else {}
     finally:
         await engine.dispose()
@@ -195,9 +197,7 @@ def test_an_unverified_account_is_refused_by_a_gated_route(client):
 
     app = create_app()
     paths = [
-        getattr(r, "path", "")
-        for r in app.routes
-        if "verified" in str(getattr(r, "dependant", ""))
+        getattr(r, "path", "") for r in app.routes if "verified" in str(getattr(r, "dependant", ""))
     ]
     # Assert the dependency exists and is wired to something real.
     assert require_verified_account is not None
@@ -486,9 +486,7 @@ def test_one_email_cannot_be_verified_on_two_accounts(client):
     second = _sign_in(client, "+85290002222")
 
     client.post(EMAIL_REQ, json={"email": "shared@example.com"}, headers=_auth(first))
-    clash = client.post(
-        EMAIL_REQ, json={"email": "shared@example.com"}, headers=_auth(second)
-    )
+    clash = client.post(EMAIL_REQ, json={"email": "shared@example.com"}, headers=_auth(second))
     assert clash.status_code == 400
     assert "already in use" in clash.json()["message"].lower()
 

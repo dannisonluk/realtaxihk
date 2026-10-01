@@ -283,6 +283,10 @@ def calculate_fare(
         )
 
     surcharges_total = sum((s.amount for s in surcharges), Decimal("0"))
+    # 1 dp, half-up: the same rule `money.meter_str` applies when this figure is
+    # serialised. Kept as a `Decimal` here because it is summed into the total
+    # below, and spelled with the literal rather than importing a constant for a
+    # single use.
     discount = (
         (meter_fare * discount_percent / Decimal("100")).quantize(
             Decimal("0.1"), rounding=ROUND_HALF_UP

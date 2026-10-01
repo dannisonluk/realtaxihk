@@ -44,7 +44,16 @@ class GrabService:
         self.session_factory = session_factory
 
     async def grab(self, order_id: str, driver_user_id: str) -> bool:
-        """Return True if this caller won the order, False if it lost the race."""
+        """Return True if this caller won the order, False if it lost the race.
+
+        Every failure below returns `False` rather than raising, and the API
+        collapses them all into one 409. That is intentional: from the driver's
+        point of view "someone else took it", "it was cancelled a moment ago"
+        and "it never existed" are the same event — the order is not available.
+        Distinguishing them would leak whether an arbitrary order id exists,
+        and the `existence pre-check` in the route already answers that for
+        orders the caller is allowed to see.
+        """
         lock_key = f"lock:grab:{order_id}"
         lock_token = uuid.uuid4().hex
         acquired = await self.redis.set(lock_key, lock_token, nx=True, px=_LOCK_TTL_MS)
@@ -87,6 +96,12 @@ class GrabService:
                     await session.rollback()
                     return False
                 await session.commit()
+            # Index removal is deliberately *after* the commit and outside the
+            # try/finally's failure path: if the commit succeeded the order is
+            # genuinely taken, and a stale geo member is harmless (the `nearby`
+            # query re-filters on `status == BROADCASTING`, so a lingering id
+            # simply fails to resolve). Doing this before the commit would risk
+            # removing a still-available order from the dispatch index.
             await self.redis.zrem("geo:orders:active", str(order_id))
         finally:
             # Lock always released; a DB failure propagates (order stays BROADCASTING).

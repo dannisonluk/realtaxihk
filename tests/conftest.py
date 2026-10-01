@@ -27,6 +27,7 @@ anyone able to forge a token would already know which `sub` to use.
 """
 
 import asyncio
+import contextlib
 import os
 import uuid
 
@@ -46,6 +47,18 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-not-for-prod-0f3a9c7e1
 # An explicit environment variable outranks `.env`, hence the assignment.
 os.environ["ALLOW_DEV_OTP"] = "false"
 #
+# Rate-limit keys are namespaced per PROCESS so two concurrent runs cannot
+# delete each other's counters. See `_clear_rate_limits` and
+# `Settings.redis_key_namespace`. Set here (before any `Settings()` is built)
+# rather than monkeypatched later, because the namespace is captured when the
+# app builds its `RateLimiter` and the admin service builds its own.
+#
+# The `APP_RL_NAMESPACE` constant itself is defined with the other module
+# constants further down — an assignment between the env block and the imports
+# makes ruff treat every following import as `E402` (module import not at top of
+# file), and this file's whole shape depends on those imports staying put.
+os.environ["REDIS_KEY_NAMESPACE"] = f"test_{os.getpid()}:"
+#
 # Connection details are deliberately NOT defaulted here: they are environment
 # specific (ports differ between the local stack and CI) and belong in `.env` or
 # in the CI job's env block. Guessing them would mask a real misconfiguration.
@@ -62,7 +75,28 @@ from app.core.passwords import hash_password
 from app.core.totp import _decode_key, _hotp, current_step, generate_secret
 from app.models import Base
 
-TEMPLATE_DB = "realtaxihk_test_tpl"
+# This process's rate-limit key namespace. Must match what was exported as
+# `REDIS_KEY_NAMESPACE` above (which the app reads); kept as a named constant so
+# `_clear_rate_limits` sweeps its own prefix and not another run's.
+APP_RL_NAMESPACE = f"test_{os.getpid()}:"
+
+_TEMPLATE_PREFIX = "realtaxihk_test_tpl"
+
+# One template per pytest PROCESS, not one per machine.
+#
+# It used to be the constant name `realtaxihk_test_tpl`, and that made two
+# concurrent runs destroy each other: `_ensure_template` begins by
+# `DROP DATABASE ... WITH (FORCE)`, so the second run to start would drop the
+# template out from under the first one's `CREATE DATABASE ... TEMPLATE` clones.
+# The victim then failed with `relation "otp_codes" does not exist` (a clone of
+# a half-built schema) — which reads exactly like a product bug, not like two
+# test processes colliding. It cost real time to diagnose the first time.
+#
+# Observed only by accident (a backgrounded run overlapping a foreground one),
+# but any CI matrix, parallel shard, or a developer running the suite while CI
+# is running hits it. A per-process suffix makes the collision impossible
+# instead of unlikely, at the cost of one extra DB per concurrent run.
+TEMPLATE_DB = f"{_TEMPLATE_PREFIX}_{uuid.uuid4().hex[:8]}"
 
 # Seeded into the template DB, so every per-test clone already has one admin.
 # Random per session — see the module docstring.
@@ -87,7 +121,12 @@ def _db_url(name: str) -> str:
 
 
 async def _ensure_template() -> None:
-    """Fresh template DB with full schema — rebuilt once per pytest session."""
+    """Fresh template DB with full schema — rebuilt once per pytest session.
+
+    The name carries a per-process suffix (`TEMPLATE_DB`), and the DROP here is
+    why: this routine deletes and recreates the template, so a fixed name means
+    two concurrent runs delete each other's clone source. See `TEMPLATE_DB`.
+    """
     conn = await asyncpg.connect(dsn=_admin_dsn())
     try:
         exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", TEMPLATE_DB)
@@ -138,6 +177,15 @@ async def _drop_test_db(name: str) -> None:
         await conn.close()
 
 
+async def _drop_template() -> None:
+    """Best-effort teardown for this process's template DB (see `TEMPLATE_DB`)."""
+    conn = await asyncpg.connect(dsn=_admin_dsn())
+    try:
+        await conn.execute(f'DROP DATABASE "{TEMPLATE_DB}" WITH (FORCE)')
+    finally:
+        await conn.close()
+
+
 def pytest_configure(config):
     """Build the template DB once per session.
 
@@ -157,18 +205,52 @@ def pytest_configure(config):
         ) from exc
 
 
+def pytest_unconfigure(config):
+    """Drop this process's template DB and rate-limit keys.
+
+    Pairs with the per-process names above: without it every run would leave a
+    ~19-table database and a flock of `rl:test_<pid>:*` keys behind, so a
+    developer running the suite a few dozen times accumulates dozens of each.
+    Deliberately best-effort — a teardown failure must not turn a green run red,
+    and a leftover is untidy, not corrupted state.
+
+    The keys also carry a TTL (`window_s + 5`), so this is belt-and-braces:
+    it makes the keys disappear *now* rather than within 15 minutes.
+    """
+    with contextlib.suppress(Exception):
+        asyncio.run(_drop_template())
+    with contextlib.suppress(Exception):
+        _clear_rate_limits()
+
+
 def _clear_rate_limits() -> None:
     """P1-2 isolation: OTP/order rate-limit counters must not leak across tests.
 
     Uses a throwaway Redis client (not the app singleton) so no event-loop
     state is shared with the TestClient portal.
+
+    **Scoped to this process only.** The app namespaces every rate-limit key as
+    `rl:{namespace}{key}:{window}`, and a bare `rl:*` scan therefore also
+    matches the keys of *any other* pytest process sharing this Redis. Deleting
+    them is not a cosmetic side effect: it resets a concurrent run's counters
+    mid-test, which shows up as a spurious 429 on a request that should have
+    been allowed (`test_exactly_one_service_grab_wins`) or a missing 429 on a
+    test whose whole point is that the limiter fires
+    (`test_repeated_logins_are_rate_limited`). Both look like product bugs and
+    neither is.
+
+    `APP_RL_NAMESPACE` is this process's own prefix (set at import time, see
+    above), so the sweep reaches exactly this process's keys. A dedicated Redis
+    DB would be stronger — it would also isolate keys the app creates outside
+    the limiter — but the stack ships one Redis and the prefix is enough for the
+    counters the suite actually resets.
     """
     import redis.asyncio as aioredis
 
     async def _inner():
         r = aioredis.from_url(get_settings().redis_url, decode_responses=True)
         try:
-            keys = [k async for k in r.scan_iter(match="rl:*")]
+            keys = [k async for k in r.scan_iter(match=f"rl:{APP_RL_NAMESPACE}*")]
             if keys:
                 await r.delete(*keys)
         finally:
@@ -328,9 +410,7 @@ def admin_headers(client, *, username: str | None = None) -> AdminHeaders:
         },
     )
 
-    r = client.post(
-        "/api/v1/admin/auth/login", json={"username": name, "password": password}
-    )
+    r = client.post("/api/v1/admin/auth/login", json={"username": name, "password": password})
     assert r.status_code == 200, r.text
     challenge = r.json()["challenge_token"]
     r = client.post(

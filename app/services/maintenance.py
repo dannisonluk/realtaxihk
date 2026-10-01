@@ -18,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.models import Order, OrderStatus, OtpCode, RefreshToken
+from app.models import AdminRefreshToken, Order, OrderStatus, OtpCode, RefreshToken
 from app.services.geo_service import GEO_ORDERS_KEY
 
 logger = logging.getLogger("realtaxihk.maintenance")
@@ -121,7 +121,14 @@ class MaintenanceService:
     async def purge_expired_rows(
         self, retention_days_otp: int, retention_days_refresh: int
     ) -> dict:
-        """PDPO: delete OTP rows and dead refresh tokens past retention."""
+        """PDPO: delete OTP rows and dead refresh tokens past retention.
+
+        Covers the admin table as well as the user one. Both are strictly better
+        deleted than kept and both are purged by the same rule, so folding them
+        into one job means there is one retention decision to reason about
+        rather than two that can drift. A missed admin table would be the worse
+        of the two misses: those rows are tied to accounts that can move money.
+        """
         now = datetime.now(UTC)
 
         async with self.session_factory() as session:
@@ -139,6 +146,21 @@ class MaintenanceService:
                     )
                 )
             )
+            # Same rule for admin sessions. Kept as a separate statement rather
+            # than a union so the two counts stay attributable in the log — if
+            # the admin figure jumps, that is worth noticing on its own.
+            admin_refresh_res = await session.execute(
+                delete(AdminRefreshToken).where(
+                    (AdminRefreshToken.expires_at < now)
+                    | (
+                        (AdminRefreshToken.revoked_at.is_not(None))
+                        & (
+                            AdminRefreshToken.revoked_at
+                            < now - timedelta(days=retention_days_refresh)
+                        )
+                    )
+                )
+            )
             # Additional retention guard: rows created long ago regardless of state.
             await session.execute(
                 delete(OtpCode).where(OtpCode.created_at < now - timedelta(days=retention_days_otp))
@@ -146,6 +168,11 @@ class MaintenanceService:
             await session.commit()
             otp_n = otp_res.rowcount or 0
             ref_n = refresh_res.rowcount or 0
-        if otp_n or ref_n:
-            logger.info("pdpo purge: otp=%d refresh=%d", otp_n, ref_n)
-        return {"otp_deleted": otp_n, "refresh_deleted": ref_n}
+            admin_ref_n = admin_refresh_res.rowcount or 0
+        if otp_n or ref_n or admin_ref_n:
+            logger.info("pdpo purge: otp=%d refresh=%d admin_refresh=%d", otp_n, ref_n, admin_ref_n)
+        return {
+            "otp_deleted": otp_n,
+            "refresh_deleted": ref_n,
+            "admin_refresh_deleted": admin_ref_n,
+        }
