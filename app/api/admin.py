@@ -711,6 +711,24 @@ async def list_audit_log(
 _require_super = require_role(AdminRole.SUPER_ADMIN)
 
 
+async def _actor_username(session: AsyncSession, admin: Principal) -> str | None:
+    """The calling admin's username, for the audit row's denormalised copy.
+
+    `Principal` carries an id and a role but no name, and `record_audit`'s
+    `username` column is otherwise only populated by the login path. A role
+    change is exactly the row where "who did this" has to be legible without a
+    join — the whole point of the from/to payload is that it answers the
+    question on its own. One extra read on a route that changes an account is
+    not a cost worth trading that for.
+
+    Returns `None` rather than raising if the row is gone: the caller is
+    authenticated and the action will succeed or fail on its own merits, and a
+    missing username must not be the thing that breaks it.
+    """
+    row = await session.get(AdminAccount, admin.id)
+    return row.username if row is not None else None
+
+
 class AdminAccountCreateIn(BaseModel):
     username: str = Field(min_length=1, max_length=32)
     email: str = Field(min_length=3, max_length=254)
@@ -793,6 +811,7 @@ async def create_admin_account(
         session,
         event=EV_ADMIN_ACCOUNT_CREATE,
         actor_id=admin.id,
+        username=await _actor_username(session, admin),
         detail=f"created admin {account.username} as {account.role}",
         payload={
             "created_id": str(account.id),
@@ -830,6 +849,7 @@ async def change_admin_role(
         session,
         event=EV_ADMIN_ROLE_CHANGE,
         actor_id=admin.id,
+        username=await _actor_username(session, admin),
         detail=f"changed {account.username} from {previous.value} to {account.role}",
         # `from`/`to` rather than the account's current state: the row itself
         # holds only the new value, so the transition exists nowhere else.
@@ -874,6 +894,7 @@ async def reset_admin_password(
         session,
         event=EV_ADMIN_PASSWORD_RESET,
         actor_id=admin.id,
+        username=await _actor_username(session, admin),
         detail=f"reset password for {account.username}",
         # Never the password and never the hash — an audit log readable by
         # every role is not a place a credential can appear.

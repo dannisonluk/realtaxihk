@@ -40,8 +40,8 @@ async def _fetch(client, sql: str, params: dict | None = None) -> list[dict]:
 async def _audit_rows(client, event: str) -> list[dict]:
     return await _fetch(
         client,
-        "SELECT event, detail, payload FROM admin_audit_log WHERE event = :e "
-        "ORDER BY created_at DESC",
+        "SELECT event, username_attempted, detail, payload FROM admin_audit_log "
+        "WHERE event = :e ORDER BY created_at DESC",
         {"e": event},
     )
 
@@ -367,6 +367,30 @@ async def _count_supers(client) -> int:
 
 
 class TestRoleChangeIsAudited:
+    async def test_the_actor_is_named_on_the_row(self, client):
+        """`Principal` carries no username, so this row's name has to be looked
+        up. Left as the first draft, `actor_username` was null on every account
+        event — and a from/to role change is exactly the row where "who did
+        this" has to be readable without a join."""
+        actor = client.admin_headers()
+        target = client.admin_headers(role="SUPPORT")
+        client.patch(
+            f"/api/v1/admin/accounts/{target.admin_id}/role",
+            headers=actor,
+            json={"admin_role": "FINANCE"},
+        )
+        rows = await _audit_rows(client, EV_ADMIN_ROLE_CHANGE)
+        assert rows[0]["username_attempted"], "the actor must be named on the row"
+        # And it names the actor, not the target.
+        target_name = (
+            await _fetch(
+                client,
+                "SELECT username FROM admin_accounts WHERE id = CAST(:i AS uuid)",
+                {"i": target.admin_id},
+            )
+        )[0]["username"]
+        assert rows[0]["username_attempted"] != target_name
+
     async def test_the_transition_is_recorded_because_the_row_cannot_show_it(self, client):
         actor = client.admin_headers()
         target = client.admin_headers(role="SUPPORT")
