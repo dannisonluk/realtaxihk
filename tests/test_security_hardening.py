@@ -407,6 +407,11 @@ class TestRouteAuthzCoverage:
                 "require_admin",
                 "require_live_principal",
                 "require_live_admin_refresh_session",
+                # The guard returned by `require_role(...)`. It composes on top
+                # of `require_admin`, so a route carrying only this one is still
+                # fully guarded; the name is here so the audit recognises it
+                # rather than flagging every role-narrowed route as bare.
+                "require_role_guard",
             }
             if not (live_guards & deps):
                 offenders.append(f"{sorted(route.methods)} {route.path}")

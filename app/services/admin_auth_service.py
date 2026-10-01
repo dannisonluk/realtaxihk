@@ -742,8 +742,21 @@ def issue_admin_access_token(account: AdminAccount) -> str:
     which lives in a different UUID space from `users.id`, so without this claim
     a guard cannot tell which table to load — and `require_admin` loading `users`
     rejected every admin token with a 403. See `app/core/deps.py`.
+
+    `admin_role` is carried for **display and logging only**. `require_role`
+    deliberately re-reads the live row instead of trusting this, so a demotion
+    takes effect on the next request rather than at token expiry. Do not start
+    authorising from this claim — that would reintroduce the stale-privilege
+    window the live read exists to close.
     """
-    return create_access_token({"sub": str(account.id), "role": "ADMIN", "scope": "admin"})
+    return create_access_token(
+        {
+            "sub": str(account.id),
+            "role": "ADMIN",
+            "scope": "admin",
+            "admin_role": account.admin_role.value,
+        }
+    )
 
 
 __all__ = [

@@ -290,6 +290,7 @@ async def me(
             "username": admin.username,
             "email_masked": mask_email(admin.email),
             "role": UserRole.ADMIN.value,
+            "admin_role": admin.admin_role.value,
         }
 
     db_user = await session.get(User, user.id)

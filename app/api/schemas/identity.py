@@ -136,6 +136,12 @@ class AdminMeOut(BaseModel):
     username: str
     email_masked: str
     role: str
+    # The RBAC rank, kept separate from `role` above. `role` answers "what kind
+    # of principal is this" (always `ADMIN` here) and is what the middleware
+    # already understood; `admin_role` answers "how senior". Two different
+    # questions — the console's navigation depends on the second, and every
+    # authorisation decision is made from the live row, not from either field.
+    admin_role: str
 
 
 class UsernameCheckOut(BaseModel):

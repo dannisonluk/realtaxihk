@@ -416,6 +416,10 @@ def _admin_out(account) -> dict:
 
     No secrets, and no `totp_secret` — a field the console has no use for and
     that would be a second-factor disclosure if it ever leaked into a response.
+
+    `admin_role` comes from the row's `admin_role` property so an unrecognised
+    stored value degrades to `SUPPORT` instead of reaching the client as
+    whatever string the column happens to hold.
     """
     return {
         "id": str(account.id),
@@ -423,6 +427,7 @@ def _admin_out(account) -> dict:
         "email": account.email,
         "full_name": account.full_name,
         "totp_enrolled": account.totp_enrolled_at is not None,
+        "admin_role": account.admin_role.value,
     }
 
 

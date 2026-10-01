@@ -120,6 +120,15 @@ class AdminSessionAccountOut(BaseModel):
     the shell, neither of which needs account metadata. There is no
     `totp_secret` field and there never can be — the secret is write-only after
     enrolment.
+
+    `admin_role` is the RBAC rank (`SUPPORT` … `SUPER_ADMIN`), which the console
+    needs on first render to decide which navigation to build. It is **not**
+    what authorises anything: `require_role` re-reads the live row, so a stale
+    claim here only means the sidebar briefly shows a link the server will
+    refuse. Naming it `admin_role` rather than `role` is deliberate — `role`
+    already means the *identity type* (`AdminMeOut.role == "ADMIN"`), and
+    collapsing the two into one field is how a console ends up treating "is an
+    admin" as "may approve refunds".
     """
 
     id: str
@@ -127,6 +136,7 @@ class AdminSessionAccountOut(BaseModel):
     email: str
     full_name: str | None
     totp_enrolled: bool
+    admin_role: str
 
 
 AdminSessionOut.model_rebuild()

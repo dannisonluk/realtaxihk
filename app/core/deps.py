@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.security import decode_access_token
 from app.core.token_revocation import is_token_revoked
-from app.models import AccountStatus, AdminAccount, User, UserRole
+from app.models import AccountStatus, AdminAccount, AdminRole, User, UserRole
 from app.services import phone_reverify_service as phone_reverify
 
 _bearer = HTTPBearer(auto_error=False)
@@ -53,6 +53,11 @@ class Principal:
     # Which identity table `id` refers to. Defaults to `user` so an existing
     # call site that constructs a Principal positionally keeps its meaning.
     scope: str = SCOPE_USER
+    # The `admin_accounts.role` claim. Advisory only — it is what makes the
+    # token self-describing for logging and for the UI's initial render, and it
+    # is **never** what authorises a request. `require_role` re-reads the live
+    # row; see its docstring.
+    admin_role: str | None = None
 
     @property
     def is_admin(self) -> bool:
@@ -71,6 +76,11 @@ def principal_from_token(token: str) -> Principal:
         # able to *escalate* to admin, and an allow-list of one is the cheapest
         # way to guarantee that.
         scope = SCOPE_ADMIN if claims.get("scope") == SCOPE_ADMIN else SCOPE_USER
+        # Carried through for logging and the console's first render. Absent on
+        # every token minted before roles existed, hence `None` rather than a
+        # default — an absent claim must not read as a real role.
+        raw_admin_role = claims.get("admin_role")
+        admin_role = str(raw_admin_role) if raw_admin_role else None
     except (pyjwt.PyJWTError, KeyError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid or expired token"
@@ -81,6 +91,7 @@ def principal_from_token(token: str) -> Principal:
         jti=str(jti) if jti else None,
         issued_at=int(issued_at) if issued_at is not None else None,
         scope=scope,
+        admin_role=admin_role,
     )
 
 
@@ -308,3 +319,71 @@ async def require_phone_current(
             },
         )
     return user
+
+
+def require_role(
+    minimum: AdminRole,
+) -> Any:
+    """Dependency factory: the caller's **live** admin role must outrank `minimum`.
+
+    Deliberately `def`, not `async def`. A dependency *factory* must return the
+    dependency; making this a coroutine function would mean `Depends(require_role(R))`
+    evaluates to a coroutine object rather than a callable, and FastAPI resolves
+    that at import/route-registration time as an error — every route using it
+    fails to register. Only the inner guard is async.
+
+    Rank comparison, not set membership. `require_role(AdminRole.FINANCE)`
+    admits FINANCE and SUPER_ADMIN and nothing else, and a role added later at
+    the bottom of the hierarchy cannot reach it without anyone editing this
+    function. The equivalent set version would need every call site revisited
+    each time a role is introduced — and one missed tuple is an open route.
+
+    **The live row decides, never the token claim.** `issue_admin_access_token`
+    does carry `admin_role`, and this dependency ignores it for authorisation.
+    A claim is a snapshot: it would let a demoted admin keep moving money until
+    their 15-minute access token happened to expire, which is exactly the
+    window in which someone who has just been demoted is most likely to act.
+    The claim is kept for logging and for the console's first render; the row
+    read here per request is the authority, and it is one PK lookup on a table
+    already being read by `require_admin`.
+
+    This composes *on top of* `require_admin` rather than replacing it, so the
+    three checks that dependency owns — a real `admin_accounts` row, active, and
+    TOTP enrolled — still run. Registering write endpoints additively means a
+    route that forgot this dependency is merely un-narrowed, never unguarded.
+    """
+
+    async def require_role_guard(
+        user: Principal = Depends(require_admin),
+        session: AsyncSession = Depends(get_session),
+    ) -> Principal:
+        """Named rather than anonymous so the route-table audit can see it.
+
+        `tests/test_security_hardening.py` discovers guards by
+        `dependency.call.__name__`, so a closure called `_guard` would be
+        invisible to it and every route using this factory would read as
+        unguarded. The name is part of the contract, not a cosmetic choice.
+        """
+        row = await session.get(AdminAccount, user.id)
+        if row is None:
+            # `require_admin` already proved the row exists; reaching here means
+            # it was deleted between the two lookups. Refuse rather than assume.
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="admin privileges required"
+            )
+        if not row.admin_role.at_least(minimum):
+            # 403, not 404: the caller is authenticated and the route exists —
+            # they simply are not senior enough. Hiding the route behind a 404
+            # would make a misconfigured role look like a missing endpoint.
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "message": "insufficient admin role",
+                    "reason": "ADMIN_ROLE_INSUFFICIENT",
+                    "required": minimum.value,
+                    "actual": row.admin_role.value,
+                },
+            )
+        return user
+
+    return require_role_guard

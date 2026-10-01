@@ -215,23 +215,16 @@ class DepositAdjustOut(DepositGrantOut):
 class AdminAccountOut(BaseModel):
     """An admin account row, as the console reads it.
 
-    **There is no route that returns this shape directly.** The console's
-    identity probe is `GET /api/v1/auth/me`, which returns the four-field
-    `AdminMeOut` (`app/api/schemas/identity.py`) — it carries `email_masked` and
-    a `role`, not the account metadata here. Session responses carry the
-    five-field `AdminSessionAccountOut` (`app/api/schemas/admin_auth.py`).
+    Returned by `GET /api/v1/admin/accounts`. Distinct from the other two admin
+    identity shapes: `GET /api/v1/auth/me` returns the four-field `AdminMeOut`
+    (`app/api/schemas/identity.py`) carrying `email_masked`, and session
+    responses carry `AdminSessionAccountOut` (`app/api/schemas/admin_auth.py`).
+    Three shapes, three audiences — account administration needs the metadata
+    neither of the other two carries.
 
-    This model is the **full account row**, kept as the canonical description of
-    what an admin account is (and what a future `/admin/accounts` listing would
-    return). Do not wire it as a `response_model=` without checking which of the
-    three shapes that route actually emits — a `response_model=` here would
-    filter away nothing today but would promise `is_active`/`last_login_at`/
-    `created_at` to a client that has never received them.
-
-    There is no `role` or `permission` field — every admin account is
-    equivalent today (see `docs/ADMIN_CONSOLE_DESIGN.md`). Declaring the model
-    without one makes that absence explicit rather than incidental, so adding
-    roles later is a visible contract change.
+    `admin_role` is the RBAC rank. It is present so the accounts page can show
+    and edit it; it is not an authority claim, and `require_role` still reads
+    the live row on every request.
 
     `totp_enrolled` is derived, not the secret: the secret never leaves the
     server, and enrolment is the only thing a client acts on.
@@ -241,6 +234,7 @@ class AdminAccountOut(BaseModel):
     username: str
     email: str
     full_name: str | None
+    admin_role: str
     is_active: bool
     totp_enrolled: bool
     last_login_at: str | None
