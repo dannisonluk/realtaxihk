@@ -22,6 +22,7 @@
 import { NavLink as RouterNavLink, Outlet } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { useApp } from './AppContext';
+import { PreferenceControls } from '../components/PreferenceControls';
 import type { AdminRole } from '../api/types';
 
 interface NavItem {
@@ -113,6 +114,10 @@ export function Shell() {
             */}
             <div className="dim t-caption1">{role ? ROLE_LABEL[role] ?? role : '—'}</div>
           </div>
+          {/* Theme (and, once i18n lands, language) — bottom of the sidebar so
+              they are the last thing before sign-out and never compete with the
+              nav for attention. */}
+          <PreferenceControls />
           <button type="button" className="btn btn--sm" onClick={() => void signOut()}>
             登出
           </button>

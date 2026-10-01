@@ -1,38 +1,53 @@
 /*
  * The console's design tokens and primitives.
  *
- * Ported from `admin-web/styles.css`, then re-based on Apple's Human Interface
- * Guidelines rather than Material's defaults. The two changes that matter most:
+ * Two layers, and the order matters:
  *
- *   1. Type is the iOS Dynamic Type scale at the `Large` step (34/28/22/20/17/
- *      16/15/13/12/11), not a geometric progression invented per component.
- *   2. Spacing is a 4pt grid with named steps, and a control's *hit* area is at
- *      least 44px regardless of how large it is drawn.
+ *   1. The *palette* is GitHub's Primer. This console is a plain white-and-black
+ *      admin surface — a list of orders, a queue of drivers, a table of money —
+ *      and Primer is the most legible thing ever designed for exactly that job.
+ *      Neutral greys carry the layout; exactly one chromatic colour (taxi red)
+ *      is spent, on the brand and the active nav item. Everything else that has
+ *      colour has it for a *reason*: red means a gain in HK, green means a loss.
+ *   2. The *structure* (type scale, 4pt spacing grid, 44px hit area) is the iOS
+ *      Dynamic Type scale at the `Large` step, which is why the class names read
+ *      `t-title1` / `t-body` rather than `text-lg`.
  *
- * The palette is unchanged: this is a console for a Hong Kong taxi platform, so
- * gains are red and losses green (the HK/CN convention), and the brand stays
- * licensed-urban-taxi red. Dark mode is a first-class mode, not an afterthought
- * — an operator watching a queue at night should not be blinded.
+ * Theming is manual and three-way: `<html data-theme="light|dark|system">`.
+ * `system` defers to the OS; the other two are explicit, so an operator can pin
+ * a theme on a shared machine regardless of how the desktop is set. Both dark
+ * paths resolve to the *same* token block below — never fork them, or the two
+ * "dark modes" drift apart one bug fix at a time.
  */
 
 :root {
-  color-scheme: light dark;
+  /* ---- Primer light ---------------------------------------------------- *
+   * Values are GitHub Primer's light scale: `canvas.default` #ffffff,
+   * `canvas.subtle` #f6f8fa, `border.default` #d0d7de, `fg.default` #24292f,
+   * `fg.muted` #57606a. */
+  color-scheme: light;
 
-  --bg: #f5f5f7; /* iOS grouped background, very slightly cool */
+  --bg: #ffffff; /* canvas.default */
   --surface: #ffffff;
-  --surface-2: #f0f1f4;
-  --border: #e2e4e9;
-  --text: #1d1d1f; /* iOS label */
-  --text-dim: #6e6e73; /* iOS secondary label */
+  --surface-2: #f6f8fa; /* canvas.subtle */
+  --border: #d0d7de; /* border.default */
+  --text: #24292f; /* fg.default */
+  --text-dim: #57606a; /* fg.muted */
 
-  --brand: #d2232a; /* licensed urban-taxi red */
+  --brand: #d2232a; /* licensed urban-taxi red — the one chromatic accent */
   --brand-ink: #ffffff;
 
+  /* HK convention, and it does not flip with the theme: red is a *gain*. */
   --gain: #c62828;
   --loss: #2e7d32;
-  --warn: #b26a00;
-  --danger: #c62828;
-  --focus: #0a6cff;
+  --warn: #9a6700; /* Primer attention.fg */
+  --danger: #cf222e; /* Primer danger.fg */
+  --focus: #0969da; /* Primer accent.emphasis */
+
+  /* Layout neutrals that are neither surface nor border but are used widely
+     enough to be tokens — a light hover wash and the modal scrim. */
+  --hover: #f3f4f6;
+  --scrim: rgb(27 31 36 / 50%);
 
   /* ---- spacing: a 4pt grid, named so a call site reads as intent ---- */
   --space-1: 4px;
@@ -52,23 +67,62 @@
   --target: 44px;
 
   --shadow: 0 1px 2px rgb(16 18 22 / 6%), 0 6px 18px rgb(16 18 22 / 4%);
+  --shadow-lg: 0 8px 24px rgb(140 149 159 / 20%);
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
+/* ---- Primer dark ------------------------------------------------------ *
+ * `canvas.default` #0d1117 (the "GitHub black"), `canvas.subtle` #161b22,
+ * `canvas.inset` #010409, `border.default` #30363d, `fg.default` #c9d1d9,
+ * `fg.muted` #8b949e. Declared once and applied by both the explicit
+ * `[data-theme="dark"]` and the `system`-plus-OS-dark media query so the two
+ * cannot diverge. */
+[data-theme="dark"],
+:root[data-theme="system"] {
+  color-scheme: dark;
+}
+
+[data-theme="dark"] {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-2: #21262d;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --text-dim: #8b949e;
+  --brand: #d2232a;
+  --brand-ink: #ffffff;
+  --gain: #f85149; /* a *gain* is still red — just Primer's danger.fg */
+  --loss: #3fb950; /* Primer success.fg */
+  --warn: #d29922; /* Primer attention.fg */
+  --danger: #f85149;
+  --focus: #2f81f7; /* Primer accent.emphasis on dark */
+  --hover: #1c2128;
+  --scrim: rgb(1 4 9 / 70%);
+  --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 18px rgb(0 0 0 / 24%);
+  --shadow-lg: 0 8px 24px rgb(1 4 9 / 60%);
+}
+
+/* `system` is the only mode whose dark half is a media query. It must come
+ * *after* the light block so its custom properties win at equal specificity. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #16181c;
-    --surface: #1e2126;
-    --surface-2: #262a31;
-    --border: #33383f;
-    --text: #eceef1;
-    --text-dim: #9aa0aa;
-    --gain: #ef5350;
-    --loss: #66bb6a;
-    --warn: #ffb74d;
-    --danger: #ef5350;
-    --focus: #4c9aff;
+  :root[data-theme="system"] {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-2: #21262d;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-dim: #8b949e;
+    --brand: #d2232a;
+    --brand-ink: #ffffff;
+    --gain: #f85149;
+    --loss: #3fb950;
+    --warn: #d29922;
+    --danger: #f85149;
+    --focus: #2f81f7;
+    --hover: #1c2128;
+    --scrim: rgb(1 4 9 / 70%);
     --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 18px rgb(0 0 0 / 24%);
+    --shadow-lg: 0 8px 24px rgb(1 4 9 / 60%);
   }
 }
 
@@ -86,13 +140,22 @@ body {
 body {
   background: var(--bg);
   color: var(--text);
-  /* -apple-system first so macOS and iOS get the system face; the CJK
-     fallbacks keep Chinese legible on all three platforms. */
+  /* One stack serves both locales. Latin text takes -apple-system/Segoe; the
+     CJK fallbacks (Noto Sans TC, PingFang TC, Microsoft JhengHei) only engage
+     for glyphs the Latin faces lack, so Traditional Chinese stays legible
+     without a second stylesheet and English never inherits a CJK face's
+     metrics. */
   font: 400 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
     "PingFang TC", "Microsoft JhengHei", sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+
+/* The `:lang()` hook, so a rule can react to the *active locale* rather than
+ * the glyphs on screen. English strings run ~1.4x the width of their Chinese
+ * counterparts; anywhere that has to be sized (see `.tag`, `.lang-switch`)
+ * keys off this instead of guessing. */
+:lang(en) .t-section { letter-spacing: 0.06em; }
 
 #root {
   min-height: 100%;
@@ -230,7 +293,7 @@ body {
   font-weight: 500;
 }
 
-.navlink:hover { background: var(--surface-2); }
+.navlink:hover { background: var(--hover); }
 
 .navlink[aria-current="page"] {
   background: color-mix(in srgb, var(--brand) 12%, transparent);
@@ -259,6 +322,75 @@ body {
   gap: var(--space-2);
   font-size: 13px;
   color: var(--text-dim);
+}
+
+/* --------------------------------------------------- preference controls ---
+ * The two console-wide preferences (theme, language) sit at the foot of the
+ * sidebar as one unlabelled pair of segmented controls. They are preferences,
+ * not navigation, so they are quieter than the nav above: a neutral track, the
+ * selected segment raised on the surface colour, and no accent — the brand red
+ * belongs to the active page, and giving it to a theme toggle would make two
+ * things look "current" at once.
+ *
+ * A `<fieldset>`+`<legend class="sr-only">` is the markup; the legend keeps the
+ * group announceable without drawing a caption the design does not want.
+ * ------------------------------------------------------------------------- */
+
+.prefs { display: flex; flex-direction: column; gap: var(--space-2); border: 0; margin: 0; padding: 0; }
+
+.pref {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* The row label ("Theme" / "語言") is the only text; the segments carry icons
+   or two-letter codes. Sliding it out of the flex flow on very narrow sidebars
+   keeps the control usable rather than letting it be squeezed to nothing. */
+.pref__label { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+}
+
+.segmented__btn {
+  all: unset;
+  /* 28px tall is below the 44px guidance on purpose: this is a *preference*
+     control reached once per session, and a 44px pill row would be taller than
+     the whole nav's first item. The hit area is widened to compensate (see
+     `min-width`), and every segment is redundant — the value is also written to
+     localStorage and read back on load, so a mis-tap is cheap. */
+  min-width: 30px;
+  height: 26px;
+  padding: 0 var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.segmented__btn:hover { color: var(--text); }
+
+.segmented__btn[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgb(16 18 22 / 12%);
+}
+
+.segmented__btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
 }
 
 .main {
@@ -464,7 +596,7 @@ table.data td {
 }
 
 table.data tr:last-child td { border-bottom: none; }
-table.data tbody tr:hover { background: var(--surface-2); }
+table.data tbody tr:hover { background: var(--hover); }
 
 /* A filter bar: chips and the primary action on one wrapping line. */
 .filters {
@@ -498,7 +630,7 @@ table.data tbody tr:hover { background: var(--surface-2); }
 }
 
 .pick-row:last-child { border-bottom: none; }
-.pick-row:hover { background: var(--surface-2); }
+.pick-row:hover { background: var(--hover); }
 
 /* ---------------------------------------------------------------- chip ----- */
 
@@ -553,7 +685,7 @@ table.data tbody tr:hover { background: var(--surface-2); }
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgb(0 0 0 / 40%);
+  background: var(--scrim);
   display: grid;
   place-items: center;
   padding: var(--space-4);
@@ -567,7 +699,7 @@ table.data tbody tr:hover { background: var(--surface-2); }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-lg);
   padding: var(--space-5);
 }
 
@@ -593,7 +725,7 @@ table.data tbody tr:hover { background: var(--surface-2); }
   border-radius: var(--radius-card);
   background: var(--surface);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-lg);
   font-size: 14px;
 }
 

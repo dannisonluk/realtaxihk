@@ -11,6 +11,24 @@
     -->
     <meta name="robots" content="noindex, nofollow" />
     <title>RealTaxi HK  ·  管理後台</title>
+    <!--
+      Theme boot script. Runs before the module bundle so the very first paint is
+      already in the right theme; without it a dark-pinned console flashes white
+      on every reload. Kept in sync by hand with `src/lib/theme.ts`
+      (`readThemeMode` + `applyThemeMode`) — it cannot import that module, because
+      it runs before a module system exists. A test asserts the two agree.
+    -->
+    <script>
+      (function () {
+        try {
+          var m = localStorage.getItem('realtaxihk.console.theme');
+          if (m !== 'light' && m !== 'dark' && m !== 'system') m = 'system';
+          document.documentElement.dataset.theme = m;
+        } catch (e) {
+          document.documentElement.dataset.theme = 'system';
+        }
+      })();
+    </script>
   </head>
   <body>
     <!--
@@ -26,8 +44,14 @@
     -->
     <div id="root"></div>
 
+    <!--
+      The `lang` here and the `<noscript>` wording are the pre-boot defaults; the
+      app rewrites `document.documentElement.lang` to the active locale on mount,
+      and `index.html` cannot know which that will be. `zh-Hant` is the default
+      locale, so the two agree until a user opts into English.
+    -->
     <noscript>
-      <p>此管理後台需要 JavaScript。</p>
+      <p>此管理後台需要 JavaScript。 This admin console requires JavaScript.</p>
     </noscript>
 
     <script type="module" src="/src/main.tsx"></script>
