@@ -18,6 +18,9 @@ __all__ = [
     "AdminAccountPageOut",
     "AdminDepositDetailOut",
     "AdminLedgerRowOut",
+    "AdminOrderDetailOut",
+    "AdminOrderPageOut",
+    "AdminOrderRowOut",
     "AdminPasswordResetOut",
     "AdminRoleChangeOut",
     "AuditPageOut",
@@ -356,3 +359,87 @@ class AdminPasswordResetOut(BaseModel):
 
     id: str
     sessions_revoked: bool
+
+
+class AdminOrderRowOut(BaseModel):
+    """One row of `GET /admin/orders` — the orders table.
+
+    Deliberately **not** `OrderOut`. That model is the passenger and driver
+    contract and is intentionally identity-free: a driver must not be handed a
+    passenger's account id. An operator looking at "my passenger says the
+    driver never showed" needs exactly the opposite — who and where.
+
+    So this carries the identifiers the passenger view omits, and it carries
+    them as **ids, not names or phones**. Resolving an id to a human is a
+    separate, audited action; a list endpoint that inlines phone numbers turns
+    every scroll of the orders page into a bulk PII read.
+
+    The four timestamps are the whole point of the page. `accepted_at`,
+    `driver_arrived_at`, `completed_at` and `cancelled_at` answer the question
+    the console could not answer before: "where is this trip now, and how long
+    has it been there". They are nullable individually because a trip that
+    never got a driver has no `accepted_at` — all-null with a `CREATED` status
+    is meaningful, not missing data.
+
+    `pickup_address` / `dropoff_address` are the requested text, not a
+    geocoded value: they are what the passenger typed and what the driver was
+    shown, so they are the right thing to quote back in a dispute.
+    """
+
+    id: str
+    status: str
+    taxi_type: str
+    passenger_id: str
+    driver_id: str | None
+    pickup_address: str
+    dropoff_address: str
+    distance_km: str
+    estimated_total_hkd: str
+    discount_percent: str
+    accepted_at: str | None
+    driver_arrived_at: str | None
+    completed_at: str | None
+    cancelled_at: str | None
+    cancellation_reason: str | None
+    created_at: str | None
+
+
+class AdminOrderPageOut(BaseModel):
+    """`GET /admin/orders` — offset-paginated order table, newest first.
+
+    Typed rather than the generic `PageEnvelope`, same reasoning as
+    `DriverPageOut`. `total` respects the filters, so the operator sees the size
+    of the queue they filtered to rather than of the archive.
+    """
+
+    items: list[AdminOrderRowOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class AdminOrderDetailOut(AdminOrderRowOut):
+    """`GET /admin/orders/{id}` — the full picture for one trip.
+
+    Everything the row carries, plus:
+
+    * `fare` — the **frozen snapshot** (`orders.fare_json`), not a recomputed
+      estimate. A fare recomputed today is a different number after any tariff
+      change, and the disputed amount is the one the passenger was quoted.
+    * `tariff_version` — which tariff produced that snapshot, so a historical
+      order stays explicable.
+    * `timeline` — the same timestamps as an ordered list with an explicit
+      `elapsed_seconds` per step, computed server-side so the console does not
+      have to subtract two local-time strings and get the DST case wrong.
+    * `ledger` — the ledger entries referencing this order. Usually empty (a
+      fare is not a ledger entry; only a penalty or a manual adjustment is),
+      which is itself worth seeing.
+    * `broadcast` — the radius the trip was offered within, so "why did nobody
+      take it" is answerable.
+    """
+
+    tariff_version: str
+    fare: dict[str, Any]
+    broadcast_radius_km: str
+    timeline: list[dict[str, Any]]
+    ledger: dict[str, list[AdminLedgerRowOut]]
