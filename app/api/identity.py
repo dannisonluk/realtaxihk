@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas import (
+    AvatarPresignOut,
     EmailConfirmOut,
     EmailRequestOut,
     PhoneReverifyOut,
@@ -39,6 +40,7 @@ from app.core.masking import mask_phone
 from app.models import Gender, User
 from app.services import phone_reverify_service as phone_reverify
 from app.services.identity_service import IdentityService
+from app.services.storage_service import get_storage_service
 
 logger = logging.getLogger("realtaxihk.identity")
 
@@ -281,3 +283,46 @@ async def reverify_phone(
     await session.commit()
     logger.info("phone re-verified user=%s created=%s", row.id, created)
     return {"verified": True, "created": created, **_profile_out(row)}
+
+
+class AvatarUploadIn(BaseModel):
+    """Request a presigned PUT for an avatar.
+
+    `size_bytes` is required, not optional: the ceiling is checked at *signing*
+    time. Signing first and rejecting the upload afterwards means the bytes have
+    already reached the bucket and will sit there — which is a storage bill and,
+    worse, an object nobody has a row for.
+    """
+
+    content_type: str = Field(min_length=1, max_length=100)
+    size_bytes: int = Field(gt=0)
+
+
+@router.post("/avatar/uploads", response_model=AvatarPresignOut)
+async def presign_avatar_upload(
+    payload: AvatarUploadIn,
+    user: Principal = Depends(require_active_user),
+):
+    """Mint an avatar key and a URL to upload to.
+
+    Guarded by `require_active_user` rather than the weaker `get_current_user`:
+    an UNVERIFIED account uploading bytes is storage we have no reason to hold
+    and no way to attribute, and registration is where a script would land.
+
+    **Writes nothing.** No `avatar_key` is set here — a row updated at presign
+    time would point at an object that may never arrive. The key is claimed by
+    the client on `POST /identity/profile`, where the value can be validated,
+    and until then the old avatar (or none) stays correct.
+    """
+    storage = get_storage_service()
+    presigned = storage.presign_avatar(
+        user_id=str(user.id),
+        content_type=payload.content_type,
+        size_bytes=payload.size_bytes,
+    )
+    return {
+        "upload_url": presigned.upload_url,
+        "object_key": presigned.object_key,
+        "expires_in": presigned.expires_in,
+        "headers": presigned.headers,
+    }

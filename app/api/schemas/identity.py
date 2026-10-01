@@ -17,6 +17,7 @@ from pydantic import BaseModel
 __all__ = [
     "AdminMeOut",
     "AuthMeOut",
+    "AvatarPresignOut",
     "EmailConfirmOut",
     "EmailRequestOut",
     "OtpRequestOut",
@@ -206,3 +207,25 @@ class PhoneReverifyOut(ProfileOut):
 
     verified: bool
     created: bool
+
+
+class AvatarPresignOut(BaseModel):
+    """`POST /identity/avatar/uploads` — where to PUT an avatar.
+
+    There was a hole here: `users.avatar_key` existed and `complete_profile`
+    accepted one, but nothing ever *minted* a key — so the client had to
+    construct the path itself, and the server-side rule that keys are
+    server-generated was being enforced only by the storage layer rejecting
+    whatever it was sent.
+
+    `object_key` is what the client must send to `POST /identity/profile` to
+    claim the upload, and it is generated here so the client never chooses it.
+    `headers` are the ones that were signed: the bucket rejects a PUT whose
+    `Content-Type` differs from the signed one, which is what makes the image
+    allowlist on the storage service actually enforceable.
+    """
+
+    upload_url: str
+    object_key: str
+    expires_in: int
+    headers: dict[str, str]

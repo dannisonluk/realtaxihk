@@ -435,6 +435,36 @@ def admin_headers(
 admin_headers._seq = 0
 
 
+# One fixture per admin role, so a test reads `client.get(url, headers=finance)`
+# rather than repeating `client.admin_headers(role="FINANCE")` at every call
+# site. The role is the thing under test in every refusal assertion, so making
+# it the fixture name keeps the test body about behaviour rather than setup.
+#
+# Each is function-scoped like `admin_headers` itself: two tests asking for the
+# same role must not share an account, or one test's role change would leak into
+# the next.
+@pytest.fixture()
+def support(client):
+    return client.admin_headers(role="SUPPORT")
+
+
+@pytest.fixture()
+def ops(client):
+    """OPERATIONS — KYC decisions and dispute judgement, but not money."""
+    return client.admin_headers(role="OPERATIONS")
+
+
+@pytest.fixture()
+def finance(client):
+    """FINANCE — money movement, but not KYC."""
+    return client.admin_headers(role="FINANCE")
+
+
+@pytest.fixture()
+def super_admin(client):
+    return client.admin_headers(role="SUPER_ADMIN")
+
+
 @pytest.fixture()
 async def db_session():
     dbname = f"realtaxihk_t_{uuid.uuid4().hex[:10]}"
