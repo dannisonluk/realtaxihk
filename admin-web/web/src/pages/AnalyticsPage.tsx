@@ -463,7 +463,7 @@ function HourBarChart({
                 width={barW}
                 height={Math.max(h, value > 0 ? 1 : 0)}
                 rx={2}
-                fill={isHovered ? 'var(--brand)' : 'var(--brand)'}
+                fill="var(--brand)"
                 opacity={isHovered ? 1 : 0.72}
                 pointerEvents="none"
               />

@@ -66,11 +66,12 @@ export function FleetDetailPage() {
   const removeDialog = useFormDialog();
 
   const { data, error, loading, reload } = useLoad(async (): Promise<FleetDetail> => {
-    const [page, members, history] = await Promise.all([
-      endpoints.fleets.list(client, { limit: 200 }),
-      endpoints.fleets.members(client, fleetId, { includeLeft }),
-      endpoints.fleets.settlementHistory(client, fleetId, { limit: 52 }),
-    ]);
+    // Sequential — see `useLoad.ts`. This page previously fired all three
+    // together, which is three chances to land on the connection that the
+    // server accepts and then never answers.
+    const page = await endpoints.fleets.list(client, { limit: 200 });
+    const members = await endpoints.fleets.members(client, fleetId, { includeLeft });
+    const history = await endpoints.fleets.settlementHistory(client, fleetId, { limit: 52 });
     const fleet = (page.items ?? []).find((item) => item.id === fleetId);
     if (!fleet) {
       throw new Error('找不到此車隊。它可能已被移除，或不在目前的分頁內。');

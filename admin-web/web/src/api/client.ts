@@ -71,6 +71,17 @@ export const CODE = {
   businessRule: 'BUSINESS_RULE_VIOLATION',
   validationError: 'VALIDATION_ERROR',
   serviceUnavailable: 'SERVICE_UNAVAILABLE',
+  /**
+   * 423 — the server has *locked* a state the caller must change before the
+   * request can succeed (P4: `DEPOSIT_INSUFFICIENT` on a driver in arrears).
+   *
+   * Kept distinct from `forbidden` on purpose, and the distinction is the whole
+   * reason the server returns 423 rather than 403: 403 means "you may not", and
+   * retrying is pointless, whereas 423 means "not while this is true", and the
+   * fix is an action the operator can take. A view that collapsed the two would
+   * tell an admin to give up on something they can actually resolve.
+   */
+  locked: 'LOCKED',
 } as const;
 
 function parseRetryAfter(raw: string | null): number | null {
@@ -182,15 +193,24 @@ export class ApiClient {
     const token = session.accessToken;
     if (authenticated && token) headers.Authorization = `Bearer ${token}`;
 
+    // Every request carries the admin cookies. The refresh cookie is scoped to
+    // `/api/v1/admin/auth` server-side, so the browser attaches it only where it
+    // is needed — and `logout` relies on it being present even though no
+    // `Authorization` header is sent (the access token may have expired).
+    //
+    // Costs one preflight on a cross-origin deploy (`credentials: 'include'`
+    // makes the request non-simple), which the server already answers: CORS is
+    // configured with an explicit origin list and `allow_credentials=True`.
+    // Worth stating plainly: `'include'` requires `allow_origins` to be exact —
+    // a wildcard would be rejected by the browser, so this is also what pins the
+    // CORS config to a real allow-list.
     let response: Response;
     try {
       response = await fetch(`${this.baseUrl}${path}${buildQuery(query)}`, {
         method,
         headers,
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        // The refresh token is a bearer credential and the API is a different
-        // origin, so credentials are never sent implicitly.
-        credentials: 'omit',
+        credentials: 'include',
         mode: 'cors',
       });
     } catch (cause) {
@@ -257,44 +277,66 @@ export class ApiClient {
   }
 
   private async refresh(): Promise<boolean> {
-    const refreshToken = session.refreshToken;
-    if (!refreshToken) return false;
+    /**
+     * Exchange the HttpOnly cookie for a new access token.
+     *
+     * No body and no `Authorization` header: the refresh token is a cookie the
+     * browser attaches for us, and the only thing this request has to add is
+     * the CSRF token in a header. That signature is the design — an endpoint
+     * that accepted a token from JavaScript would put the long-lived credential
+     * back within reach of any injected script, which is what moving it to a
+     * cookie was for.
+     *
+     * `credentials: 'include'` is mandatory and its absence is silent: a
+     * cross-origin `fetch` defaults to `'omit'`, so the cookie is not sent, the
+     * server answers "no refresh cookie", and the console signs the operator
+     * out for no visible reason. It cannot be inferred from a network tab
+     * either — the request looks perfectly well-formed.
+     */
+    const csrf = session.csrfToken;
+    if (!csrf) {
+      // No CSRF cookie: either never signed in, or the pair was cleared. There
+      // is nothing to refresh with, so do not send a request that can only 401.
+      return false;
+    }
 
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}/api/v1/auth/refresh`, {
+      response = await fetch(`${this.baseUrl}/api/v1/admin/auth/refresh`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-        credentials: 'omit',
+        headers: { Accept: 'application/json', 'X-CSRF-Token': csrf },
+        credentials: 'include',
         mode: 'cors',
       });
     } catch {
-      // Offline. The tokens are still good; the caller surfaces the failure.
+      // Offline. The cookie is still good; the caller surfaces the failure.
       return false;
     }
 
     if (!response.ok) {
-      // A 401 here means the token was replayed or expired and the server has
-      // already revoked everything. Either way there is nothing usable left.
+      // A 401 here means the cookie was absent, expired, or replayed and the
+      // server has already revoked the family. There is nothing usable left, so
+      // drop the access token too rather than leaving a half-session that makes
+      // every later request take the same doomed path.
       session.clear();
       return false;
     }
 
     const body = (await response.json()) as {
       access_token?: unknown;
-      refresh_token?: unknown;
-      user?: unknown;
+      admin?: unknown;
     };
-    if (typeof body.access_token !== 'string' || typeof body.refresh_token !== 'string') {
+    if (typeof body.access_token !== 'string') {
       session.clear();
       return false;
     }
 
+    // No `refresh_token` in the body — the rotated pair arrived as `Set-Cookie`
+    // and the browser has already stored it. `session.save` therefore has
+    // nothing to do with the refresh token, which is the point.
     session.save({
       accessToken: body.access_token,
-      refreshToken: body.refresh_token,
-      user: body.user as ReturnType<typeof session.save>['user'],
+      user: body.admin as ReturnType<typeof session.save>['user'],
     });
     return true;
   }

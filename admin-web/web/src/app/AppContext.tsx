@@ -98,10 +98,13 @@ export function AppProvider({
   /** Best-effort: a failure here must not break the shell. */
   const refreshBadges = useCallback(async () => {
     try {
-      const [kyc, refunds] = await Promise.all([
-        endpoints.drivers.list(client, { status: 'PENDING_KYC', limit: 1 }),
-        endpoints.refunds.list(client, { status: 'PENDING', limit: 1 }),
-      ]);
+      // Sequential, not `Promise.all`. The console runs against an environment
+      // that intermittently accepts a connection and then never answers it, and
+      // every parallel call is another chance to land on that path — see the
+      // docstring in `useLoad.ts`, which is the project's own statement of this
+      // rule. Two calls at ~50-150ms each is not worth the risk.
+      const kyc = await endpoints.drivers.list(client, { status: 'PENDING_KYC', limit: 1 });
+      const refunds = await endpoints.refunds.list(client, { status: 'PENDING', limit: 1 });
       setBadges({ pendingKyc: kyc.total ?? 0, pendingRefunds: refunds.total ?? 0 });
     } catch {
       // Leave the previous numbers; the pages themselves report real errors.

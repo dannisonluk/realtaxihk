@@ -1,25 +1,33 @@
 /**
  * The admin session.
  *
- * Where the tokens live, and why
- * ------------------------------
- * `sessionStorage`, not `localStorage`.
+ * What is stored here, and what is deliberately not
+ * -------------------------------------------------
+ * This object holds the **access token** and the signed-in identity. It does
+ * **not** hold the refresh token.
  *
- * Neither is safe against XSS — any script running on this origin can read both.
- * The difference is blast radius: `localStorage` survives a tab close, a browser
- * restart and a machine reboot, so a token lifted by a single injected script
- * stays usable for its whole lifetime. `sessionStorage` dies with the tab, which
- * caps that window at the operator's working session. React's default escaping
- * also means there is no `dangerouslySetInnerHTML` on server data anywhere in
- * this app — see `src/components/`.
+ * The refresh token lives in an `HttpOnly; Secure; SameSite=Strict` cookie set
+ * by the API (`app/core/admin_cookies.py`). Script cannot read it — which is the
+ * entire point, because the refresh token is the long-lived half of the
+ * credential. A copy of it in `sessionStorage` would be readable by any injected
+ * script, and the cookie would then be doing no work at all.
  *
- * The correct design is a refresh token in an `HttpOnly; Secure; SameSite=Strict`
- * cookie set by the server, which script cannot read at all, with CSRF defence on
- * the state-changing routes. That needs a backend endpoint that issues the cookie
- * and a CSRF token, so it is a deliberate follow-up rather than something this
- * module can fake. Until then: session-scoped storage, and the access token is
- * short-lived (the server rotates the refresh token on every use and revokes the
- * whole family on replay, so a leak is detectable).
+ * That design needs two things from this side, both here or in `client.ts`:
+ *   1. Every request that should carry the cookie must be sent with
+ *      `credentials: 'include'`. A cross-origin `fetch` omits cookies by
+ *      default, so forgetting this looks exactly like "the server lost my
+ *      session".
+ *   2. The refresh call must echo the CSRF token from the readable
+ *      `realtaxi_admin_csrf` cookie in an `X-CSRF-Token` header. The browser
+ *      attaches the refresh cookie automatically and an attacker can exploit
+ *      that; they cannot read the CSRF value to forge the header. That pair —
+ *      one value the browser sends for us, one only our origin can read — is
+ *      the whole of the CSRF defence.
+ *
+ * The access token stays in `sessionStorage` rather than memory-only so a
+ * reload does not sign the operator out. It is short-lived (15 minutes,
+ * `SEC-18`) and the server also checks a Redis revocation epoch, so the window
+ * in which a lifted access token is useful is small and closable.
  *
  * No secrets are written to disk, and nothing is logged.
  */
@@ -42,9 +50,18 @@ export type AdminUser = AdminIdentity;
 
 export interface StoredSession {
   accessToken: string;
-  refreshToken: string;
   user: AdminUser | null;
 }
+
+/**
+ * The CSRF cookie's name, and its `__Host-` variant.
+ *
+ * Two spellings because the server picks the prefix from the environment: a
+ * production deploy sets `__Host-realtaxi_admin_csrf` (enforced by the browser
+ * to mean Secure + path=/ + no Domain), while http dev uses the bare name. Both
+ * are read so the console works on either without a build flag.
+ */
+const CSRF_COOKIE_NAMES = ['__Host-realtaxi_admin_csrf', 'realtaxi_admin_csrf'];
 
 let cached: StoredSession | null = null;
 
@@ -61,6 +78,18 @@ function read(): StoredSession | null {
   return cached;
 }
 
+/** Read one cookie's value, or `null` if it is not set on this origin. */
+function readCookie(name: string): string | null {
+  const prefix = `${name}=`;
+  for (const part of document.cookie.split(';')) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith(prefix)) {
+      return decodeURIComponent(trimmed.slice(prefix.length));
+    }
+  }
+  return null;
+}
+
 export const session = {
   get(): StoredSession | null {
     return read();
@@ -70,8 +99,20 @@ export const session = {
     return read()?.accessToken ?? null;
   },
 
-  get refreshToken(): string | null {
-    return read()?.refreshToken ?? null;
+  /**
+   * The CSRF token to echo in `X-CSRF-Token`, or `null` before sign-in.
+   *
+   * Not a secret and not treated as one: it exists to prove the request came
+   * from a script on this origin. It is read from a **non**-`HttpOnly` cookie
+   * because this — the console's own code — is exactly the caller that is
+   * supposed to read it.
+   */
+  get csrfToken(): string | null {
+    for (const name of CSRF_COOKIE_NAMES) {
+      const value = readCookie(name);
+      if (value) return value;
+    }
+    return null;
   },
 
   get user(): AdminUser | null {
@@ -91,14 +132,9 @@ export const session = {
     return read()?.user?.role === 'ADMIN';
   },
 
-  save({ accessToken, refreshToken, user }: {
-    accessToken: string;
-    refreshToken: string;
-    user?: AdminUser | null;
-  }): StoredSession {
+  save({ accessToken, user }: { accessToken: string; user?: AdminUser | null }): StoredSession {
     const next: StoredSession = {
       accessToken,
-      refreshToken,
       user: user ?? read()?.user ?? null,
     };
     cached = next;

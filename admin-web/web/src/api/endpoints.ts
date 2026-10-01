@@ -63,7 +63,14 @@ export const endpoints = {
         body: { challenge_token: challengeToken, code },
         authenticated: false,
       }),
-    /** Step 2c (first login): prove one code from the pending secret. */
+    /**
+     * Step 2c (first login): prove one code from the pending secret.
+     *
+     * All three step-2 calls return an `AdminSession`, and all three also cause
+     * the server to set the `HttpOnly` refresh cookie. The console does not
+     * handle that cookie at all — the browser stores it unprompted — which is
+     * why these responses carry no refresh token.
+     */
     adminConfirmEnrolment: (client: ApiClient, challengeToken: string, code: string) =>
       client.post<AdminSession>('/api/v1/admin/auth/totp/enrol/confirm', {
         body: { challenge_token: challengeToken, code },
@@ -79,7 +86,23 @@ export const endpoints = {
         body: { phone_e164: phone, code },
       }),
     me: (client: ApiClient) => client.get<AdminIdentity>('/api/v1/auth/me'),
-    logout: (client: ApiClient) => client.post<null>('/api/v1/auth/logout'),
+    /**
+     * End the session.
+     *
+     * The **admin** endpoint, not `/api/v1/auth/logout`. The user endpoint is
+     * gated by a bearer token and resolves the caller against `users`, so an
+     * admin calling it would 404 — and, worse, an admin whose 15-minute access
+     * token had already expired could not sign out at all, leaving a live
+     * refresh cookie in a shared browser.
+     *
+     * `authenticated: false` because the admin logout deliberately does not
+     * require the access token: the cookie is the credential, and clearing it is
+     * the whole operation.
+     */
+    logout: (client: ApiClient) =>
+      client.post<{ ok: boolean; revoked: boolean }>('/api/v1/admin/auth/logout', {
+        authenticated: false,
+      }),
   },
 
   drivers: {
@@ -283,16 +306,14 @@ export const endpoints = {
         { query: { period } },
       ),
     /**
-     * The composed detail payload. Falls back to three parallel calls when the
-     * server has no single-endpoint for it, so the page shape is identical
-     * either way.
+     * The composed detail payload. Three calls, issued **sequentially** — see
+     * the docstring in `app/useLoad.ts` for why this codebase does not fan
+     * requests out in parallel.
      */
     detail: async (client: ApiClient, fleetId: string): Promise<FleetDetail> => {
-      const [fleets, members, settlement] = await Promise.all([
-        endpoints.fleets.list(client, { limit: 100 }),
-        endpoints.fleets.members(client, fleetId, { includeLeft: true }),
-        endpoints.fleets.settlementHistory(client, fleetId),
-      ]);
+      const fleets = await endpoints.fleets.list(client, { limit: 100 });
+      const members = await endpoints.fleets.members(client, fleetId, { includeLeft: true });
+      const settlement = await endpoints.fleets.settlementHistory(client, fleetId);
       const fleet = fleets.items.find((row) => row.id === fleetId);
       if (!fleet) {
         throw new Error(`找不到車隊 ${fleetId}`);

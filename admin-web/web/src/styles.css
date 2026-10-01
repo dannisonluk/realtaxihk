@@ -737,3 +737,34 @@ table.data tbody tr:hover { background: var(--surface-2); }
   font-size: 9px;
   opacity: 0.55;
 }
+
+/* TOTP enrolment QR.
+ *
+ * The code is a fixed-dark-on-white image by necessity, not by style choice:
+ * a scanner needs high contrast in the *right* direction, and an inverted QR
+ * (light modules on a dark field) is rejected by many readers. So the plate
+ * stays white in both themes while the surrounding surface follows the theme,
+ * which is also why it gets an explicit border — on a light theme a bare white
+ * rectangle would otherwise read as a hole in the card.
+ */
+.qr-enrol {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.qr-enrol__code {
+  display: flex;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  /* A crisp QR matters more than smooth scaling: the browser's default
+   * interpolation blurs module edges at fractional sizes, which is exactly
+   * what makes a scanner struggle. */
+  line-height: 0;
+}
+
+.qr-enrol__code svg { display: block; shape-rendering: crispEdges; }

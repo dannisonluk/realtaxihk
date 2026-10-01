@@ -23,6 +23,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { endpoints } from '../api/endpoints';
 import { session } from '../api/session';
 import type { AdminEnrolment, AdminLoginResult } from '../api/types';
@@ -61,7 +62,6 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
   function finish(body: { access_token: string; admin: unknown }) {
     session.save({
       accessToken: body.access_token,
-      refreshToken: '',
       user: body.admin as ReturnType<typeof session.save>['user'],
     });
     onSignedIn();
@@ -329,6 +329,40 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
             <Message tone="warn">
               首次登入需要綁定驗證器應用程式。請以應用程式掃描下方二維碼，或手動輸入密鑰。
             </Message>
+
+            {/*
+              The QR encodes the same `otpauth://` URI shown as text below, so
+              scanning and typing the secret are equivalent paths to one result.
+              It is rendered client-side as SVG — the provisioning URI contains
+              the TOTP secret, so posting it to an image service (or any third
+              party) would hand out the second factor. Nothing here leaves the
+              browser.
+
+              Sized via CSS pixels rather than a fixed `size` prop alone so it
+              stays scannable on a HiDPI screen: `qrcode.react` emits SVG, which
+              is resolution-independent, so the only thing that matters is that
+              the on-screen box is large enough for a phone camera to resolve.
+              `marginSize` gives the quiet zone the spec requires — without it
+              many scanners fail on a code that touches its own border.
+            */}
+            <div className="qr-enrol">
+              <div
+                className="qr-enrol__code"
+                data-testid="totp-qr"
+                role="img"
+                aria-label="驗證器綁定二維碼"
+              >
+                <QRCodeSVG
+                  value={enrolment.otpauth_uri}
+                  size={176}
+                  marginSize={2}
+                  level="M"
+                  bgColor="#ffffff"
+                  fgColor="#000000"
+                />
+              </div>
+              <div className="t-footnote dim">以驗證器應用程式掃描此二維碼</div>
+            </div>
 
             <div className="field">
               <div className="field__label">設定密鑰</div>

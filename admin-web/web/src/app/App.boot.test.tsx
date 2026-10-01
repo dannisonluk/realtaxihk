@@ -88,13 +88,18 @@ function stubTransport(routes: Record<string, unknown>, delayMs = 0) {
   });
 }
 
-/** Seed a session, as a completed sign-in would have. */
+/** Seed a session, as a completed sign-in would have.
+ *
+ * No refresh token: the real one is in an `HttpOnly` cookie the server sets,
+ * which this stub models by simply not being in storage. `session` deliberately
+ * has no field for it — a copy here would be the very exposure the cookie
+ * exists to prevent.
+ */
 function seedSession() {
   sessionStorage.setItem(
     'realtaxi.admin.session',
     JSON.stringify({
       accessToken: 'stub-access-token',
-      refreshToken: '',
       user: { id: ADMIN_ME.id, phone_masked: '', role: 'ADMIN' },
     }),
   );

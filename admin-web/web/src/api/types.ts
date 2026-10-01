@@ -32,6 +32,16 @@ export interface AdminIdentity {
   email_masked?: string;
 }
 
+/**
+ * The **user** (passenger/driver) login response.
+ *
+ * Carries a `refresh_token` in the body, unlike the admin flow: the mobile app
+ * is a native client with no cookie jar, so it must hold the token itself.
+ * Nothing in this console consumes this type — an admin session's refresh token
+ * arrives as an `HttpOnly` cookie and is never read by script. Kept so the
+ * shape is documented and a future shared client cannot silently assume the two
+ * flows match.
+ */
 export interface AuthTokens {
   access_token: string;
   refresh_token: string;

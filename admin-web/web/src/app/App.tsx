@@ -214,7 +214,6 @@ function Boot() {
         if (stored) {
           session.save({
             accessToken: stored.accessToken,
-            refreshToken: stored.refreshToken,
             user: me,
           });
         }
