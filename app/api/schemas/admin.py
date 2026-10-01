@@ -17,6 +17,9 @@ __all__ = [
     "AdminAccountOut",
     "AdminAccountPageOut",
     "AdminDepositDetailOut",
+    "AdminDisputeDetailOut",
+    "AdminDisputePageOut",
+    "AdminDisputeRowOut",
     "AdminLedgerRowOut",
     "AdminOrderDetailOut",
     "AdminOrderPageOut",
@@ -27,6 +30,9 @@ __all__ = [
     "AuditRowOut",
     "DepositAdjustOut",
     "DepositGrantOut",
+    "DisputeMessageOut",
+    "DisputeResolveOut",
+    "DisputeStatsOut",
     "DriverDetailOut",
     "DriverFleetBlockOut",
     "DriverPageOut",
@@ -487,3 +493,119 @@ class SettlementPreviewOut(BaseModel):
     would_go_negative_driver_ids: list[str]
     confirm_token: str
     confirm_expires_in_seconds: int
+
+
+class DisputeMessageOut(BaseModel):
+    """One turn in a dispute thread.
+
+    `is_internal` is on the wire so the console can render the distinction it
+    is required to make — a staff note must not be displayed in a view a party
+    can see. Sending the flag and filtering in the UI is deliberate: the
+    alternative is two endpoints whose difference is invisible to the reader.
+
+    `author_label` is denormalised at write time because the author may be
+    renamed or removed, and a thread that loses its speakers is unreadable
+    evidence.
+    """
+
+    id: int
+    author_kind: str
+    author_id: str | None
+    author_label: str | None
+    body: str
+    is_internal: bool
+    created_at: str
+
+
+class AdminDisputeRowOut(BaseModel):
+    """One row of `GET /admin/disputes` — the queue.
+
+    Every enum is sent as its **string value**, plus the derived fields the
+    queue is sorted and coloured by, so the console does not re-implement
+    severity→SLA or the overdue test. Two implementations of "is this late"
+    that drift is how a dashboard starts disagreeing with the API.
+
+    `sla_hours` is the budget the case was *given*, and `seconds_until_due` is
+    what is left. Both are present because a negative `seconds_until_due` says
+    "late" while `sla_hours` says how late by comparison — an operator triaging
+    needs the second number to decide whether to escalate.
+
+    `order_id` is nullable and that is meaningful, not missing: account- and
+    app-level complaints have no trip.
+    """
+
+    id: str
+    order_id: str | None
+    source: str
+    category: str
+    severity: str
+    status: str
+    summary: str
+    raised_by_kind: str
+    against_kind: str | None
+    assigned_admin_id: str | None
+    safety_flag: bool
+    sla_due_at: str
+    sla_hours: int
+    seconds_until_due: int
+    is_overdue: bool
+    resolution: str | None
+    resolved_at: str | None
+    created_at: str
+
+
+class AdminDisputePageOut(BaseModel):
+    """Paged dispute queue. `items` is typed, not `list[Any]`."""
+
+    items: list[AdminDisputeRowOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class DisputeStatsOut(BaseModel):
+    """The counts the queue header shows, computed server-side.
+
+    With pagination a client-side count is the count of the current page, which
+    reads as the total. `overdue` is therefore derived here, against the same
+    clock the sort uses.
+    """
+
+    total: int
+    open: int
+    overdue: int
+    unassigned: int
+    safety_flag: int
+
+
+class AdminDisputeDetailOut(AdminDisputeRowOut):
+    """A dispute plus its thread.
+
+    Inherits the row rather than re-declaring it: the detail page shows the same
+    header as the queue, and two definitions would drift into a list that
+    disagrees with the page it opens.
+
+    `messages` is **every** message including internal ones, because this
+    endpoint is admin-only. A party-facing view would be a different endpoint
+    with a different filter — not this one with a query flag, which is a filter
+    somebody eventually forgets.
+    """
+
+    messages: list[DisputeMessageOut]
+    resolution_note: str | None
+    resolved_by: str | None
+
+
+class DisputeResolveOut(BaseModel):
+    """The outcome of a resolution decision.
+
+    `moves_money` is echoed so the console can prompt for the follow-up ledger
+    action rather than inferring it from `resolution` — the inference is
+    exactly the kind of duplicated enum knowledge that goes stale.
+    """
+
+    id: str
+    status: str
+    resolution: str
+    moves_money: bool
+    resolved_at: str

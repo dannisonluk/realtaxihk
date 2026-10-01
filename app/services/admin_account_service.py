@@ -115,9 +115,13 @@ class AdminAccountService:
         not a way to grant roles, so counting them would let the last usable
         one be demoted while a disabled name kept the check happy.
         """
-        stmt = select(func.count()).select_from(AdminAccount).where(
-            AdminAccount.role == AdminRole.SUPER_ADMIN.value,
-            AdminAccount.is_active.is_(True),
+        stmt = (
+            select(func.count())
+            .select_from(AdminAccount)
+            .where(
+                AdminAccount.role == AdminRole.SUPER_ADMIN.value,
+                AdminAccount.is_active.is_(True),
+            )
         )
         if excluding is not None:
             stmt = stmt.where(AdminAccount.id != excluding)

@@ -47,6 +47,16 @@ from app.models.admin import (
     AdminRole,
     EmailVerificationToken,
 )
+from app.models.dispute import (
+    DisputeCategory,
+    DisputeMessage,
+    DisputePartyKind,
+    DisputeResolution,
+    DisputeSeverity,
+    DisputeSource,
+    DisputeStatus,
+    OrderDispute,
+)
 from app.models.fleet import (
     Fleet,
     FleetMemberRole,
@@ -94,6 +104,13 @@ __all__ = [
     "AdminRefreshToken",
     "AdminRole",
     "Base",
+    "DisputeCategory",
+    "DisputeMessage",
+    "DisputePartyKind",
+    "DisputeResolution",
+    "DisputeSeverity",
+    "DisputeSource",
+    "DisputeStatus",
     "DocumentKind",
     "DriverDeposit",
     "DriverDocument",
@@ -112,6 +129,7 @@ __all__ = [
     "LedgerEntryType",
     "LicenceReviewStatus",
     "Order",
+    "OrderDispute",
     "OrderStatus",
     "OtpCode",
     "RefreshToken",

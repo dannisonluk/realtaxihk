@@ -387,3 +387,27 @@ def require_role(
         return user
 
     return require_role_guard
+
+
+async def live_admin_role(session: AsyncSession, principal: Principal) -> AdminRole:
+    """The caller's current role, read from the table rather than the token.
+
+    For handlers that must branch on seniority *within* a request — the one
+    case today is a dispute resolution whose role requirement depends on the
+    decision in the body, not on the route. Those cannot use `require_role`,
+    because the requirement is not known until the body is parsed.
+
+    Same authority as `require_role`: the live row. A handler that read
+    `principal.admin_role` instead would be trusting a snapshot, which is the
+    mistake that dependency exists to avoid, and it would be reachable by
+    anyone holding an access token minted before their demotion.
+
+    Fails *closed* on a missing row, matching the guard: an admin id with no
+    row is not a role, it is a broken token.
+    """
+    row = await session.get(AdminAccount, principal.id)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="admin privileges required"
+        )
+    return row.admin_role
