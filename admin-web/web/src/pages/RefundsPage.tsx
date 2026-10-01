@@ -19,14 +19,15 @@ import { ErrorState, LoadingState } from '../components/states';
 import { useApp } from '../app/AppContext';
 import { useFormDialog } from '../app/useDialogs';
 import { useLoad } from '../app/useLoad';
-import { formatTime, refundStatusLabel, refundStatusTone } from '../lib/labels';
+import { formatTime, useLabels } from '../lib/labels';
+import { useI18n } from '../i18n';
 import { PageHead } from '../app/Shell';
 
-const FILTERS: { value: RefundStatus | null; label: string }[] = [
-  { value: 'PENDING', label: '待審批' },
-  { value: null, label: '全部' },
-  { value: 'APPROVED', label: '已批准' },
-  { value: 'REJECTED', label: '已拒絕' },
+const FILTERS: { value: RefundStatus | null; labelKey: string }[] = [
+  { value: 'PENDING', labelKey: 'refunds.filterPending' },
+  { value: null, labelKey: 'refunds.filterAll' },
+  { value: 'APPROVED', labelKey: 'refunds.filterApproved' },
+  { value: 'REJECTED', labelKey: 'refunds.filterRejected' },
 ];
 
 /** A UUID's first segment — enough to correlate a row with a ledger entry. */
@@ -36,6 +37,8 @@ function shortId(id: string): string {
 
 export function RefundsPage() {
   const { client, notify, refreshBadges } = useApp();
+  const { t, formatLocale } = useI18n();
+  const labels = useLabels();
   const [filter, setFilter] = useState<RefundStatus | null>('PENDING');
   const dialog = useFormDialog();
 
@@ -54,42 +57,42 @@ export function RefundsPage() {
   function decide(refund: RefundRow, approve: boolean) {
     let note = '';
     dialog.open({
-      title: approve ? '批准退款' : '拒絕退款',
-      confirmLabel: approve ? '批准並退款' : '拒絕',
+      title: approve ? t('refunds.approveTitle') : t('refunds.rejectTitle'),
+      confirmLabel: approve ? t('refunds.approveConfirm') : t('refunds.rejectConfirm'),
       // Approving moves money out and terminates the account — irreversibly.
       danger: approve,
       body: (
         <div className="stack">
           <div>
             <div>
-              金額 <Money value={refund.amount_hkd} />
+              {t('refunds.amount')} <Money value={refund.amount_hkd} />
             </div>
             <div className="dim t-caption1">
-              司機 <span className="mono">{shortId(refund.driver_profile_id)}</span>
+              {t('refunds.driver')} <span className="mono">{shortId(refund.driver_profile_id)}</span>
             </div>
           </div>
           {approve ? (
             <p style={{ margin: 0, color: 'var(--danger)' }}>
-              批准會實際付出按金餘額，並終止該司機帳戶。此操作不可回復，而且同一筆申請只能批核一次。
+              {t('refunds.approveWarning')}
             </p>
           ) : (
             <p className="dim" style={{ margin: 0 }}>
-              拒絕會解除按金凍結，司機帳戶回復啟用。
+              {t('refunds.rejectNote')}
             </p>
           )}
           {refund.note ? (
             <p className="dim" style={{ margin: 0 }}>
-              司機備註：{refund.note}
+              {t('refunds.driverNote', { note: refund.note })}
             </p>
           ) : null}
           <div className="field">
             <label className="field__label" htmlFor="refund-note">
-              批核備註
+              {t('refunds.reviewNote')}
             </label>
             <textarea
               id="refund-note"
               rows={3}
-              placeholder="批核備註（會記錄在申請上）"
+              placeholder={t('refunds.reviewNotePlaceholder')}
               onChange={(event) => (note = event.target.value)}
             />
           </div>
@@ -100,7 +103,7 @@ export function RefundsPage() {
           approve,
           note: note.trim(),
         });
-        notify(`退款申請已${refundStatusLabel(result.status)}。`);
+        notify(t('refunds.done', { status: labels.refundStatus(result.status) }));
         reload();
       },
     });
@@ -109,19 +112,19 @@ export function RefundsPage() {
   return (
     <>
       <PageHead
-        title="退款申請"
-        subtitle="申請會凍結司機全部按金並暫停帳戶；批准是唯一會實際付款的操作，並會終止該帳戶。"
+        title={t('refunds.title')}
+        subtitle={t('refunds.sub')}
       />
 
       <div className="row" style={{ marginBottom: 16 }}>
         {FILTERS.map((item) => (
           <button
-            key={item.label}
+            key={item.labelKey}
             type="button"
             className={item.value === filter ? 'btn btn--primary btn--sm' : 'btn btn--sm'}
             onClick={() => setFilter(item.value)}
           >
-            {item.label}
+            {t(item.labelKey)}
           </button>
         ))}
       </div>
@@ -132,7 +135,7 @@ export function RefundsPage() {
       {data ? (
         data.length === 0 ? (
           <div className="card">
-            <div className="empty">沒有符合條件的退款申請。</div>
+            <div className="empty">{t('refunds.empty')}</div>
           </div>
         ) : (
           <div className="card">
@@ -140,13 +143,13 @@ export function RefundsPage() {
               <table className="data">
                 <thead>
                   <tr>
-                    <th>申請編號</th>
-                    <th>司機</th>
-                    <th>金額</th>
-                    <th>狀態</th>
-                    <th>申請時間</th>
-                    <th>申請備註</th>
-                    <th>操作</th>
+                    <th>{t('refunds.colId')}</th>
+                    <th>{t('refunds.colDriver')}</th>
+                    <th>{t('refunds.colAmount')}</th>
+                    <th>{t('refunds.colStatus')}</th>
+                    <th>{t('refunds.colRequested')}</th>
+                    <th>{t('refunds.colNote')}</th>
+                    <th>{t('refunds.colActions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -158,11 +161,11 @@ export function RefundsPage() {
                         <Money value={refund.amount_hkd} />
                       </td>
                       <td>
-                        <Chip tone={refundStatusTone(refund.status)}>
-                          {refundStatusLabel(refund.status)}
+                        <Chip tone={labels.refundStatusTone(refund.status)}>
+                          {labels.refundStatus(refund.status)}
                         </Chip>
                       </td>
-                      <td>{formatTime(refund.created_at)}</td>
+                      <td>{formatTime(refund.created_at, formatLocale)}</td>
                       <td>{refund.note || <span className="dim">—</span>}</td>
                       <td>
                         {refund.status === 'PENDING' ? (
@@ -172,19 +175,19 @@ export function RefundsPage() {
                               className="btn btn--primary btn--sm"
                               onClick={() => decide(refund, true)}
                             >
-                              批准
+                              {t('refunds.approve')}
                             </button>
                             <button
                               type="button"
                               className="btn btn--sm"
                               onClick={() => decide(refund, false)}
                             >
-                              拒絕
+                              {t('refunds.reject')}
                             </button>
                           </div>
                         ) : (
                           <span className="dim">
-                            {refund.decided_at ? formatTime(refund.decided_at) : '—'}
+                            {refund.decided_at ? formatTime(refund.decided_at, formatLocale) : '—'}
                           </span>
                         )}
                       </td>

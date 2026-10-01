@@ -31,7 +31,8 @@ import { Card, Chip, Empty } from '../components/primitives';
 import { ErrorState, LoadingState } from '../components/states';
 import { useApp } from '../app/AppContext';
 import { normaliseError } from '../app/useLoad';
-import { driverStatusLabel, driverStatusTone, shortId } from '../lib/labels';
+import { useI18n } from '../i18n';
+import { shortId, useLabels } from '../lib/labels';
 import { PageHead } from '../app/Shell';
 
 /** How long the box waits after the last keystroke before asking the server. */
@@ -40,6 +41,7 @@ const DEBOUNCE_MS = 250;
 export function SearchPage() {
   const { client } = useApp();
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<SearchResponse | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -89,14 +91,14 @@ export function SearchPage() {
   return (
     <>
       <PageHead
-        title="搜尋"
-        subtitle="以電話、姓名、帳號或車牌尋找帳戶。搜尋本身不留審計紀錄；開啟詳情頁才會記錄。"
+        title={t('search.title')}
+        subtitle={t('search.sub')}
       />
 
       <Card className="card--pad">
         <div className="field">
           <label className="field__label" htmlFor="search-q">
-            關鍵字
+            {t('search.keyword')}
           </label>
           <input
             id="search-q"
@@ -104,18 +106,18 @@ export function SearchPage() {
             // `autoFocus` because this page exists to be typed into the instant
             // it opens — the caller is already on the line.
             autoFocus
-            placeholder="電話、姓名、帳號或車牌"
+            placeholder={t('search.placeholder')}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
           <div className="t-footnote dim">
-            電話與車牌以數字比對（部分數字亦可）；姓名與帳號以前綴比對。最少 {result?.min_query_length ?? 2} 個字元。
+            {t('search.hint', { min: result?.min_query_length ?? 2 })}
           </div>
         </div>
       </Card>
 
       <div style={{ marginTop: 16 }}>
-        {loading ? <LoadingState label="搜尋中…" /> : null}
+        {loading ? <LoadingState label={t('search.searching')} /> : null}
         {error ? <ErrorState error={error} onRetry={() => setQuery((q) => q)} /> : null}
       </div>
 
@@ -126,8 +128,8 @@ export function SearchPage() {
       {result?.query_too_short ? (
         <Card>
           <Empty
-            title="請輸入更長的關鍵字"
-            hint={`最少需要 ${result.min_query_length} 個字元，你目前輸入了 ${result.query.length} 個。`}
+            title={t('search.tooShortTitle')}
+            hint={t('search.tooShortHint', { min: result.min_query_length, len: result.query.length })}
           />
         </Card>
       ) : null}
@@ -135,7 +137,7 @@ export function SearchPage() {
       {result && !result.query_too_short ? (
         <Card>
           {result.items.length === 0 ? (
-            <Empty title={`沒有符合「${result.query}」的帳戶。`} hint="可嘗試只輸入電話或車牌中的幾個數字。" />
+            <Empty title={t('search.noMatch', { query: result.query })} hint={t('search.noMatchHint')} />
           ) : (
             <>
               {/*
@@ -145,19 +147,19 @@ export function SearchPage() {
               */}
               {result.truncated ? (
                 <div className="message message--warn" style={{ marginBottom: 16 }}>
-                  結果已被截斷：還有更多符合的帳戶未顯示。請輸入更精確的關鍵字。
+                  {t('search.truncated')}
                 </div>
               ) : null}
               <div className="table-wrap">
                 <table className="data">
                   <thead>
                     <tr>
-                      <th>類型</th>
-                      <th>姓名</th>
-                      <th>電話</th>
-                      <th>帳號</th>
-                      <th>車牌</th>
-                      <th>狀態</th>
+                      <th>{t('search.colKind')}</th>
+                      <th>{t('search.colHolder')}</th>
+                      <th>{t('search.colPhone')}</th>
+                      <th>{t('search.colUsername')}</th>
+                      <th>{t('search.colPlate')}</th>
+                      <th>{t('search.colStatus')}</th>
                       <th />
                     </tr>
                   </thead>
@@ -188,8 +190,8 @@ export function SearchPage() {
       {!query.trim() ? (
         <Card>
           <Empty
-            title="輸入電話、姓名、帳號或車牌開始搜尋。"
-            hint="電話與車牌只需要幾個數字即可比對。"
+            title={t('search.idleTitle')}
+            hint={t('search.idleHint')}
           />
         </Card>
       ) : null}
@@ -199,10 +201,12 @@ export function SearchPage() {
 
 function ResultRow({ item, onOpen }: { item: SearchResult; onOpen: () => void }) {
   const isDriver = item.kind === 'DRIVER';
+  const { t } = useI18n();
+  const labels = useLabels();
   return (
     <tr>
       <td>
-        <Chip tone={isDriver ? 'brand' : 'neutral'}>{isDriver ? '司機' : '乘客'}</Chip>
+        <Chip tone={isDriver ? 'brand' : 'neutral'}>{isDriver ? t('search.driver') : t('search.passenger')}</Chip>
       </td>
       <td>{item.display_name || <span className="dim">—</span>}</td>
       <td className="mono">{item.phone_e164}</td>
@@ -212,17 +216,17 @@ function ResultRow({ item, onOpen }: { item: SearchResult; onOpen: () => void })
       <td className="mono">{item.plate ?? <span className="dim">—</span>}</td>
       <td>
         {item.driver_status ? (
-          <Chip tone={driverStatusTone(item.driver_status)}>
-            {driverStatusLabel(item.driver_status)}
+          <Chip tone={labels.driverStatusTone(item.driver_status)}>
+            {labels.driverStatus(item.driver_status)}
           </Chip>
         ) : (
-          <span className="dim">{item.is_active ? '啟用中' : '已停用'}</span>
+          <span className="dim">{item.is_active ? t('search.active') : t('search.inactive')}</span>
         )}
       </td>
       <td>
         {item.driver_profile_id ? (
           <button type="button" className="btn btn--sm" onClick={onOpen}>
-            檢視司機
+            {t('search.viewDriver')}
           </button>
         ) : (
           <span className="dim t-caption1">{shortId(item.id)}</span>

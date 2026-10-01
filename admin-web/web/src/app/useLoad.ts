@@ -96,18 +96,27 @@ export function normaliseError(cause: unknown): Error {
   return new Error(String(cause));
 }
 
-/** A short hint for the errors an operator can act on. */
-export function errorHint(error: Error): string | null {
+/**
+ * A short hint for the errors an operator can act on.
+ *
+ * Takes `t` rather than reading a module-level translation: this is a plain
+ * function, not a component, so it cannot call a hook — and the hint has to
+ * follow the active language like everything else.
+ */
+export function errorHint(
+  error: Error,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string | null {
   if (!(error instanceof ApiError)) return null;
   switch (error.code) {
     case CODE.rateLimited:
       return error.retryAfter === null
-        ? '請稍候再試。'
-        : `請於 ${Math.ceil(error.retryAfter / 60)} 分鐘後再試。`;
+        ? t('errors.rateLimitedSoon')
+        : t('errors.rateLimitedWait', { minutes: Math.ceil(error.retryAfter / 60) });
     case CODE.serviceUnavailable:
-      return '服務繁忙，請稍後再試。';
+      return t('errors.rateLimited');
     case CODE.network:
-      return '請檢查網絡連線。';
+      return t('errors.network');
     default:
       return null;
   }

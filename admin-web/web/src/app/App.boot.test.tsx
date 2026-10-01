@@ -32,6 +32,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StrictMode, act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { session } from '../api/session';
+import { i18n } from '../i18n';
 import { App } from './App';
 
 // React 18's `act` needs this flag set before any render, or every update warns.
@@ -41,10 +42,45 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+/**
+ * The headings, read out of the i18n resource rather than written here.
+ *
+ * The console ships two locales and the strings live in `src/i18n/locales/`, so
+ * a literal here would pin the test to whichever language happened to be active
+ * — and worse, it would keep passing if someone *changed* the Chinese copy. The
+ * subject of these tests is the boot gate, not the wording, so the expected text
+ * is looked up by key from the *active* locale's resource at assert time.
+ *
+ * The lookup goes through i18next's own resource store rather than importing
+ * `zh-Hant.ts` directly, so it follows the real resolution path (and the
+ * `fallbackLng`) instead of a copy of it.
+ */
+function text(key: string): string {
+  const target = i18n.resolvedLanguage ?? 'zh-Hant';
+  const bundle = i18n.getResourceBundle(target, 'translation') as
+    | Record<string, unknown>
+    | undefined;
+  const fallback = i18n.getResourceBundle('zh-Hant', 'translation') as
+    | Record<string, unknown>
+    | undefined;
+  const read = (source: Record<string, unknown> | undefined) => {
+    let cursor: unknown = source;
+    for (const part of key.split('.')) {
+      if (typeof cursor !== 'object' || cursor === null) return undefined;
+      cursor = (cursor as Record<string, unknown>)[part];
+    }
+    return typeof cursor === 'string' ? cursor : undefined;
+  };
+  const value = read(bundle) ?? read(fallback) ?? key;
+  return value;
+}
+
 /** The `*` route's heading. If this ever renders, the gate has failed. */
-const NOT_FOUND = '找不到頁面';
-const DASHBOARD = '總覽';
-const LOGIN = '管理員登入';
+const NOT_FOUND = () => text('notFound.title');
+const DASHBOARD = () => text('dashboard.title');
+const LOGIN = () => text('login.title');
+const ANALYTICS = () => text('analytics.title');
+const NO_ACCESS = () => text('noPermission.title');
 
 /**
  * A signed-in admin, as `GET /auth/me` returns it.
@@ -207,8 +243,8 @@ describe('the boot gate', () => {
 
     await renderAndSettle(root);
 
-    expect(heading()).not.toBe(NOT_FOUND);
-    expect(heading()).toBe(DASHBOARD);
+    expect(heading()).not.toBe(NOT_FOUND());
+    expect(heading()).toBe(DASHBOARD());
     // The URL and the screen must agree — that is the whole point. Asserting
     // this alone is what the old test did, and it is not sufficient on its own.
     expect(window.location.hash).toBe('#/');
@@ -225,7 +261,7 @@ describe('the boot gate', () => {
 
     await renderAndSettle(root);
 
-    expect(heading()).toBe(DASHBOARD);
+    expect(heading()).toBe(DASHBOARD());
   });
 
   /**
@@ -252,7 +288,7 @@ describe('the boot gate', () => {
 
     await renderAndSettle(root);
 
-    expect(heading()).toBe('表現分析');
+    expect(heading()).toBe(ANALYTICS());
     expect(window.location.hash).toBe('#/analytics');
   });
 
@@ -263,7 +299,7 @@ describe('the boot gate', () => {
 
     await renderAndSettle(root);
 
-    expect(heading()).toBe(LOGIN);
+    expect(heading()).toBe(LOGIN());
     expect(window.location.hash).toBe('#/login');
   });
 
@@ -285,8 +321,8 @@ describe('the boot gate', () => {
 
     await renderAndSettle(root);
 
-    expect(heading()).not.toBe(NOT_FOUND);
-    expect(heading()).toBe(LOGIN);
+    expect(heading()).not.toBe(NOT_FOUND());
+    expect(heading()).toBe(LOGIN());
   });
 
   /**
@@ -313,7 +349,7 @@ describe('the boot gate', () => {
 
     await renderAndSettle(root);
 
-    expect(heading()).toBe(DASHBOARD);
+    expect(heading()).toBe(DASHBOARD());
     const links = [...container.querySelectorAll('a.navlink')].map((a) =>
       a.getAttribute('href'),
     );
@@ -347,8 +383,8 @@ describe('the boot gate', () => {
 
     await renderAndSettle(root);
 
-    expect(heading()).not.toBe(NOT_FOUND);
-    expect(heading()).toBe('沒有存取權限');
+    expect(heading()).not.toBe(NOT_FOUND());
+    expect(heading()).toBe(NO_ACCESS());
     // The hash is left alone: the operator can still navigate back, and a
     // redirect here would silently rewrite a link they may have been sent.
     expect(window.location.hash).toBe('#/analytics');

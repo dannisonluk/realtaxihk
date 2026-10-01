@@ -34,24 +34,23 @@ import type {
 } from '../api/types';
 import { Card, Chip, DetailRow, Empty, Message, Money, Percent, Rows } from '../components/primitives';
 import { ErrorState, LoadingState } from '../components/states';
+import { useI18n } from '../i18n';
 import {
   currentIsoWeek,
-  driverStatusLabel,
-  fleetStatusLabel,
-  fleetStatusTone,
   formatTime,
-  memberRoleLabel,
   PERIOD_PATTERN,
   shortId,
-  taxiTypeLabel,
-  MEMBER_ROLE_LABEL,
+  useLabels,
 } from '../lib/labels';
 
-const STATUS_LABEL = { ACTIVE: '營運中', SUSPENDED: '已停權', DISSOLVED: '已解散' } as const;
+const FLEET_STATUS_VALUES = ['ACTIVE', 'SUSPENDED', 'DISSOLVED'] as const;
+const MEMBER_ROLE_VALUES = ['OWNER', 'MANAGER', 'MEMBER'] as const;
 
 export function FleetDetailPage() {
   const { fleetId = '' } = useParams();
   const { client, notify, refreshBadges } = useApp();
+  const { t, formatLocale } = useI18n();
+  const labels = useLabels();
   const [includeLeft, setIncludeLeft] = useState(false);
   /**
    * The last run's totals, held across reloads. Running a settlement refreshes
@@ -74,14 +73,14 @@ export function FleetDetailPage() {
     const history = await endpoints.fleets.settlementHistory(client, fleetId, { limit: 52 });
     const fleet = (page.items ?? []).find((item) => item.id === fleetId);
     if (!fleet) {
-      throw new Error('找不到此車隊。它可能已被移除，或不在目前的分頁內。');
+      throw new Error(t('fleetDetail.notFound'));
     }
     return { fleet, members: members.items ?? [], settlement: history.items ?? [] };
   }, [client, fleetId, includeLeft]);
 
   async function runSettlement(period: string) {
     if (period !== '' && !PERIOD_PATTERN.test(period)) {
-      notify('期間格式應為 YYYY-Www，例如 2026-W38。', 'error');
+      notify(t('fleetDetail.errPeriod'), 'error');
       return;
     }
     setRunning(true);
@@ -91,7 +90,7 @@ export function FleetDetailPage() {
         period: period || undefined,
       });
       setLastRun(result);
-      notify(`車隊結算完成：已收費 ${result.charged} 位。`);
+      notify(t('fleetDetail.settleDone', { count: result.charged }));
       // The header's member count and the history have both moved.
       reload();
       void refreshBadges();
@@ -110,7 +109,7 @@ export function FleetDetailPage() {
       <div>
         <div style={{ marginBottom: 12 }}>
           <Link className="btn" to="/fleets">
-            ← 返回車隊列表
+            {t('fleetDetail.back')}
           </Link>
         </div>
         <ErrorState error={error} onRetry={reload} />
@@ -128,22 +127,22 @@ export function FleetDetailPage() {
       status: target.status,
     };
     editDialog.open({
-      title: '編輯車隊',
-      confirmLabel: '儲存',
+      title: t('fleetDetail.edit'),
+      confirmLabel: t('fleetDetail.editConfirm'),
       body: <FleetEditBody fleet={target} onChange={(patch) => Object.assign(form, patch)} />,
       onSubmit: async () => {
         const name = form.name.trim();
-        if (!name) throw new Error('車隊名稱不可留空。');
+        if (!name) throw new Error(t('fleetDetail.errName'));
         const discount = Number(form.discount);
         if (!Number.isFinite(discount) || discount < 0 || discount > 100) {
-          throw new Error('折扣須為 0 至 100 之間的數字。');
+          throw new Error(t('fleetDetail.errDiscount'));
         }
         await endpoints.fleets.update(client, target.id, {
           name,
           weekly_fee_discount_percent: String(discount),
           status: form.status,
         });
-        notify('已更新車隊設定。');
+        notify(t('fleetDetail.updated'));
         reload();
       },
     });
@@ -152,16 +151,16 @@ export function FleetDetailPage() {
   function addMember() {
     const form = { driverId: '', role: 'MEMBER' };
     addDialog.open({
-      title: '加入車隊成員',
-      confirmLabel: '加入',
+      title: t('fleetDetail.addMember'),
+      confirmLabel: t('fleetDetail.addMemberConfirm'),
       body: <AddMemberBody onChange={(patch) => Object.assign(form, patch)} />,
       onSubmit: async () => {
-        if (!form.driverId) throw new Error('請先選擇一位司機。');
+        if (!form.driverId) throw new Error(t('fleetDetail.errDriver'));
         await endpoints.fleets.addMember(client, fleetId, {
           driverProfileId: form.driverId,
           memberRole: form.role,
         });
-        notify('已加入車隊名單。');
+        notify(t('fleetDetail.added'));
         reload();
       },
     });
@@ -169,23 +168,23 @@ export function FleetDetailPage() {
 
   function removeMember(member: FleetMember) {
     removeDialog.open({
-      title: '移出車隊名單？',
-      confirmLabel: '移出',
+      title: t('fleetDetail.removeTitle'),
+      confirmLabel: t('fleetDetail.removeConfirm'),
       danger: true,
       body: (
         <div>
           <p style={{ margin: 0 }}>
             <span className="mono">{shortId(member.driver_profile_id)}</span>
-            {' 將由下一次結算起，回復按平台劃一費用收費。'}
+            {t('fleetDetail.removeNote')}
           </p>
           <p className="dim" style={{ margin: '12px 0 0' }}>
-            紀錄會保留為「已離隊」，不會刪除，方便日後核對該週的名單。
+            {t('fleetDetail.removeKeep')}
           </p>
         </div>
       ),
       onSubmit: async () => {
         await endpoints.fleets.removeMember(client, fleetId, member.driver_profile_id);
-        notify('已移出車隊名單。');
+        notify(t('fleetDetail.removed'));
         reload();
       },
     });
@@ -199,7 +198,7 @@ export function FleetDetailPage() {
           <div style={{ minWidth: 0 }}>
             <div className="row-inline">
               <h1 style={{ margin: 0 }}>{fleet.name}</h1>
-              <Chip tone={fleetStatusTone(fleet.status)}>{fleetStatusLabel(fleet.status)}</Chip>
+              <Chip tone={labels.fleetStatusTone(fleet.status)}>{labels.fleetStatus(fleet.status)}</Chip>
             </div>
             <div className="dim" style={{ marginTop: 4 }}>
               <span className="mono">{fleet.license_no ?? '—'}</span>
@@ -207,37 +206,37 @@ export function FleetDetailPage() {
           </div>
           <div className="actions">
             <button type="button" className="btn" onClick={() => edit(fleet)}>
-              編輯車隊
+              {t('fleetDetail.edit')}
             </button>
             <Link className="btn" to="/fleets">
-              ← 返回列表
+              {t('fleetDetail.backShort')}
             </Link>
           </div>
         </div>
         <div style={{ marginTop: 16 }}>
           <Rows>
-            <DetailRow label="每週費用折扣">
+            <DetailRow label={t('fleetDetail.colDiscount')}>
               <Percent value={fleet.weekly_fee_discount_percent} />
             </DetailRow>
-            <DetailRow label="成員人數">{String(fleet.member_count ?? 0)}</DetailRow>
-            <DetailRow label="聯絡人">{fleet.contact_name ?? '—'}</DetailRow>
-            <DetailRow label="聯絡電話">{fleet.contact_phone ?? '—'}</DetailRow>
-            <DetailRow label="備註">{fleet.note ?? '—'}</DetailRow>
-            <DetailRow label="建立日期">{formatTime(fleet.created_at)}</DetailRow>
+            <DetailRow label={t('fleetDetail.colMembers')}>{String(fleet.member_count ?? 0)}</DetailRow>
+            <DetailRow label={t('fleetDetail.colContact')}>{fleet.contact_name ?? '—'}</DetailRow>
+            <DetailRow label={t('fleetDetail.colPhone')}>{fleet.contact_phone ?? '—'}</DetailRow>
+            <DetailRow label={t('fleetDetail.colNote')}>{fleet.note ?? '—'}</DetailRow>
+            <DetailRow label={t('fleetDetail.colCreated')}>{formatTime(fleet.created_at, formatLocale)}</DetailRow>
           </Rows>
         </div>
         {fleet.status !== 'ACTIVE' ? (
           <p className="danger" style={{ margin: '14px 0 0' }}>
-            車隊非營運中，結算會被拒絕。
+            {t('fleetDetail.notActive')}
           </p>
         ) : null}
       </Card>
 
       {/* -------------------------------------------------------- settlement */}
-      <h2>每週結算</h2>
+      <h2>{t('fleetDetail.settlementTitle')}</h2>
       <Card className="card--pad">
         <p className="dim" style={{ margin: '0 0 16px' }}>
-          同一週重複執行不會重複收費；已收過的成員會計入「略過」。車隊必須為營運中才會收費。
+          {t('fleetDetail.settlementNote')}
         </p>
         <SettlementLever running={running} onRun={(period) => void runSettlement(period)} />
       </Card>
@@ -247,24 +246,24 @@ export function FleetDetailPage() {
       </div>
 
       {/* ----------------------------------------------------------- history */}
-      <h2>結算紀錄</h2>
+      <h2>{t('fleetDetail.historyTitle')}</h2>
       <Card>
         {settlement.length === 0 ? (
-          <Empty title="還沒有結算紀錄。" />
+          <Empty title={t('fleetDetail.historyEmpty')} />
         ) : (
           <div className="table-wrap">
               <table className="data">
             <thead>
               <tr>
-                <th>週次</th>
-                <th className="num">每位費用</th>
-                <th className="num">折扣</th>
-                <th className="num">成員</th>
-                <th className="num">已收</th>
-                <th className="num">略過</th>
-                <th className="num">異常</th>
-                <th className="num">實收</th>
-                <th>執行時間</th>
+                <th>{t('fleetDetail.colPeriod')}</th>
+                <th className="num">{t('fleetDetail.colPerMember')}</th>
+                <th className="num">{t('fleetDetail.colDiscountCol')}</th>
+                <th className="num">{t('fleetDetail.colMembers')}</th>
+                <th className="num">{t('fleetDetail.colCharged')}</th>
+                <th className="num">{t('fleetDetail.colSkipped')}</th>
+                <th className="num">{t('fleetDetail.colTampered')}</th>
+                <th className="num">{t('fleetDetail.colNet')}</th>
+                <th>{t('fleetDetail.colRunAt')}</th>
               </tr>
             </thead>
             <tbody>
@@ -286,7 +285,7 @@ export function FleetDetailPage() {
                   <td className="num">
                     <Money value={run.collected_hkd} />
                   </td>
-                  <td>{formatTime(run.created_at)}</td>
+                  <td>{formatTime(run.created_at, formatLocale)}</td>
                 </tr>
               ))}
             </tbody>
@@ -296,35 +295,35 @@ export function FleetDetailPage() {
       </Card>
 
       {/* ------------------------------------------------------------ roster */}
-      <h2>成員名單</h2>
+      <h2>{t('fleetDetail.rosterTitle')}</h2>
       <div className="filters">
         <button type="button" className="btn btn--primary btn--sm" onClick={addMember}>
-          加入成員
+          {t('fleetDetail.addMember')}
         </button>
         <button
           type="button"
           className="btn btn--sm"
           onClick={() => setIncludeLeft((current) => !current)}
         >
-          {includeLeft ? '只顯示在隊成員' : '包含已離隊成員'}
+          {includeLeft ? t('fleetDetail.toggleLeft') : t('fleetDetail.toggleLeftOpposite')}
         </button>
       </div>
       <Card>
         {members.length === 0 ? (
-          <Empty title="名單上還沒有成員。" />
+          <Empty title={t('fleetDetail.rosterEmpty')} />
         ) : (
           <div className="table-wrap">
               <table className="data">
             <thead>
               <tr>
-                <th>司機</th>
-                <th>的士類型</th>
-                <th>司機狀態</th>
-                <th>角色</th>
-                <th>名單狀態</th>
-                <th>加入日期</th>
-                <th>離隊日期</th>
-                <th>計費</th>
+                <th>{t('fleetDetail.colDriver')}</th>
+                <th>{t('fleetDetail.colTaxiType')}</th>
+                <th>{t('fleetDetail.colDriverStatus')}</th>
+                <th>{t('fleetDetail.colMemberRole')}</th>
+                <th>{t('fleetDetail.colMemberStatus')}</th>
+                <th>{t('fleetDetail.colJoined')}</th>
+                <th>{t('fleetDetail.colLeft')}</th>
+                <th>{t('fleetDetail.colBilling')}</th>
                 <th />
               </tr>
             </thead>
@@ -332,21 +331,21 @@ export function FleetDetailPage() {
               {members.map((member) => (
                 <tr key={`${member.driver_profile_id}-${member.joined_at ?? ''}`}>
                   <td className="mono">{shortId(member.driver_profile_id)}</td>
-                  <td>{taxiTypeLabel(member.taxi_type)}</td>
-                  <td>{driverStatusLabel(member.driver_status)}</td>
-                  <td>{memberRoleLabel(member.member_role)}</td>
+                  <td>{labels.taxiType(member.taxi_type)}</td>
+                  <td>{labels.driverStatus(member.driver_status)}</td>
+                  <td>{labels.memberRole(member.member_role)}</td>
                   <td>
                     <Chip tone={member.status === 'ACTIVE' ? 'ok' : 'neutral'}>
-                      {member.status === 'ACTIVE' ? '在隊' : '已離隊'}
+                      {labels.memberStatus(member.status)}
                     </Chip>
                   </td>
-                  <td>{formatTime(member.joined_at)}</td>
-                  <td>{member.left_at ? formatTime(member.left_at) : <span className="dim">—</span>}</td>
+                  <td>{formatTime(member.joined_at, formatLocale)}</td>
+                  <td>{member.left_at ? formatTime(member.left_at, formatLocale) : <span className="dim">—</span>}</td>
                   <td>
                     {member.status === 'ACTIVE' && member.driver_status === 'ACTIVE' ? (
-                      <Chip tone="brand">會收費</Chip>
+                      <Chip tone="brand">{t('fleetDetail.billable')}</Chip>
                     ) : (
-                      <span className="dim">不計費</span>
+                      <span className="dim">{t('fleetDetail.unbillable')}</span>
                     )}
                   </td>
                   <td>
@@ -356,7 +355,7 @@ export function FleetDetailPage() {
                         className="btn btn--danger btn--sm"
                         onClick={() => removeMember(member)}
                       >
-                        移出
+                        {t('fleetDetail.remove')}
                       </button>
                     ) : (
                       <span className="dim">—</span>
@@ -385,19 +384,20 @@ function SettlementLever({
   running: boolean;
   onRun: (period: string) => void;
 }) {
+  const { t } = useI18n();
   const [period, setPeriod] = useState('');
   return (
     <>
       <div style={{ maxWidth: 360 }}>
         <label className="field">
-          <span>ISO 週次（留空為本週）</span>
+          <span>{t('fleetDetail.fieldWeek')}</span>
           <input
             type="text"
             value={period}
             placeholder={currentIsoWeek()}
             onChange={(e) => setPeriod(e.target.value)}
           />
-          <span className="field__hint">本週為 {currentIsoWeek()}。</span>
+          <span className="field__hint">{t('fleetDetail.fieldWeekHint', { week: currentIsoWeek() })}</span>
         </label>
       </div>
       <button
@@ -406,48 +406,51 @@ function SettlementLever({
         disabled={running}
         onClick={() => onRun(period.trim())}
       >
-        {running ? '執行中…' : '執行本週車隊結算'}
+        {running ? t('fleetDetail.running') : t('fleetDetail.runNow')}
       </button>
     </>
   );
 }
 
 function RunCard({ run }: { run: FleetSettlementRunResult }) {
+  const { t } = useI18n();
   const anomaly = (run.failed ?? 0) > 0 || (run.tampered ?? 0) > 0;
   const gross = run.gross_fee_hkd;
   const saving = gross !== undefined && gross !== null ? Number(gross) - Number(run.fee_hkd) : null;
 
   return (
     <Card className={anomaly ? 'card--pad card--alert' : 'card--pad'}>
-      <h2 className="card__title">結果 · {run.period}</h2>
+      <h2 className="card__title">{t('fleetDetail.result', { period: run.period })}</h2>
       <Rows>
-        <DetailRow label="平台劃一費用">
+        <DetailRow label={t('fleetDetail.resPlatform')}>
           {gross ? <Money value={gross} /> : '—'}
         </DetailRow>
-        <DetailRow label="車隊每位費用">
+        <DetailRow label={t('fleetDetail.resFleet')}>
           <Money value={run.fee_hkd} />
         </DetailRow>
-        <DetailRow label="每位節省">
+        <DetailRow label={t('fleetDetail.resSaving')}>
           {saving !== null && saving !== 0 ? (
             <>
-              <Money value={saving} /> · 折扣 <Percent value={run.discount_percent} />
+              <Money value={saving} />
+              {t('fleetDetail.resSavingNote', { saving: '', discount: '' })}
+              <Percent value={run.discount_percent} />
             </>
           ) : (
             '—'
           )}
         </DetailRow>
-        <DetailRow label="計費成員">{String(run.member_count ?? 0)}</DetailRow>
-        <DetailRow label="已收費">{String(run.charged ?? 0)}</DetailRow>
-        <DetailRow label="略過（已收過）">{String(run.skipped ?? 0)}</DetailRow>
-        <DetailRow label="失敗">{String(run.failed ?? 0)}</DetailRow>
-        <DetailRow label="帳目異常">{String(run.tampered ?? 0)}</DetailRow>
-        <DetailRow label="實收總額">
+        <DetailRow label={t('fleetDetail.resBilled')}>{String(run.member_count ?? 0)}</DetailRow>
+        <DetailRow label={t('fleetDetail.resCharged')}>{String(run.charged ?? 0)}</DetailRow>
+        <DetailRow label={t('fleetDetail.resSkipped')}>{String(run.skipped ?? 0)}</DetailRow>
+        <DetailRow label={t('fleetDetail.resFailed')}>{String(run.failed ?? 0)}</DetailRow>
+        <DetailRow label={t('fleetDetail.resTampered')}>{String(run.tampered ?? 0)}</DetailRow>
+        <DetailRow label={t('fleetDetail.resNet')}>
           <Money value={run.collected_hkd} />
         </DetailRow>
       </Rows>
       {(run.tampered ?? 0) > 0 ? (
         <p className="danger" style={{ margin: '14px 0 0' }}>
-          帳目異常代表該週的 ledger reference 被其他帳目佔用，系統刻意未收費，需要人手核對；重試不會解決。
+          {t('fleetDetail.tamperedNote')}
         </p>
       ) : null}
     </Card>
@@ -467,10 +470,12 @@ function FleetEditBody({
   fleet: FleetRow;
   onChange: (patch: Partial<FleetEditDraft>) => void;
 }) {
+  const { t } = useI18n();
+  const labels = useLabels();
   return (
     <>
       <label className="field">
-        <span>車隊名稱</span>
+        <span>{t('fleetDetail.fieldName')}</span>
         <input
           type="text"
           defaultValue={fleet.name}
@@ -478,7 +483,7 @@ function FleetEditBody({
         />
       </label>
       <label className="field">
-        <span>每週費用折扣（%）</span>
+        <span>{t('fleetDetail.fieldDiscount')}</span>
         <input
           type="number"
           min="0"
@@ -487,21 +492,21 @@ function FleetEditBody({
           defaultValue={fleet.weekly_fee_discount_percent}
           onChange={(e) => onChange({ discount: e.target.value })}
         />
-        <span className="field__hint">由下一次結算起生效。</span>
+        <span className="field__hint">{t('fleetDetail.fieldDiscountHint')}</span>
       </label>
       <label className="field">
-        <span>營運狀態</span>
+        <span>{t('fleetDetail.fieldStatus')}</span>
         <select
           defaultValue={fleet.status}
           onChange={(e) => onChange({ status: e.target.value })}
         >
-          {Object.entries(STATUS_LABEL).map(([value, label]) => (
+          {FLEET_STATUS_VALUES.map((value) => (
             <option key={value} value={value}>
-              {label}
+              {labels.fleetStatus(value)}
             </option>
           ))}
         </select>
-        <span className="field__hint">停權或解散後，車隊不會再產生每週收費。</span>
+        <span className="field__hint">{t('fleetDetail.fieldStatusHint')}</span>
       </label>
     </>
   );
@@ -520,12 +525,14 @@ function AddMemberBody({
   onChange: (patch: { driverId?: string; role?: string }) => void;
 }) {
   const { client } = useApp();
+  const { t } = useI18n();
+  const labels = useLabels();
   const { data, error, loading } = useLoad(
     () => endpoints.drivers.list(client, { status: 'ACTIVE', limit: 200 }),
     [client],
   );
 
-  if (loading) return <LoadingState label="載入司機名單…" />;
+  if (loading) return <LoadingState label={t('fleetDetail.loadingRoster')} />;
   if (error) return <ErrorState error={error} />;
 
   const items = data?.items ?? [];
@@ -533,10 +540,10 @@ function AddMemberBody({
   return (
     <>
       <p className="dim" style={{ margin: '0 0 12px' }}>
-        加入後，該司機會由下一次結算起改按車隊折扣價收費，不再計入平台劃一收費。一位司機同時只能屬於一個車隊名單。
+        {t('fleetDetail.pickIntro')}
       </p>
       {items.length === 0 ? (
-        <Message tone="warn">沒有已啟用的司機。司機需先通過審核並繳足按金。</Message>
+        <Message tone="warn">{t('fleetDetail.noDrivers')}</Message>
       ) : (
         <div className="pick-list">
           {items.map((driver: AdminDriverRow) => (
@@ -549,7 +556,7 @@ function AddMemberBody({
               <span>
                 <span className="mono">{driver.vehicle_reg_mark ?? '—'}</span>
                 <span className="dim" style={{ fontSize: '12.5px' }}>
-                  {`  ·  ${taxiTypeLabel(driver.taxi_type)}  ·  ${shortId(driver.id)}`}
+                  {`  ·  ${labels.taxiType(driver.taxi_type)}  ·  ${shortId(driver.id)}`}
                 </span>
               </span>
             </label>
@@ -558,11 +565,11 @@ function AddMemberBody({
       )}
       <div style={{ marginTop: 14, maxWidth: 220 }}>
         <label className="field">
-          <span>名單角色</span>
+          <span>{t('fleetDetail.fieldMemberRole')}</span>
           <select defaultValue="MEMBER" onChange={(e) => onChange({ role: e.target.value })}>
-            {Object.entries(MEMBER_ROLE_LABEL).map(([value, label]) => (
+            {MEMBER_ROLE_VALUES.map((value) => (
               <option key={value} value={value}>
-                {label}
+                {labels.memberRole(value)}
               </option>
             ))}
           </select>

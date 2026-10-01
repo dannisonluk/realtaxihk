@@ -29,6 +29,7 @@ import { session } from '../api/session';
 import type { AdminEnrolment, AdminLoginResult } from '../api/types';
 import { useApp } from '../app/AppContext';
 import { Message } from '../components/primitives';
+import { useI18n } from '../i18n';
 
 type Step = 'credentials' | 'totp' | 'enrol' | 'recovery';
 
@@ -41,6 +42,7 @@ const AUTHENTICATOR_APPS = [
 
 export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
   const { client, notify } = useApp();
+  const { t } = useI18n();
 
   const [step, setStep] = useState<Step>('credentials');
   const [username, setUsername] = useState('');
@@ -70,7 +72,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
   async function submitCredentials() {
     setError(null);
     if (username.trim().length === 0 || password.length === 0) {
-      setError('請輸入使用者名稱及密碼。');
+      setError(t('login.errCredentials'));
       return;
     }
     setBusy(true);
@@ -91,7 +93,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
         setStep('totp');
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '登入失敗。');
+      setError(cause instanceof Error ? cause.message : t('login.errSignIn'));
     } finally {
       setBusy(false);
     }
@@ -101,7 +103,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
     setError(null);
     const value = code.trim();
     if (!/^\d{6}$/.test(value)) {
-      setError('請輸入 6 位數字驗證碼。');
+      setError(t('login.errCode'));
       return;
     }
     setBusy(true);
@@ -109,7 +111,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
       const body = await endpoints.auth.adminVerifyTotp(client, challenge, value);
       finish(body);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '驗證失敗。');
+      setError(cause instanceof Error ? cause.message : t('login.errVerify'));
       setCode('');
     } finally {
       setBusy(false);
@@ -120,16 +122,16 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
     setError(null);
     const value = code.trim();
     if (!/^\d{6}$/.test(value)) {
-      setError('請輸入 6 位數字驗證碼。');
+      setError(t('login.errCode'));
       return;
     }
     setBusy(true);
     try {
       const body = await endpoints.auth.adminConfirmEnrolment(client, challenge, value);
       finish(body);
-      notify('雙重驗證已啟用。');
+      notify(t('login.enrolDone'));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '驗證失敗。');
+      setError(cause instanceof Error ? cause.message : t('login.errVerify'));
       setCode('');
     } finally {
       setBusy(false);
@@ -140,16 +142,16 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
     setError(null);
     const value = code.trim();
     if (value.length < 8) {
-      setError('請輸入完整的備用碼。');
+      setError(t('login.errRecovery'));
       return;
     }
     setBusy(true);
     try {
       const body = await endpoints.auth.adminUseRecovery(client, challenge, value);
       finish(body);
-      notify('已使用備用碼登入。請盡快重新產生備用碼。');
+      notify(t('login.recoveryUsed'));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '備用碼無效。');
+      setError(cause instanceof Error ? cause.message : t('login.errRecoveryInvalid'));
       setCode('');
     } finally {
       setBusy(false);
@@ -175,21 +177,21 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
             R
           </div>
           <div className="brand__text">
-            <div className="brand__title">RealTaxi HK</div>
-            <div className="brand__sub">管理後台</div>
+            <div className="brand__title">{t('brand.title')}</div>
+            <div className="brand__sub">{t('brand.sub')}</div>
           </div>
         </div>
 
         <h1 className="t-title1" style={{ margin: '0 0 4px' }}>
-          管理員登入
+          {t('login.title')}
         </h1>
-        <p className="login__sub dim">供平台管理團隊及 admin 團隊使用。</p>
+        <p className="login__sub dim">{t('login.sub')}</p>
 
         {step === 'credentials' ? (
           <div className="stack" style={{ marginTop: 20 }}>
             <div className="field">
               <label className="field__label" htmlFor="login-username">
-                使用者名稱
+                {t('login.username')}
               </label>
               <input
                 id="login-username"
@@ -206,7 +208,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
             </div>
             <div className="field">
               <label className="field__label" htmlFor="login-password">
-                密碼
+                {t('login.password')}
               </label>
               <input
                 id="login-password"
@@ -219,7 +221,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
                 }}
               />
               <div className="t-footnote dim">
-                連續 5 次失敗會鎖定帳戶 15 分鐘。
+                {t('login.lockNote')}
               </div>
             </div>
             <button
@@ -228,7 +230,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
               disabled={busy}
               onClick={() => void submitCredentials()}
             >
-              {busy ? '登入中…' : '下一步'}
+              {busy ? t('login.signingIn') : t('login.next')}
             </button>
           </div>
         ) : null}
@@ -237,7 +239,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
           <div className="stack" style={{ marginTop: 20 }}>
             <div className="field">
               <label className="field__label" htmlFor="login-code">
-                6 位驗證碼
+                {t('login.code')}
               </label>
               <input
                 id="login-code"
@@ -253,7 +255,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
                   if (event.key === 'Enter') void submitTotp();
                 }}
               />
-              <div className="t-footnote dim">請開啟驗證器應用程式查看即時驗證碼。</div>
+              <div className="t-footnote dim">{t('login.codeHint')}</div>
             </div>
             <button
               type="button"
@@ -261,7 +263,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
               disabled={busy}
               onClick={() => void submitTotp()}
             >
-              {busy ? '驗證中…' : '登入'}
+              {busy ? t('login.verifying') : t('login.signIn')}
             </button>
             <button
               type="button"
@@ -273,10 +275,10 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
                 setStep('recovery');
               }}
             >
-              無法使用驗證器？改用備用碼
+              {t('login.useRecovery')}
             </button>
             <button type="button" className="btn" disabled={busy} onClick={signOut}>
-              返回
+              {t('login.back')}
             </button>
           </div>
         ) : null}
@@ -285,7 +287,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
           <div className="stack" style={{ marginTop: 20 }}>
             <div className="field">
               <label className="field__label" htmlFor="login-recovery">
-                備用碼
+                {t('login.recovery')}
               </label>
               <input
                 id="login-recovery"
@@ -299,7 +301,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
                   if (event.key === 'Enter') void submitRecovery();
                 }}
               />
-              <div className="t-footnote dim">每組備用碼只能使用一次。</div>
+              <div className="t-footnote dim">{t('login.recoveryHint')}</div>
             </div>
             <button
               type="button"
@@ -307,7 +309,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
               disabled={busy}
               onClick={() => void submitRecovery()}
             >
-              {busy ? '驗證中…' : '以備用碼登入'}
+              {busy ? t('login.verifying') : t('login.recoverySignIn')}
             </button>
             <button
               type="button"
@@ -319,7 +321,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
                 setStep('totp');
               }}
             >
-              返回驗證碼
+              {t('login.backToCode')}
             </button>
           </div>
         ) : null}
@@ -327,7 +329,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
         {step === 'enrol' && enrolment ? (
           <div className="stack" style={{ marginTop: 20 }}>
             <Message tone="warn">
-              首次登入需要綁定驗證器應用程式。請以應用程式掃描下方二維碼，或手動輸入密鑰。
+              {t('login.enrolIntro')}
             </Message>
 
             {/*
@@ -350,7 +352,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
                 className="qr-enrol__code"
                 data-testid="totp-qr"
                 role="img"
-                aria-label="驗證器綁定二維碼"
+                aria-label={t('login.qrLabel')}
               >
                 <QRCodeSVG
                   value={enrolment.otpauth_uri}
@@ -361,28 +363,28 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
                   fgColor="#000000"
                 />
               </div>
-              <div className="t-footnote dim">以驗證器應用程式掃描此二維碼</div>
+              <div className="t-footnote dim">{t('login.qrHint')}</div>
             </div>
 
             <div className="field">
-              <div className="field__label">設定密鑰</div>
+              <div className="field__label">{t('login.secretLabel')}</div>
               <input readOnly value={enrolment.secret} onFocus={(e) => e.target.select()} />
             </div>
 
             <div className="field">
-              <div className="field__label">設定連結</div>
+              <div className="field__label">{t('login.uriLabel')}</div>
               <input readOnly value={enrolment.otpauth_uri} onFocus={(e) => e.target.select()} />
             </div>
 
             <div className="field">
-              <div className="field__label">備用碼（請立即抄錄）</div>
+              <div className="field__label">{t('login.recoveryCodesLabel')}</div>
               <div className="mono" data-testid="recovery-codes">
                 {enrolment.recovery_codes.map((value) => (
                   <div key={value}>{value}</div>
                 ))}
               </div>
               <div className="t-footnote dim">
-                每組只能使用一次，遺失後無法再查看。此畫面關閉後將不再顯示。
+                {t('login.recoveryCodesNote')}
               </div>
             </div>
 
@@ -392,12 +394,12 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
                 checked={codesAcknowledged}
                 onChange={(event) => setCodesAcknowledged(event.target.checked)}
               />
-              <span>我已保存上述備用碼。</span>
+              <span>{t('login.recoverySaved')}</span>
             </label>
 
             <div className="field">
               <label className="field__label" htmlFor="login-enrol-code">
-                輸入驗證器顯示的 6 位驗證碼
+                {t('login.enrolCode')}
               </label>
               <input
                 id="login-enrol-code"
@@ -421,14 +423,14 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
               disabled={busy || !codesAcknowledged}
               onClick={() => void submitEnrolment()}
             >
-              {busy ? '啟用中…' : '啟用雙重驗證並登入'}
+              {busy ? t('login.enrolling') : t('login.enrolSubmit')}
             </button>
             <button type="button" className="btn" disabled={busy} onClick={signOut}>
-              取消
+              {t('common.cancel')}
             </button>
 
             <div className="t-footnote dim">
-              沒有驗證器應用程式？
+              {t('login.noApp')}
               {AUTHENTICATOR_APPS.map((app, index) => (
                 <span key={app.url}>
                   {index > 0 ? '、' : ' '}
@@ -450,7 +452,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
         ) : null}
 
         <div className="login__foot t-footnote dim" style={{ marginTop: 20 }}>
-          登入憑證只儲存在此分頁的 session storage，關閉分頁即失效。
+          {t('login.footNote')}
         </div>
       </div>
     </div>

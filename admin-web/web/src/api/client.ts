@@ -9,6 +9,7 @@
  */
 
 import { session } from './session';
+import { i18n } from '../i18n';
 
 /**
  * The API base URL.
@@ -113,7 +114,11 @@ export function toApiError(status: number, body: unknown, retryAfter: number | n
     const envelope = body as { code: string; message?: string; details?: Record<string, unknown> };
     return new ApiError({
       code: envelope.code,
-      message: envelope.message ?? '請求失敗。',
+      // The server's own message wins when it sent one; the translated string is
+      // the fallback. This is the *server's* sentence, not the console's, so it
+      // is deliberately not translated here — the backend answers in one
+      // language and passing its wording through unaltered is the honest thing.
+      message: envelope.message ?? i18n.t('errors.requestFailed'),
       status,
       ...(envelope.details ? { details: envelope.details } : {}),
       retryAfter,
@@ -121,7 +126,7 @@ export function toApiError(status: number, body: unknown, retryAfter: number | n
   }
   return new ApiError({
     code: 'UNKNOWN',
-    message: `伺服器回應 ${status}，但格式無法辨識。`,
+    message: i18n.t('errors.badEnvelope', { status }),
     status,
     retryAfter,
   });
@@ -215,7 +220,7 @@ export class ApiClient {
     } catch (cause) {
       throw new ApiError({
         code: CODE.network,
-        message: '無法連接伺服器。請檢查網絡。',
+        message: i18n.t('errors.offline'),
         status: 0,
         details: { cause: String(cause) },
       });
@@ -291,7 +296,7 @@ export class ApiClient {
       }
       throw new ApiError({
         code: CODE.network,
-        message: '無法連接伺服器。請檢查網絡。',
+        message: i18n.t('errors.offline'),
         status: 0,
         details: { cause: String(cause), attempts: attempt + 1 },
       });

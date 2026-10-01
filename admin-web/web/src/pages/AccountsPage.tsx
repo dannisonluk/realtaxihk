@@ -37,10 +37,13 @@ import { useApp } from '../app/AppContext';
 import { useFormDialog } from '../app/useDialogs';
 import { useLoad } from '../app/useLoad';
 import { formatTime } from '../lib/labels';
-import { PageHead, roleLabel } from '../app/Shell';
+import { useI18n } from '../i18n';
+import { PageHead, useRoleLabel } from '../app/Shell';
 
 export function AccountsPage() {
   const { client, notify, user } = useApp();
+  const { t, formatLocale } = useI18n();
+  const roleLabel = useRoleLabel();
   const createDialog = useFormDialog();
   const resetDialog = useFormDialog();
   /**
@@ -63,7 +66,11 @@ export function AccountsPage() {
       try {
         const result = await endpoints.accounts.changeRole(client, account.id, next);
         notify(
-          `${account.username} 權限已由 ${roleLabel(result.previous_role)} 改為 ${roleLabel(result.admin_role)}。`,
+          t('accounts.roleChanged', {
+            username: account.username,
+            from: roleLabel(result.previous_role),
+            to: roleLabel(result.admin_role),
+          }),
         );
         reload();
       } catch (cause) {
@@ -77,12 +84,12 @@ export function AccountsPage() {
   function create() {
     const form = { username: '', email: '', password: '', fullName: '', role: 'SUPPORT' };
     createDialog.open({
-      title: '新增管理員',
-      confirmLabel: '建立',
+      title: t('accounts.add'),
+      confirmLabel: t('accounts.createConfirm'),
       body: <CreateAccountBody onChange={(patch) => Object.assign(form, patch)} />,
       onSubmit: async () => {
         if (!form.username.trim() || !form.email.trim() || !form.password) {
-          throw new Error('帳號、電郵與密碼皆為必填。');
+          throw new Error(t('accounts.errRequired'));
         }
         const created = await endpoints.accounts.create(client, {
           username: form.username.trim(),
@@ -93,8 +100,8 @@ export function AccountsPage() {
         });
         notify(
           created.totp_enrolment_pending
-            ? `已建立 ${created.username}。該帳戶首次登入時需要綁定驗證器，綁定前無法登入。`
-            : `已建立 ${created.username}。`,
+            ? t('accounts.createdEnrol', { username: created.username })
+            : t('accounts.created', { username: created.username }),
         );
         reload();
       },
@@ -105,17 +112,17 @@ export function AccountsPage() {
     let password = '';
     let confirm = '';
     resetDialog.open({
-      title: `重設 ${account.username} 的密碼`,
-      confirmLabel: '重設密碼',
+      title: t('accounts.resetTitle', { username: account.username }),
+      confirmLabel: t('accounts.resetConfirm'),
       danger: true,
       body: (
         <div className="stack">
           <p className="dim" style={{ margin: 0 }}>
-            此操作不需要對方目前的密碼，用於「唯一的管理員被鎖在外面」的情況，並會清除鎖定計數。
+            {t('accounts.resetWarning')}
           </p>
           <div className="field">
             <label className="field__label" htmlFor="reset-pw">
-              新密碼
+              {t('accounts.newPassword')}
             </label>
             <input
               id="reset-pw"
@@ -126,7 +133,7 @@ export function AccountsPage() {
           </div>
           <div className="field">
             <label className="field__label" htmlFor="reset-pw2">
-              確認新密碼
+              {t('accounts.confirmPassword')}
             </label>
             <input
               id="reset-pw2"
@@ -142,18 +149,18 @@ export function AccountsPage() {
             operator to trust it.
           */}
           <p className="dim" style={{ margin: 0 }}>
-            注意：已簽發的存取權杖無法即時撤銷，最多 15 分鐘後才失效。
+            {t('accounts.tokenNote')}
           </p>
         </div>
       ),
       onSubmit: async () => {
-        if (password.length < 12) throw new Error('密碼至少需要 12 個字元。');
-        if (password !== confirm) throw new Error('兩次輸入的密碼不一致。');
+        if (password.length < 12) throw new Error(t('accounts.errTooShort'));
+        if (password !== confirm) throw new Error(t('accounts.errMismatch'));
         const result = await endpoints.accounts.resetPassword(client, account.id, password);
         notify(
           result.sessions_revoked
-            ? `已重設 ${account.username} 的密碼，並已登出其所有工作階段。`
-            : `已重設 ${account.username} 的密碼。（現有存取權杖仍會在 15 分鐘內有效）`,
+            ? t('accounts.resetDone', { username: account.username })
+            : t('accounts.resetDonePending', { username: account.username }),
         );
         reload();
       },
@@ -169,39 +176,37 @@ export function AccountsPage() {
   return (
     <>
       <PageHead
-        title="管理員帳戶"
-        subtitle="只有超級管理員可以新增帳戶或更改權限。更改權限是唯一可以令其他所有防線失效的操作。"
+        title={t('accounts.title')}
+        subtitle={t('accounts.sub')}
         actions={
           <button type="button" className="btn btn--primary" onClick={create}>
-            新增管理員
+            {t('accounts.add')}
           </button>
         }
       />
 
       <div className="card card--pad" style={{ marginBottom: 16 }}>
         <div className="row-inline">
-          <strong>目前有 {lastSuperAdmin} 位啟用中的超級管理員。</strong>
-          <span className="dim">
-            系統不允許移除最後一位超級管理員的權限 —— 否則將沒有人可以再授權。
-          </span>
+          <strong>{t('accounts.lastSuperTitle', { count: lastSuperAdmin })}</strong>
+          <span className="dim">{t('accounts.lastSuperNote')}</span>
         </div>
       </div>
 
       <Card>
         {data.items.length === 0 ? (
-          <Empty title="沒有任何管理員帳戶。" />
+          <Empty title={t('accounts.empty')} />
         ) : (
           <div className="table-wrap">
             <table className="data">
               <thead>
                 <tr>
-                  <th>帳號</th>
-                  <th>姓名</th>
-                  <th>電郵</th>
-                  <th>權限</th>
-                  <th>驗證器</th>
-                  <th>最後登入</th>
-                  <th>操作</th>
+                  <th>{t('accounts.colUsername')}</th>
+                  <th>{t('accounts.colName')}</th>
+                  <th>{t('accounts.colEmail')}</th>
+                  <th>{t('accounts.colRole')}</th>
+                  <th>{t('accounts.colTotp')}</th>
+                  <th>{t('accounts.colLastLogin')}</th>
+                  <th>{t('accounts.colActions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -216,12 +221,10 @@ export function AccountsPage() {
                     <tr key={account.id}>
                       <td>
                         <span className="mono">{account.username}</span>
-                        {isSelf ? (
-                          <span className="dim t-caption1"> （你）</span>
-                        ) : null}
+                        {isSelf ? <span className="dim t-caption1">{t('accounts.you')}</span> : null}
                         {!account.is_active ? (
                           <div>
-                            <Chip tone="danger">已停用</Chip>
+                            <Chip tone="danger">{t('accounts.disabled')}</Chip>
                           </div>
                         ) : null}
                       </td>
@@ -236,13 +239,17 @@ export function AccountsPage() {
                       </td>
                       <td>
                         {account.totp_enrolled ? (
-                          <Chip tone="ok">已綁定</Chip>
+                          <Chip tone="ok">{t('accounts.enrolled')}</Chip>
                         ) : (
-                          <Chip tone="warn">待綁定</Chip>
+                          <Chip tone="warn">{t('accounts.notEnrolled')}</Chip>
                         )}
                       </td>
                       <td>
-                        {account.last_login_at ? formatTime(account.last_login_at) : <span className="dim">從未登入</span>}
+                        {account.last_login_at ? (
+                          formatTime(account.last_login_at, formatLocale)
+                        ) : (
+                          <span className="dim">{t('accounts.neverLoggedIn')}</span>
+                        )}
                       </td>
                       <td>
                         <div className="row" style={{ flexWrap: 'wrap' }}>
@@ -258,8 +265,8 @@ export function AccountsPage() {
                                   disabled={blocked || pendingId === account.id}
                                   title={
                                     blocked
-                                      ? '不能移除最後一位超級管理員'
-                                      : `改為${roleLabel(next)}`
+                                      ? t('accounts.cannotRemoveLast')
+                                      : t('accounts.changeTo', { role: roleLabel(next) })
                                   }
                                   onClick={() => changeRole(account, next)}
                                 >
@@ -272,7 +279,7 @@ export function AccountsPage() {
                             className="btn btn--sm"
                             onClick={() => resetPassword(account)}
                           >
-                            重設密碼
+                            {t('accounts.resetPassword')}
                           </button>
                         </div>
                       </td>
@@ -296,11 +303,14 @@ function CreateAccountBody({
 }: {
   onChange: (patch: { username?: string; email?: string; password?: string; fullName?: string; role?: string }) => void;
 }) {
+  const { t } = useI18n();
+  const roleLabel = useRoleLabel();
+
   return (
     <div className="stack">
       <div className="field">
         <label className="field__label" htmlFor="acc-username">
-          帳號
+          {t('accounts.fieldUsername')}
         </label>
         <input
           id="acc-username"
@@ -311,7 +321,7 @@ function CreateAccountBody({
       </div>
       <div className="field">
         <label className="field__label" htmlFor="acc-email">
-          電郵
+          {t('accounts.fieldEmail')}
         </label>
         <input
           id="acc-email"
@@ -322,7 +332,7 @@ function CreateAccountBody({
       </div>
       <div className="field">
         <label className="field__label" htmlFor="acc-name">
-          姓名（選填）
+          {t('accounts.fieldName')}
         </label>
         <input
           id="acc-name"
@@ -332,7 +342,7 @@ function CreateAccountBody({
       </div>
       <div className="field">
         <label className="field__label" htmlFor="acc-password">
-          初始密碼
+          {t('accounts.fieldPassword')}
         </label>
         <input
           id="acc-password"
@@ -340,13 +350,11 @@ function CreateAccountBody({
           autoComplete="new-password"
           onChange={(event) => onChange({ password: event.target.value })}
         />
-        <div className="t-footnote dim">
-          密碼政策由伺服器強制（長度、空白、可預測性）。
-        </div>
+        <div className="t-footnote dim">{t('accounts.fieldPasswordHint')}</div>
       </div>
       <div className="field">
         <label className="field__label" htmlFor="acc-role">
-          權限
+          {t('accounts.fieldRole')}
         </label>
         <select
           id="acc-role"
@@ -359,9 +367,7 @@ function CreateAccountBody({
             </option>
           ))}
         </select>
-        <div className="t-footnote dim">
-          新帳戶首次登入時必須綁定驗證器，綁定之前無法登入。
-        </div>
+        <div className="t-footnote dim">{t('accounts.enrolNote')}</div>
       </div>
     </div>
   );

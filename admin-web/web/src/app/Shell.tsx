@@ -23,11 +23,14 @@ import { NavLink as RouterNavLink, Outlet } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { useApp } from './AppContext';
 import { PreferenceControls } from '../components/PreferenceControls';
+import { useI18n } from '../i18n';
 import type { AdminRole } from '../api/types';
 
 interface NavItem {
   path: string;
-  label: string;
+  /** The i18n key under `nav.` — resolved at render, not at module load, so the
+   * label follows the active locale without rebuilding this table. */
+  labelKey: string;
   badge: 'pendingKyc' | 'pendingRefunds' | null;
   end: boolean;
   /** The minimum role that can do anything useful on the page. */
@@ -44,47 +47,48 @@ interface NavItem {
  * acts on it is a workflow nobody can complete.
  */
 const NAV: NavItem[] = [
-  { path: '/', label: '總覽', badge: null, end: true, role: 'SUPPORT' },
+  { path: '/', labelKey: 'nav.dashboard', badge: null, end: true, role: 'SUPPORT' },
   // First, and deliberately so: this is the endpoint support hits while a
   // passenger is on the line, and every second spent hunting is a second the
   // caller is still waiting.
-  { path: '/search', label: '搜尋', badge: null, end: false, role: 'SUPPORT' },
-  { path: '/orders', label: '訂單', badge: null, end: false, role: 'SUPPORT' },
-  { path: '/disputes', label: '爭議', badge: null, end: false, role: 'SUPPORT' },
+  { path: '/search', labelKey: 'nav.search', badge: null, end: false, role: 'SUPPORT' },
+  { path: '/orders', labelKey: 'nav.orders', badge: null, end: false, role: 'SUPPORT' },
+  { path: '/disputes', labelKey: 'nav.disputes', badge: null, end: false, role: 'SUPPORT' },
   // Sits next to KYC because the two are the same job — checking a driver's
   // paperwork — split only because the licence is a recurring, document-shaped
   // event while KYC is a one-off profile review.
-  { path: '/kyc', label: '司機審核', badge: 'pendingKyc', end: false, role: 'OPERATIONS' },
-  { path: '/licences', label: '的士證審核', badge: null, end: false, role: 'OPERATIONS' },
-  { path: '/refunds', label: '退款', badge: 'pendingRefunds', end: false, role: 'FINANCE' },
-  { path: '/settlement', label: '每週結算', badge: null, end: false, role: 'FINANCE' },
-  { path: '/fleets', label: '車隊', badge: null, end: false, role: 'OPERATIONS' },
+  { path: '/kyc', labelKey: 'nav.kyc', badge: 'pendingKyc', end: false, role: 'OPERATIONS' },
+  { path: '/licences', labelKey: 'nav.licences', badge: null, end: false, role: 'OPERATIONS' },
+  { path: '/refunds', labelKey: 'nav.refunds', badge: 'pendingRefunds', end: false, role: 'FINANCE' },
+  { path: '/settlement', labelKey: 'nav.settlement', badge: null, end: false, role: 'FINANCE' },
+  { path: '/fleets', labelKey: 'nav.fleets', badge: null, end: false, role: 'OPERATIONS' },
   // Last of the working pages, because it is the one entry nobody needs during
   // a shift: the review queues are work to be cleared, while this is a question
   // you go and ask.
-  { path: '/analytics', label: '表現分析', badge: null, end: false, role: 'OPERATIONS' },
+  { path: '/analytics', labelKey: 'nav.analytics', badge: null, end: false, role: 'OPERATIONS' },
   // Readable by everyone — see the file docstring.
-  { path: '/audit', label: '審計紀錄', badge: null, end: false, role: 'SUPPORT' },
+  { path: '/audit', labelKey: 'nav.audit', badge: null, end: false, role: 'SUPPORT' },
   // The route that decides who may do everything else. SUPER_ADMIN only, and
   // the server enforces it on all four endpoints.
-  { path: '/accounts', label: '管理員帳戶', badge: null, end: false, role: 'SUPER_ADMIN' },
+  { path: '/accounts', labelKey: 'nav.accounts', badge: null, end: false, role: 'SUPER_ADMIN' },
 ];
 
 export function Shell() {
   const { user, role, hasRole, badges, signOut } = useApp();
+  const { t } = useI18n();
 
   const visible = NAV.filter((item) => hasRole(item.role));
 
   return (
     <div className="shell">
-      <nav className="sidebar" aria-label="主選單">
+      <nav className="sidebar" aria-label={t('nav.aria')}>
         <div className="brand">
           <div className="brand__mark" aria-hidden="true">
             R
           </div>
           <div className="brand__text">
-            <div className="brand__title">RealTaxi HK</div>
-            <div className="brand__sub">管理後台</div>
+            <div className="brand__title">{t('brand.title')}</div>
+            <div className="brand__sub">{t('brand.sub')}</div>
           </div>
         </div>
 
@@ -92,7 +96,7 @@ export function Shell() {
           const count = item.badge ? badges[item.badge] : null;
           return (
             <RouterNavLink key={item.path} to={item.path} end={item.end} className="navlink">
-              <span>{item.label}</span>
+              <span>{t(item.labelKey)}</span>
               {count ? <span className="navlink__count">{count}</span> : null}
             </RouterNavLink>
           );
@@ -112,14 +116,13 @@ export function Shell() {
               to know *why* — "SUPPORT" is the answer, and a missing menu entry
               on its own reads as a broken console rather than a permission.
             */}
-            <div className="dim t-caption1">{role ? ROLE_LABEL[role] ?? role : '—'}</div>
+            <div className="dim t-caption1">{role ? t(`role.${role}`) : '—'}</div>
           </div>
-          {/* Theme (and, once i18n lands, language) — bottom of the sidebar so
-              they are the last thing before sign-out and never compete with the
-              nav for attention. */}
+          {/* Theme and language — bottom of the sidebar so they are the last
+              thing before sign-out and never compete with the nav for attention. */}
           <PreferenceControls />
           <button type="button" className="btn btn--sm" onClick={() => void signOut()}>
-            登出
+            {t('signOut')}
           </button>
         </div>
       </nav>
@@ -129,18 +132,6 @@ export function Shell() {
       </main>
     </div>
   );
-}
-
-const ROLE_LABEL: Record<string, string> = {
-  SUPPORT: '客戶支援',
-  OPERATIONS: '營運',
-  FINANCE: '財務',
-  SUPER_ADMIN: '超級管理員',
-};
-
-export function roleLabel(role: string | null | undefined): string {
-  if (!role) return '—';
-  return ROLE_LABEL[role] ?? role;
 }
 
 /** A page heading, so every route has the same shape. */
@@ -165,6 +156,22 @@ export function PageHead({
 }
 
 /**
+ * A role labeller bound to the active locale.
+ *
+ * A hook rather than a plain function because the label now comes from the
+ * translations, and a plain `roleLabel(role)` called outside a component cannot
+ * see the current language. Callers that used the old free function
+ * (`AccountsPage`) call this at the top of the component instead.
+ *
+ * An unknown role falls back to the raw enum — better to show `AUDITOR` than to
+ * label it something wrong, and the server is the source of what roles exist.
+ */
+export function useRoleLabel(): (role: string | null | undefined) => string {
+  const { t } = useI18n();
+  return (role) => (role ? t(`role.${role}`) : '—');
+}
+
+/**
  * A route guard that explains itself.
  *
  * This is **not** a security control and must not be treated as one — the
@@ -185,6 +192,8 @@ export function RequireRole({
   children: ReactNode;
 }) {
   const { role, hasRole } = useApp();
+  const { t } = useI18n();
+  const roleLabel = useRoleLabel();
 
   if (hasRole(minimum)) return <>{children}</>;
 
@@ -192,17 +201,16 @@ export function RequireRole({
     <>
       <div className="page-head">
         <div className="page-head__text">
-          <h1>沒有存取權限</h1>
+          <h1>{t('noPermission.title')}</h1>
         </div>
       </div>
       <div className="card">
         <div className="empty">
           <div className="empty__title">
-            此頁面需要 {roleLabel(minimum)} 或以上權限。
+            {t('noPermission.need', { role: roleLabel(minimum) })}
           </div>
           <div>
-            你目前的權限是 {role ? roleLabel(role) : '未知'}。如需要使用此功能，
-            請聯絡超級管理員調整帳戶權限。
+            {t('noPermission.youAre', { role: role ? roleLabel(role) : t('noPermission.unknown') })}
           </div>
         </div>
       </div>

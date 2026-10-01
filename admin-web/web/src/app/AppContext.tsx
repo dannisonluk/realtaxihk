@@ -22,6 +22,7 @@ import { endpoints } from '../api/endpoints';
 import { session, type AdminUser } from '../api/session';
 import type { AdminRole } from '../api/types';
 import { roleAtLeast } from '../api/types';
+import { i18n } from '../i18n';
 
 export interface Toast {
   id: number;
@@ -59,7 +60,9 @@ const AppContext = createContext<AppState | null>(null);
 
 export function useApp(): AppState {
   const value = useContext(AppContext);
-  if (!value) throw new Error('useApp 必須在 <AppProvider> 內使用。');
+  // A programming error, not a user-facing condition — but it can surface in a
+  // crash overlay, so it goes through the same translations as everything else.
+  if (!value) throw new Error(i18n.t('errors.provider'));
   return value;
 }
 

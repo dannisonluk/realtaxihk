@@ -23,21 +23,24 @@ import { endpoints } from '../api/endpoints';
 import type { FleetStatus } from '../api/types';
 import { Card, Chip, Empty, Percent } from '../components/primitives';
 import { ErrorState, LoadingState } from '../components/states';
-import { fleetStatusLabel, fleetStatusTone, formatTime } from '../lib/labels';
+import { formatTime, useLabels } from '../lib/labels';
+import { useI18n } from '../i18n';
 
 /**
  * `null` is a real filter value here — "all" — so it is spelled as a sentinel
  * rather than an empty string, which would be ambiguous with a missing param.
  */
-const FILTERS: { value: FleetStatus | null; label: string }[] = [
-  { value: null, label: '全部' },
-  { value: 'ACTIVE', label: '營運中' },
-  { value: 'SUSPENDED', label: '已停權' },
-  { value: 'DISSOLVED', label: '已解散' },
+const FILTERS: { value: FleetStatus | null; labelKey: string }[] = [
+  { value: null, labelKey: 'fleets.filterAll' },
+  { value: 'ACTIVE', labelKey: 'enum.fleetStatus.ACTIVE' },
+  { value: 'SUSPENDED', labelKey: 'enum.fleetStatus.SUSPENDED' },
+  { value: 'DISSOLVED', labelKey: 'enum.fleetStatus.DISSOLVED' },
 ];
 
 export function FleetsPage() {
   const { client, refreshBadges, notify } = useApp();
+  const { t, formatLocale } = useI18n();
+  const labels = useLabels();
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FleetStatus | null>(null);
   const dialog = useFormDialog();
@@ -59,18 +62,18 @@ export function FleetsPage() {
     // reports field values up. Same shape as the KYC dialogs.
     const form = { name: '', license: '', discount: '0', contactName: '', contactPhone: '', note: '' };
     dialog.open({
-      title: '新增車隊',
-      confirmLabel: '建立',
+      title: t('fleets.createTitle'),
+      confirmLabel: t('fleets.createConfirm'),
       body: <CreateFleetBody onChange={(patch) => Object.assign(form, patch)} />,
       onSubmit: async () => {
         const name = form.name.trim();
         const license = form.license.trim();
         if (!name || !license) {
-          throw new Error('車隊名稱及牌照號碼為必填。');
+          throw new Error(t('fleets.errRequired'));
         }
         const discount = Number(form.discount);
         if (!Number.isFinite(discount) || discount < 0 || discount > 100) {
-          throw new Error('折扣須為 0 至 100 之間的數字。');
+          throw new Error(t('fleets.errDiscount'));
         }
 
         const created = await endpoints.fleets.create(client, {
@@ -81,7 +84,7 @@ export function FleetsPage() {
           contact_phone: form.contactPhone.trim() || null,
           note: form.note.trim() || null,
         });
-        notify(`已新增車隊 ${created.name}。`);
+        notify(t('fleets.created', { name: created.name }));
         reload();
       },
     });
@@ -92,11 +95,11 @@ export function FleetsPage() {
   return (
     <div>
       <PageHead
-        title="車隊"
-        subtitle="已獲發牌的車隊營運商。成員按車隊折扣價收費，不計入平台劃一收費。"
+        title={t('fleets.title')}
+        subtitle={t('fleets.sub')}
         actions={
           <button type="button" className="btn btn--primary" onClick={create}>
-            新增車隊
+            {t('fleets.add')}
           </button>
         }
       />
@@ -104,13 +107,13 @@ export function FleetsPage() {
       <div className="filters">
         {FILTERS.map((option) => (
           <button
-            key={option.label}
+            key={option.labelKey}
             type="button"
             className={option.value === filter ? 'chip chip--brand' : 'chip'}
             aria-pressed={option.value === filter}
             onClick={() => setFilter(option.value)}
           >
-            {option.label}
+            {t(option.labelKey)}
           </button>
         ))}
       </div>
@@ -121,18 +124,18 @@ export function FleetsPage() {
       {!loading && !error ? (
         <Card>
           {items.length === 0 ? (
-            <Empty title={filter ? '沒有符合條件的車隊。' : '還沒有任何車隊。'} />
+            <Empty title={filter ? t('fleets.emptyFiltered') : t('fleets.empty')} />
           ) : (
             <div className="table-wrap">
               <table className="data">
               <thead>
                 <tr>
-                  <th>車隊名稱</th>
-                  <th>車隊牌照</th>
-                  <th>每週費用折扣</th>
-                  <th className="num">成員人數</th>
-                  <th>狀態</th>
-                  <th>建立日期</th>
+                  <th>{t('fleets.colName')}</th>
+                  <th>{t('fleets.colLicence')}</th>
+                  <th>{t('fleets.colDiscount')}</th>
+                  <th className="num">{t('fleets.colMembers')}</th>
+                  <th>{t('fleets.colStatus')}</th>
+                  <th>{t('fleets.colCreated')}</th>
                   <th />
                 </tr>
               </thead>
@@ -146,18 +149,18 @@ export function FleetsPage() {
                     </td>
                     <td className="num">{fleet.member_count ?? 0}</td>
                     <td>
-                      <Chip tone={fleetStatusTone(fleet.status)}>
-                        {fleetStatusLabel(fleet.status)}
+                      <Chip tone={labels.fleetStatusTone(fleet.status)}>
+                        {labels.fleetStatus(fleet.status)}
                       </Chip>
                     </td>
-                    <td>{formatTime(fleet.created_at)}</td>
+                    <td>{formatTime(fleet.created_at, formatLocale)}</td>
                     <td>
                       <button
                         type="button"
                         className="btn btn--sm"
                         onClick={() => navigate(`/fleets/${fleet.id}`)}
                       >
-                        管理
+                        {t('fleets.manage')}
                       </button>
                     </td>
                   </tr>
@@ -191,27 +194,28 @@ interface FleetDraft {
 }
 
 function CreateFleetBody({ onChange }: { onChange: (patch: Partial<FleetDraft>) => void }) {
+  const { t } = useI18n();
   return (
     <>
       <label className="field">
-        <span>車隊名稱</span>
+        <span>{t('fleets.fieldName')}</span>
         <input
           type="text"
-          placeholder="星群的士"
+          placeholder={t('fleets.fieldNamePlaceholder')}
           onChange={(e) => onChange({ name: e.target.value })}
         />
       </label>
       <label className="field">
-        <span>車隊牌照號碼</span>
+        <span>{t('fleets.fieldLicence')}</span>
         <input
           type="text"
-          placeholder="由運輸署發出"
+          placeholder={t('fleets.fieldLicencePlaceholder')}
           onChange={(e) => onChange({ license: e.target.value })}
         />
-        <span className="field__hint">車隊名稱及牌照號碼皆不可重複。</span>
+        <span className="field__hint">{t('fleets.fieldLicenceHint')}</span>
       </label>
       <label className="field">
-        <span>每週費用折扣（%）</span>
+        <span>{t('fleets.fieldDiscount')}</span>
         <input
           type="number"
           min="0"
@@ -220,27 +224,31 @@ function CreateFleetBody({ onChange }: { onChange: (patch: Partial<FleetDraft>) 
           defaultValue="0"
           onChange={(e) => onChange({ discount: e.target.value })}
         />
-        <span className="field__hint">0–100。成員按折扣後的車隊費用收費。</span>
+        <span className="field__hint">{t('fleets.fieldDiscountHint')}</span>
       </label>
       <label className="field">
-        <span>聯絡人</span>
+        <span>{t('fleets.fieldContact')}</span>
         <input
           type="text"
-          placeholder="選填"
+          placeholder={t('fleets.fieldContactPlaceholder')}
           onChange={(e) => onChange({ contactName: e.target.value })}
         />
       </label>
       <label className="field">
-        <span>聯絡電話</span>
+        <span>{t('fleets.fieldPhone')}</span>
         <input
           type="tel"
-          placeholder="選填"
+          placeholder={t('fleets.fieldPhonePlaceholder')}
           onChange={(e) => onChange({ contactPhone: e.target.value })}
         />
       </label>
       <label className="field">
-        <span>備註</span>
-        <textarea rows={2} placeholder="選填" onChange={(e) => onChange({ note: e.target.value })} />
+        <span>{t('fleets.fieldNote')}</span>
+        <textarea
+          rows={2}
+          placeholder={t('fleets.fieldContactPlaceholder')}
+          onChange={(e) => onChange({ note: e.target.value })}
+        />
       </label>
     </>
   );

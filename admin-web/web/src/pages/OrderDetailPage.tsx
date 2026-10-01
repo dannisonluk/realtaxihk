@@ -26,29 +26,15 @@ import { Card, Chip, DetailRow, Money, Rows } from '../components/primitives';
 import { ErrorState, LoadingState } from '../components/states';
 import { useApp } from '../app/AppContext';
 import { useLoad } from '../app/useLoad';
-import {
-  entryLabel,
-  entryTone,
-  formatTime,
-  orderStatusLabel,
-  orderStatusTone,
-  shortId,
-  taxiTypeLabel,
-} from '../lib/labels';
+import { formatTime, shortId, useLabels } from '../lib/labels';
+import { useI18n } from '../i18n';
 import { PageHead } from '../app/Shell';
-
-/** The five timeline steps, in the order the server emits them. */
-const STEP_LABEL: Record<string, string> = {
-  created: '建立訂單',
-  accepted: '司機接單',
-  driver_arrived: '司機到達',
-  completed: '行程完成',
-  cancelled: '行程取消',
-};
 
 export function OrderDetailPage() {
   const { orderId = '' } = useParams();
   const { client } = useApp();
+  const { t, formatLocale } = useI18n();
+  const labels = useLabels();
 
   const { data, error, loading, reload } = useLoad(
     () => endpoints.orders.detail(client, orderId),
@@ -61,7 +47,7 @@ export function OrderDetailPage() {
       <div>
         <div style={{ marginBottom: 12 }}>
           <Link className="btn" to="/orders">
-            ← 返回訂單列表
+            {t('orderDetail.back')}
           </Link>
         </div>
         <ErrorState error={error} onRetry={reload} />
@@ -75,47 +61,47 @@ export function OrderDetailPage() {
   return (
     <div>
       <PageHead
-        title="訂單詳情"
+        title={t('orderDetail.title')}
         actions={
           <Link className="btn" to="/orders">
-            ← 返回訂單列表
+            {t('orderDetail.back')}
           </Link>
         }
       />
 
       <Card className="card--pad">
         <div className="row-inline" style={{ marginBottom: 16 }}>
-          <Chip tone={orderStatusTone(data.status)}>{orderStatusLabel(data.status)}</Chip>
+          <Chip tone={labels.orderStatusTone(data.status)}>{labels.orderStatus(data.status)}</Chip>
           <span className="dim mono">{shortId(data.id)}</span>
-          <span className="dim">{taxiTypeLabel(data.taxi_type)}</span>
+          <span className="dim">{labels.taxiType(data.taxi_type)}</span>
         </div>
 
         <Rows>
-          <DetailRow label="上車地點">{data.pickup_address || '—'}</DetailRow>
-          <DetailRow label="下車地點">{data.dropoff_address || '—'}</DetailRow>
-          <DetailRow label="估價">
+          <DetailRow label={t('orderDetail.pickup')}>{data.pickup_address || '—'}</DetailRow>
+          <DetailRow label={t('orderDetail.dropoff')}>{data.dropoff_address || '—'}</DetailRow>
+          <DetailRow label={t('orderDetail.fare')}>
             <Money value={data.estimated_total_hkd} />
             {Number(data.discount_percent) > 0 ? (
-              <span className="dim"> （折扣 {data.discount_percent}%）</span>
+              <span className="dim">{t('orderDetail.discount', { percent: data.discount_percent })}</span>
             ) : null}
           </DetailRow>
-          <DetailRow label="距離">{data.distance_km} km</DetailRow>
-          <DetailRow label="廣播半徑">{data.broadcast_radius_km} km</DetailRow>
-          <DetailRow label="司機">
+          <DetailRow label={t('orderDetail.distance')}>{data.distance_km} km</DetailRow>
+          <DetailRow label={t('orderDetail.radius')}>{data.broadcast_radius_km} km</DetailRow>
+          <DetailRow label={t('orderDetail.driver')}>
             {data.driver_id ? (
               <Link className="mono" to={`/drivers/${data.driver_id}`}>
                 {shortId(data.driver_id)}
               </Link>
             ) : (
-              <span className="dim">未指派</span>
+              <span className="dim">{t('common.unassigned')}</span>
             )}
           </DetailRow>
-          <DetailRow label="乘客">
+          <DetailRow label={t('orderDetail.passenger')}>
             <span className="mono">{shortId(data.passenger_id)}</span>
-            <span className="dim t-caption1"> — 如需聯絡資料請到搜尋頁</span>
+            <span className="dim t-caption1">{t('orderDetail.passengerNote')}</span>
           </DetailRow>
           {data.cancellation_reason ? (
-            <DetailRow label="取消原因">{data.cancellation_reason}</DetailRow>
+            <DetailRow label={t('orderDetail.cancelReason')}>{data.cancellation_reason}</DetailRow>
           ) : null}
         </Rows>
       </Card>
@@ -127,27 +113,27 @@ export function OrderDetailPage() {
         rather than omitted, so the list keeps a fixed length and an absent step
         is visibly absent.
       */}
-      <h2>時間軸</h2>
+      <h2>{t('orderDetail.timelineTitle')}</h2>
       <Card>
         <div className="table-wrap">
           <table className="data">
             <thead>
               <tr>
-                <th>步驟</th>
-                <th>時間</th>
-                <th className="num">距建立</th>
+                <th>{t('orderDetail.colStep')}</th>
+                <th>{t('orderDetail.colTime')}</th>
+                <th className="num">{t('orderDetail.colSince')}</th>
               </tr>
             </thead>
             <tbody>
               {data.timeline.map((step) => (
                 <tr key={step.step}>
-                  <td>{STEP_LABEL[step.step] ?? step.step}</td>
-                  <td>{step.at ? formatTime(step.at) : <span className="dim">未發生</span>}</td>
+                  <td>{t('enum.orderTimeline.' + step.step)}</td>
+                  <td>{step.at ? formatTime(step.at, formatLocale) : <span className="dim">{t('orderDetail.notHappened')}</span>}</td>
                   <td className="num">
                     {step.elapsed_seconds === null ? (
                       <span className="dim">—</span>
                     ) : (
-                      formatDuration(step.elapsed_seconds)
+                      formatDuration(step.elapsed_seconds, t)
                     )}
                   </td>
                 </tr>
@@ -157,14 +143,13 @@ export function OrderDetailPage() {
         </div>
       </Card>
 
-      <h2>費用快照</h2>
+      <h2>{t('orderDetail.snapshotTitle')}</h2>
       <Card className="card--pad">
         <p className="dim" style={{ marginTop: 0 }}>
-          以下為下單當時凍結的費用快照（<span className="mono">tariff_version {data.tariff_version}</span>
-          ），並非以現行費率重新計算。爭議金額一律以此為準。
+          {t('orderDetail.snapshotNote', { version: data.tariff_version })}
         </p>
         {Object.keys(data.fare ?? {}).length === 0 ? (
-          <div className="empty">此訂單沒有費用快照。</div>
+          <div className="empty">{t('orderDetail.snapshotEmpty')}</div>
         ) : (
           <Rows>
             {Object.entries(data.fare).map(([key, value]) => (
@@ -176,30 +161,30 @@ export function OrderDetailPage() {
         )}
       </Card>
 
-      <h2>相關帳目</h2>
+      <h2>{t('orderDetail.ledgerTitle')}</h2>
       <Card>
         {ledger.length === 0 ? (
           <div className="empty">
-            沒有相關帳目紀錄。<span className="dim">（車費本身不是帳目；只有罰款或人手調整才會出現。）</span>
+            {t('orderDetail.ledgerEmpty')}<span className="dim">{t('orderDetail.ledgerEmptyNote')}</span>
           </div>
         ) : (
           <div className="table-wrap">
             <table className="data">
               <thead>
                 <tr>
-                  <th>時間</th>
-                  <th>類型</th>
-                  <th className="num">金額</th>
-                  <th className="num">結餘</th>
-                  <th>備註</th>
+                  <th>{t('common.time')}</th>
+                  <th>{t('orderDetail.colType')}</th>
+                  <th className="num">{t('common.amount')}</th>
+                  <th className="num">{t('common.balance')}</th>
+                  <th>{t('orderDetail.colNote')}</th>
                 </tr>
               </thead>
               <tbody>
                 {ledger.map((entry) => (
                   <tr key={entry.id}>
-                    <td>{formatTime(entry.created_at)}</td>
+                    <td>{formatTime(entry.created_at, formatLocale)}</td>
                     <td>
-                      <Chip tone={entryTone(entry.entry_type)}>{entryLabel(entry.entry_type)}</Chip>
+                      <Chip tone={labels.entryTone(entry.entry_type)}>{labels.entry(entry.entry_type)}</Chip>
                     </td>
                     <td className="num">
                       <Money value={entry.amount_hkd} sign />
@@ -226,17 +211,22 @@ export function OrderDetailPage() {
  * says, and hours only above an hour so a long wait reads as `2 小時 5 分`
  * rather than `125 分`.
  */
-function formatDuration(seconds: number): string {
+function formatDuration(
+  seconds: number,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
   if (seconds < 0) return '—';
-  if (seconds < 60) return `${seconds} 秒`;
+  if (seconds < 60) return t('duration.seconds', { seconds });
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) {
     const rest = seconds % 60;
-    return rest === 0 ? `${minutes} 分` : `${minutes} 分 ${rest} 秒`;
+    return rest === 0 ? t('duration.minutes', { minutes }) : t('duration.minutesSeconds', { minutes, seconds: rest });
   }
   const hours = Math.floor(minutes / 60);
   const restMinutes = minutes % 60;
-  return restMinutes === 0 ? `${hours} 小時` : `${hours} 小時 ${restMinutes} 分`;
+  return restMinutes === 0
+    ? t('duration.hoursOnly', { hours })
+    : t('duration.hoursRestMinutes', { hours, minutes: restMinutes });
 }
 
 /**

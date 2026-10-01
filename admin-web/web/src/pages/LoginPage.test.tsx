@@ -26,6 +26,7 @@ import { StrictMode, act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { QRCodeSVG } from 'qrcode.react';
 import { AppProvider } from '../app/AppContext';
+import { i18n } from '../i18n';
 import { LoginPage } from './LoginPage';
 
 declare global {
@@ -33,6 +34,31 @@ declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+/**
+ * Read a string out of the active locale's resource.
+ *
+ * The sign-in screen is fully translated, so a literal expectation here would
+ * both pin the test to one language *and* fail to notice a change to the copy.
+ * The subject under test is the flow, so every string the assertions need is
+ * looked up by key from i18next's live resource store.
+ */
+function text(key: string): string {
+  const target = i18n.resolvedLanguage ?? 'zh-Hant';
+  const read = (source: unknown) => {
+    let cursor: unknown = source;
+    for (const part of key.split('.')) {
+      if (typeof cursor !== 'object' || cursor === null) return undefined;
+      cursor = (cursor as Record<string, unknown>)[part];
+    }
+    return typeof cursor === 'string' ? cursor : undefined;
+  };
+  return (
+    read(i18n.getResourceBundle(target, 'translation')) ??
+    read(i18n.getResourceBundle('zh-Hant', 'translation')) ??
+    key
+  );
+}
 
 /** A first-login payload: the server says "enrol", and hands over the QR material. */
 const ENROLMENT = {
@@ -96,7 +122,7 @@ async function submitCredentials(container: HTMLElement, username = 'ops-admin')
   const user = container.querySelector('#login-username') as HTMLInputElement;
   const pass = container.querySelector('#login-password') as HTMLInputElement;
   const button = [...container.querySelectorAll('button')].find((b) =>
-    (b.textContent ?? '').includes('下一步'),
+    (b.textContent ?? '').includes(text('login.next')),
   );
   await act(async () => {
     setNativeValue(user, username);
@@ -272,7 +298,7 @@ describe('the admin sign-in screen', () => {
     await submitCredentials(container);
 
     const enable = [...container.querySelectorAll('button')].find((b) =>
-      (b.textContent ?? '').includes('啟用雙重驗證'),
+      (b.textContent ?? '').includes(text('login.enrolSubmit')),
     ) as HTMLButtonElement | undefined;
     expect(enable?.disabled).toBe(true);
 
@@ -293,7 +319,7 @@ describe('the admin sign-in screen', () => {
 
     const code = container.querySelector('#login-enrol-code') as HTMLInputElement;
     const enable = [...container.querySelectorAll('button')].find((b) =>
-      (b.textContent ?? '').includes('啟用雙重驗證'),
+      (b.textContent ?? '').includes(text('login.enrolSubmit')),
     ) as HTMLButtonElement | undefined;
     const ack = container.querySelector(
       'input[type="checkbox"]',
@@ -312,6 +338,6 @@ describe('the admin sign-in screen', () => {
     });
 
     expect(calls.length).toBe(before);
-    expect(container.textContent).toContain('請輸入 6 位數字驗證碼');
+    expect(container.textContent).toContain(text('login.errCode'));
   });
 });

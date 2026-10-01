@@ -1,13 +1,30 @@
 /**
- * Driver-status vocabulary, shared by the queue, the detail page and the fleet
- * roster, so a label is written once.
+ * Server vocabulary, shared by every page that renders an enum.
  *
- * The tones map onto the `.chip--*` classes rather than raw colours: they must
- * agree in both colour schemes, and the HK convention here is that a *problem*
- * is red and a *healthy* account is green.
+ * The tables below map the server's enum **values to i18n keys**, not to display
+ * strings. Display strings live in `src/i18n/locales/`, because they have to
+ * exist in two languages and a single-language constant here would silently
+ * pin every chip to Chinese.
+ *
+ * Two layers, deliberately:
+ *
+ *   1. `*_KEY` maps a value to a key (`DRIVER_STATUS_KEY.ACTIVE` is
+ *      `'enum.driverStatus.ACTIVE'`). A *tone* map lives beside it — the tone is
+ *      a design decision about severity, not a translation, so it stays here and
+ *      does not move to the resource files.
+ *   2. `useLabels()` binds those keys to the active language and returns
+ *      `label(value)` functions with the same shape the pages already call, so a
+ *      page changes `driverStatusLabel(x)` to `labels.driverStatus(x)` and
+ *      nothing else.
+ *
+ * The fallback for an unknown value is the **raw enum**, in both layers: a new
+ * server value renders as `NEW_STATE` rather than as an empty chip, which is the
+ * one failure mode an operator can actually diagnose.
  */
 
+import { useMemo } from 'react';
 import type { ChipTone } from '../components/primitives';
+import { useI18n } from '../i18n';
 import type {
   DriverStatus,
   FleetStatus,
@@ -15,13 +32,32 @@ import type {
   RefundStatus,
 } from '../api/types';
 
-export const DRIVER_STATUS_LABEL: Record<DriverStatus, string> = {
-  PENDING_KYC: '審核中',
-  DEPOSIT_REQUIRED: '待繳按金',
-  ACTIVE: '已啟用',
-  SUSPENDED: '已停權',
-  TERMINATED: '已終止',
-};
+/** Wrap an enum value in an i18n key for a given group. */
+function keyer(group: string) {
+  return (value: string) => `enum.${group}.${value}`;
+}
+
+const driverStatusKey = keyer('driverStatus');
+const refundStatusKey = keyer('refundStatus');
+const taxiTypeKey = keyer('taxiType');
+const fleetStatusKey = keyer('fleetStatus');
+const memberRoleKey = keyer('memberRole');
+const memberStatusKey = keyer('memberStatus');
+const entryKey = keyer('entry');
+const orderStatusKey = keyer('orderStatus');
+const disputeSeverityKey = keyer('disputeSeverity');
+const disputeCategoryKey = keyer('disputeCategory');
+const disputeStatusKey = keyer('disputeStatus');
+const disputeResolutionKey = keyer('disputeResolution');
+const disputeSourceKey = keyer('disputeSource');
+const licenceStatusKey = keyer('licenceStatus');
+const documentKindKey = keyer('documentKind');
+const accountKindKey = keyer('accountKind');
+
+// ------------------------------------------------------------------ tones --
+// Tones are severity, not language: they describe *how bad* a state is, which is
+// the same question in every locale. Kept here rather than in the resources
+// because a translator must not be able to change a colour by editing a string.
 
 const DRIVER_STATUS_TONE: Record<DriverStatus, ChipTone> = {
   PENDING_KYC: 'warn',
@@ -31,57 +67,178 @@ const DRIVER_STATUS_TONE: Record<DriverStatus, ChipTone> = {
   TERMINATED: 'neutral',
 };
 
-export function driverStatusLabel(status: string): string {
-  return DRIVER_STATUS_LABEL[status as DriverStatus] ?? status;
-}
-
-export function driverStatusTone(status: string): ChipTone {
-  return DRIVER_STATUS_TONE[status as DriverStatus] ?? 'neutral';
-}
-
-export const REFUND_STATUS_LABEL: Record<RefundStatus, string> = {
-  PENDING: '待處理',
-  APPROVED: '已批准',
-  REJECTED: '已拒絕',
-};
-
 const REFUND_STATUS_TONE: Record<RefundStatus, ChipTone> = {
   PENDING: 'warn',
   APPROVED: 'ok',
   REJECTED: 'danger',
 };
 
-export function refundStatusLabel(status: string): string {
-  return REFUND_STATUS_LABEL[status as RefundStatus] ?? status;
-}
+const FLEET_STATUS_TONE: Record<FleetStatus, ChipTone> = {
+  ACTIVE: 'ok',
+  SUSPENDED: 'danger',
+  DISSOLVED: 'neutral',
+};
 
-export function refundStatusTone(status: string): ChipTone {
-  return REFUND_STATUS_TONE[status as RefundStatus] ?? 'neutral';
+/**
+ * Ledger entry kinds.
+ *
+ * The tone carries the direction, so a penalty reads as bad and a top-up as
+ * good without the operator parsing the sign.
+ */
+const ENTRY_TONE: Record<string, ChipTone> = {
+  DEPOSIT_TOPUP: 'ok',
+  WEEKLY_FEE_DEDUCTION: 'neutral',
+  PENALTY_DEDUCTION: 'danger',
+  REFUND: 'brand',
+  ADJUSTMENT: 'warn',
+};
+
+/**
+ * Order lifecycle states.
+ *
+ * `CANCELLED` and `NO_DRIVER` are `danger` — somebody has to look at both —
+ * while `COMPLETED` is neutral rather than green, because a finished trip is not
+ * something anyone acts on. Green is reserved for the states that mean "still
+ * working as intended".
+ */
+const ORDER_STATUS_TONE: Record<string, ChipTone> = {
+  CREATED: 'neutral',
+  BROADCASTING: 'brand',
+  ACCEPTED: 'ok',
+  DRIVER_ARRIVED: 'ok',
+  IN_TRIP: 'ok',
+  COMPLETED: 'neutral',
+  CANCELLED: 'danger',
+  NO_DRIVER: 'danger',
+};
+
+/**
+ * `SAFETY_CRITICAL` is `danger`, and so is `HIGH` — the distinction between them
+ * is the *deadline* (1h vs 4h), which the console shows as a countdown, not the
+ * colour. Colouring only the top level would make a 4-hour case look routine.
+ */
+const DISPUTE_SEVERITY_TONE: Record<string, ChipTone> = {
+  LOW: 'neutral',
+  NORMAL: 'warn',
+  HIGH: 'danger',
+  SAFETY_CRITICAL: 'danger',
+};
+
+const DISPUTE_STATUS_TONE: Record<string, ChipTone> = {
+  OPEN: 'warn',
+  INVESTIGATING: 'brand',
+  AWAITING_PARTY: 'neutral',
+  ESCALATED: 'danger',
+  RESOLVED: 'ok',
+  CLOSED: 'neutral',
+};
+
+/**
+ * `SUPERSEDED` is neutral, not a failure: the driver withdrew their own
+ * submission to fix a photo, which is the flow working as intended.
+ */
+const LICENCE_STATUS_TONE: Record<LicenceReviewStatus, ChipTone> = {
+  PENDING: 'warn',
+  APPROVED: 'ok',
+  REJECTED: 'danger',
+  SUPERSEDED: 'neutral',
+};
+
+// ---------------------------------------------------------------- hook ----
+
+export interface Labels {
+  driverStatus: (status: string) => string;
+  driverStatusTone: (status: string) => ChipTone;
+  refundStatus: (status: string) => string;
+  refundStatusTone: (status: string) => ChipTone;
+  taxiType: (type: string | null) => string;
+  fleetStatus: (status: string) => string;
+  fleetStatusTone: (status: string) => ChipTone;
+  memberRole: (role: string | null) => string;
+  memberStatus: (status: string) => string;
+  entry: (type: string) => string;
+  entryTone: (type: string) => ChipTone;
+  orderStatus: (status: string) => string;
+  orderStatusTone: (status: string) => ChipTone;
+  disputeSeverity: (severity: string) => string;
+  disputeSeverityTone: (severity: string) => ChipTone;
+  disputeCategory: (category: string) => string;
+  disputeStatus: (status: string) => string;
+  disputeStatusTone: (status: string) => ChipTone;
+  disputeResolution: (resolution: string | null) => string;
+  disputeSource: (source: string) => string;
+  licenceStatus: (status: string) => string;
+  licenceStatusTone: (status: string) => ChipTone;
+  documentKind: (kind: string) => string;
+  accountKind: (kind: string) => string;
 }
 
 /**
- * The three taxi types, by their licensed Chinese names.
+ * Every enum labeller, bound to the active locale.
  *
- * A new type is a server change, so the fallback is the raw enum rather than a
- * guess — better to show `URBAN_NEW` than to label it something wrong.
+ * `t(key, { defaultValue: raw })` is the fallback mechanism: i18next returns
+ * `defaultValue` when the key is absent, so an unknown server value renders as
+ * itself. That is why the raw value is passed as `defaultValue` rather than
+ * being branched on first — one path, no `if`.
  */
-export const TAXI_TYPE_LABEL: Record<string, string> = {
-  URBAN: '市區的士',
-  NT: '新界的士',
-  LANTAU: '大嶼山的士',
-};
+export function useLabels(): Labels {
+  const { t } = useI18n();
 
-export function taxiTypeLabel(type: string | null): string {
-  if (!type) return '—';
-  return TAXI_TYPE_LABEL[type] ?? type;
+  return useMemo(() => {
+    const label = (keyOf: (v: string) => string) => (value: string | null | undefined) =>
+      value ? t(keyOf(value), { defaultValue: value }) : '—';
+    const tone = (map: Record<string, ChipTone>) => (value: string) => map[value] ?? 'neutral';
+
+    return {
+      driverStatus: label(driverStatusKey),
+      driverStatusTone: tone(DRIVER_STATUS_TONE),
+      refundStatus: label(refundStatusKey),
+      refundStatusTone: tone(REFUND_STATUS_TONE),
+      taxiType: label(taxiTypeKey),
+      fleetStatus: label(fleetStatusKey),
+      fleetStatusTone: tone(FLEET_STATUS_TONE),
+      memberRole: label(memberRoleKey),
+      memberStatus: label(memberStatusKey),
+      entry: label(entryKey),
+      entryTone: tone(ENTRY_TONE),
+      orderStatus: label(orderStatusKey),
+      orderStatusTone: tone(ORDER_STATUS_TONE),
+      disputeSeverity: label(disputeSeverityKey),
+      disputeSeverityTone: tone(DISPUTE_SEVERITY_TONE),
+      disputeCategory: label(disputeCategoryKey),
+      disputeStatus: label(disputeStatusKey),
+      disputeStatusTone: tone(DISPUTE_STATUS_TONE),
+      disputeResolution: (resolution) =>
+        resolution
+          ? t(disputeResolutionKey(resolution), { defaultValue: resolution })
+          : t('enum.disputeResolution._undecided'),
+      disputeSource: label(disputeSourceKey),
+      licenceStatus: label(licenceStatusKey),
+      licenceStatusTone: tone(LICENCE_STATUS_TONE),
+      documentKind: label(documentKindKey),
+      accountKind: label(accountKindKey),
+    };
+  }, [t]);
 }
 
-/** An ISO timestamp as a compact local string, or an em dash. */
-export function formatTime(iso: string | null | undefined): string {
+// ------------------------------------------------------------ formatting --
+
+/**
+ * An ISO timestamp as a compact local string, or an em dash.
+ *
+ * The locale is passed in rather than read from a module constant, because a
+ * `zh-HK` date format in an English console prints `2026/10/01` and an `en-HK`
+ * one prints `01/10/2026` — the same string, ambiguous in opposite directions.
+ * The caller gets it from `useI18n().formatLocale`.
+ */
+export function formatTime(
+  iso: string | null | undefined,
+  locale = 'zh-HK',
+): string {
   if (!iso) return '—';
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return '—';
-  return at.toLocaleString('zh-HK', {
+  return at.toLocaleString(locale, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -104,223 +261,10 @@ export function currentIsoWeek(): string {
 /** The server rejects anything that is not `YYYY-Www` (app/api/fleets.py). */
 export const PERIOD_PATTERN = /^\d{4}-W\d{2}$/;
 
-/**
- * Fleet lifecycle. `DISSOLVED` — a fleet is wound up; only a *driver* is
- * terminated. Getting this wrong shows an empty status chip.
- */
-export const FLEET_STATUS_LABEL: Record<FleetStatus, string> = {
-  ACTIVE: '營運中',
-  SUSPENDED: '已停權',
-  DISSOLVED: '已解散',
-};
-
-const FLEET_STATUS_TONE: Record<FleetStatus, ChipTone> = {
-  ACTIVE: 'ok',
-  SUSPENDED: 'danger',
-  DISSOLVED: 'neutral',
-};
-
-export function fleetStatusLabel(status: string): string {
-  return FLEET_STATUS_LABEL[status as FleetStatus] ?? status;
-}
-
-export function fleetStatusTone(status: string): ChipTone {
-  return FLEET_STATUS_TONE[status as FleetStatus] ?? 'neutral';
-}
-
-/** Roster roles. OWNER is the licence holder. */
-export const MEMBER_ROLE_LABEL: Record<string, string> = {
-  OWNER: '車主',
-  MANAGER: '管理員',
-  MEMBER: '成員',
-};
-
-export function memberRoleLabel(role: string | null): string {
-  if (!role) return '—';
-  return MEMBER_ROLE_LABEL[role] ?? role;
-}
-
-/**
- * Ledger entry kinds.
- *
- * The tone carries the direction, so a penalty reads as bad and a top-up as
- * good without the operator parsing the sign.
- */
-export const ENTRY_LABEL: Record<string, string> = {
-  DEPOSIT_TOPUP: '存入按金',
-  WEEKLY_FEE_DEDUCTION: '每週費用',
-  PENALTY_DEDUCTION: '罰款',
-  REFUND: '退款',
-  ADJUSTMENT: '調整',
-};
-
-const ENTRY_TONE: Record<string, ChipTone> = {
-  DEPOSIT_TOPUP: 'ok',
-  WEEKLY_FEE_DEDUCTION: 'neutral',
-  PENALTY_DEDUCTION: 'danger',
-  REFUND: 'brand',
-  ADJUSTMENT: 'warn',
-};
-
-export function entryLabel(type: string): string {
-  return ENTRY_LABEL[type] ?? type;
-}
-
-export function entryTone(type: string): ChipTone {
-  return ENTRY_TONE[type] ?? 'neutral';
-}
-
 /** A UUID shortened to its first block — enough to correlate rows by eye. */
 export function shortId(id: string | null | undefined): string {
   if (!id) return '—';
   return id.split('-')[0] ?? id;
-}
-
-/**
- * Order lifecycle states.
- *
- * The tones follow the same rule as everywhere else in this file: a *problem*
- * is red and a *healthy* state is green. So `CANCELLED` and `NO_DRIVER` are
- * `danger` — somebody has to look at both — while `COMPLETED` is neutral rather
- * than green, because a finished trip is not something anyone acts on. Green is
- * reserved for the states that mean "still working as intended".
- */
-export const ORDER_STATUS_LABEL: Record<string, string> = {
-  CREATED: '已建立',
-  BROADCASTING: '廣播中',
-  ACCEPTED: '已接單',
-  DRIVER_ARRIVED: '司機到達',
-  IN_TRIP: '行程中',
-  COMPLETED: '已完成',
-  CANCELLED: '已取消',
-  NO_DRIVER: '無人接單',
-};
-
-const ORDER_STATUS_TONE: Record<string, ChipTone> = {
-  CREATED: 'neutral',
-  BROADCASTING: 'brand',
-  ACCEPTED: 'ok',
-  DRIVER_ARRIVED: 'ok',
-  IN_TRIP: 'ok',
-  COMPLETED: 'neutral',
-  CANCELLED: 'danger',
-  NO_DRIVER: 'danger',
-};
-
-export function orderStatusLabel(status: string): string {
-  return ORDER_STATUS_LABEL[status] ?? status;
-}
-
-export function orderStatusTone(status: string): ChipTone {
-  return ORDER_STATUS_TONE[status] ?? 'neutral';
-}
-
-/**
- * Dispute severity.
- *
- * `SAFETY_CRITICAL` is `danger`, and so is `HIGH` — the distinction between
- * them is the *deadline* (1h vs 4h), which the console shows as a countdown,
- * not the colour. Colouring only the top level would make a 4-hour case look
- * like a routine one.
- */
-export const DISPUTE_SEVERITY_LABEL: Record<string, string> = {
-  LOW: '低',
-  NORMAL: '一般',
-  HIGH: '高',
-  SAFETY_CRITICAL: '安全緊急',
-};
-
-const DISPUTE_SEVERITY_TONE: Record<string, ChipTone> = {
-  LOW: 'neutral',
-  NORMAL: 'warn',
-  HIGH: 'danger',
-  SAFETY_CRITICAL: 'danger',
-};
-
-export function disputeSeverityLabel(severity: string): string {
-  return DISPUTE_SEVERITY_LABEL[severity] ?? severity;
-}
-
-export function disputeSeverityTone(severity: string): ChipTone {
-  return DISPUTE_SEVERITY_TONE[severity] ?? 'neutral';
-}
-
-export const DISPUTE_CATEGORY_LABEL: Record<string, string> = {
-  FARE: '車費',
-  CONDUCT: '服務態度',
-  SAFETY: '安全',
-  LOST_ITEM: '失物',
-  APP_ISSUE: '應用程式問題',
-  OTHER: '其他',
-};
-
-export function disputeCategoryLabel(category: string): string {
-  return DISPUTE_CATEGORY_LABEL[category] ?? category;
-}
-
-export const DISPUTE_STATUS_LABEL: Record<string, string> = {
-  OPEN: '待處理',
-  INVESTIGATING: '調查中',
-  AWAITING_PARTY: '待對方回覆',
-  ESCALATED: '已升級',
-  RESOLVED: '已裁決',
-  CLOSED: '已結案',
-};
-
-const DISPUTE_STATUS_TONE: Record<string, ChipTone> = {
-  OPEN: 'warn',
-  INVESTIGATING: 'brand',
-  AWAITING_PARTY: 'neutral',
-  ESCALATED: 'danger',
-  RESOLVED: 'ok',
-  CLOSED: 'neutral',
-};
-
-export function disputeStatusLabel(status: string): string {
-  return DISPUTE_STATUS_LABEL[status] ?? status;
-}
-
-export function disputeStatusTone(status: string): ChipTone {
-  return DISPUTE_STATUS_TONE[status] ?? 'neutral';
-}
-
-/**
- * How a case ended.
- *
- * `moves_money` is the field that matters — four of the five resolutions charge
- * or refund somebody, and the server echoes that flag so this mapping is only
- * for the label. It is not used to decide whether FINANCE is required.
- */
-export const DISPUTE_RESOLUTION_LABEL: Record<string, string> = {
-  NONE: '不作收費',
-  CHARGE_PASSENGER: '向乘客收費',
-  CHARGE_DRIVER: '向司機收費',
-  REFUND_PLATFORM_FEE: '退還平台費',
-  WAIVED_PLATFORM_FEE: '豁免平台費',
-};
-
-export function disputeResolutionLabel(resolution: string | null): string {
-  if (!resolution) return '尚未裁決';
-  return DISPUTE_RESOLUTION_LABEL[resolution] ?? resolution;
-}
-
-/**
- * The two sources a case can come from.
- *
- * `INTERRUPTION` is a case opened by the in-trip interruption flow, which is
- * designed but not yet implemented — it is labelled anyway so the value does
- * not render as a raw enum the day it starts arriving.
- */
-export const DISPUTE_SOURCE_LABEL: Record<string, string> = {
-  ADMIN_CREATED: '人手開立',
-  PASSENGER: '乘客提出',
-  DRIVER: '司機提出',
-  INTERRUPTION: '行程中斷',
-  AUTOMATED: '系統偵測',
-};
-
-export function disputeSourceLabel(source: string): string {
-  return DISPUTE_SOURCE_LABEL[source] ?? source;
 }
 
 /**
@@ -329,77 +273,35 @@ export function disputeSourceLabel(source: string): string {
  * Negative is the common case on an incident queue and is rendered as overdue
  * rather than as a negative number — an operator should not have to read a sign
  * to know a case has breached.
+ *
+ * The units come from the translations (`{{days}} 天 {{hours}} 小時` / `{{days}}
+ * d {{hours}} h`), so the same numbers read naturally in both languages without
+ * a second formatting path.
  */
-export function formatCountdown(seconds: number): string {
+export function formatCountdown(
+  seconds: number,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
   const overdue = seconds < 0;
   const magnitude = Math.abs(seconds);
   const hours = Math.floor(magnitude / 3600);
   const minutes = Math.floor((magnitude % 3600) / 60);
-  let body: string;
-  if (hours >= 24) {
-    const days = Math.floor(hours / 24);
-    body = `${days} 天 ${hours % 24} 小時`;
-  } else if (hours >= 1) {
-    body = `${hours} 小時 ${minutes} 分`;
-  } else {
-    body = `${minutes} 分`;
-  }
-  return overdue ? `已逾期 ${body}` : `剩餘 ${body}`;
-}
-
-/**
- * P-3 licence review states.
- *
- * `SUPERSEDED` is neutral, not a failure: the driver withdrew their own
- * submission to fix a photo, which is the flow working as intended. Colouring it
- * like a rejection would make the queue look like a problem when it is not.
- */
-export const LICENCE_STATUS_LABEL: Record<LicenceReviewStatus, string> = {
-  PENDING: '待審核',
-  APPROVED: '已通過',
-  REJECTED: '已拒絕',
-  SUPERSEDED: '已撤回',
-};
-
-const LICENCE_STATUS_TONE: Record<LicenceReviewStatus, ChipTone> = {
-  PENDING: 'warn',
-  APPROVED: 'ok',
-  REJECTED: 'danger',
-  SUPERSEDED: 'neutral',
-};
-
-export function licenceStatusLabel(status: string): string {
-  return LICENCE_STATUS_LABEL[status as LicenceReviewStatus] ?? status;
-}
-
-export function licenceStatusTone(status: string): ChipTone {
-  return LICENCE_STATUS_TONE[status as LicenceReviewStatus] ?? 'neutral';
-}
-
-/**
- * Document kinds, by their licensed Chinese names.
- *
- * `TAXI_DRIVER_PASS` is the 的士司機證 — the Transport Department's permission to
- * drive a taxi — which is the document an operator is actually checking for.
- */
-export const DOCUMENT_KIND_LABEL: Record<string, string> = {
-  DRIVER_LICENCE: '正式駕駛執照',
-  TAXI_DRIVER_PASS: '的士司機證',
-  VEHICLE_REGISTRATION: '車輛登記文件',
-  INSURANCE: '保險',
-  OTHER: '其他',
-};
-
-export function documentKindLabel(kind: string): string {
-  return DOCUMENT_KIND_LABEL[kind] ?? kind;
+  const body =
+    hours >= 24
+      ? t('duration.daysHours', { days: Math.floor(hours / 24), hours: hours % 24 })
+      : hours >= 1
+        ? t('duration.hoursMinutes', { hours, minutes })
+        : t('duration.minutes', { minutes });
+  return overdue ? t('duration.overdue', { body }) : t('duration.remaining', { body });
 }
 
 /**
  * Bytes as a human string.
  *
- * Decimal-ish steps with a fixed `MB`, because the value being checked against
- * is a per-file ceiling expressed in MB — an operator comparing "4.7 MB" to a
- * "5 MB limit" should not have to convert from MiB.
+ * Decimal-ish steps with a fixed `MB`, because the value being checked against is
+ * a per-file ceiling expressed in MB — an operator comparing "4.7 MB" to a
+ * "5 MB limit" should not have to convert from MiB. Units are the same in both
+ * locales, so this needs no translation.
  */
 export function formatBytes(bytes: number | null | undefined): string {
   if (bytes === null || bytes === undefined) return '—';
@@ -408,12 +310,12 @@ export function formatBytes(bytes: number | null | undefined): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** A date-only ISO string (`2027-09-30T...`) as `YYYY-MM-DD`. */
-export function formatDate(iso: string | null | undefined): string {
+/** A date-only ISO string (`2027-09-30T...`) as `YYYY-MM-DD`, or an em dash. */
+export function formatDate(iso: string | null | undefined, locale = 'zh-HK'): string {
   if (!iso) return '—';
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return '—';
-  return at.toLocaleDateString('zh-HK', {
+  return at.toLocaleDateString(locale, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

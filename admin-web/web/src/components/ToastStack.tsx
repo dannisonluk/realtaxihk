@@ -8,9 +8,11 @@
  */
 
 import { useApp } from '../app/AppContext';
+import { useI18n } from '../i18n';
 
 export function ToastStack() {
   const { toasts, dismissToast } = useApp();
+  const { t } = useI18n();
 
   if (toasts.length === 0) return null;
 
@@ -28,9 +30,9 @@ export function ToastStack() {
               type="button"
               className="btn btn--sm"
               onClick={() => dismissToast(toast.id)}
-              aria-label="關閉通知"
+              aria-label={t('common.closeNotice')}
             >
-              關閉
+              {t('common.close')}
             </button>
           </div>
         </div>

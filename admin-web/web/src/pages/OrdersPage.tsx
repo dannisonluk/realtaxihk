@@ -30,7 +30,8 @@ import { Card, Chip, Money } from '../components/primitives';
 import { ErrorState, LoadingState } from '../components/states';
 import { useApp } from '../app/AppContext';
 import { useLoad } from '../app/useLoad';
-import { formatTime, orderStatusLabel, orderStatusTone, shortId, taxiTypeLabel } from '../lib/labels';
+import { useI18n } from '../i18n';
+import { formatTime, shortId, useLabels } from '../lib/labels';
 import { PageHead } from '../app/Shell';
 
 const PAGE_SIZE = 50;
@@ -38,6 +39,8 @@ const PAGE_SIZE = 50;
 export function OrdersPage() {
   const { client } = useApp();
   const navigate = useNavigate();
+  const { t } = useI18n();
+  const labels = useLabels();
   /**
    * `'open'` is the default view for a reason: the common question is not
    * "show me cancelled trips" but "show me everything still moving".
@@ -63,8 +66,8 @@ export function OrdersPage() {
   return (
     <>
       <PageHead
-        title="訂單"
-        subtitle="所有行程的即時狀態。乘客查詢時可在此確認司機、時間與當前狀態。"
+        title={t('orders.title')}
+        subtitle={t('orders.sub')}
       />
 
       <div className="filters">
@@ -77,7 +80,7 @@ export function OrdersPage() {
             setOffset(0);
           }}
         >
-          進行中
+          {t('orders.tabOpen')}
         </button>
         <button
           type="button"
@@ -88,7 +91,7 @@ export function OrdersPage() {
             setOffset(0);
           }}
         >
-          全部
+          {t('orders.tabAll')}
         </button>
         {/*
           The individual statuses, all from the shared `ORDER_STATUSES` list. A
@@ -109,7 +112,7 @@ export function OrdersPage() {
               setOffset(0);
             }}
           >
-            {orderStatusLabel(value)}
+            {labels.orderStatus(value)}
           </button>
         ))}
       </div>
@@ -121,7 +124,7 @@ export function OrdersPage() {
         <Card>
           {items.length === 0 ? (
             <div className="empty">
-              {status === 'open' ? '目前沒有進行中的行程。' : '沒有符合條件的訂單。'}
+              {status === 'open' ? t('orders.emptyOpen') : t('orders.empty')}
             </div>
           ) : (
             <>
@@ -129,13 +132,13 @@ export function OrdersPage() {
                 <table className="data">
                   <thead>
                     <tr>
-                      <th>建立時間</th>
-                      <th>狀態</th>
-                      <th>上車</th>
-                      <th>下車</th>
-                      <th className="num">估價</th>
-                      <th>司機</th>
-                      <th>乘客</th>
+                      <th>{t('orders.colCreated')}</th>
+                      <th>{t('common.status')}</th>
+                      <th>{t('orders.colPickup')}</th>
+                      <th>{t('orders.colDropoff')}</th>
+                      <th className="num">{t('orders.colFare')}</th>
+                      <th>{t('orders.colDriver')}</th>
+                      <th>{t('orders.colPassenger')}</th>
                       <th />
                     </tr>
                   </thead>
@@ -153,7 +156,7 @@ export function OrdersPage() {
               {total > PAGE_SIZE ? (
                 <div className="spread" style={{ marginTop: 16 }}>
                   <div className="dim t-caption1">
-                    顯示第 {offset + 1}–{offset + items.length} 筆，共 {total} 筆。
+                    {t('common.count', { from: offset + 1, to: offset + items.length, total })}
                   </div>
                   <div className="row">
                     <button
@@ -162,7 +165,7 @@ export function OrdersPage() {
                       disabled={offset === 0}
                       onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
                     >
-                      上一頁
+                      {t('common.prevPage')}
                     </button>
                     <button
                       type="button"
@@ -170,7 +173,7 @@ export function OrdersPage() {
                       disabled={!hasMore}
                       onClick={() => setOffset(offset + PAGE_SIZE)}
                     >
-                      下一頁
+                      {t('common.nextPage')}
                     </button>
                   </div>
                 </div>
@@ -184,17 +187,19 @@ export function OrdersPage() {
 }
 
 function OrderTableRow({ order, onOpen }: { order: AdminOrderRow; onOpen: () => void }) {
+  const { t, formatLocale } = useI18n();
+  const labels = useLabels();
   return (
     <tr>
-      <td>{formatTime(order.created_at)}</td>
+      <td>{formatTime(order.created_at, formatLocale)}</td>
       <td>
-        <Chip tone={orderStatusTone(order.status)}>{orderStatusLabel(order.status)}</Chip>
+        <Chip tone={labels.orderStatusTone(order.status)}>{labels.orderStatus(order.status)}</Chip>
       </td>
       <td>
         <div className="truncate" style={{ maxWidth: 220 }} title={order.pickup_address}>
           {order.pickup_address || <span className="dim">—</span>}
         </div>
-        <div className="dim t-caption1">{taxiTypeLabel(order.taxi_type)}</div>
+        <div className="dim t-caption1">{labels.taxiType(order.taxi_type)}</div>
       </td>
       <td>
         <div className="truncate" style={{ maxWidth: 220 }} title={order.dropoff_address}>
@@ -205,12 +210,12 @@ function OrderTableRow({ order, onOpen }: { order: AdminOrderRow; onOpen: () => 
         <Money value={order.estimated_total_hkd} />
       </td>
       <td className="mono">
-        {order.driver_id ? shortId(order.driver_id) : <span className="dim">未指派</span>}
+        {order.driver_id ? shortId(order.driver_id) : <span className="dim">{t('common.unassigned')}</span>}
       </td>
       <td className="mono">{shortId(order.passenger_id)}</td>
       <td>
         <button type="button" className="btn btn--sm" onClick={onOpen}>
-          檢視
+          {t('orders.view')}
         </button>
       </td>
     </tr>

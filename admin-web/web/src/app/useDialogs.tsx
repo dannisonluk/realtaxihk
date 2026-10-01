@@ -14,6 +14,7 @@
 import { useCallback, useState, type ReactNode } from 'react';
 import { Message, Modal } from '../components/primitives';
 import { normaliseError } from './useLoad';
+import { useI18n } from '../i18n';
 
 interface FormDialogSpec {
   title: string;
@@ -29,6 +30,7 @@ interface FormDialogSpec {
 }
 
 export function useFormDialog() {
+  const { t } = useI18n();
   const [spec, setSpec] = useState<FormDialogSpec | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -62,7 +64,7 @@ export function useFormDialog() {
       footer={
         <>
           <button type="button" className="btn" onClick={close} disabled={busy}>
-            取消
+            {t('common.cancel')}
           </button>
           <button
             type="button"
@@ -70,7 +72,7 @@ export function useFormDialog() {
             onClick={() => void submit()}
             disabled={busy}
           >
-            {busy ? '處理中…' : spec.confirmLabel}
+            {busy ? t('common.processing') : spec.confirmLabel}
           </button>
         </>
       }
@@ -103,6 +105,7 @@ interface ConfirmSpec {
  * body has to state the consequence rather than restate the title.
  */
 export function useConfirmDialog(danger = true) {
+  const { t } = useI18n();
   const [spec, setSpec] = useState<ConfirmSpec | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -134,7 +137,7 @@ export function useConfirmDialog(danger = true) {
       footer={
         <>
           <button type="button" className="btn" onClick={() => setSpec(null)} disabled={busy}>
-            取消
+            {t('common.cancel')}
           </button>
           <button
             type="button"
@@ -142,7 +145,7 @@ export function useConfirmDialog(danger = true) {
             onClick={() => void confirm()}
             disabled={busy}
           >
-            {busy ? '處理中…' : spec.confirmLabel}
+            {busy ? t('common.processing') : spec.confirmLabel}
           </button>
         </>
       }

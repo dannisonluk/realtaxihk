@@ -10,6 +10,7 @@
  */
 
 import type { ReactNode } from 'react';
+import { useI18n } from '../i18n';
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return <div className={className ? `card ${className}` : 'card'}>{children}</div>;
@@ -115,10 +116,11 @@ export function Message({
   );
 }
 
-export function Loading({ label = '載入中…' }: { label?: string }) {
+export function Loading({ label }: { label?: string }) {
+  const { t } = useI18n();
   return (
     <div className="empty" aria-live="polite">
-      {label}
+      {label ?? t('common.loading')}
     </div>
   );
 }

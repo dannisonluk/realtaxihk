@@ -9,9 +9,11 @@
 
 import { Message } from './primitives';
 import { errorHint } from '../app/useLoad';
+import { useI18n } from '../i18n';
 
 export function ErrorState({ error, onRetry }: { error: Error; onRetry?: () => void }) {
-  const hint = errorHint(error);
+  const { t } = useI18n();
+  const hint = errorHint(error, t);
   return (
     <div className="stack">
       <Message tone="error">
@@ -21,7 +23,7 @@ export function ErrorState({ error, onRetry }: { error: Error; onRetry?: () => v
       {onRetry ? (
         <div>
           <button type="button" className="btn" onClick={onRetry}>
-            重試
+            {t('common.retry')}
           </button>
         </div>
       ) : null}
@@ -29,10 +31,16 @@ export function ErrorState({ error, onRetry }: { error: Error; onRetry?: () => v
   );
 }
 
-export function LoadingState({ label = '載入中…' }: { label?: string }) {
+/**
+ * `label` defaults to the translated "loading…" but stays overridable: several
+ * pages pass a more specific phrase ("Loading driver roster…") that reads better
+ * than the generic one.
+ */
+export function LoadingState({ label }: { label?: string }) {
+  const { t } = useI18n();
   return (
     <div className="empty" aria-live="polite">
-      {label}
+      {label ?? t('common.loading')}
     </div>
   );
 }

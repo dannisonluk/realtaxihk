@@ -41,9 +41,11 @@ import { ErrorState } from '../components/states';
 import { useApp } from '../app/AppContext';
 import { normaliseError } from '../app/useLoad';
 import { formatTime, PERIOD_PATTERN } from '../lib/labels';
+import { useI18n } from '../i18n';
 import { PageHead } from '../app/Shell';
 
 export function SettlementPage() {
+  const { t, formatLocale } = useI18n();
   const { client, notify, refreshBadges } = useApp();
   const [period, setPeriod] = useState('');
   const [busy, setBusy] = useState(false);
@@ -55,7 +57,7 @@ export function SettlementPage() {
   function checkPeriod(): string | null {
     const trimmed = period.trim();
     if (trimmed !== '' && !PERIOD_PATTERN.test(trimmed)) {
-      notify('期間格式應為 YYYY-Www，例如 2026-W38。', 'error');
+      notify(t('settlement.errPeriod'), 'error');
       return null;
     }
     return trimmed;
@@ -101,11 +103,11 @@ export function SettlementPage() {
 
   async function run() {
     if (!preview) {
-      notify('請先預覽，確認將要收費的內容。', 'error');
+      notify(t('settlement.errPreviewFirst'), 'error');
       return;
     }
     if (secondsLeft <= 0) {
-      notify('確認權杖已過期，請重新預覽。', 'error');
+      notify(t('settlement.errTokenExpired'), 'error');
       setPreview(null);
       return;
     }
@@ -119,7 +121,7 @@ export function SettlementPage() {
       });
       setResult(outcome);
       setPreview(null);
-      notify(`結算完成：已收費 ${outcome.charged} 位。`);
+      notify(t('settlement.done', { count: outcome.charged }));
       void refreshBadges();
     } catch (cause) {
       setError(normaliseError(cause));
@@ -139,7 +141,7 @@ export function SettlementPage() {
     const wanted = checkPeriod();
     if (wanted === null) return;
     if (!wanted) {
-      notify('匯出需要指定 ISO 週次。', 'error');
+      notify(t('settlement.errNeedWeek'), 'error');
       return;
     }
     setBusy(true);
@@ -157,7 +159,7 @@ export function SettlementPage() {
       } finally {
         URL.revokeObjectURL(url);
       }
-      notify(`已匯出 ${wanted} 的帳目 CSV。`);
+      notify(t('settlement.exported', { week: wanted }));
     } catch (cause) {
       setError(normaliseError(cause));
     } finally {
@@ -170,20 +172,20 @@ export function SettlementPage() {
   return (
     <>
       <PageHead
-        title="每週結算"
-        subtitle="平台劃一服務費的手動執行槓桿。執行前必須先預覽 —— 第一次誤按無法回復。"
+        title={t('settlement.title')}
+        subtitle={t('settlement.sub')}
       />
 
       <Card>
         <h2 className="t-title3" style={{ margin: '0 0 8px' }}>
-          手動執行每週服務費
+          {t('settlement.manualTitle')}
         </h2>
         <p className="dim" style={{ margin: '0 0 16px' }}>
-          系統每 7 天自動執行一次。此處可補跑指定週次；同一週重複執行不會重複收費。
+          {t('settlement.manualNote')}
         </p>
         <div className="field" style={{ maxWidth: 360 }}>
           <label className="field__label" htmlFor="settle-period">
-            ISO 週次（留空為本週）
+            {t('settlement.fieldWeek')}
           </label>
           <input
             id="settle-period"
@@ -198,7 +200,7 @@ export function SettlementPage() {
               setPreview(null);
             }}
           />
-          <div className="t-footnote dim">格式為 YYYY-Www，例如 2026-W38。</div>
+          <div className="t-footnote dim">{t('settlement.fieldWeekHint')}</div>
         </div>
         <div className="row" style={{ marginTop: 16 }}>
           <button
@@ -207,10 +209,10 @@ export function SettlementPage() {
             disabled={busy}
             onClick={() => void previewSettlement()}
           >
-            {busy ? '處理中…' : '預覽（不會收費）'}
+            {busy ? t('common.processing') : t('settlement.preview')}
           </button>
           <button type="button" className="btn" disabled={busy} onClick={() => void exportCsv()}>
-            匯出 CSV
+            {t('settlement.exportCsv')}
           </button>
         </div>
       </Card>
@@ -225,58 +227,60 @@ export function SettlementPage() {
         <div style={{ marginTop: 16 }}>
           <Card>
             <h2 className="t-title3" style={{ margin: '0 0 8px' }}>
-              預覽 · {preview.period}
+              {t('settlement.previewHeading', { period: preview.period })}
             </h2>
             <p className="dim" style={{ margin: '0 0 16px' }}>
-              以下為將會發生的收費。此步驟不會寫入任何資料。
+              {t('settlement.previewNote')}
             </p>
 
             <Rows>
-              <DetailRow label="服務費">
+              <DetailRow label={t('settlement.fee')}>
                 <Money value={preview.fee_hkd} />
               </DetailRow>
-              <DetailRow label="合資格司機">{preview.eligible_drivers}</DetailRow>
-              <DetailRow label="將收費">
+              <DetailRow label={t('settlement.eligible')}>{preview.eligible_drivers}</DetailRow>
+              <DetailRow label={t('settlement.willCharge')}>
                 <strong>{preview.would_charge}</strong>
               </DetailRow>
               {preview.would_go_negative > 0 ? (
-                <DetailRow label="其中將變成欠款">
+                <DetailRow label={t('settlement.becomeDebt')}>
                   <span style={{ color: 'var(--danger)' }}>{preview.would_go_negative}</span>
-                  <span className="dim t-caption1"> — 會被收費，但餘額轉負</span>
+                  <span className="dim t-caption1">{t('settlement.becomeDebtNote')}</span>
                 </DetailRow>
               ) : null}
-              <DetailRow label="已收過（略過）">{preview.already_charged}</DetailRow>
-              <DetailRow label="沒有按金帳戶（略過）">{preview.skipped_no_deposit_account}</DetailRow>
-              <DetailRow label="車隊成員（未收費）">
+              <DetailRow label={t('settlement.alreadyCharged')}>{preview.already_charged}</DetailRow>
+              <DetailRow label={t('settlement.skippedNoAccount')}>{preview.skipped_no_deposit_account}</DetailRow>
+              <DetailRow label={t('settlement.fleetManaged')}>
                 {preview.fleet_managed}
                 {preview.fleet_managed > 0 ? (
-                  <span className="dim t-caption1"> — 由所屬車隊的結算以折扣價收費</span>
+                  <span className="dim t-caption1">{t('settlement.fleetManagedNote')}</span>
                 ) : null}
               </DetailRow>
-              <DetailRow label="帳目異常">
+              <DetailRow label={t('settlement.tampered')}>
                 <span style={preview.tampered > 0 ? { color: 'var(--danger)' } : undefined}>
                   {preview.tampered}
                 </span>
               </DetailRow>
-              <DetailRow label="預計總收費">
+              <DetailRow label={t('settlement.estTotal')}>
                 <Money value={preview.total_charge_hkd} />
               </DetailRow>
-              <DetailRow label="欠款總額">
+              <DetailRow label={t('settlement.debtTotal')}>
                 <Money value={preview.shortfall_total_hkd} />
               </DetailRow>
             </Rows>
 
             {preview.tampered > 0 ? (
               <p style={{ margin: '14px 0 0', color: 'var(--danger)' }}>
-                有 {preview.tampered} 個帳目異常：該週的 ledger reference 被其他帳目佔用，系統刻意未收費。
-                重試不會解決，需要人手核對。
+                {t('settlement.tamperedNote', { count: preview.tampered })}
               </p>
             ) : null}
 
             <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
               <div className="spread">
                 <div className="dim">
-                  確認權杖於 <strong>{secondsLeft}</strong> 秒後失效（{formatTime(new Date(Date.now() + secondsLeft * 1000).toISOString())}）。
+                  {t('settlement.tokenNote', {
+                    seconds: secondsLeft,
+                    at: formatTime(new Date(Date.now() + secondsLeft * 1000).toISOString(), formatLocale),
+                  })}
                 </div>
                 <button
                   type="button"
@@ -284,11 +288,11 @@ export function SettlementPage() {
                   disabled={busy || secondsLeft <= 0}
                   onClick={() => void run()}
                 >
-                  {busy ? '執行中…' : `確認執行（收費 ${preview.would_charge} 位）`}
+                  {busy ? t('settlement.running') : t('settlement.confirmRun', { count: preview.would_charge })}
                 </button>
               </div>
               <p className="dim t-footnote" style={{ marginBottom: 0 }}>
-                權杖綁定此預覽的週次與服務費，並非綁定操作人 —— 同一個事件可以由任何財務管理員接手執行。
+                {t('settlement.tokenFootnote')}
               </p>
             </div>
           </Card>
@@ -301,33 +305,33 @@ export function SettlementPage() {
             {}
             {anomaly ? (
               <div className="message message--warn" style={{ marginBottom: 16 }}>
-                此次執行有異常數字，請先看下方說明再決定是否重跑。
+                {t('settlement.anomalyNote')}
               </div>
             ) : null}
 
             <h2 className="t-title3" style={{ margin: '0 0 8px' }}>
-              結果 · {result.period}
+              {t('settlement.resultHeading', { period: result.period })}
             </h2>
 
             <Rows>
-              <DetailRow label="服務費">
+              <DetailRow label={t('settlement.fee')}>
                 <Money value={result.fee_hkd} />
               </DetailRow>
-              <DetailRow label="合資格司機">{result.eligible_drivers}</DetailRow>
-              <DetailRow label="車隊成員（未收費）">
+              <DetailRow label={t('settlement.eligible')}>{result.eligible_drivers}</DetailRow>
+              <DetailRow label={t('settlement.fleetManaged')}>
                 {result.fleet_managed}
                 {result.fleet_managed > 0 ? (
-                  <span className="dim t-caption1"> — 由所屬車隊的結算以折扣價收費</span>
+                  <span className="dim t-caption1">{t('settlement.fleetManagedNote')}</span>
                 ) : null}
               </DetailRow>
-              <DetailRow label="已收費">{result.charged}</DetailRow>
-              <DetailRow label="略過（已收過）">{result.skipped}</DetailRow>
-              <DetailRow label="失敗">
+              <DetailRow label={t('settlement.charged')}>{result.charged}</DetailRow>
+              <DetailRow label={t('settlement.skipped')}>{result.skipped}</DetailRow>
+              <DetailRow label={t('settlement.failed')}>
                 <span style={result.failed > 0 ? { color: 'var(--danger)' } : undefined}>
                   {result.failed}
                 </span>
               </DetailRow>
-              <DetailRow label="帳目異常">
+              <DetailRow label={t('settlement.tampered')}>
                 <span style={result.tampered > 0 ? { color: 'var(--danger)' } : undefined}>
                   {result.tampered}
                 </span>
@@ -336,13 +340,12 @@ export function SettlementPage() {
 
             {result.tampered > 0 ? (
               <p style={{ margin: '14px 0 0', color: 'var(--danger)' }}>
-                帳目異常代表該週的 ledger reference 被其他帳目佔用，系統刻意未收費。重試不會解決，
-                需要人手核對該司機的帳目紀錄。
+                {t('settlement.tamperedResultNote')}
               </p>
             ) : null}
             {result.failed > 0 ? (
               <p style={{ margin: '14px 0 0', color: 'var(--danger)' }}>
-                有司機入帳失敗。可安全地重跑同一週：已成功的會計入「略過」，不會重複收費。
+                {t('settlement.failedNote')}
               </p>
             ) : null}
           </Card>

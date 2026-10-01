@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StrictMode, act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { AppProvider } from '../app/AppContext';
+import { i18n } from '../i18n';
 import { AnalyticsPage } from './AnalyticsPage';
 
 declare global {
@@ -24,6 +25,30 @@ declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+/**
+ * Read a string out of the active locale's resource.
+ *
+ * The table headers are translated, so the sort test has to ask for the header
+ * *by key* — a Chinese literal would pin the file to one locale and would also
+ * stop noticing a copy change.
+ */
+function text(key: string): string {
+  const target = i18n.resolvedLanguage ?? 'zh-Hant';
+  const read = (source: unknown) => {
+    let cursor: unknown = source;
+    for (const part of key.split('.')) {
+      if (typeof cursor !== 'object' || cursor === null) return undefined;
+      cursor = (cursor as Record<string, unknown>)[part];
+    }
+    return typeof cursor === 'string' ? cursor : undefined;
+  };
+  return (
+    read(i18n.getResourceBundle(target, 'translation')) ??
+    read(i18n.getResourceBundle('zh-Hant', 'translation')) ??
+    key
+  );
+}
 
 /** A summary payload with two buckets and a deliberately awkward money value. */
 const SUMMARY = {
@@ -204,7 +229,9 @@ describe('the analytics page', () => {
     // The 收入 column header. Clicking it should sort by earnings, and — for a
     // value column — start at the interesting end rather than ascending.
     const headers = [...container.querySelectorAll('.th-sort')];
-    const earnings = headers.find((h) => h.textContent?.includes('收入'));
+    const earnings = headers.find((h) =>
+      h.textContent?.includes(text('analytics.colEarnings')),
+    );
     expect(earnings).toBeTruthy();
 
     await act(async () => {
@@ -267,6 +294,6 @@ describe('the analytics page', () => {
 
     const sorted = container.querySelector('[aria-sort="ascending"]');
     expect(sorted).toBeTruthy();
-    expect(sorted?.textContent).toContain('期間');
+    expect(sorted?.textContent).toContain(text('analytics.colPeriod'));
   });
 });

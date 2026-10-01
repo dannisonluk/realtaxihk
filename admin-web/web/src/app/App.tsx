@@ -25,6 +25,7 @@ import { endpoints } from '../api/endpoints';
 import { session } from '../api/session';
 import { AppProvider } from './AppContext';
 import { RequireRole, Shell } from './Shell';
+import { useI18n } from '../i18n';
 import { LoginPage } from '../pages/LoginPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { KycPage } from '../pages/KycPage';
@@ -166,13 +167,14 @@ function buildRouter() {
 }
 
 function NotFoundPage() {
+  const { t } = useI18n();
   return (
     <>
       <div className="page-head">
-        <h1>找不到頁面</h1>
+        <h1>{t('notFound.title')}</h1>
       </div>
       <div className="card">
-        <div className="empty">沒有對應此網址的頁面。</div>
+        <div className="empty">{t('notFound.body')}</div>
       </div>
     </>
   );
@@ -186,6 +188,7 @@ function NotFoundPage() {
  * flash an admin UI at someone whose role was just revoked.
  */
 function Boot() {
+  const { t } = useI18n();
   const [phase, setPhase] = useState<'checking' | 'out' | 'in'>(
     session.isSignedIn ? 'checking' : 'out',
   );
@@ -309,7 +312,7 @@ function Boot() {
         // (offline, 5xx) is not proof the session is bad, so show the login
         // screen with the reason rather than silently discarding a usable token.
         if (session.isSignedIn) {
-          setSignInError(cause instanceof Error ? cause.message : '無法驗證登入狀態。');
+          setSignInError(cause instanceof Error ? cause.message : t('boot.verifyFailed'));
         }
         setPhase('out');
       }
@@ -321,7 +324,7 @@ function Boot() {
   }, [phase]);
 
   if (phase === 'checking') {
-    return <div className="empty">正在驗證登入狀態…</div>;
+    return <div className="empty">{t('boot.verifying')}</div>;
   }
 
   if (phase === 'out') {
@@ -353,7 +356,7 @@ function Boot() {
         router (and thus a fresh history) on every parent render, resetting the
         navigation state under the operator.
       */}
-      {router ? <RouterProvider router={router} /> : <div className="empty">正在載入…</div>}
+      {router ? <RouterProvider router={router} /> : <div className="empty">{t('boot.loading')}</div>}
     </AppProvider>
   );
 }

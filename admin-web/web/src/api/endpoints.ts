@@ -7,6 +7,7 @@
  */
 
 import type { ApiClient } from './client';
+import { i18n } from '../i18n';
 import type {
   AdjustResult,
   AdminAccountCreated,
@@ -611,7 +612,7 @@ export const endpoints = {
       const settlement = await endpoints.fleets.settlementHistory(client, fleetId);
       const fleet = fleets.items.find((row) => row.id === fleetId);
       if (!fleet) {
-        throw new Error(`找不到車隊 ${fleetId}`);
+        throw new Error(i18n.t('errors.fleetNotFound', { id: fleetId }));
       }
       return { fleet, members: members.items, settlement: settlement.items };
     },

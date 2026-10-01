@@ -27,6 +27,7 @@ import { Card, Chip, Empty, Rows } from '../components/primitives';
 import { ErrorState, LoadingState } from '../components/states';
 import { useApp } from '../app/AppContext';
 import { useLoad } from '../app/useLoad';
+import { useI18n } from '../i18n';
 import { formatTime, shortId } from '../lib/labels';
 import { PageHead } from '../app/Shell';
 
@@ -40,17 +41,18 @@ const PAGE_SIZE = 50;
  * stale silently, making an event un-filterable the day after it ships. The
  * quick-pick chips below cover the ones an operator actually reaches for.
  */
-const QUICK_EVENTS: { value: string; label: string }[] = [
-  { value: '', label: '全部' },
-  { value: 'ad.settlement', label: '結算' },
-  { value: 'ad.dispute', label: '爭議' },
-  { value: 'ad.role', label: '權限' },
-  { value: 'ad.account', label: '帳戶' },
-  { value: 'ad.login', label: '登入' },
+const QUICK_EVENTS: { value: string; key: string }[] = [
+  { value: '', key: 'audit.filter.all' },
+  { value: 'ad.settlement', key: 'audit.filter.settlement' },
+  { value: 'ad.dispute', key: 'audit.filter.dispute' },
+  { value: 'ad.role', key: 'audit.filter.role' },
+  { value: 'ad.account', key: 'audit.filter.account' },
+  { value: 'ad.login', key: 'audit.filter.login' },
 ];
 
 export function AuditPage() {
   const { client } = useApp();
+  const { t } = useI18n();
   const [event, setEvent] = useState('');
   const [offset, setOffset] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -72,14 +74,14 @@ export function AuditPage() {
   return (
     <>
       <PageHead
-        title="審計紀錄"
-        subtitle="誰在何時做了什麼決定。所有管理員權限均可閱讀；紀錄不含任何密碼、TOTP 密鑰或權杖。"
+        title={t('audit.title')}
+        subtitle={t('audit.sub')}
       />
 
       <div className="filters">
         {QUICK_EVENTS.map((item) => (
           <button
-            key={item.label}
+            key={item.key}
             type="button"
             className={event === item.value ? 'chip chip--brand' : 'chip'}
             aria-pressed={event === item.value}
@@ -88,12 +90,12 @@ export function AuditPage() {
               setOffset(0);
             }}
           >
-            {item.label}
+            {t(item.key)}
           </button>
         ))}
         <input
           type="search"
-          placeholder="或輸入完整事件名稱篩選"
+          placeholder={t('audit.filterPlaceholder')}
           style={{ maxWidth: 260 }}
           onChange={(e) => {
             setEvent(e.target.value.trim());
@@ -108,18 +110,18 @@ export function AuditPage() {
       {!loading && !error ? (
         <Card>
           {items.length === 0 ? (
-            <Empty title="沒有符合條件的紀錄。" />
+            <Empty title={t('audit.empty')} />
           ) : (
             <>
               <div className="table-wrap">
                 <table className="data">
                   <thead>
                     <tr>
-                      <th>時間</th>
-                      <th>事件</th>
-                      <th>結果</th>
-                      <th>操作人</th>
-                      <th>說明</th>
+                      <th>{t('audit.colTime')}</th>
+                      <th>{t('audit.colEvent')}</th>
+                      <th>{t('audit.colResult')}</th>
+                      <th>{t('audit.colActor')}</th>
+                      <th>{t('audit.colDetail')}</th>
                       <th />
                     </tr>
                   </thead>
@@ -138,7 +140,7 @@ export function AuditPage() {
               {total > PAGE_SIZE ? (
                 <div className="spread" style={{ marginTop: 16 }}>
                   <div className="dim t-caption1">
-                    顯示第 {offset + 1}–{offset + items.length} 筆，共 {total} 筆。
+                    {t('common.count', { from: offset + 1, to: offset + items.length, total })}
                   </div>
                   <div className="row">
                     <button
@@ -147,7 +149,7 @@ export function AuditPage() {
                       disabled={offset === 0}
                       onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
                     >
-                      上一頁
+                      {t('common.prevPage')}
                     </button>
                     <button
                       type="button"
@@ -155,7 +157,7 @@ export function AuditPage() {
                       disabled={!hasMore}
                       onClick={() => setOffset(offset + PAGE_SIZE)}
                     >
-                      下一頁
+                      {t('common.nextPage')}
                     </button>
                   </div>
                 </div>
@@ -177,12 +179,13 @@ function AuditTableRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const { t, formatLocale } = useI18n();
   const hasDetail = Boolean(row.payload && Object.keys(row.payload).length > 0);
 
   return (
     <>
       <tr>
-        <td>{formatTime(row.created_at)}</td>
+        <td>{formatTime(row.created_at, formatLocale)}</td>
         <td className="mono" style={{ fontSize: 12 }}>
           {row.event}
         </td>
@@ -192,7 +195,7 @@ function AuditTableRow({
             colour — and a refusal is the most interesting row on the page.
           */}
           {row.outcome === 'SUCCESS' ? (
-            <Chip tone="ok">成功</Chip>
+            <Chip tone="ok">{t('audit.success')}</Chip>
           ) : (
             <Chip tone="danger">{row.outcome}</Chip>
           )}
@@ -204,7 +207,7 @@ function AuditTableRow({
             against a username that does not exist — which is why it is shown in
             preference to the id rather than as a fallback to it.
           */}
-          {row.actor_username ?? (row.actor_id ? <span className="mono">{shortId(row.actor_id)}</span> : <span className="dim">匿名</span>)}
+          {row.actor_username ?? (row.actor_id ? <span className="mono">{shortId(row.actor_id)}</span> : <span className="dim">{t('common.anonymous')}</span>)}
           {row.ip_address ? (
             <div className="dim t-caption1 mono">{row.ip_address}</div>
           ) : null}
@@ -213,7 +216,7 @@ function AuditTableRow({
         <td>
           {hasDetail ? (
             <button type="button" className="btn btn--sm" onClick={onToggle}>
-              {expanded ? '收起' : '詳情'}
+              {expanded ? t('audit.collapse') : t('audit.details')}
             </button>
           ) : (
             <span className="dim">—</span>
@@ -227,7 +230,7 @@ function AuditTableRow({
               {Object.entries(row.payload ?? {}).map(([key, value]) => (
                 <div className="rows__item" key={key}>
                   <div className="rows__label mono">{key}</div>
-                  <div className="rows__value">{renderPayloadValue(value)}</div>
+                  <div className="rows__value">{renderPayloadValue(value, t)}</div>
                 </div>
               ))}
             </Rows>
@@ -250,9 +253,12 @@ function AuditTableRow({
  * `from`/`to` pair is different from an empty string. Booleans are spelled out
  * because `true` in a table cell reads as a label rather than a value.
  */
-function renderPayloadValue(value: unknown): string {
+function renderPayloadValue(
+  value: unknown,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
   if (value === null || value === undefined) return '—';
-  if (typeof value === 'boolean') return value ? '是' : '否';
+  if (typeof value === 'boolean') return value ? t('common.yes') : t('common.no');
   if (typeof value === 'string' || typeof value === 'number') return String(value);
   try {
     return JSON.stringify(value);

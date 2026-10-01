@@ -37,6 +37,7 @@ import { ErrorState } from '../components/states';
 import { useApp } from '../app/AppContext';
 import { useLoad } from '../app/useLoad';
 import { PageHead } from '../app/Shell';
+import { useI18n } from '../i18n';
 
 /** Today as `YYYY-MM-DD` in the operator's own timezone, for the date inputs. */
 function today(): string {
@@ -65,31 +66,32 @@ function toNum(value: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-const TAXI_TYPES = [
-  { value: '', label: '全部車型' },
-  { value: 'URBAN', label: '市區的士' },
-  { value: 'NT', label: '新界的士' },
-  { value: 'LANTAU', label: '大嶼山的士' },
+const TAXI_TYPES: { value: string; labelKey: string }[] = [
+  { value: '', labelKey: 'analytics.filterAllTypes' },
+  { value: 'URBAN', labelKey: 'enum.taxiType.URBAN' },
+  { value: 'NT', labelKey: 'enum.taxiType.NT' },
+  { value: 'LANTAU', labelKey: 'enum.taxiType.LANTAU' },
 ];
 
-const GRANULARITIES: { value: AnalyticsGranularity; label: string }[] = [
-  { value: 'day', label: '每日' },
-  { value: 'week', label: '每週' },
-  { value: 'month', label: '每月' },
-  { value: 'year', label: '每年' },
+const GRANULARITIES: { value: AnalyticsGranularity; labelKey: string }[] = [
+  { value: 'day', labelKey: 'analytics.granularity.day' },
+  { value: 'week', labelKey: 'analytics.granularity.week' },
+  { value: 'month', labelKey: 'analytics.granularity.month' },
+  { value: 'year', labelKey: 'analytics.granularity.year' },
 ];
 
 /** Column definitions for the sortable table, so the header and sort agree. */
-const COLUMNS: { key: AnalyticsSortBy; label: string; align: 'start' | 'end' }[] = [
-  { key: 'bucket', label: '期間', align: 'start' },
-  { key: 'orders', label: '訂單', align: 'end' },
-  { key: 'earnings', label: '收入', align: 'end' },
-  { key: 'avg_fare', label: '平均車費', align: 'end' },
-  { key: 'distance', label: '總里程 (km)', align: 'end' },
+const COLUMNS: { key: AnalyticsSortBy; labelKey: string; align: 'start' | 'end' }[] = [
+  { key: 'bucket', labelKey: 'analytics.colPeriod', align: 'start' },
+  { key: 'orders', labelKey: 'analytics.colOrders', align: 'end' },
+  { key: 'earnings', labelKey: 'analytics.colEarnings', align: 'end' },
+  { key: 'avg_fare', labelKey: 'analytics.colAvgFare', align: 'end' },
+  { key: 'distance', labelKey: 'analytics.colDistance', align: 'end' },
 ];
 
 export function AnalyticsPage() {
   const { client } = useApp();
+  const { t } = useI18n();
 
   const [from, setFrom] = useState(daysAgo(29));
   const [to, setTo] = useState(today());
@@ -137,15 +139,15 @@ export function AnalyticsPage() {
   return (
     <>
       <PageHead
-        title="表現分析"
-        subtitle="以完成的行程計算收入與時段分佈。所有時間為香港時間（HKT）。"
+        title={t('analytics.title')}
+        subtitle={t('analytics.sub')}
       />
 
       <Card>
         <div className="filters">
           <div className="field">
             <label className="field__label" htmlFor="an-from">
-              由
+              {t('analytics.from')}
             </label>
             <input
               id="an-from"
@@ -157,7 +159,7 @@ export function AnalyticsPage() {
           </div>
           <div className="field">
             <label className="field__label" htmlFor="an-to">
-              至
+              {t('analytics.to')}
             </label>
             <input
               id="an-to"
@@ -169,7 +171,7 @@ export function AnalyticsPage() {
           </div>
           <div className="field">
             <label className="field__label" htmlFor="an-granularity">
-              統計單位
+              {t('analytics.unit')}
             </label>
             <select
               id="an-granularity"
@@ -178,29 +180,29 @@ export function AnalyticsPage() {
             >
               {GRANULARITIES.map((g) => (
                 <option key={g.value} value={g.value}>
-                  {g.label}
+                  {t(g.labelKey)}
                 </option>
               ))}
             </select>
           </div>
           <div className="field">
             <label className="field__label" htmlFor="an-taxi">
-              的士類型
+              {t('analytics.taxiType')}
             </label>
             <select
               id="an-taxi"
               value={taxiType}
               onChange={(event) => setTaxiType(event.target.value)}
             >
-              {TAXI_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
+              {TAXI_TYPES.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {t(item.labelKey)}
                 </option>
               ))}
             </select>
           </div>
           <div className="field">
-            <div className="field__label">快速範圍</div>
+            <div className="field__label">{t('analytics.quickRange')}</div>
             <div className="actions">
               {[7, 30, 90].map((n) => (
                 <button
@@ -212,7 +214,7 @@ export function AnalyticsPage() {
                     setTo(today());
                   }}
                 >
-                  近 {n} 日
+                  {t('analytics.lastDays', { count: n })}
                 </button>
               ))}
             </div>
@@ -229,17 +231,17 @@ export function AnalyticsPage() {
       {summary.data ? (
         <div className="grid" style={{ marginTop: 16 }}>
           <Stat
-            label="總收入"
+            label={t('analytics.totalRevenue')}
             value={<Money value={summary.data.totals.earnings_hkd} />}
-            hint={`${summary.data.totals.days} 日 · ${summary.data.totals.buckets} 個期間`}
+            hint={t('analytics.revenueHint', { days: summary.data.totals.days, buckets: summary.data.totals.buckets })}
           />
-          <Stat label="完成訂單" value={summary.data.totals.orders} />
+          <Stat label={t('analytics.completedOrders')} value={summary.data.totals.orders} />
           <Stat
-            label="平均車費"
+            label={t('analytics.avgFare')}
             value={<Money value={summary.data.totals.avg_fare_hkd} />}
           />
           <Stat
-            label="平均每日收入"
+            label={t('analytics.avgDailyRevenue')}
             value={
               <Money
                 value={(
@@ -247,7 +249,7 @@ export function AnalyticsPage() {
                 ).toFixed(2)}
               />
             }
-            hint="總收入 ÷ 範圍內日數"
+            hint={t('analytics.avgDailyNote')}
           />
         </div>
       ) : null}
@@ -257,14 +259,14 @@ export function AnalyticsPage() {
         <Card>
           <div className="page-head__text" style={{ marginBottom: 4 }}>
             <h2 className="t-title3" style={{ margin: 0 }}>
-              時段分佈
+              {t('analytics.hourlyTitle')}
             </h2>
             <p className="page-head__sub">
-              每個時段的長方形高度代表該時段的平均每日收入；下方色帶為同一組數字的熱力圖。
+              {t('analytics.hourlyNote')}
             </p>
           </div>
 
-          {heatmap.loading ? <Loading label="載入時段數據…" /> : null}
+          {heatmap.loading ? <Loading label={t('analytics.loadingHourly')} /> : null}
           {heatmap.error ? (
             <ErrorState error={heatmap.error} onRetry={heatmap.reload} />
           ) : null}
@@ -272,11 +274,11 @@ export function AnalyticsPage() {
           {heatmap.data ? (
             <>
               <div className="actions" style={{ margin: '8px 0 16px', flexWrap: 'wrap' }}>
-                <Chip tone="brand">最高收入時段 {heatmap.data.peak_hour}:00</Chip>
-                <Chip>最多訂單 {heatmap.data.busiest_hour}:00</Chip>
-                <Chip>平均每日最高 {heatmap.data.max_avg_per_day_hkd} HKD</Chip>
+                <Chip tone="brand">{t('analytics.peakHour', { hour: heatmap.data.peak_hour })}</Chip>
+                <Chip>{t('analytics.busiestHour', { hour: heatmap.data.busiest_hour })}</Chip>
+                <Chip>{t('analytics.maxAvg', { amount: heatmap.data.max_avg_per_day_hkd })}</Chip>
                 <span className="dim t-footnote">
-                  平均每日 = 總收入 ÷ {heatmap.data.range.days} 日
+                  {t('analytics.avgDailyFormula', { days: heatmap.data.range.days })}
                 </span>
               </div>
 
@@ -284,7 +286,7 @@ export function AnalyticsPage() {
               <HourHeatStrip hours={hours} scaleMax={scaleMax} />
 
               <p className="dim t-footnote" style={{ marginTop: 12 }}>
-                沒有訂單的時段會顯示為 0，而非略去 —— 空白本身就是資料。
+                {t('analytics.noOrdersNote')}
               </p>
             </>
           ) : null}
@@ -295,15 +297,15 @@ export function AnalyticsPage() {
       <div style={{ marginTop: 16 }}>
         <Card>
           <h2 className="t-title3" style={{ margin: '0 0 12px' }}>
-            期間明細
+            {t('analytics.breakdownTitle')}
           </h2>
 
-          {summary.loading ? <Loading label="載入中…" /> : null}
+          {summary.loading ? <Loading label={t('common.loading')} /> : null}
 
           {summary.data && buckets.length === 0 ? (
             <Empty
-              title="此範圍內沒有完成的行程"
-              hint="試著放寬日期範圍，或改用「全部車型」。"
+              title={t('analytics.breakdownEmpty')}
+              hint={t('analytics.breakdownEmptyHint')}
             />
           ) : null}
 
@@ -329,7 +331,7 @@ export function AnalyticsPage() {
                           className="th-sort"
                           onClick={() => toggleSort(col.key)}
                         >
-                          {col.label}
+                          {t(col.labelKey)}
                           <span className="th-sort__mark" aria-hidden="true">
                             {sortBy === col.key ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
                           </span>
@@ -384,6 +386,7 @@ function HourBarChart({
   hours: AnalyticsHeatmap['hours'];
   scaleMax: number;
 }) {
+  const { t } = useI18n();
   const [hover, setHover] = useState<number | null>(null);
 
   const W = 720;
@@ -412,7 +415,7 @@ function HourBarChart({
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
         role="img"
-        aria-label="每個時段的平均每日收入"
+        aria-label={t('analytics.hourlyAria')}
         style={{ display: 'block', overflow: 'visible' }}
       >
         {ticks.map((t) => (
@@ -489,7 +492,7 @@ function HourBarChart({
           fontSize={11}
           fill="var(--text-dim)"
         >
-          時段（香港時間，0–23 時）
+          {t('analytics.hourRange')}
         </text>
       </svg>
 
@@ -499,10 +502,10 @@ function HourBarChart({
             {hours[hover].hour}:00 – {(hours[hover].hour + 1) % 24}:00
           </strong>
           <div>
-            平均每日 <Money value={hours[hover].avg_per_day_hkd} />
+            {t('analytics.tipAvg', { amount: '' })}<Money value={hours[hover].avg_per_day_hkd} />
           </div>
           <div className="dim">
-            {hours[hover].orders} 張訂單 · 有營運 {hours[hover].active_days} 日 · 該時段日均{' '}
+            {t('analytics.tipOrders', { orders: hours[hover].orders, days: hours[hover].active_days })}
             <Money value={hours[hover].avg_per_active_day_hkd} />
           </div>
         </div>
@@ -529,14 +532,15 @@ function HourHeatStrip({
   hours: AnalyticsHeatmap['hours'];
   scaleMax: number;
 }) {
+  const { t } = useI18n();
   const max = scaleMax > 0 ? scaleMax : 1;
 
   return (
     <div style={{ marginTop: 8 }}>
       <div className="dim t-footnote" style={{ marginBottom: 6 }}>
-        熱力圖 · 平均每日收入
+        {t('analytics.heatmapTitle')}
       </div>
-      <div className="heat" role="img" aria-label="各時段平均每日收入熱力圖">
+      <div className="heat" role="img" aria-label={t('analytics.heatmapAria')}>
         {hours.map((slot) => {
           const value = toNum(slot.avg_per_day_hkd);
           const ratio = value / max;
@@ -547,7 +551,7 @@ function HourHeatStrip({
             <div
               key={slot.hour}
               className="heat__cell"
-              title={`${slot.hour}:00 — 平均每日 ${slot.avg_per_day_hkd} HKD（${slot.orders} 張訂單）`}
+              title={t('analytics.heatCellTitle', { hour: slot.hour, amount: slot.avg_per_day_hkd, orders: slot.orders })}
               style={{
                 background:
                   value > 0
@@ -561,7 +565,7 @@ function HourHeatStrip({
         })}
       </div>
       <div className="heat__scale">
-        <span className="dim t-footnote">低</span>
+        <span className="dim t-footnote">{t('analytics.scaleLow')}</span>
         {[0.15, 0.35, 0.55, 0.75, 1].map((f) => (
           <span
             key={f}
@@ -571,7 +575,7 @@ function HourHeatStrip({
             }}
           />
         ))}
-        <span className="dim t-footnote">高 · {scaleMax} HKD</span>
+        <span className="dim t-footnote">{t('analytics.scaleHigh', { max: scaleMax })}</span>
       </div>
     </div>
   );
