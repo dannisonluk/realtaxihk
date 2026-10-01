@@ -98,7 +98,11 @@ admin-web/web/
     styles.css          design tokens (iOS type scale, 4pt grid, 44px targets)
 ```
 
-Verify it the same way as the legacy build — the verifier is build-agnostic:
+Verify the React build with the browser verifier — it drives the **React build
+only**, so `serve.py` must be started with `--dist` (without the flag it serves
+the legacy bundle, whose login form has no `#login-username` and the run dies on
+a 30s timeout that reads like a console defect). `verify_ui.mjs` refuses to run
+against the legacy bundle and says so:
 
 ```bash
 .venv/Scripts/python.exe admin-web/serve.py --port 8081 --dist

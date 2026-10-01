@@ -181,8 +181,12 @@ Both clients are verified against the **real** API rather than mocks:
 ```bash
 .venv/Scripts/python scripts/gen_mobile_fixtures.py    # capture the real wire format
 .venv/Scripts/python mobile/tool/dart_check.py mobile  # analyzer, over LSP
-NODE_PATH="$HOME/.workbuddy-ai/binaries/node/workspace/node_modules" \
-  node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081
+# `playwright` is not a top-level package here: it is nested under the Playwright
+# CLI. The path is version-specific — substitute the one under
+# `~/.workbuddy-ai/binaries/node/versions/<ver>/node_modules/@playwright/cli/node_modules`.
+NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@playwright/cli/node_modules" \
+  node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 \
+    --username ops-admin --password "$ADMIN_PASSWORD" --totp-secret "$ADMIN_TOTP_SECRET"
 ```
 
 `mobile/tool/verify_contract.dart` decodes all 54 fixtures with the real Dart

@@ -118,7 +118,12 @@ const ROUTES = [
   { hash: '#/', name: 'dashboard', title: '總覽', expect: ['總覽', '待審核司機'] },
   { hash: '#/kyc', name: 'kyc', title: '司機審核', expect: ['司機審核', '審核中'] },
   { hash: '#/refunds', name: 'refunds', title: '退款申請', expect: ['退款申請', '待審批'] },
-  { hash: '#/settlement', name: 'settlement', title: '每週結算', expect: ['每週結算', '執行結算'] },
+  // The weekly settlement page's action is `預覽（不會收費）`, not a "run"
+  // button: previewing produces a token-bound preview, and the actual charge is
+  // raised from a fleet's detail page (covered by the fleet-detail checks
+  // below). A needle of `執行結算` matched nothing and made a correct page look
+  // broken.
+  { hash: '#/settlement', name: 'settlement', title: '每週結算', expect: ['每週結算', '預覽'] },
   { hash: '#/fleets', name: 'fleets', title: '車隊', expect: ['車隊', '新增車隊'] },
   // The analytics page is the one route whose content depends on there being
   // completed orders in range. It must still render its headings and charts
@@ -139,7 +144,7 @@ const ROUTES = [
   // exactly the ones a page cannot reveal by being read.
   { hash: '#/search', name: 'search', title: '搜尋', expect: ['搜尋', '帳戶'] },
   { hash: '#/orders', name: 'orders', title: '訂單', expect: ['訂單', '進行中'] },
-  { hash: '#/disputes', name: 'disputes', title: '爭議', expect: ['爭議', '已逾期'] },
+  { hash: '#/disputes', name: 'disputes', title: '爭議', expect: ['爭議', '只看逾期'] },
   { hash: '#/audit', name: 'audit', title: '審計紀錄', expect: ['審計紀錄', '登入'] },
   { hash: '#/accounts', name: 'accounts', title: '管理員帳戶', expect: ['管理員帳戶', '超級管理員'] },
 ];
@@ -322,6 +327,40 @@ async function loadWithRetry(page, url, needles, { attempts = 3, timeout = 20000
 async function main() {
   mkdirSync(SHOTS, { recursive: true });
 
+  // ------------------------------------------------------------------ preflight
+  //
+  // `serve.py` defaults to the **legacy** bundle; the React build needs `--dist`.
+  // The two consoles have entirely different sign-in screens, so pointing this
+  // verifier at the default gets a phone-OTP form where it expects a username
+  // field, and it dies on a 30s `waitForSelector` timeout that reads like "the
+  // console is broken" — while the console is fine and the URL is simply the
+  // other product.
+  //
+  // Fetched rather than assumed: the served `index.html` names its own bundle,
+  // and the legacy one loads `/js/`, the Vite build `/assets/`. This is a
+  // one-request check against a server that is about to be driven anyway, and
+  // it converts a 30-second mystifying timeout into an instruction.
+  try {
+    const res = await fetch(withSameOrigin(BASE), { redirect: 'follow' });
+    const html = await res.text();
+    const isLegacy = /src=["'][^"']*\/js\//.test(html) && !/\/assets\//.test(html);
+    if (isLegacy) {
+      console.error(
+        `refusing to run: ${BASE} is serving the LEGACY console (admin-web/js).\n` +
+          'This verifier only drives the React build.\n' +
+          `Restart the server with --dist, e.g.\n` +
+          `  python admin-web/serve.py --port 8081 --dist\n` +
+          'then re-run with --base pointing at it.',
+      );
+      process.exit(2);
+    }
+  } catch (cause) {
+    // A failed preflight is not proof the target is wrong — the sandbox proxy
+    // can refuse a bare fetch from node while the browser reaches it fine. Only
+    // an affirmative "this is the legacy bundle" is grounds to abort.
+    progress(`preflight inconclusive (${cause?.message ?? cause}) — continuing`);
+  }
+
   progress('launching chromium');
   const browser = await chromium.launch();
   const context = await browser.newContext({
@@ -434,17 +473,25 @@ async function main() {
       // `append()`, so the inner array was stringified to its anchors' comma-joined
       // `href`s — five links became one long `http://…#/,http://…#/kyc,…` text node.
       // Order matters and is asserted, because the nav is the only way an
-      // operator moves around. `的士證審核` (licence review) and `表現分析`
-      // (analytics) were added after this list was written — the list has to be
-      // maintained, or the check silently stops covering the nav.
+      // operator moves around. This list must mirror `NAV` in `Shell.tsx`
+      // exactly, including order — when it drifts, the check does not fail
+      // loudly, it just stops covering whatever was added. The governance
+      // screens (搜尋/訂單/爭議/審計紀錄/管理員帳戶) were inserted after this
+      // list was first written; before the fix this line reported a stale
+      // count of 7 while the shell rendered 12.
       const NAV_LABELS = [
         '總覽',
+        '搜尋',
+        '訂單',
+        '爭議',
         '司機審核',
         '的士證審核',
         '退款',
         '每週結算',
         '車隊',
         '表現分析',
+        '審計紀錄',
+        '管理員帳戶',
       ];
       const navLabels = (await page.locator('.navlink > span:first-child').allInnerTexts()).map(
         (text) => text.trim(),

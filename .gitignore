@@ -10,6 +10,9 @@ dist/
 build/
 *.log
 .tmp/
+# Ad-hoc scratch used while diagnosing a live server (throwaway scripts, captured
+# logs, credential files). Same class of thing as `.tmp/` — never source.
+scratch_probe/
 .coverage
 htmlcov/
 .workbuddy-ai/

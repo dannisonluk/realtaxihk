@@ -235,7 +235,19 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header(key, value)
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
-        self.wfile.write(payload)
+        try:
+            self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # The client hung up while we were writing the body. That is normal
+            # HTTP, not a server fault: a browser cancels in-flight requests on
+            # navigation, on `AbortController`, and at teardown. Left uncaught it
+            # propagates to `socketserver`, which prints a full traceback to
+            # stderr for every cancelled request — noise that hides real errors
+            # and makes a clean run look broken. `WinError 10053`
+            # (ConnectionAbortedError) is the Windows spelling of the same
+            # condition. Nothing to answer on a socket the peer already closed.
+            if PROXY_TIMING:
+                print(f"  proxy {self.command} {self.path} -> client aborted", flush=True)
 
     def _reject_static(self) -> None:
         """Static assets are read-only: non-GET falls through to the API path."""
