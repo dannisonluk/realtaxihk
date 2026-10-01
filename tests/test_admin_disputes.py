@@ -27,19 +27,7 @@ async def _fetch(client, sql: str, params: dict | None = None) -> list[dict]:
         return [dict(row) for row in result.mappings()]
 
 
-@pytest.fixture()
-def ops(client):
-    return client.admin_headers(role="OPERATIONS")
-
-
-@pytest.fixture()
-def finance(client):
-    return client.admin_headers(role="FINANCE")
-
-
-@pytest.fixture()
-def support(client):
-    return client.admin_headers(role="SUPPORT")
+# `ops` / `finance` / `support` come from conftest — one fixture per role.
 
 
 def _open(client, headers, **overrides) -> dict:
@@ -249,9 +237,7 @@ class TestFiltersAndStats:
     async def test_an_unknown_filter_value_is_a_400_not_an_empty_list(self, client, ops):
         """An empty list reads as "nothing overdue", which is the wrong answer to
         a typo and the one that gets believed."""
-        r = client.get(
-            "/api/v1/admin/disputes", headers=ops, params={"status": "OPENISH"}
-        )
+        r = client.get("/api/v1/admin/disputes", headers=ops, params={"status": "OPENISH"})
         assert r.status_code == 400
         assert r.json()["details"]["reason"] == "INVALID_FILTER"
 
@@ -580,12 +566,9 @@ class TestAccessControl:
         for headers in (support, ops):
             assert client.get("/api/v1/admin/disputes", headers=headers).status_code == 200
             assert (
-                client.get(f"/api/v1/admin/disputes/{d['id']}", headers=headers).status_code
-                == 200
+                client.get(f"/api/v1/admin/disputes/{d['id']}", headers=headers).status_code == 200
             )
-            assert (
-                client.get("/api/v1/admin/disputes/stats", headers=headers).status_code == 200
-            )
+            assert client.get("/api/v1/admin/disputes/stats", headers=headers).status_code == 200
 
     async def test_an_unauthenticated_caller_is_a_401(self, client):
         assert client.get("/api/v1/admin/disputes").status_code == 401

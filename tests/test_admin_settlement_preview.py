@@ -94,9 +94,7 @@ def _mint_token(driver_ref: str, period: str) -> str:
     from app.core.config import get_settings
     from app.services.settlement_confirm import issue_confirm_token
 
-    return issue_confirm_token(
-        period=period, fee_hkd=str(Decimal(get_settings().weekly_fee_hkd))
-    )
+    return issue_confirm_token(period=period, fee_hkd=str(Decimal(get_settings().weekly_fee_hkd)))
 
 
 class TestPreviewWritesNothing:
@@ -247,9 +245,7 @@ class TestRunRequiresAConfirmationToken:
         rows = await _fetch(client, "SELECT balance_hkd FROM driver_deposits")
         assert str(rows[0]["balance_hkd"]) == "300.00"
 
-    async def test_the_fee_the_preview_showed_is_the_fee_the_token_binds(
-        self, client, finance
-    ):
+    async def test_the_fee_the_preview_showed_is_the_fee_the_token_binds(self, client, finance):
         """The preview hands back `confirm_token`; the run accepts it.
 
         This is the pairing the two tests around it assume, asserted directly,

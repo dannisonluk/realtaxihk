@@ -131,9 +131,7 @@ def _run_platform_settlement(client, period: str | None = None):
         ).json()
         url += f"?period={period}&confirm_token={preview['confirm_token']}"
     else:
-        preview = client.post(
-            "/api/v1/admin/settlement/preview", headers=admin, json={}
-        ).json()
+        preview = client.post("/api/v1/admin/settlement/preview", headers=admin, json={}).json()
         url += f"?confirm_token={preview['confirm_token']}"
     return client.post(url, headers=admin)
 

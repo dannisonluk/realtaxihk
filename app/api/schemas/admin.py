@@ -609,3 +609,52 @@ class DisputeResolveOut(BaseModel):
     resolution: str
     moves_money: bool
     resolved_at: str
+
+
+class AdminSearchResultOut(BaseModel):
+    """One subject: a passenger or a driver, in a single shape.
+
+    A **superset** of what either kind has, with the irrelevant fields null
+    rather than absent. A discriminated union would be more precise and worse
+    here: the console renders one list, and `item.plate ?? "—"` is the whole
+    rendering either way. `kind` is what the UI branches on.
+
+    Carries the phone and display name because those are what the caller
+    searched with. Deliberately **no** ID number, no document keys and no
+    ledger: a search result is a pointer, and the detail page is the audited
+    place to look at a person. Otherwise every keystroke becomes a bulk PII read
+    with no audit line.
+    """
+
+    kind: str  # PASSENGER | DRIVER
+    id: str
+    display_name: str | None
+    phone_e164: str
+    username: str | None
+    account_status: str
+    is_active: bool
+    avatar_key: str | None
+    driver_profile_id: str | None
+    plate: str | None
+    driver_status: str | None
+
+
+class AdminSearchOut(BaseModel):
+    """Search results plus the two facts the UI must state.
+
+    `truncated` is not derivable from `len(items) == limit` — a result set that
+    is exactly `limit` long may or may not have more, and "showing 20 of 20"
+    when there are 400 is the difference between narrowing the search and
+    believing you have seen everyone.
+
+    `query_too_short` distinguishes "no matches" from "you did not search",
+    which are otherwise the same empty list. Telling an operator that a
+    two-character name has no match when they typed one character is how a
+    working search gets reported as broken.
+    """
+
+    items: list[AdminSearchResultOut]
+    query: str
+    truncated: bool
+    query_too_short: bool
+    min_query_length: int

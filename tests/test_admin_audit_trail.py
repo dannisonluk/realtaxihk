@@ -330,9 +330,7 @@ class TestAuditRowNeverLeaksSecrets:
         # Log in too, so the login-path rows are covered by the same scan.
         client.admin_headers()
 
-        rows = await _fetch(
-            client, "SELECT event, detail, payload::text AS p FROM admin_audit_log"
-        )
+        rows = await _fetch(client, "SELECT event, detail, payload::text AS p FROM admin_audit_log")
         assert rows
         for row in rows:
             blob = f"{row['detail'] or ''} {row['p'] or ''}"

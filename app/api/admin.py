@@ -30,6 +30,7 @@ from app.api.schemas import (
     AdminOrderPageOut,
     AdminPasswordResetOut,
     AdminRoleChangeOut,
+    AdminSearchOut,
     AuditPageOut,
     DepositAdjustOut,
     DepositGrantOut,
@@ -98,6 +99,19 @@ from app.services.ledger_service import (
     reference_for_grant,
 )
 from app.services.refund_service import RefundService
+from app.services.search_service import (
+    DEFAULT_LIMIT as DEFAULT_SEARCH_LIMIT,
+)
+from app.services.search_service import (
+    MAX_LIMIT as MAX_SEARCH_LIMIT,
+)
+from app.services.search_service import (
+    MIN_QUERY_LENGTH as MIN_SEARCH_LENGTH,
+)
+from app.services.search_service import (
+    SearchService,
+    normalize_query,
+)
 from app.services.settlement_confirm import (
     PREVIEW_TTL_SECONDS,
     issue_confirm_token,
@@ -1809,4 +1823,39 @@ async def resolve_dispute(
         "resolution": dispute.resolution,
         "moves_money": resolution.moves_money,
         "resolved_at": dispute.resolved_at.isoformat() if dispute.resolved_at else "",
+    }
+
+
+# --------------------------------------------------------------------------- #
+# search — the console's front door
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/search", response_model=AdminSearchOut)
+async def search_subjects(
+    q: str = Query(min_length=0, max_length=120),
+    limit: int = Query(default=DEFAULT_SEARCH_LIMIT, ge=1, le=MAX_SEARCH_LIMIT),
+    admin: Principal = Depends(require_admin),
+    session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
+):
+    """Find an account by phone, name, username or plate. Any admin role.
+
+    This is the endpoint support hits while a passenger is on the line, so it is
+    deliberately the widest-guarded thing here: every role may search, because
+    the alternative is that the person answering the phone cannot look up the
+    caller's account.
+
+    **Not audited per call.** Every keystroke that triggers a search writing an
+    audit row would make the trail useless through volume, and would record
+    *that* someone searched without recording what they then looked at. The
+    audited event is opening the subject's detail page, which is where identity
+    is actually revealed.
+    """
+    items, truncated = await SearchService(session_factory).search(q, limit=limit)
+    return {
+        "items": items,
+        "query": normalize_query(q),
+        "truncated": truncated,
+        "query_too_short": len(normalize_query(q)) < MIN_SEARCH_LENGTH,
+        "min_query_length": MIN_SEARCH_LENGTH,
     }
