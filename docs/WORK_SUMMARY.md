@@ -1,10 +1,11 @@
 # realtaxihk — 工作總覽
 
 - **生成日期**：2026-09-30（**2026-10-01 更新**：併入 location check、analytics、console deep-link 修正；測試數由 272 更正為 616。**本輪再更新**：修好 SEV-1 admin session、統一 money 精度入口、套用 `ruff format` 並加 CI gate、補上 TOTP 綁定二維碼的渲染與測試；測試數 616 → **656**（**本輪 667**：新增 5 個 HTTP error-code + 6 個 state-machine 不變式測試）。**最後一輪**：修好深圳灣口岸邊界缺陷（`_HK_MAIN` 后海灣段 2 → 7 頂點），測試數 667 → **687**（新增 18 個口岸邊界參數化案例 + 2 個回歸測試）。**本輪再更新**：`app/models/__init__.py`（886 行）拆成 5 個 bounded-context 模組 + `__init__` re-export，測試維持 **687** 不變 —— 見 §2.9。**本輪再更新**：新增 `app/api/schemas/` 套件並為**全部 69 個 operation** 補上 `response_model=`（此前 69 個中只有 1 個），令 `/openapi.json` 首次描述真實響應形狀；測試維持 **687** 不變 —— 見 §2.10）
-- **HEAD**：`e50af99` 之後 **8 個新 commit**（見 §5）；**0 未推，working tree clean**。
-  之前本行寫「49 個檔案待提交」，實測係 **61 已修改 + 33 未追蹤**，而且一直未 commit
-  —— 呢個就係「好似未做完」嘅實質原因。詳見 §5 嘅更正框。
-- **現時狀態**：`pytest` **687 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean（125 files）** · console `tsc` clean + **29 vitest passed** · `npm run build` 302.8 kB（gzip 97.0 kB）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · API **64 paths / 69 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
+- **HEAD**：`e50af99` 之後 **7 個新 commit**（見 §5）；working tree **clean**，
+  但 **7 個 commit 推唔到**（token 未獲授權此 repo，403 —— 要你出手，見 §5）。
+  之前本行寫「49 個檔案待提交」，實測係 **61 已修改 + 33 未追蹤**，而且一直未
+  commit —— 呢個就係「好似未做完」嘅實質原因。
+- **現時狀態**：`pytest` **687 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean（119 files）** · console `tsc` clean + **29 vitest passed** · `npm run build` 302.8 kB（gzip 97.0 kB）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · API **64 paths / 69 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
 - **✅ 已解決：管理員 session 15 分鐘硬死** —— 已改為 `HttpOnly` refresh cookie（`SameSite=Strict`，path `/api/v1/admin/auth`）＋ CSRF double-submit。詳見 `SECURITY.md`
 
 > **呢份文件嘅用途**：一份可以單獨睇完嘅總覽 —— 做過咩、而家係咩狀態、
@@ -336,24 +337,33 @@ NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@pl
 
 ---
 
-## 5. Push 狀態：✅ 已解決
+## 5. Push 狀態：❌ 仍然推唔到（token 未獲授權此 repo）
 
-**0 commits 未推**（2026-10-01 實測 `git rev-list --count origin/main..HEAD` → `0`）。
+**已 commit，但推唔到。** 2026-10-01 實測：
 
-先前記錄嘅「根阻塞：冇一個對呢個 repo 有權限嘅 token」**已經解除**。
+| 檢查 | 結果 |
+|---|---|
+| `git push`（token 放 URL，`-c credential.helper=`） | **403** `Write access to repository not granted` |
+| 同一 token `GET /user` | `"login": "dannisonluk"` —— **帳號正確** |
+| 同一 token `GET /repos/dannisonluk/realtaxihk` | **404** —— private repo 冇權限就係回 404 |
 
-> **⚠️ 更正（2026-10-01 稍後）**：本節原本寫「working tree clean」，**當時係錯嘅**。
+**先前本節寫「token 阻塞已解除」係錯嘅。** fine-grained PAT 係**逐個 repo
+授權**，所以「token 屬於 dannisonluk」同「token 掂得到 realtaxihk」係兩件
+獨立嘅事。**要你出手**：去 GitHub token 設定加 `dannisonluk/realtaxihk` +
+`Contents: Read and write`。
+
+> **⚠️ 更正（2026-10-01 稍後）：本節原本寫「working tree clean」，當時係錯嘅。**
 > `git rev-list --count origin/main..HEAD` 只證明**已 commit 嘅嘢都推咗**，
 > 完全冇講過工作區嘅狀態。實測 `git status --short` 係 **61 個已修改 +
-> 33 個未追蹤**（61 files changed, 1827 insertions, 1218 deletions）——
-> §2.9（models 拆包）、§2.10（response_model 集中化）、呢一輪嘅 QR 改動、
-> 以及 `docs/` 入面 8 份新文件**全部未 commit**。
+> 33 個未追蹤**（1827 insertions, 1218 deletions）—— §2.9（models 拆包）、
+> §2.10（response_model 集中化）、呢一輪嘅 QR 改動、以及 `docs/` 入面
+> 8 份新文件**全部未 commit**。呢個就係「好似未做完」嘅實質原因。
 >
-> 兩個檢查答緊兩條唔同嘅問題，唔可以互相代替：
+> 兩個檢查答緊兩條唔同嘅問題，**唔可以互相代替**：
 > - `rev-list origin/main..HEAD` → **有冇未推嘅 commit**
 > - `git status --short` → **有冇未 commit 嘅改動**
 >
-> 已經按邏輯分階段補 commit（8 個 commit）。現時 working tree 真係 clean。
+> 已按邏輯分 7 個階段補 commit。現時 working tree **真係 clean**。
 
 ### 5a. 歷史記錄：token 權限診斷（保留，因其為可複用教訓）
 
