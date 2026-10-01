@@ -4,7 +4,9 @@
   個 commit；本文所有數字皆為**實跑得出**，非沿用舊值）。
 - **方法**：實際讀取全部源碼 + 實跑驗證（pytest、alembic、OpenAPI、
   response-model 審計、ruff、Dart contract/tests/analyzer、瀏覽器 UI verifier）。
-- **當前狀態**：本地 HEAD = `7a7d620`；`origin/main..HEAD` = **6 未推**
+- **當前狀態**：本地 HEAD 係 `main` 上最新 commit（**唔寫死 hash** —— 之前寫死
+  過三次，每次之後嘅 commit 都令佢變成錯嘅。要查：`git log --oneline -1`）；
+  `origin/main..HEAD` = **有未推 commit**（查：`git rev-list --count origin/main..HEAD`）
   （push 被 PAT 權限擋住，已由用戶豁免；見 `docs/WORK_SUMMARY.md` §5）。
   working tree clean。
 - **總覽索引**：`docs/WORK_SUMMARY.md`（每次改動後同步）。

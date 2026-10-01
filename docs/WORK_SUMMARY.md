@@ -1,7 +1,9 @@
 # realtaxihk — 工作總覽
 
 - **生成日期**：2026-09-30（**2026-10-01 更新**：併入 location check、analytics、console deep-link 修正；測試數由 272 更正為 616。**本輪再更新**：修好 SEV-1 admin session、統一 money 精度入口、套用 `ruff format` 並加 CI gate、補上 TOTP 綁定二維碼的渲染與測試；測試數 616 → **656**（**本輪 667**：新增 5 個 HTTP error-code + 6 個 state-machine 不變式測試）。**最後一輪**：修好深圳灣口岸邊界缺陷（`_HK_MAIN` 后海灣段 2 → 7 頂點），測試數 667 → **687**（新增 18 個口岸邊界參數化案例 + 2 個回歸測試）。**本輪再更新**：`app/models/__init__.py`（886 行）拆成 5 個 bounded-context 模組 + `__init__` re-export，測試維持 **687** 不變 —— 見 §2.9。**本輪再更新**：新增 `app/api/schemas/` 套件並為**全部 69 個 operation** 補上 `response_model=`（此前 69 個中只有 1 個），令 `/openapi.json` 首次描述真實響應形狀；測試維持 **687** 不變 —— 見 §2.10。**最新一輪（§2.11）**：RBAC 四級角色 + 審計覆蓋金錢／狀態改動、帳戶管理、訂單監控、結算預覽／確認 token／CSV 匯出、爭議實體、主體搜尋、頭像上傳，以及六個對應的後台畫面 —— 測試 **687 → 872**（+185），console **29 → 31 vitest**（+2），API **64/69 → 81 paths / 88 operations**）
-- **HEAD**：`7a7d620`；`origin/main..HEAD` = **6 個未推 commit**（見 §5）；
+- **HEAD**：`main` 上最新 commit —— **刻意唔寫死 hash**（寫死過三次，每次之後
+  嘅 commit 都令佢變錯；要查：`git log --oneline -1`）；
+  `origin/main..HEAD` = **有未推 commit**（查：`git rev-list --count origin/main..HEAD`，見 §5）；
   working tree **clean**。
 - **現時狀態**：`pytest` **872 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean（131 files）** · console `tsc` clean + **31 vitest passed** · `npm run build` 344.67 kB（gzip 109.14 kB）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · API **81 paths / 88 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
 - **✅ 已解決：管理員 session 15 分鐘硬死** —— 已改為 `HttpOnly` refresh cookie（`SameSite=Strict`，path `/api/v1/admin/auth`）＋ CSRF double-submit。詳見 `SECURITY.md`
@@ -448,7 +450,8 @@ NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@pl
 `Contents: Read and write`。
 
 > **✅ 2026-10-01 用戶指示：「你不需要 push，只需要 commit」。** 最新一輪的
-> 所有工作**只 commit、不 push**。現時 `origin/main..HEAD` = **6 個未推**；
+> 所有工作**只 commit、不 push**。`origin/main..HEAD` 有未推 commit（查：
+> `git rev-list --count origin/main..HEAD`）；
 > 之前累積的 commit 亦一併未推。要真正同步，仍需上面的 token 授權。
 
 > **⚠️ 更正（2026-10-01 稍後）：本節原本寫「working tree clean」，當時係錯嘅。**
@@ -573,9 +576,10 @@ Repository access 加 `dannisonluk/realtaxihk` → Permissions 給
 
 > **✅ 已修正**：`docs/PROJECT_UNDERSTANDING.md` 曾停在 `4333f2a`（寫 HEAD =
 > `446b7ee`、221 tests、54 Dart files、38 endpoints）。**2026-10-01 已全面重寫**，
-> 現值：`1df6856`、**872 tests**、**81 paths / 88 operations**、**31 vitest**、
+> 現值：**872 tests**、**81 paths / 88 operations**、**31 vitest**、
 > **131 ruff files**，並新增 RBAC 設計、`/auth/me` 雙形狀、`StarletteHTTPException`
-> cookie 陷阱等章節。
+> cookie 陷阱等章節。（**HEAD 刻意唔寫死** —— 之前寫死過三次，每次之後嘅 commit
+> 都令佢變錯。）
 
 > 計 route 數要讀 OpenAPI（`GET /openapi.json` 數 `paths` / operations），
 > **唔好 grep route decorator** —— 一個 `@router.get` 加 `@router.post`
@@ -622,7 +626,7 @@ Repository access 加 `dannisonluk/realtaxihk` → Permissions 給
 ✅ TOTP 綁定二維碼：本地 SVG 渲染，經獨立解碼器驗證解出正確 otpauth URI（明暗兩主題）
 ✅ challenge token 結構隔離、scope 提權不可行（實測）
 ✅ 秘密審計：.env 從未進 git，無硬編碼金鑰
-❌ push 未做 — 用戶指示「只需 commit」；現時 6 個未推（token 仍未獲授權此 repo）
+❌ push 未做 — 用戶指示「只需 commit」；origin/main 落後本地多個 commit
 
 ✅ `app/models` 拆包：886 行 → 5 個 bounded-context 模組 + `__init__` re-export
    零呼叫點改動；DDL / relationship / alembic drift 逐項比對全等
