@@ -46,12 +46,23 @@ const NOT_FOUND = '找不到頁面';
 const DASHBOARD = '總覽';
 const LOGIN = '管理員登入';
 
-/** A signed-in admin, as `GET /auth/me` returns it. */
+/**
+ * A signed-in admin, as `GET /auth/me` returns it.
+ *
+ * Two fields look like roles and only one is. `role` is the **principal kind**
+ * and is always the literal `'ADMIN'` on an admin token; `admin_role` is the
+ * **RBAC rank**. A fixture carrying `role: 'ADMIN'` and no `admin_role` is what
+ * made this file assert on a console with zero nav items — `'ADMIN'` is not a
+ * key in `ROLE_RANK`, so `hasRole` answered `false` for every rank and the
+ * OPERATIONS-gated `/analytics` deep link rendered 沒有存取權限. The server
+ * sends both; the fixture now does too.
+ */
 const ADMIN_ME = {
   id: '11111111-2222-3333-4444-555555555555',
   username: 'operator',
   email_masked: 'o***r@example.com',
   role: 'ADMIN',
+  admin_role: 'SUPER_ADMIN',
 };
 
 /**
@@ -90,6 +101,12 @@ function stubTransport(routes: Record<string, unknown>, delayMs = 0) {
 
 /** Seed a session, as a completed sign-in would have.
  *
+ * The stored `user` is what `POST /admin/auth/login` puts in the body's `admin`
+ * block — `_admin_out` in `app/api/admin_auth.py` — **not** the `/auth/me`
+ * shape. It carries `admin_role` and has no `role` at all, which is exactly why
+ * the console must read `admin_role`: a `role`-only read finds nothing here.
+ * The `/auth/me` probe then overwrites this with the fuller identity.
+ *
  * No refresh token: the real one is in an `HttpOnly` cookie the server sets,
  * which this stub models by simply not being in storage. `session` deliberately
  * has no field for it — a copy here would be the very exposure the cookie
@@ -100,7 +117,14 @@ function seedSession() {
     'realtaxi.admin.session',
     JSON.stringify({
       accessToken: 'stub-access-token',
-      user: { id: ADMIN_ME.id, phone_masked: '', role: 'ADMIN' },
+      user: {
+        id: ADMIN_ME.id,
+        username: 'operator',
+        email: 'operator@example.com',
+        full_name: 'Operator',
+        totp_enrolled: true,
+        admin_role: 'SUPER_ADMIN',
+      },
     }),
   );
 }
@@ -263,5 +287,70 @@ describe('the boot gate', () => {
 
     expect(heading()).not.toBe(NOT_FOUND);
     expect(heading()).toBe(LOGIN);
+  });
+
+  /**
+   * The rank is read from `admin_role`, not from `role`.
+   *
+   * This is the bug the fixture above used to hide. `role` on an admin token is
+   * the literal `'ADMIN'` — the principal *kind* the boot gate checks — and it
+   * is not a key in `ROLE_RANK`. A console that ranks on `role` therefore
+   * compares every operator against nothing, answers `hasRole(...) === false`
+   * for every rank, renders **no** nav items, and turns every gated page into
+   * 沒有存取權限 — on a valid login against a correct server.
+   *
+   * The assertion is deliberately the *pair*: `role` alone is a discriminant, so
+   * a SUPPORT operator sees the SUPPORT pages while `#/accounts` stays out of
+   * the nav (it is SUPER_ADMIN-gated).
+   */
+  it('ranks the operator from admin_role, not from the role discriminant', async () => {
+    window.location.hash = '#/';
+    seedSession();
+    stubTransport(
+      { '/auth/me': { ...ADMIN_ME, role: 'ADMIN', admin_role: 'SUPPORT' } },
+      10,
+    );
+
+    await renderAndSettle(root);
+
+    expect(heading()).toBe(DASHBOARD);
+    const links = [...container.querySelectorAll('a.navlink')].map((a) =>
+      a.getAttribute('href'),
+    );
+    // The SUPPORT pages are visible...
+    expect(links).toContain('#/search');
+    expect(links).toContain('#/orders');
+    expect(links).toContain('#/audit');
+    // ...and the higher-ranked ones are not. `/accounts` is SUPER_ADMIN only.
+    expect(links).not.toContain('#/accounts');
+    expect(links).not.toContain('#/settlement');
+  });
+
+  /**
+   * An unrecognised rank must not open the console.
+   *
+   * `RequireRole` is documented as an *affordance* guard — the server re-reads
+   * the live row, so a forged role buys nothing. What it must still do is fail
+   * in the safe direction: an unknown value ranks below `SUPPORT`, which
+   * renders the notice page rather than a console whose every request 403s.
+   *
+   * `/analytics` is OPERATIONS-gated, so a SUPPORT session reaching it directly
+   * is the exact case this covers.
+   */
+  it('shows the access notice, not the page, when the rank is too low', async () => {
+    window.location.hash = '#/analytics';
+    seedSession();
+    stubTransport(
+      { '/auth/me': { ...ADMIN_ME, role: 'ADMIN', admin_role: 'SUPPORT' } },
+      10,
+    );
+
+    await renderAndSettle(root);
+
+    expect(heading()).not.toBe(NOT_FOUND);
+    expect(heading()).toBe('沒有存取權限');
+    // The hash is left alone: the operator can still navigate back, and a
+    // redirect here would silently rewrite a link they may have been sent.
+    expect(window.location.hash).toBe('#/analytics');
   });
 });

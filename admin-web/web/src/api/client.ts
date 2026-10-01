@@ -182,6 +182,69 @@ export class ApiClient {
     return this.send<T>('DELETE', path, options);
   }
 
+  /**
+   * A binary response — the settlement CSV — with the same auth path as JSON.
+   *
+   * Deliberately a separate method rather than a flag on `send`: `send` parses
+   * every body as JSON and *tolerates* a parse failure by returning `null`,
+   * which for a CSV would silently hand the caller an empty spreadsheet with a
+   * 200 status and no error anywhere. There is no useful thing to do with a
+   * failure here except throw.
+   *
+   * It still carries the access token and `credentials: 'include'`, so the
+   * refresh-on-401 path is the same one every other call takes — the alternative
+   * (building a URL with a token in the query string) would put a live
+   * credential into browser history and any intermediary's access log.
+   *
+   * Not retried on transport failure: this is a GET, but a half-downloaded CSV
+   * that the caller believes is complete is worse than an error.
+   */
+  async fetchBlob(path: string): Promise<Blob> {
+    const headers: Record<string, string> = { Accept: 'text/csv' };
+    const token = session.accessToken;
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path}`, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+        mode: 'cors',
+      });
+    } catch (cause) {
+      throw new ApiError({
+        code: CODE.network,
+        message: '無法連接伺服器。請檢查網絡。',
+        status: 0,
+        details: { cause: String(cause) },
+      });
+    }
+
+    if (response.status === 401) {
+      const refreshed = await this.refreshOnce();
+      if (refreshed) return this.fetchBlob(path);
+      this.onSessionExpired();
+    }
+
+    if (!response.ok) {
+      // The error body is JSON even though the success body is not, so the
+      // envelope still parses and the caller gets the server's own reason
+      // (`VERIFICATION_REQUIRED`, `ADMIN_ROLE_INSUFFICIENT`, ...) rather than a
+      // status code.
+      const text = await response.text();
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = null;
+      }
+      throw toApiError(response.status, parsed, parseRetryAfter(response.headers.get('retry-after')));
+    }
+
+    return response.blob();
+  }
+
   private async send<T>(
     method: string,
     path: string,

@@ -24,7 +24,7 @@ import { ApiClient } from '../api/client';
 import { endpoints } from '../api/endpoints';
 import { session } from '../api/session';
 import { AppProvider } from './AppContext';
-import { Shell } from './Shell';
+import { RequireRole, Shell } from './Shell';
 import { LoginPage } from '../pages/LoginPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { KycPage } from '../pages/KycPage';
@@ -35,6 +35,12 @@ import { SettlementPage } from '../pages/SettlementPage';
 import { FleetsPage } from '../pages/FleetsPage';
 import { FleetDetailPage } from '../pages/FleetDetailPage';
 import { DriverDetailPage } from '../pages/DriverDetailPage';
+import { OrdersPage } from '../pages/OrdersPage';
+import { OrderDetailPage } from '../pages/OrderDetailPage';
+import { DisputesPage } from '../pages/DisputesPage';
+import { AuditPage } from '../pages/AuditPage';
+import { AccountsPage } from '../pages/AccountsPage';
+import { SearchPage } from '../pages/SearchPage';
 
 /**
  * The route table.
@@ -55,9 +61,15 @@ import { DriverDetailPage } from '../pages/DriverDetailPage';
  * router inside the component, only once the hash has already been corrected,
  * means it reads the right location on the one and only occasion it is created.
  *
- * The two detail routes read their own param via `useParams`, so there is no
+ * The detail routes read their own param via `useParams`, so there is no
  * wrapper here to narrow it — the page's own default (`?? ''`) is the guard, and
  * an empty id produces the server's own 404 rather than a silent blank page.
+ *
+ * **Role gating is on the route, not in the sidebar.** Hiding a nav entry stops
+ * nobody: the hash is editable and a bookmark is a URL. `RequireRole` renders an
+ * explanation page, and — as its own docstring says — it is an affordance guard,
+ * not a security boundary. The server answers 403 to a forged role, and these
+ * pages surface that refusal rather than swallowing it.
  */
 function buildRouter() {
   return createHashRouter([
@@ -66,14 +78,87 @@ function buildRouter() {
       element: <Shell />,
       children: [
         { index: true, element: <DashboardPage /> },
-        { path: 'drivers/:driverId', element: <DriverDetailPage /> },
-        { path: 'kyc', element: <KycPage /> },
-        { path: 'licences', element: <LicencePage /> },
-        { path: 'analytics', element: <AnalyticsPage /> },
-        { path: 'refunds', element: <RefundsPage /> },
-        { path: 'settlement', element: <SettlementPage /> },
-        { path: 'fleets', element: <FleetsPage /> },
-        { path: 'fleets/:fleetId', element: <FleetDetailPage /> },
+        // Any role: this is where support starts, and it must never be the
+        // thing that is gated.
+        { path: 'search', element: <SearchPage /> },
+        { path: 'orders', element: <OrdersPage /> },
+        { path: 'orders/:orderId', element: <OrderDetailPage /> },
+        { path: 'disputes', element: <DisputesPage /> },
+        { path: 'disputes/:disputeId', element: <DisputesPage /> },
+        {
+          path: 'drivers/:driverId',
+          element: (
+            <RequireRole role="OPERATIONS">
+              <DriverDetailPage />
+            </RequireRole>
+          ),
+        },
+        {
+          path: 'kyc',
+          element: (
+            <RequireRole role="OPERATIONS">
+              <KycPage />
+            </RequireRole>
+          ),
+        },
+        {
+          path: 'licences',
+          element: (
+            <RequireRole role="OPERATIONS">
+              <LicencePage />
+            </RequireRole>
+          ),
+        },
+        {
+          path: 'analytics',
+          element: (
+            <RequireRole role="OPERATIONS">
+              <AnalyticsPage />
+            </RequireRole>
+          ),
+        },
+        {
+          path: 'refunds',
+          element: (
+            <RequireRole role="FINANCE">
+              <RefundsPage />
+            </RequireRole>
+          ),
+        },
+        {
+          path: 'settlement',
+          element: (
+            <RequireRole role="FINANCE">
+              <SettlementPage />
+            </RequireRole>
+          ),
+        },
+        {
+          path: 'fleets',
+          element: (
+            <RequireRole role="OPERATIONS">
+              <FleetsPage />
+            </RequireRole>
+          ),
+        },
+        {
+          path: 'fleets/:fleetId',
+          element: (
+            <RequireRole role="OPERATIONS">
+              <FleetDetailPage />
+            </RequireRole>
+          ),
+        },
+        // Every role, deliberately — see the server route's docstring.
+        { path: 'audit', element: <AuditPage /> },
+        {
+          path: 'accounts',
+          element: (
+            <RequireRole role="SUPER_ADMIN">
+              <AccountsPage />
+            </RequireRole>
+          ),
+        },
         { path: '*', element: <NotFoundPage /> },
       ],
     },

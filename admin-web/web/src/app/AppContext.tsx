@@ -20,6 +20,8 @@ import {
 import { ApiClient } from '../api/client';
 import { endpoints } from '../api/endpoints';
 import { session, type AdminUser } from '../api/session';
+import type { AdminRole } from '../api/types';
+import { roleAtLeast } from '../api/types';
 
 export interface Toast {
   id: number;
@@ -30,6 +32,19 @@ export interface Toast {
 interface AppState {
   client: ApiClient;
   user: AdminUser | null;
+  /**
+   * The signed-in operator's role, or `null` before `/auth/me` has answered.
+   *
+   * A **display** fact, not a security boundary. `require_role` re-reads the
+   * live `admin_accounts` row on every request, so a role forged in
+   * `sessionStorage` produces 403s rather than access. What this value does is
+   * decide which pages are worth rendering: offering an operator a button that
+   * can only 403 is the failure mode being avoided, and it is a failure of
+   * *affordance*, not of authority.
+   */
+  role: AdminRole | null;
+  /** Whether the signed-in operator's role is at least `minimum`. */
+  hasRole: (minimum: AdminRole) => boolean;
   toasts: Toast[];
   notify: (message: string, tone?: Toast['tone']) => void;
   dismissToast: (id: number) => void;
@@ -130,10 +145,43 @@ export function AppProvider({
     setUser(session.user);
   }, []);
 
+  /**
+   * The RBAC rank, read off `admin_role` on the signed-in identity.
+   *
+   * **`admin_role`, never `role`.** The two fields on the same token answer
+   * different questions and only one of them is a rank:
+   *
+   *   - `role` is the **principal kind** — always the literal `'ADMIN'` for an
+   *     admin token. It is what the boot gate checks ("is this an admin session
+   *     at all"). It is **not** a key in `ROLE_RANK`, so reading it here ranks
+   *     every operator below `SUPPORT`, the nav filters to nothing, and every
+   *     gated page renders 沒有存取權限 — on a perfectly valid login.
+   *   - `admin_role` is the **rank** — `SUPPORT` … `SUPER_ADMIN`. This is the
+   *     one the nav and `RequireRole` compare against.
+   *
+   * Both `POST /admin/auth/login` (`_admin_out`) and `GET /auth/me`
+   * (`AdminMeOut`) send `admin_role`; only the latter also sends `role`. The
+   * login response is what `session.save()` stores, so a `role`-only read would
+   * also have been reading a field the login response does not contain at all.
+   *
+   * An unrecognised or absent value yields `null` rather than a guess, and
+   * `hasRole` then answers `false` for everything — the default-deny direction,
+   * matching the server's rank comparison. The server re-reads the live row on
+   * every request regardless, so this is an affordance decision only.
+   */
+  const role = (user?.admin_role ?? null) as AdminRole | null;
+
+  const hasRole = useCallback(
+    (minimum: AdminRole) => roleAtLeast(role, minimum),
+    [role],
+  );
+
   const value = useMemo<AppState>(
     () => ({
       client,
       user,
+      role,
+      hasRole,
       toasts,
       notify,
       dismissToast,
@@ -143,7 +191,7 @@ export function AppProvider({
       signOut,
       onSignedOut,
     }),
-    [client, user, toasts, notify, dismissToast, badges, setBadges, refreshBadges, signOut, onSignedOut],
+    [client, user, role, hasRole, toasts, notify, dismissToast, badges, setBadges, refreshBadges, signOut, onSignedOut],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

@@ -9,15 +9,27 @@
 import type { ApiClient } from './client';
 import type {
   AdjustResult,
+  AdminAccountCreated,
+  AdminAccountPage,
   AdminDriverRow,
   AdminIdentity,
   AdminLoginResult,
+  AdminOrderDetail,
+  AdminOrderRow,
+  AdminPasswordReset,
+  AdminRoleChange,
   AdminSession,
   AnalyticsGranularity,
   AnalyticsHeatmap,
   AnalyticsSortBy,
   AnalyticsSummary,
+  AuditRow,
   AuthTokens,
+  DisputeDetail,
+  DisputeMessage,
+  DisputeResolveResult,
+  DisputeRow,
+  DisputeStats,
   DriverProfileDetail,
   DriverStatus,
   FleetDetail,
@@ -33,6 +45,8 @@ import type {
   Paged,
   RefundRow,
   RefundStatus,
+  SearchResponse,
+  SettlementPreview,
   SettlementRunResult,
   SortDir,
 } from './types';
@@ -256,11 +270,292 @@ export const endpoints = {
   },
 
   settlement: {
-    /** Idempotent per ISO week: a re-run charges nobody twice. */
-    runWeekly: (client: ApiClient, { period }: { period?: string } = {}) =>
-      client.post<SettlementRunResult>('/api/v1/admin/settlement/weekly/run', {
-        query: { period },
+    /**
+     * Dry-run the weekly run. **Writes nothing**, charges nobody.
+     *
+     * Returns a `confirm_token` and that is the whole point: the run charges
+     * every eligible driver at once, and it is idempotent per ISO week — so the
+     * first accidental press is not something you get to undo, because the money
+     * is gone and the reference is spent. Holding a token the preview issued is
+     * what turns "look before you leap" from a runbook line into a constraint.
+     *
+     * FINANCE, same as the run: a preview one role can obtain and another can
+     * act on is a workflow nobody can complete.
+     */
+    previewWeekly: (client: ApiClient, { period }: { period?: string } = {}) =>
+      client.post<SettlementPreview>('/api/v1/admin/settlement/preview', {
+        body: { period: period ?? null },
       }),
+    /**
+     * Run the weekly service-fee settlement by hand. Idempotent per ISO week.
+     *
+     * `confirmToken` comes from `previewWeekly` and is bound to that preview's
+     * **period and fee**, not to the actor — two finance admins working the same
+     * incident should not have to pass a token back and forth, and both actions
+     * are audited with their own actor anyway.
+     *
+     * The server deliberately does **not** require one when the period is
+     * already fully settled: that run is a no-op by construction, and demanding
+     * a preview to prove nothing will happen would train operators to click
+     * through the gate rather than read it.
+     */
+    runWeekly: (client: ApiClient, { period, confirmToken }: {
+      period?: string;
+      confirmToken?: string;
+    } = {}) =>
+      client.post<SettlementRunResult>('/api/v1/admin/settlement/weekly/run', {
+        query: { period, confirm_token: confirmToken },
+      }),
+    /**
+     * Every ledger entry for one ISO week, as CSV, for the finance handover.
+     *
+     * FINANCE only, and it returns a `Blob` rather than JSON — the consumer is a
+     * spreadsheet, so `client.get` (which parses JSON) is the wrong tool. A
+     * `credentials: 'include'` fetch keeps the auth path identical to every
+     * other call rather than hand-building a URL with a token in it.
+     */
+    exportCsv: async (client: ApiClient, period: string): Promise<Blob> => {
+      const response = await client.fetchBlob(
+        `/api/v1/admin/settlement/export.csv?period=${encodeURIComponent(period)}`,
+      );
+      return response;
+    },
+  },
+
+  /**
+   * Order monitoring. Read-only, and readable by every role.
+   *
+   * The console had no order view at all before this: when a passenger called to
+   * say their driver never arrived, there was no way to answer "what state is
+   * that trip in, who is the driver, and how long ago did they accept". Every
+   * field here already existed on `orders` — nothing new is measured.
+   */
+  orders: {
+    list: (client: ApiClient, filters: {
+      status?: string;
+      driverId?: string;
+      passengerId?: string;
+      since?: string;
+      until?: string;
+      openOnly?: boolean;
+      limit?: number;
+      offset?: number;
+    } = {}) =>
+      client.get<Paged<AdminOrderRow>>('/api/v1/admin/orders', {
+        status: filters.status,
+        driver_id: filters.driverId,
+        passenger_id: filters.passengerId,
+        since: filters.since,
+        until: filters.until,
+        open_only: filters.openOnly,
+        limit: filters.limit ?? 50,
+        offset: filters.offset ?? 0,
+      }),
+    /**
+     * One trip in full, with its frozen fare snapshot and server-computed
+     * timeline. `fare` is `orders.fare_json`, **not** a recomputation — the
+     * disputed amount is always the one the passenger was actually quoted.
+     */
+    detail: (client: ApiClient, orderId: string) =>
+      client.get<AdminOrderDetail>(`/api/v1/admin/orders/${encodeURIComponent(orderId)}`),
+  },
+
+  /**
+   * The audit trail. Readable by **every** role, including SUPPORT.
+   *
+   * Deliberate: the log records what was done by whom, and restricting its
+   * reading would mean the people least able to change anything are also the
+   * least able to notice that something was changed. It holds no secrets — no
+   * password, no TOTP secret, no token — only decisions and their actors.
+   */
+  audit: {
+    list: (client: ApiClient, filters: {
+      event?: string;
+      adminId?: string;
+      since?: string;
+      until?: string;
+      limit?: number;
+      offset?: number;
+    } = {}) =>
+      client.get<Paged<AuditRow>>('/api/v1/admin/audit', {
+        event: filters.event,
+        admin_id: filters.adminId,
+        // `since`/`until` are half-open on the server (`>= since`, `< until`),
+        // matching the analytics convention, so paging day by day by hand does
+        // not show the boundary row twice.
+        since: filters.since,
+        until: filters.until,
+        limit: filters.limit ?? 50,
+        offset: filters.offset ?? 0,
+      }),
+  },
+
+  /**
+   * Admin account administration. **SUPER_ADMIN only, all four routes.**
+   *
+   * These decide who may do everything else, so the RBAC hierarchy has to hold
+   * here without help. The server applies `require_role` at the route *and*
+   * re-checks in `AdminAccountService`, because an OPERATIONS account promoting
+   * itself is the single move that makes every other guard meaningless.
+   */
+  accounts: {
+    /** The roster, plus the count the demote button depends on. */
+    list: (client: ApiClient) => client.get<AdminAccountPage>('/api/v1/admin/accounts'),
+    /**
+     * Create an account. It **cannot log in until it enrols TOTP** — the
+     * response carries `totp_enrolment_pending: true` so that is stated rather
+     * than left to be inferred from an absent field.
+     */
+    create: (client: ApiClient, payload: {
+      username: string;
+      email: string;
+      password: string;
+      full_name?: string | null;
+      admin_role?: string;
+    }) => client.post<AdminAccountCreated>('/api/v1/admin/accounts', { body: payload }),
+    /**
+     * Change a role. A `PATCH` on `/role` rather than a general
+     * `PATCH /accounts/{id}` on purpose: a single update endpoint that accepts
+     * `is_active` alongside `admin_role` is one where a future field gets added
+     * without anyone re-reading which constraints applied to the neighbours.
+     */
+    changeRole: (client: ApiClient, accountId: string, adminRole: string) =>
+      client.patch<AdminRoleChange>(
+        `/api/v1/admin/accounts/${encodeURIComponent(accountId)}/role`,
+        { body: { admin_role: adminRole } },
+      ),
+    /**
+     * Set another admin's password.
+     *
+     * Changing **your own** password is a different operation with a different
+     * precondition — it must require the current password, or anyone who finds
+     * an unlocked session can lock the owner out. This route exists for the "my
+     * only admin is locked out" case, which is why it does not ask for the old
+     * one and why it clears the lockout counters.
+     */
+    resetPassword: (client: ApiClient, accountId: string, newPassword: string) =>
+      client.post<AdminPasswordReset>(
+        `/api/v1/admin/accounts/${encodeURIComponent(accountId)}/password/reset`,
+        { body: { new_password: newPassword } },
+      ),
+  },
+
+  /**
+   * The dispute queue.
+   *
+   * **Sorted by SLA ascending, not by recency.** An incident queue sorted
+   * newest-first answers whatever arrived while somebody was watching and buries
+   * the case about to breach.
+   */
+  disputes: {
+    list: (client: ApiClient, filters: {
+      status?: string;
+      category?: string;
+      severity?: string;
+      assignedAdminId?: string;
+      unassignedOnly?: boolean;
+      openOnly?: boolean;
+      overdueOnly?: boolean;
+      orderId?: string;
+      limit?: number;
+      offset?: number;
+    } = {}) =>
+      client.get<Paged<DisputeRow>>('/api/v1/admin/disputes', {
+        status: filters.status,
+        category: filters.category,
+        severity: filters.severity,
+        assigned_admin_id: filters.assignedAdminId,
+        unassigned_only: filters.unassignedOnly,
+        // `open_only` defaults to true server-side: the console's default view
+        // is the work remaining, not the archive.
+        open_only: filters.openOnly,
+        overdue_only: filters.overdueOnly,
+        order_id: filters.orderId,
+        limit: filters.limit ?? 50,
+        offset: filters.offset ?? 0,
+      }),
+    /** Header counts, computed server-side against one clock. */
+    stats: (client: ApiClient) => client.get<DisputeStats>('/api/v1/admin/disputes/stats'),
+    detail: (client: ApiClient, disputeId: string) =>
+      client.get<DisputeDetail>(`/api/v1/admin/disputes/${encodeURIComponent(disputeId)}`),
+    /**
+     * Open a case by hand. OPERATIONS or above.
+     *
+     * A manual case still gets an SLA from its **severity**, the same as an
+     * automatic one. An operator-set deadline is how a manually filed safety
+     * complaint ends up with less urgency than a machine-filed one.
+     */
+    create: (client: ApiClient, payload: {
+      category: string;
+      summary: string;
+      order_id?: string | null;
+      severity?: string;
+      against_kind?: string | null;
+      against_id?: string | null;
+    }) => client.post<DisputeDetail>('/api/v1/admin/disputes', { body: payload }),
+    /** Claim a case, moving `OPEN` to `INVESTIGATING`. */
+    assign: (client: ApiClient, disputeId: string) =>
+      client.post<DisputeDetail>(`/api/v1/admin/disputes/${encodeURIComponent(disputeId)}/assign`),
+    /**
+     * Add a turn to the thread. Any role may reply — SUPPORT's whole function is
+     * to be the first responder, and gating that would put the least experienced
+     * team member in front of a customer with no way to answer them.
+     *
+     * `isInternal` marks a staff note. The server records the flag on the
+     * message and in the audit payload, because "who wrote this, and did they
+     * mean the customer to see it" is the question asked when a note is quoted
+     * back at us by mistake.
+     */
+    addMessage: (client: ApiClient, disputeId: string, body: string, isInternal = false) =>
+      client.post<DisputeMessage>(
+        `/api/v1/admin/disputes/${encodeURIComponent(disputeId)}/messages`,
+        { body: { body, is_internal: isInternal } },
+      ),
+    /** Move between non-terminal states. `RESOLVED` is refused here — resolution carries a note. */
+    setStatus: (client: ApiClient, disputeId: string, status: string) =>
+      client.post<DisputeDetail>(
+        `/api/v1/admin/disputes/${encodeURIComponent(disputeId)}/status`,
+        { body: { status } },
+      ),
+    /**
+     * Decide the money question.
+     *
+     * **The 403 is per-request, not on the route.** Judging conduct is
+     * OPERATIONS' job and moving money is FINANCE's, so the endpoint opens for
+     * both and then narrows: a resolution whose `moves_money` is true
+     * additionally requires FINANCE. The server reads the *live* role, so a
+     * demotion takes effect on the next request rather than at token expiry.
+     *
+     * `note` is required even for `NONE` — "decided: nobody is charged" and "not
+     * decided yet" must be distinguishable a month later.
+     */
+    resolve: (client: ApiClient, disputeId: string, payload: {
+      resolution: string;
+      note: string;
+      close?: boolean;
+    }) =>
+      client.post<DisputeResolveResult>(
+        `/api/v1/admin/disputes/${encodeURIComponent(disputeId)}/resolve`,
+        { body: payload },
+      ),
+  },
+
+  /**
+   * Unified subject search — the console's front door.
+   *
+   * This is the endpoint support hits while a passenger is on the line, so it is
+   * deliberately the widest-guarded thing in the console: every role may search,
+   * because the alternative is that the person answering the phone cannot look
+   * up the caller's account.
+   *
+   * **Not audited per call.** Every keystroke writing an audit row would make
+   * the trail useless through volume and would record *that* someone searched
+   * without recording what they then looked at. The audited event is opening the
+   * subject's detail page, which is where identity is actually revealed.
+   */
+  search: {
+    query: (client: ApiClient, q: string, limit?: number) =>
+      client.get<SearchResponse>('/api/v1/admin/search', { q, limit }),
   },
 
   fleets: {

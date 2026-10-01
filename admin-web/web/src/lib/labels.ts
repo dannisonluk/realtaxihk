@@ -177,6 +177,177 @@ export function shortId(id: string | null | undefined): string {
 }
 
 /**
+ * Order lifecycle states.
+ *
+ * The tones follow the same rule as everywhere else in this file: a *problem*
+ * is red and a *healthy* state is green. So `CANCELLED` and `NO_DRIVER` are
+ * `danger` — somebody has to look at both — while `COMPLETED` is neutral rather
+ * than green, because a finished trip is not something anyone acts on. Green is
+ * reserved for the states that mean "still working as intended".
+ */
+export const ORDER_STATUS_LABEL: Record<string, string> = {
+  CREATED: '已建立',
+  BROADCASTING: '廣播中',
+  ACCEPTED: '已接單',
+  DRIVER_ARRIVED: '司機到達',
+  IN_TRIP: '行程中',
+  COMPLETED: '已完成',
+  CANCELLED: '已取消',
+  NO_DRIVER: '無人接單',
+};
+
+const ORDER_STATUS_TONE: Record<string, ChipTone> = {
+  CREATED: 'neutral',
+  BROADCASTING: 'brand',
+  ACCEPTED: 'ok',
+  DRIVER_ARRIVED: 'ok',
+  IN_TRIP: 'ok',
+  COMPLETED: 'neutral',
+  CANCELLED: 'danger',
+  NO_DRIVER: 'danger',
+};
+
+export function orderStatusLabel(status: string): string {
+  return ORDER_STATUS_LABEL[status] ?? status;
+}
+
+export function orderStatusTone(status: string): ChipTone {
+  return ORDER_STATUS_TONE[status] ?? 'neutral';
+}
+
+/**
+ * Dispute severity.
+ *
+ * `SAFETY_CRITICAL` is `danger`, and so is `HIGH` — the distinction between
+ * them is the *deadline* (1h vs 4h), which the console shows as a countdown,
+ * not the colour. Colouring only the top level would make a 4-hour case look
+ * like a routine one.
+ */
+export const DISPUTE_SEVERITY_LABEL: Record<string, string> = {
+  LOW: '低',
+  NORMAL: '一般',
+  HIGH: '高',
+  SAFETY_CRITICAL: '安全緊急',
+};
+
+const DISPUTE_SEVERITY_TONE: Record<string, ChipTone> = {
+  LOW: 'neutral',
+  NORMAL: 'warn',
+  HIGH: 'danger',
+  SAFETY_CRITICAL: 'danger',
+};
+
+export function disputeSeverityLabel(severity: string): string {
+  return DISPUTE_SEVERITY_LABEL[severity] ?? severity;
+}
+
+export function disputeSeverityTone(severity: string): ChipTone {
+  return DISPUTE_SEVERITY_TONE[severity] ?? 'neutral';
+}
+
+export const DISPUTE_CATEGORY_LABEL: Record<string, string> = {
+  FARE: '車費',
+  CONDUCT: '服務態度',
+  SAFETY: '安全',
+  LOST_ITEM: '失物',
+  APP_ISSUE: '應用程式問題',
+  OTHER: '其他',
+};
+
+export function disputeCategoryLabel(category: string): string {
+  return DISPUTE_CATEGORY_LABEL[category] ?? category;
+}
+
+export const DISPUTE_STATUS_LABEL: Record<string, string> = {
+  OPEN: '待處理',
+  INVESTIGATING: '調查中',
+  AWAITING_PARTY: '待對方回覆',
+  ESCALATED: '已升級',
+  RESOLVED: '已裁決',
+  CLOSED: '已結案',
+};
+
+const DISPUTE_STATUS_TONE: Record<string, ChipTone> = {
+  OPEN: 'warn',
+  INVESTIGATING: 'brand',
+  AWAITING_PARTY: 'neutral',
+  ESCALATED: 'danger',
+  RESOLVED: 'ok',
+  CLOSED: 'neutral',
+};
+
+export function disputeStatusLabel(status: string): string {
+  return DISPUTE_STATUS_LABEL[status] ?? status;
+}
+
+export function disputeStatusTone(status: string): ChipTone {
+  return DISPUTE_STATUS_TONE[status] ?? 'neutral';
+}
+
+/**
+ * How a case ended.
+ *
+ * `moves_money` is the field that matters — four of the five resolutions charge
+ * or refund somebody, and the server echoes that flag so this mapping is only
+ * for the label. It is not used to decide whether FINANCE is required.
+ */
+export const DISPUTE_RESOLUTION_LABEL: Record<string, string> = {
+  NONE: '不作收費',
+  CHARGE_PASSENGER: '向乘客收費',
+  CHARGE_DRIVER: '向司機收費',
+  REFUND_PLATFORM_FEE: '退還平台費',
+  WAIVED_PLATFORM_FEE: '豁免平台費',
+};
+
+export function disputeResolutionLabel(resolution: string | null): string {
+  if (!resolution) return '尚未裁決';
+  return DISPUTE_RESOLUTION_LABEL[resolution] ?? resolution;
+}
+
+/**
+ * The two sources a case can come from.
+ *
+ * `INTERRUPTION` is a case opened by the in-trip interruption flow, which is
+ * designed but not yet implemented — it is labelled anyway so the value does
+ * not render as a raw enum the day it starts arriving.
+ */
+export const DISPUTE_SOURCE_LABEL: Record<string, string> = {
+  ADMIN_CREATED: '人手開立',
+  PASSENGER: '乘客提出',
+  DRIVER: '司機提出',
+  INTERRUPTION: '行程中斷',
+  AUTOMATED: '系統偵測',
+};
+
+export function disputeSourceLabel(source: string): string {
+  return DISPUTE_SOURCE_LABEL[source] ?? source;
+}
+
+/**
+ * A deadline as a human countdown.
+ *
+ * Negative is the common case on an incident queue and is rendered as overdue
+ * rather than as a negative number — an operator should not have to read a sign
+ * to know a case has breached.
+ */
+export function formatCountdown(seconds: number): string {
+  const overdue = seconds < 0;
+  const magnitude = Math.abs(seconds);
+  const hours = Math.floor(magnitude / 3600);
+  const minutes = Math.floor((magnitude % 3600) / 60);
+  let body: string;
+  if (hours >= 24) {
+    const days = Math.floor(hours / 24);
+    body = `${days} 天 ${hours % 24} 小時`;
+  } else if (hours >= 1) {
+    body = `${hours} 小時 ${minutes} 分`;
+  } else {
+    body = `${minutes} 分`;
+  }
+  return overdue ? `已逾期 ${body}` : `剩餘 ${body}`;
+}
+
+/**
  * P-3 licence review states.
  *
  * `SUPERSEDED` is neutral, not a failure: the driver withdrew their own

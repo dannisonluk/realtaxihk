@@ -23,7 +23,24 @@
  */
 export interface AdminIdentity {
   id: string;
+  /**
+   * The **principal kind** — `ADMIN` | `PASSENGER` | `DRIVER` — not a rank.
+   *
+   * Easy to mistake for the RBAC role, and it is not one: on an admin token
+   * this is always the literal `'ADMIN'`, which is neither a `AdminRole` key
+   * nor comparable to one. The rank lives in `admin_role` below. Reading this
+   * field as a rank makes every result rank below `SUPPORT` and hides the
+   * entire console — see `AppContext`, which is explicit about the difference.
+   */
   role: string;
+  /**
+   * The **RBAC rank** — `SUPPORT` | `OPERATIONS` | `FINANCE` | `SUPER_ADMIN`.
+   *
+   * Admin scope only. There is no phone on an admin account, and there is no
+   * rank on a passenger one, which is why this is optional rather than
+   * required.
+   */
+  admin_role?: string;
   /** Passenger/driver scope only. */
   phone_masked?: string;
   /** Admin scope only. The login identifier. */
@@ -82,6 +99,17 @@ export interface AdminConsoleUser {
   email: string;
   full_name: string;
   totp_enrolled: boolean;
+  /**
+   * The RBAC rank, from `admin_accounts.admin_role`.
+   *
+   * Sent by the login response (`_admin_out` in `app/api/admin_auth.py`) and by
+   * `GET /auth/me` (`AdminMeOut`). It was missing here, which meant the console
+   * stored a signed-in identity with no role at all: `AppContext` then answered
+   * `hasRole(...) === false` for every rank, the sidebar filtered to **zero**
+   * nav items, and every gated page rendered 沒有存取權限 — on a *correct*
+   * login. The server was never wrong; this type was.
+   */
+  admin_role?: string;
 }
 
 export type DriverStatus =
@@ -448,4 +476,421 @@ export interface AnalyticsHeatmap {
   busiest_hour: number;
   /** The y-axis maximum for the chart. Zero when there is nothing to draw. */
   scale_max_hkd: string;
+}
+
+// ---------------------------------------------------------------------------
+// RBAC
+// ---------------------------------------------------------------------------
+
+/**
+ * The four admin roles, ordered by blast radius.
+ *
+ * The order is not cosmetic — it is the rank. `SUPPORT < OPERATIONS < FINANCE <
+ * SUPER_ADMIN`, matching `AdminRole` in `app/models/admin.py`, and every
+ * permission question is `rank(role) >= rank(required)` rather than set
+ * membership. The server is the authority and re-reads the live row on every
+ * request, so this list only decides **what the console shows**; a forged value
+ * here produces 403s, not access.
+ *
+ * `SUPER_ADMIN` alone may change a role — see `AccountsPage`.
+ */
+export const ADMIN_ROLES = ['SUPPORT', 'OPERATIONS', 'FINANCE', 'SUPER_ADMIN'] as const;
+export type AdminRole = (typeof ADMIN_ROLES)[number];
+
+const ROLE_RANK: Record<AdminRole, number> = {
+  SUPPORT: 0,
+  OPERATIONS: 1,
+  FINANCE: 2,
+  SUPER_ADMIN: 3,
+};
+
+/** Whether `role` is at least `minimum`. An unknown role ranks below everything. */
+export function roleAtLeast(role: string | null | undefined, minimum: AdminRole): boolean {
+  const rank = ROLE_RANK[role as AdminRole];
+  return rank !== undefined && rank >= ROLE_RANK[minimum];
+}
+
+// ---------------------------------------------------------------------------
+// Order monitoring
+// ---------------------------------------------------------------------------
+
+/**
+ * A trip, as `GET /admin/orders` returns it.
+ *
+ * The four timestamps are the point of the page: they answer "where is this
+ * trip now, and how long has it been there", which the console could not answer
+ * before. Each is individually nullable — a trip that never got a driver has no
+ * `accepted_at`, and all-null with a `CREATED` status is meaningful rather than
+ * missing data.
+ *
+ * `passenger_id` / `driver_id` are **ids, not names or phones**. Resolving one
+ * is a separate, audited action; a list that inlined contact details would turn
+ * every scroll into a bulk PII read.
+ */
+export interface AdminOrderRow {
+  id: string;
+  status: string;
+  taxi_type: string;
+  passenger_id: string;
+  driver_id: string | null;
+  pickup_address: string;
+  dropoff_address: string;
+  distance_km: string;
+  estimated_total_hkd: string;
+  discount_percent: string;
+  accepted_at: string | null;
+  driver_arrived_at: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  cancellation_reason: string | null;
+  created_at: string | null;
+}
+
+/** One step of the server-computed timeline. `at` is null when it never happened. */
+export interface OrderTimelineStep {
+  step: string;
+  at: string | null;
+  /** Seconds since `created`, computed server-side so DST cannot skew it. */
+  elapsed_seconds: number | null;
+}
+
+/**
+ * `GET /admin/orders/{id}` — one trip in full.
+ *
+ * `fare` is the **frozen `fare_json` snapshot**, not a recomputation: after any
+ * tariff change a recomputed number differs, and the disputed amount is always
+ * the one the passenger was quoted.
+ */
+export interface AdminOrderDetail extends AdminOrderRow {
+  tariff_version: string;
+  fare: Record<string, unknown>;
+  broadcast_radius_km: string;
+  timeline: OrderTimelineStep[];
+  ledger: { items: LedgerEntry[] };
+}
+
+/** The five states a trip can be in and still be moving. Mirrors `_ORDER_OPEN_STATUSES`. */
+export const OPEN_ORDER_STATUSES = [
+  'CREATED',
+  'BROADCASTING',
+  'ACCEPTED',
+  'DRIVER_ARRIVED',
+  'IN_TRIP',
+] as const;
+
+/** Every lifecycle state, so the filter sends a value the server will accept. */
+export const ORDER_STATUSES = [
+  'CREATED',
+  'BROADCASTING',
+  'ACCEPTED',
+  'DRIVER_ARRIVED',
+  'IN_TRIP',
+  'COMPLETED',
+  'CANCELLED',
+  'NO_DRIVER',
+] as const;
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+/**
+ * One `admin_audit_log` row.
+ *
+ * `payload` is typed as an open record on purpose: the shape differs per event,
+ * and pinning it to one event's fields would make every other event render as
+ * an empty object. The audit page renders it as key/value pairs.
+ *
+ * `actor_username` is the **attempted** username, denormalised onto the row. It
+ * is present even when `actor_id` is null — the failed-login case — so the row
+ * stays attributable after the account it names is gone.
+ */
+export interface AuditRow {
+  id: string;
+  actor_id: string | null;
+  actor_username: string | null;
+  event: string;
+  outcome: string;
+  detail: string | null;
+  payload: Record<string, unknown> | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Admin accounts
+// ---------------------------------------------------------------------------
+
+/**
+ * An admin account, from `GET /admin/accounts`.
+ *
+ * `totp_enrolled` is derived (`totp_secret is not None`), never the secret —
+ * the secret does not leave the server, and enrolment is the only fact the
+ * console acts on.
+ */
+export interface AdminAccount {
+  id: string;
+  username: string;
+  email: string;
+  full_name: string | null;
+  admin_role: string;
+  is_active: boolean;
+  totp_enrolled: boolean;
+  last_login_at: string | null;
+  created_at: string;
+}
+
+/**
+ * The admin roster plus the one derived count the demote button depends on.
+ *
+ * `super_admin_count` is on the page, not the row, because it is a property of
+ * the whole set: the console must know "is this the last usable one?" before it
+ * offers an action the server will refuse. It counts **active** super admins,
+ * matching the server — a deactivated one is not a way to grant roles.
+ */
+export interface AdminAccountPage {
+  items: AdminAccount[];
+  super_admin_count: number;
+  total: number;
+}
+
+/** `POST /admin/accounts` — the new account plus the fact that it cannot log in yet. */
+export interface AdminAccountCreated extends AdminAccount {
+  totp_enrolment_pending: boolean;
+}
+
+/**
+ * `PATCH /admin/accounts/{id}/role` — carries both sides of the transition.
+ *
+ * The row only holds the current value, and "what was it before" is what the
+ * reader is trying to confirm.
+ */
+export interface AdminRoleChange {
+  id: string;
+  previous_role: string;
+  admin_role: string;
+  super_admin_count: number;
+}
+
+/** `POST /admin/accounts/{id}/password/reset` — acknowledgement only, never the password. */
+export interface AdminPasswordReset {
+  id: string;
+  /**
+   * Always `false` today, and reported rather than omitted.
+   *
+   * The access token is a signed JWT with no server-side session store, so a
+   * reset cannot revoke tokens already in flight. A field that always reads
+   * `true` would train the operator to believe a claim the system cannot make.
+   */
+  sessions_revoked: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Settlement preview
+// ---------------------------------------------------------------------------
+
+/**
+ * `POST /admin/settlement/preview` — what a run *would* do, and the token that
+ * permits it.
+ *
+ * `would_charge + already_charged + tampered + skipped_no_deposit_account` equals
+ * `eligible_drivers` exactly. `would_go_negative` is a **sub**-count of
+ * `would_charge`, not a fifth bucket — those drivers are charged and simply go
+ * into arrears, which the platform allows by design.
+ *
+ * `confirm_token` is the only way to run a settlement; it is signed over this
+ * preview's period and fee, so a token for one week cannot be spent on another's.
+ */
+export interface SettlementPreview {
+  period: string;
+  fee_hkd: string;
+  eligible_drivers: number;
+  fleet_managed: number;
+  would_charge: number;
+  already_charged: number;
+  tampered: number;
+  skipped_no_deposit_account: number;
+  would_go_negative: number;
+  shortfall_total_hkd: string;
+  total_charge_hkd: string;
+  would_charge_driver_ids: string[];
+  would_go_negative_driver_ids: string[];
+  confirm_token: string;
+  confirm_expires_in_seconds: number;
+}
+
+// ---------------------------------------------------------------------------
+// Disputes
+// ---------------------------------------------------------------------------
+
+export const DISPUTE_SEVERITIES = ['LOW', 'NORMAL', 'HIGH', 'SAFETY_CRITICAL'] as const;
+export type DisputeSeverity = (typeof DISPUTE_SEVERITIES)[number];
+
+export const DISPUTE_CATEGORIES = [
+  'FARE',
+  'CONDUCT',
+  'SAFETY',
+  'LOST_ITEM',
+  'APP_ISSUE',
+  'OTHER',
+] as const;
+export type DisputeCategory = (typeof DISPUTE_CATEGORIES)[number];
+
+export const DISPUTE_STATUSES = [
+  'OPEN',
+  'INVESTIGATING',
+  'AWAITING_PARTY',
+  'ESCALATED',
+  'CLOSED',
+] as const;
+export type DisputeStatus = (typeof DISPUTE_STATUSES)[number];
+
+/**
+ * The five ways a case can end, and the one field the console reads off them.
+ *
+ * `CHARGE_PASSENGER`, `CHARGE_DRIVER`, `REFUND_PLATFORM_FEE` and
+ * `WAIVED_PLATFORM_FEE` all move money; `NONE` decides that nobody is charged.
+ * The server echoes `moves_money` on the resolve response so the console does not
+ * have to re-derive this — a duplicated enum mapping is exactly what goes stale.
+ */
+export const DISPUTE_RESOLUTIONS = [
+  'NONE',
+  'CHARGE_PASSENGER',
+  'CHARGE_DRIVER',
+  'REFUND_PLATFORM_FEE',
+  'WAIVED_PLATFORM_FEE',
+] as const;
+export type DisputeResolution = (typeof DISPUTE_RESOLUTIONS)[number];
+
+/**
+ * One row of the dispute queue.
+ *
+ * Every enum arrives as its string value, **plus** the derived fields the queue
+ * is sorted and coloured by (`sla_hours`, `seconds_until_due`, `is_overdue`), so
+ * the console does not re-implement severity→SLA. Two implementations of "is
+ * this late" that drift is how a dashboard starts disagreeing with the API.
+ *
+ * `order_id` is nullable and that is meaningful: account- and app-level
+ * complaints have no trip.
+ */
+export interface DisputeRow {
+  id: string;
+  order_id: string | null;
+  source: string;
+  category: string;
+  severity: string;
+  status: string;
+  summary: string;
+  raised_by_kind: string;
+  against_kind: string | null;
+  assigned_admin_id: string | null;
+  safety_flag: boolean;
+  sla_due_at: string;
+  sla_hours: number;
+  seconds_until_due: number;
+  is_overdue: boolean;
+  resolution: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+/** One turn in a thread. `is_internal` is a staff note that must not be shown to a party. */
+export interface DisputeMessage {
+  id: number;
+  author_kind: string;
+  author_id: string | null;
+  author_label: string | null;
+  body: string;
+  is_internal: boolean;
+  created_at: string;
+}
+
+/** A case plus its whole thread. `messages` includes internal notes — this route is admin-only. */
+export interface DisputeDetail extends DisputeRow {
+  messages: DisputeMessage[];
+  resolution_note: string | null;
+  resolved_by: string | null;
+}
+
+/**
+ * Queue header counts, computed server-side against the same clock the sort uses.
+ *
+ * With pagination a client-side count is the count of the *current page*, which
+ * reads as the total.
+ */
+export interface DisputeStats {
+  total: number;
+  open: number;
+  overdue: number;
+  unassigned: number;
+  safety_flag: number;
+}
+
+/** `POST /admin/disputes/{id}/resolve` — `moves_money` echoed so the console need not infer it. */
+export interface DisputeResolveResult {
+  id: string;
+  status: string;
+  resolution: string;
+  moves_money: boolean;
+  resolved_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+/**
+ * One search hit: a passenger or a driver, in a single shape.
+ *
+ * A **superset** with the irrelevant fields null rather than absent. A
+ * discriminated union would be more precise and worse here — the console renders
+ * one list, and `item.plate ?? '—'` is the whole rendering either way. `kind` is
+ * what the UI branches on.
+ *
+ * Carries the phone and display name because those are what the caller searched
+ * with. Deliberately **no** ID number, no document keys, no ledger: a search
+ * result is a pointer, and the detail page is the audited place to look at a
+ * person.
+ */
+export interface SearchResult {
+  kind: 'PASSENGER' | 'DRIVER';
+  id: string;
+  display_name: string | null;
+  phone_e164: string;
+  username: string | null;
+  account_status: string;
+  is_active: boolean;
+  avatar_key: string | null;
+  driver_profile_id: string | null;
+  plate: string | null;
+  driver_status: string | null;
+}
+
+/**
+ * Search results plus the two facts the UI must state.
+ *
+ * `truncated` is **not** derivable from `len(items) === limit`: a result set
+ * that is exactly `limit` long may or may not have more, and "showing 20 of 20"
+ * when there are 400 is the difference between narrowing the search and
+ * believing you have seen everyone.
+ *
+ * `query_too_short` distinguishes "no matches" from "you did not search", which
+ * are otherwise the same empty list.
+ */
+export interface SearchResponse {
+  items: SearchResult[];
+  query: string;
+  truncated: boolean;
+  query_too_short: boolean;
+  min_query_length: number;
+}
+
+/** `POST /identity/avatar/uploads` — a presigned PUT, minted before the key is claimed. */
+export interface AvatarPresign {
+  upload_url: string;
+  object_key: string;
+  expires_in: number;
+  max_bytes: number;
+  content_type: string;
 }
