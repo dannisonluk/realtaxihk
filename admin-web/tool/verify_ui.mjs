@@ -21,7 +21,8 @@
  *
  *     python admin-web/serve.py --port 8081
  *     node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 \
- *         --phone +85290000001 --code 123456
+ *         --username ops-admin --password "$ADMIN_PASSWORD" \
+ *         --totp-secret "$ADMIN_TOTP_SECRET"
  *
  * `playwright` is resolved from `NODE_PATH`; see `admin-web/README.md`.
  * Exit code 0 = every route rendered with a clean console.
@@ -125,6 +126,22 @@ const ROUTES = [
   // worse than one that shows zeroes — so the needles are the section titles,
   // not any figure.
   { hash: '#/analytics', name: 'analytics', title: '表現分析', expect: ['表現分析', '時段分佈'] },
+  // --- The governance screens. Same rule as above: needles are chrome that
+  // renders with an empty result set. Each one names the page title plus a
+  // control that is present regardless of whether the queue has rows —
+  // otherwise a route "fails" on the day its list happens to be empty, which
+  // is a check that reports the data, not the code.
+  //
+  // These six were the reason to extend this file at all: they were added to
+  // the console without ever being driven in a browser, and the classes of
+  // defect this verifier exists to catch (a bad import, a render that throws
+  // on a real response shape, a query-parameter typo that comes back 422) are
+  // exactly the ones a page cannot reveal by being read.
+  { hash: '#/search', name: 'search', title: '搜尋', expect: ['搜尋', '帳戶'] },
+  { hash: '#/orders', name: 'orders', title: '訂單', expect: ['訂單', '進行中'] },
+  { hash: '#/disputes', name: 'disputes', title: '爭議', expect: ['爭議', '已逾期'] },
+  { hash: '#/audit', name: 'audit', title: '審計紀錄', expect: ['審計紀錄', '登入'] },
+  { hash: '#/accounts', name: 'accounts', title: '管理員帳戶', expect: ['管理員帳戶', '超級管理員'] },
 ];
 
 const failures = [];
