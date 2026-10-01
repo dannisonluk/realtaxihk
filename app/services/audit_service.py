@@ -60,6 +60,7 @@ __all__ = [
     "EV_FLEET_UPSERT",
     "EV_KYC_DECISION",
     "EV_REFUND_DECISION",
+    "EV_SETTLEMENT_PREVIEW",
     "EV_SETTLEMENT_RUN",
     "OUTCOME_FAILURE",
     "OUTCOME_SUCCESS",
@@ -78,6 +79,10 @@ EV_DEPOSIT_GRANT = "ADMIN_DEPOSIT_GRANT"
 EV_DEPOSIT_ADJUST = "ADMIN_DEPOSIT_ADJUST"
 EV_REFUND_DECISION = "ADMIN_REFUND_DECISION"
 EV_SETTLEMENT_RUN = "ADMIN_SETTLEMENT_RUN"
+# A preview is a read, but it is recorded anyway: "who looked at the numbers
+# before the money moved" is the first question after a bad run, and a preview
+# that leaves no trace makes that question unanswerable.
+EV_SETTLEMENT_PREVIEW = "ADMIN_SETTLEMENT_PREVIEW"
 EV_FLEET_UPSERT = "ADMIN_FLEET_UPSERT"
 EV_ADMIN_ACCOUNT_CREATE = "ADMIN_ACCOUNT_CREATE"
 EV_ADMIN_ROLE_CHANGE = "ADMIN_ROLE_CHANGE"

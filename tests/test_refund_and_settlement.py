@@ -34,6 +34,34 @@ def _admin_headers(client) -> dict:
     return client.admin_headers()
 
 
+def run_settlement(client, *, period: str | None = None, headers: dict | None = None):
+    """Run the weekly settlement the way an operator must now: preview, then run.
+
+    Since the confirmation gate landed, a bare run is refused while anything is
+    outstanding. These tests are about *charging*, not about the gate (which
+    `tests/test_admin_settlement_preview.py` covers), so they take the same route
+    the console does rather than disabling the check.
+    """
+    admin = headers or _admin_headers(client)
+    period = period or _current_period()
+    preview = client.post(
+        "/api/v1/admin/settlement/preview",
+        headers=admin,
+        json={"period": period},
+    ).json()
+    return client.post(
+        "/api/v1/admin/settlement/weekly/run",
+        headers=admin,
+        params={"period": period, "confirm_token": preview["confirm_token"]},
+    )
+
+
+def _current_period() -> str:
+    from app.services.settlement_service import period_key
+
+    return period_key()
+
+
 def _h(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
@@ -118,7 +146,7 @@ class TestWeeklySettlement:
             json={"decision": "approve"},
         )
 
-        r = client.post("/api/v1/admin/settlement/weekly/run", headers=_admin_headers(client))
+        r = run_settlement(client)
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["charged"] == 1
@@ -133,11 +161,11 @@ class TestWeeklySettlement:
         d = _make_active(client, "+85293000111")
         admin = _admin_headers(client)
 
-        first = client.post(
-            "/api/v1/admin/settlement/weekly/run?period=2026-W40", headers=admin
-        ).json()
+        first = run_settlement(client, period="2026-W40").json()
         assert first["charged"] == 1
 
+        # Second run of the same period: everything is settled, so the gate
+        # lets it through with no token and it is a no-op.
         second = client.post(
             "/api/v1/admin/settlement/weekly/run?period=2026-W40", headers=admin
         ).json()
@@ -149,18 +177,16 @@ class TestWeeklySettlement:
 
     def test_distinct_periods_are_charged_separately(self, client):
         d = _make_active(client, "+85293000121")
-        admin = _admin_headers(client)
         for period in ("2026-W40", "2026-W41"):
-            r = client.post(f"/api/v1/admin/settlement/weekly/run?period={period}", headers=admin)
+            r = run_settlement(client, period=period)
             assert r.json()["charged"] == 1
         assert _deposit(client, d["token"])["balance_hkd"] == "100.00"
 
     def test_arrears_allowed_and_driver_stays_active(self, client):
         """A fee may push the balance negative — the driver keeps dispatching."""
         d = _make_active(client, "+85293000131")
-        admin = _admin_headers(client)
         for period in ("2026-W40", "2026-W41", "2026-W42"):
-            client.post(f"/api/v1/admin/settlement/weekly/run?period={period}", headers=admin)
+            run_settlement(client, period=period)
 
         assert _deposit(client, d["token"])["balance_hkd"] == "-100.00"
         me = client.get("/api/v1/drivers/me", headers=_h(d["token"])).json()
@@ -168,9 +194,7 @@ class TestWeeklySettlement:
 
     def test_writes_ledger_entry_per_period(self, client):
         d = _make_active(client, "+85293000141")
-        client.post(
-            "/api/v1/admin/settlement/weekly/run?period=2026-W40", headers=_admin_headers(client)
-        )
+        run_settlement(client, period="2026-W40")
         r = client.get("/api/v1/drivers/me/ledger", headers=_h(d["token"]))
         entries = r.json()["items"]
         assert [e["entry_type"] for e in entries] == ["DEPOSIT_TOPUP", "WEEKLY_FEE_DEDUCTION"]
@@ -226,9 +250,8 @@ class TestRefundRequest:
         d = _make_active(client, "+85293000201")
         # Drain it: 500 - 2 x 200 = 100... push to zero via three fees.
         admin = _admin_headers(client)
-        for period in ("2026-W40", "2026-W41"):
-            client.post(f"/api/v1/admin/settlement/weekly/run?period={period}", headers=admin)
-        client.post("/api/v1/admin/settlement/weekly/run?period=2026-W42", headers=admin)
+        for period in ("2026-W40", "2026-W41", "2026-W42"):
+            run_settlement(client, period=period, headers=admin)
         # balance is now -100 (arrears) -> still "nothing to refund"
         r = _request_refund(client, d["token"])
         assert r.status_code == 400
@@ -292,9 +315,7 @@ class TestRefundRequest:
 
     def test_pending_refund_is_exempt_from_weekly_fee(self, client, active_driver):
         _request_refund(client, active_driver["token"])
-        r = client.post(
-            "/api/v1/admin/settlement/weekly/run?period=2026-W40", headers=_admin_headers(client)
-        )
+        r = run_settlement(client, period="2026-W40")
         assert r.json()["charged"] == 0
         assert _deposit(client, active_driver["token"])["held_hkd"] == "500.00"
 
@@ -468,9 +489,7 @@ class TestRefundDecision:
     def test_approval_after_partial_arrears_refunds_the_remainder(self, client):
         """Refund pays whatever is left, not the original deposit."""
         d = _make_active(client, "+85293000301")
-        client.post(
-            "/api/v1/admin/settlement/weekly/run?period=2026-W40", headers=_admin_headers(client)
-        )
+        run_settlement(client, period="2026-W40")
         rid = self._pending(client, d)
         r = client.post(
             f"/api/v1/admin/refunds/{rid}/decision",

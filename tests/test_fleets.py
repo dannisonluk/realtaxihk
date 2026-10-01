@@ -116,10 +116,26 @@ def _run_fleet_settlement(client, fleet_id: str, period: str | None = None):
 
 
 def _run_platform_settlement(client, period: str | None = None):
+    """Preview, then run — the platform run is gated on a confirmation token.
+
+    The fleet run (`/fleets/{id}/settlement/run`) is not gated; only the
+    platform-wide run charges every driver at once.
+    """
     url = "/api/v1/admin/settlement/weekly/run"
+    admin = _admin_headers(client)
     if period:
-        url += f"?period={period}"
-    return client.post(url, headers=_admin_headers(client))
+        preview = client.post(
+            "/api/v1/admin/settlement/preview",
+            headers=admin,
+            json={"period": period},
+        ).json()
+        url += f"?period={period}&confirm_token={preview['confirm_token']}"
+    else:
+        preview = client.post(
+            "/api/v1/admin/settlement/preview", headers=admin, json={}
+        ).json()
+        url += f"?confirm_token={preview['confirm_token']}"
+    return client.post(url, headers=admin)
 
 
 # --------------------------------------------------------------------------- #

@@ -324,6 +324,18 @@ def check_coverage(problems: list[str]) -> tuple[int, set[str]]:
                 continue
             schema = (ok.get("content", {}).get("application/json", {}) or {}).get("schema")
             if not schema:
+                # A non-JSON body is legitimate and needs no pydantic model: a
+                # CSV export is a table for a spreadsheet, and pinning it to a
+                # JSON schema would be a lie that the audit then enforces. The
+                # check is that *some* media type carries a declared schema, so
+                # a bare 200 with nothing still fails.
+                non_json = [
+                    media
+                    for media, body in (ok.get("content") or {}).items()
+                    if media != "application/json" and (body or {}).get("schema")
+                ]
+                if non_json:
+                    continue
                 # No content block at all (a 204) is legitimate; a 200 with no
                 # schema is the regression this whole exercise exists to stop.
                 if "204" not in responses:

@@ -33,6 +33,7 @@ __all__ = [
     "DriverReviewOut",
     "DriverRowOut",
     "RefundPageOut",
+    "SettlementPreviewOut",
 ]
 
 
@@ -443,3 +444,46 @@ class AdminOrderDetailOut(AdminOrderRowOut):
     broadcast_radius_km: str
     timeline: list[dict[str, Any]]
     ledger: dict[str, list[AdminLedgerRowOut]]
+
+
+class SettlementPreviewOut(BaseModel):
+    """`POST /admin/settlement/preview` — what a run *would* do, and proof of it.
+
+    `confirm_token` is the only way to run a settlement. It is signed over this
+    preview's period and fee (`app/services/settlement_confirm.py`), so a token
+    issued for one week's numbers cannot be spent on another's.
+
+    The outcome fields are all **counts or ids**, never names. A preview is a
+    screenful; inlining driver identities would make the safest page in the
+    console the largest PII export in it.
+
+    `would_charge + already_charged + tampered + skipped_no_deposit_account`
+    equals `eligible_drivers` exactly — pinned by a test, because a report whose
+    parts do not sum to its whole is a report someone will misread.
+
+    `would_go_negative` is a **sub**-count of `would_charge`, not a fifth bucket:
+    those drivers are charged, they simply go into arrears. Arrears are allowed
+    by design (a driver in arrears keeps dispatching and settles on the next
+    top-up), so this is the number an operator most needs before pressing the
+    button — it is the part that is a decision rather than arithmetic.
+
+    `confirm_expires_in_seconds` is returned so the console can show a countdown
+    rather than surprising the operator with an expired token at the moment they
+    were ready to act.
+    """
+
+    period: str
+    fee_hkd: str
+    eligible_drivers: int
+    fleet_managed: int
+    would_charge: int
+    already_charged: int
+    tampered: int
+    skipped_no_deposit_account: int
+    would_go_negative: int
+    shortfall_total_hkd: str
+    total_charge_hkd: str
+    would_charge_driver_ids: list[str]
+    would_go_negative_driver_ids: list[str]
+    confirm_token: str
+    confirm_expires_in_seconds: int

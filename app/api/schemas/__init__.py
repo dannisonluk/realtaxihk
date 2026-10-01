@@ -74,6 +74,7 @@ from app.api.schemas.admin import (
     DriverReviewOut,
     DriverRowOut,
     RefundPageOut,
+    SettlementPreviewOut,
 )
 from app.api.schemas.admin_auth import (
     AdminLoginOut,
@@ -214,6 +215,7 @@ __all__ = [
     "RefundRequestOut",
     "RefundViewOut",
     "ReviewDocumentOut",
+    "SettlementPreviewOut",
     "SettlementRunOut",
     "TokenPairOut",
     "TotpEnrolOut",
