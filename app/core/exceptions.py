@@ -22,6 +22,25 @@ class BusinessRuleError(ValueError):
         self.details = details or {}
 
 
+class NotFoundError(LookupError):
+    """A referenced entity does not exist — surfaced as HTTP 404.
+
+    Distinct from `BusinessRuleError` because the two are different answers to
+    different questions: 404 means "that id is not a thing", 400 means "that is
+    a thing and you cannot do this to it". A client that gets 400 for a
+    mistyped id will go looking for a rule it broke.
+
+    It exists as a type rather than every service raising `HTTPException`
+    directly, so a service stays callable from a script or a job that has no
+    request to attach an exception to.
+    """
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.message = message
+        self.details = details or {}
+
+
 def _error(code: str, message: str, details: Any = None) -> dict:
     return {"code": code, "message": message, "details": details or {}}
 
@@ -51,6 +70,13 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=_error("BUSINESS_RULE_VIOLATION", exc.message, exc.details),
+        )
+
+    @app.exception_handler(NotFoundError)
+    async def on_not_found(request: Request, exc: NotFoundError):
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=_error("NOT_FOUND", exc.message, exc.details),
         )
 
     @app.exception_handler(StarletteHTTPException)

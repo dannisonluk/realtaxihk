@@ -332,8 +332,10 @@ def client(otp_inbox) -> TestClient:
             def _exec(sql: str, params: dict | None = None) -> None:
                 return _exec_sync(tc, sql, params)
 
-            def _admin_headers(username: str | None = None) -> dict[str, str]:
-                return admin_headers(tc, username=username)
+            def _admin_headers(
+                username: str | None = None, role: str = "SUPER_ADMIN"
+            ) -> dict[str, str]:
+                return admin_headers(tc, username=username, role=role)
 
             tc.sign_in = _sign_in
             tc.activate = _activate
@@ -362,7 +364,9 @@ class AdminHeaders(dict):
         self.admin_id = admin_id
 
 
-def admin_headers(client, *, username: str | None = None) -> AdminHeaders:
+def admin_headers(
+    client, *, username: str | None = None, role: str = "SUPER_ADMIN"
+) -> AdminHeaders:
     """Sign in as a **real console admin**, returning bearer headers.
 
     This is the honest way to reach `/api/v1/admin/*`: provision an
@@ -378,6 +382,12 @@ def admin_headers(client, *, username: str | None = None) -> AdminHeaders:
     login sets. Keeping the shortcut working would mean keeping two ways to be
     an admin — and a stray INSERT into `users` granting access to refunds and
     settlement.
+
+    `role` defaults to `SUPER_ADMIN` and exists so a test can build a
+    *deliberately under-privileged* admin. That is the only way to test a
+    refusal: an assertion that OPERATIONS cannot move money needs an OPERATIONS
+    token, and minting one has to go through the same login the real one does —
+    a fabricated token would be testing the fixture rather than the guard.
 
     Each call provisions a distinct account (a counter, not a fixed name) so a
     test that calls this twice does not collide on the unique username index.
@@ -400,13 +410,14 @@ def admin_headers(client, *, username: str | None = None) -> AdminHeaders:
         "(id, username, email, full_name, password_hash, totp_secret, totp_enrolled_at, "
         " is_active, failed_login_count, role, created_at, updated_at) "
         "VALUES (:id, :u, :e, 'Test Admin', :pw, CAST(:secret AS text), now(), "
-        " true, 0, 'SUPER_ADMIN', now(), now())",
+        " true, 0, :role, now(), now())",
         {
             "id": admin_id,
             "u": name,
             "e": email,
             "pw": hash_password(password),
             "secret": secret,
+            "role": role,
         },
     )
 

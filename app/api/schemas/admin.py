@@ -13,9 +13,13 @@ from pydantic import BaseModel
 from app.api.schemas.driver import RefundOut
 
 __all__ = [
+    "AdminAccountCreatedOut",
     "AdminAccountOut",
+    "AdminAccountPageOut",
     "AdminDepositDetailOut",
     "AdminLedgerRowOut",
+    "AdminPasswordResetOut",
+    "AdminRoleChangeOut",
     "AuditPageOut",
     "AuditRowOut",
     "DepositAdjustOut",
@@ -283,3 +287,72 @@ class AuditPageOut(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class AdminAccountPageOut(BaseModel):
+    """`GET /admin/accounts` — the admin roster.
+
+    Every field of `AdminAccountOut` plus a derived `super_admin_count`.
+
+    The count is on the *page* rather than on each row because it is a property
+    of the whole set, and the console needs it to answer one question before it
+    renders the demote button: "is this the last one?" Without it the UI either
+    offers an action the server will refuse, or re-derives the rule client-side
+    and gets it wrong the first time the rule changes.
+
+    It counts **active** SUPER_ADMIN rows, matching
+    `AdminAccountService.count_super_admins` — a deactivated super admin is not
+    a way to grant roles, so counting them would let the last usable one be
+    demoted while a disabled name kept the check satisfied.
+    """
+
+    items: list[AdminAccountOut]
+    super_admin_count: int
+    total: int
+
+
+class AdminAccountCreatedOut(AdminAccountOut):
+    """`POST /admin/accounts` — the new account, plus one onboarding fact.
+
+    Adds `totp_enrolment_pending`, always `true` on this path. It is stated
+    rather than implied because it is the difference between "created" and
+    "usable": the account has no TOTP secret until first login, and an operator
+    who reads `201 Created` as "they can log in now" will hand over credentials
+    that do not work yet.
+    """
+
+    totp_enrolment_pending: bool
+
+
+class AdminRoleChangeOut(BaseModel):
+    """`PATCH /admin/accounts/{id}/role` — acknowledgement of a role change.
+
+    Carries **both** `previous_role` and `admin_role`. The row alone only holds
+    the current value, and "what was it before" is the thing anyone reading the
+    response is trying to confirm. Echoing it here also means the console need
+    not re-fetch the roster to show the transition it just caused.
+
+    Mirrors the `AdminRoleChange` audit payload's `from`/`to`, so the response
+    and the audit row cannot disagree about what happened.
+    """
+
+    id: str
+    previous_role: str
+    admin_role: str
+    super_admin_count: int
+
+
+class AdminPasswordResetOut(BaseModel):
+    """`POST /admin/accounts/{id}/password/reset` — acknowledgement only.
+
+    No password and no hash in the body. The new password is supplied *by* the
+    caller and is never returned — a reset response is not a place to hand a
+    credential back, because it would then sit in a response log.
+
+    `sessions_revoked` is reported so the operator knows the reset also ejected
+    anyone already signed in. It is informational; there is no partial-success
+    form of this operation.
+    """
+
+    id: str
+    sessions_revoked: bool

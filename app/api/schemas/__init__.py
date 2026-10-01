@@ -53,10 +53,14 @@ from app.api.schemas._envelope import (
     PageEnvelope,
 )
 from app.api.schemas.admin import (
+    AdminAccountCreatedOut,
     AdminAccountOut,
+    AdminAccountPageOut,
     AdminDepositDetailOut,
     AdminDepositOut,
     AdminLedgerRowOut,
+    AdminPasswordResetOut,
+    AdminRoleChangeOut,
     AuditPageOut,
     AuditRowOut,
     DepositAdjustOut,
@@ -136,12 +140,16 @@ from app.api.schemas.order import (
 )
 
 __all__ = [
+    "AdminAccountCreatedOut",
     "AdminAccountOut",
+    "AdminAccountPageOut",
     "AdminDepositDetailOut",
     "AdminDepositOut",
     "AdminLedgerRowOut",
     "AdminLoginOut",
     "AdminMeOut",
+    "AdminPasswordResetOut",
+    "AdminRoleChangeOut",
     "AdminSessionAccountOut",
     "AdminSessionOut",
     "AuditPageOut",
