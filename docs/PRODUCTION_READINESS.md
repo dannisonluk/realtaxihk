@@ -1,5 +1,11 @@
 # realtaxihk Backend — MVP → Production Readiness Audit
 
+> **⚠️ 行號引用已失效（2026-10-01 註記）**：本文所有結論附 `file:line` 證據，
+> 但 `app/models/` 已由單一 `__init__.py` 拆成 5 個 bounded-context 模組
+> （`user.py` / `admin.py` / `fleet.py` / `licence.py` / `_base.py`），
+> 且多個 API／service 檔在此後有大幅改動。**檔案層級路徑仍有效，行號不再準確。**
+> 審計的**結論**（4 bugs + 7 P0 + 10 P1 + 10 P2 全部修復）仍然成立。
+
 - **掃描日期**：2026-09-29
 - **方法**：唔靠任何 session 記憶 — 逐檔讀取 `app/`（api 8 檔、core 8 檔、services 9 檔、models）＋ `tests/conftest.py`、`alembic/env.py`、`Dockerfile`、`docker-compose.yml`、`pyproject.toml`、`.env.example`、`README.md`，再用 grep 驗證每個「有冇」判斷（for_update、lifespan、is_active 使用、lockfile、CI、logging）。所有結論附 file:line 證據。
 - **基準**：commit `88a09ee`（main），106/106 tests，3 commits 歷史。

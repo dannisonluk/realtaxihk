@@ -1,11 +1,9 @@
 # realtaxihk — 工作總覽
 
-- **生成日期**：2026-09-30（**2026-10-01 更新**：併入 location check、analytics、console deep-link 修正；測試數由 272 更正為 616。**本輪再更新**：修好 SEV-1 admin session、統一 money 精度入口、套用 `ruff format` 並加 CI gate、補上 TOTP 綁定二維碼的渲染與測試；測試數 616 → **656**（**本輪 667**：新增 5 個 HTTP error-code + 6 個 state-machine 不變式測試）。**最後一輪**：修好深圳灣口岸邊界缺陷（`_HK_MAIN` 后海灣段 2 → 7 頂點），測試數 667 → **687**（新增 18 個口岸邊界參數化案例 + 2 個回歸測試）。**本輪再更新**：`app/models/__init__.py`（886 行）拆成 5 個 bounded-context 模組 + `__init__` re-export，測試維持 **687** 不變 —— 見 §2.9。**本輪再更新**：新增 `app/api/schemas/` 套件並為**全部 69 個 operation** 補上 `response_model=`（此前 69 個中只有 1 個），令 `/openapi.json` 首次描述真實響應形狀；測試維持 **687** 不變 —— 見 §2.10）
-- **HEAD**：`e50af99` 之後 **7 個新 commit**（見 §5）；working tree **clean**，
-  但 **7 個 commit 推唔到**（token 未獲授權此 repo，403 —— 要你出手，見 §5）。
-  之前本行寫「49 個檔案待提交」，實測係 **61 已修改 + 33 未追蹤**，而且一直未
-  commit —— 呢個就係「好似未做完」嘅實質原因。
-- **現時狀態**：`pytest` **687 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean（119 files）** · console `tsc` clean + **29 vitest passed** · `npm run build` 302.8 kB（gzip 97.0 kB）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · API **64 paths / 69 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
+- **生成日期**：2026-09-30（**2026-10-01 更新**：併入 location check、analytics、console deep-link 修正；測試數由 272 更正為 616。**本輪再更新**：修好 SEV-1 admin session、統一 money 精度入口、套用 `ruff format` 並加 CI gate、補上 TOTP 綁定二維碼的渲染與測試；測試數 616 → **656**（**本輪 667**：新增 5 個 HTTP error-code + 6 個 state-machine 不變式測試）。**最後一輪**：修好深圳灣口岸邊界缺陷（`_HK_MAIN` 后海灣段 2 → 7 頂點），測試數 667 → **687**（新增 18 個口岸邊界參數化案例 + 2 個回歸測試）。**本輪再更新**：`app/models/__init__.py`（886 行）拆成 5 個 bounded-context 模組 + `__init__` re-export，測試維持 **687** 不變 —— 見 §2.9。**本輪再更新**：新增 `app/api/schemas/` 套件並為**全部 69 個 operation** 補上 `response_model=`（此前 69 個中只有 1 個），令 `/openapi.json` 首次描述真實響應形狀；測試維持 **687** 不變 —— 見 §2.10。**最新一輪（§2.11）**：RBAC 四級角色 + 審計覆蓋金錢／狀態改動、帳戶管理、訂單監控、結算預覽／確認 token／CSV 匯出、爭議實體、主體搜尋、頭像上傳，以及六個對應的後台畫面 —— 測試 **687 → 872**（+185），console **29 → 31 vitest**（+2），API **64/69 → 81 paths / 88 operations**）
+- **HEAD**：`1df6856`；`origin/main..HEAD` = **4 個未推 commit**（見 §5）；
+  working tree **clean**。
+- **現時狀態**：`pytest` **872 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean（131 files）** · console `tsc` clean + **31 vitest passed** · `npm run build` 344.67 kB（gzip 109.14 kB）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · API **81 paths / 88 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
 - **✅ 已解決：管理員 session 15 分鐘硬死** —— 已改為 `HttpOnly` refresh cookie（`SameSite=Strict`，path `/api/v1/admin/auth`）＋ CSRF double-submit。詳見 `SECURITY.md`
 
 > **呢份文件嘅用途**：一份可以單獨睇完嘅總覽 —— 做過咩、而家係咩狀態、
@@ -19,9 +17,9 @@
 
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **64 paths / 69 operations** · 687 tests |
+| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **81 paths / 88 operations** · 872 tests |
 | Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**21 個畫面**，三角色） | ✅ 93 tests |
-| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/js/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ 29 vitest · UI verifier PASS |
+| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/js/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **31 vitest** · UI verifier PASS |
 
 一個 repo、三件完整交付物。定位：**Cap. 374D 合規的士資訊中介**（非的士營運商）。
 
@@ -285,6 +283,71 @@ weekly 層要捱得過「幾日後才發現」嘅問題，所以 40 日 / keep 7
 > `CreateFile failed 231 / ERROR_PIPE_BUSY`，属沙盒限制而非契约失败）。夹具本身未被本次
 > 改动触及，故第 1、3 层验证足以覆盖。
 
+### 2.11 后台治理：RBAC · 审计 · 订单 · 结算 · 争议 · 搜索（2026-10-01）
+
+把「后台只能看 KYC 队列」补成一个完整的运营控制台。分三批 commit。
+
+**（a）审计覆盖金錢／狀態，並按角色設閘。**
+此前 15 個 `.audit()` 調用點**全部**在 `admin_auth_service.py` —— 也就是說
+管理員登入有記錄，但**動錢的六條路由什麼都不寫**。新增共用寫入器
+（`app/services/audit_service.py`）並補上金錢／狀態事件，同時加 `payload`
+欄位（migration `a1c4e8b7f209`）令審計行帶得住「改了什麼」而不只是「誰按了」。
+
+**（b）四級 RBAC。**
+`AdminRole = SUPPORT < OPERATIONS < FINANCE < SUPER_ADMIN`，以 **rank 比較**
+（`.at_least()`）作 gate —— 不是 set 成員。**理由**：用 set 的話，每加一個角色
+都要重讀每個列出角色的 tuple，而漏掉一個就是一條開著的路由；安全方向
+（default-deny）必須是結構性的。`SUPER_ADMIN` 是唯一可改角色者 ——
+「RBAC 唯一的死穴，必須由架構而非紀律守住」。
+
+`require_role` 每 request **重讀 live row**，不信 token claim：信 claim 的話
+一個剛被降權的管理員最多可繼續動錢 15 分鐘 —— 「正是他被降權後最可能行動的窗口」。
+`require_role` 必須是 `def` 而非 `async def`（它是 dependency factory，
+寫成協程會令 `Depends(require_role(R))` 在註冊時被 FastAPI 拒絕）。
+
+**（c）新的後台能力（每項都有對應畫面）。**
+
+| 後端 | 用途 | 畫面 |
+|---|---|---|
+| `GET /admin/accounts` · `POST /accounts` · `PATCH /accounts/{id}/role` · `POST /accounts/{id}/password/reset` | 帳戶管理；**最後一個 super admin 不可被降權**（由伺服器拒，畫面亦停用按鈕） | `AccountsPage` |
+| `GET /admin/orders` · `/orders/{id}` | 訂單監控（狀態篩選、時間軸、fare 快照、ledger） | `OrdersPage` / `OrderDetailPage` |
+| `POST /admin/settlement/preview` · `…/weekly/run`（帶 **confirm token**）· `…/export.csv` | 結算先預覽再執行；token 綁定**操作員實際看過的數字** | `SettlementPage` |
+| `disputes` + `dispute_messages` 全套 | 事後判斷費用由誰承擔；SLA 由 severity 導出；`is_internal` 內部備註 | `DisputesPage` |
+| `GET /admin/search` | 主體搜尋（姓名／車牌前綴、電話數字子串） | `SearchPage` |
+| `POST /identity/avatar/uploads` | 頭像上傳（此前只有 presign 機制、且只服務牌照文件） | — |
+
+**爭議的幾個刻意設計**：`order_id` **nullable**（帳戶／App 層投訴沒有行程）；
+`resolution` **nullable 且無 default**（`NULL` = 尚未裁決，`'NONE'` = 已裁決：不向任何人收費）；
+**SLA 一律由伺服器導出**，不接受 client 傳入；**安全事件是旗標不是動作** ——
+由人決定，自動停權等於一次不實指控就把司機拉下車、沒有聽證；隊列按
+` sla_due_at` 升序而非 `created_at` 降序。裁決**每 request 判斷**：
+OPERATIONS 可判斷行為對錯，但 `moves_money` 的裁決額外要求 FINANCE（職責分離）。
+
+**（d）過程中發現並修好的一個真 bug（會令後台在「有效登入」下全黑）。**
+`AppContext` 原本讀 `user.role` 當角色，但 `role` 是 **principal kind**
+（管理員 token 上永遠是字面 `'ADMIN'`），**不是 `ROLE_RANK` 的鍵**。結果
+`hasRole(...)` 對每個等級都回 `false`、`NAV` 過濾成 **0 項**、每個受閘頁面
+都渲染「沒有存取權限」—— 而伺服器完全正確。rank 在 `admin_role`：
+`POST /admin/auth/login`（`_admin_out`）與 `GET /auth/me`（`AdminMeOut`）都送，
+而且**登入響應只有 `admin_role`、沒有 `role`** —— 所以舊寫法連欄位都不存在。
+`App.boot.test.tsx` 的夹具正是 `role: 'ADMIN'`、無 `admin_role`，因此**與這個
+bug 一致**。已修正夹具（兩個欄位都帶，如伺服器），並加 2 個測試釘住新行為：
+SUPPORT session 的導覽有 `#/search`/`#/orders`/`#/audit` 而**無**
+`#/accounts`/`#/settlement`；以及高於自身等級的深連結渲染存取提示、
+**保留 hash 不動**（否則一個被分享的連結在角色變更後就失效）。
+
+**（e）其他配套。**
+`GET /admin/search` **刻意不逐次審計**（搜尋是高頻讀取，寫滿審計表會淹沒真正的
+金錢事件）。`client.ts` 新增 `fetchBlob` —— 獨立方法而非 `send` 的一個旗標：
+`send` 會把 JSON parse 失敗當成 `null`，而對 CSV 而言那就是「一個 200 的空表格、
+任何地方都不報錯」。`RequireRole` 明文註明是**affordance guard 而非安全邊界** ——
+伺服器每 request 重讀 live row，真正阻止的是「渲染一個每個請求都會 403 的頁面」。
+
+**验证**：`pytest` **687 → 872**（`--junit-xml` 读：872/0/0/0）·
+`ruff check` + `format --check` clean（131 files）· OpenAPI **81 paths / 88 operations**，
+`scripts/audit_response_models.py` 68 块 fixture OK · console `tsc` clean、
+**31 vitest passed**、`npm run build` clean。
+
 ---
 
 ## 3. 驗證標準：「全部實跑」
@@ -293,7 +356,7 @@ weekly 層要捱得過「幾日後才發現」嘅問題，所以 40 日 / keep 7
 
 ```bash
 uv run ruff check . && uv run ruff format --check .   # 或 ./.venv/Scripts/python.exe -m ruff
-uv run pytest -q                                       # 687 passed（用 --junit-xml 讀，見下）
+uv run pytest -q                                       # 872 passed（用 --junit-xml 讀，見下）
 uv run python scripts/audit_response_models.py         # 68 块夹具 vs response_model，0 丢失
 cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run --no-file-parallelism --pool=forks
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
@@ -334,10 +397,25 @@ NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@pl
 - **負餘額合法（arrears）** —— 罰款／費用可以超過按金，司機欠平台。
 - **`ADJUSTMENT` 單一管理員直接寫入** —— 由你揀。無雙人覆核，靠
   `created_by` 審計。若日後要防內部舞弊，需改成申請→批准流程。
+  （**2026-10-01 更新**：爭議裁決的 `moves_money` 路徑已加 FINANCE 角色閘，
+  是職責分離的第一步；`ADJUSTMENT` 本身仍為單人。）
+- **搜尋不逐次審計** —— 高頻讀取，寫滿審計表會淹沒真正的金錢事件。刻意。
+
+### C. 文件語言未統一（技術債，非阻塞）
+
+`docs/*.md` 多數以**粵語**寫成（同用戶偏好的書面語不一致）。`docs/IN_TRIP_REDESIGN.md`
+（2,031 行）尤其嚴重。§2.9 之後的新章節已改用書面語，但舊章節未回頭改。
+適合用一次 bulk 轉換處理（已有 `bulk-text-refactor` skill 可用）。
+
+### D. 行號引用失效
+
+`app/models/` 佈局改動後，`docs/ADMIN_CONSOLE_DESIGN.md` 與
+`docs/PRODUCTION_READINESS.md` 內的**行號引用**已失效（檔案已重新編排）。
+內容本身仍正確，只是指向的行數不再準確。
 
 ---
 
-## 5. Push 狀態：❌ 仍然推唔到（token 未獲授權此 repo）
+## 5. Push 狀態：❌ 仍然推唔到（token 未獲授權此 repo）— 已由用戶豁免
 
 **已 commit，但推唔到。** 2026-10-01 實測：
 
@@ -351,6 +429,10 @@ NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@pl
 授權**，所以「token 屬於 dannisonluk」同「token 掂得到 realtaxihk」係兩件
 獨立嘅事。**要你出手**：去 GitHub token 設定加 `dannisonluk/realtaxihk` +
 `Contents: Read and write`。
+
+> **✅ 2026-10-01 用戶指示：「你不需要 push，只需要 commit」。** 最新一輪的
+> 所有工作**只 commit、不 push**。現時 `origin/main..HEAD` = **4 個未推**；
+> 之前累積的 commit 亦一併未推。要真正同步，仍需上面的 token 授權。
 
 > **⚠️ 更正（2026-10-01 稍後）：本節原本寫「working tree clean」，當時係錯嘅。**
 > `git rev-list --count origin/main..HEAD` 只證明**已 commit 嘅嘢都推咗**，
@@ -464,18 +546,19 @@ Repository access 加 `dannisonluk/realtaxihk` → Permissions 給
 | **`docs/DEPLOY_TARGET_DECISION.md`** | 部署選型 A/B/C 取捨與成本 | 選定後歸檔 |
 | **`docs/DEPLOYMENT_REQUIREMENTS.md`** | 部署需求清單：硬約束、環境變數、步驟、gap list | 跟配置更新 |
 | **`docs/ADMIN_AUTH.md`** | 管理員認證模型、authenticator 選型、已知缺口 | 少變 |
-| **`docs/ADMIN_CONSOLE_DESIGN.md`** | 後台九大模組設計：現狀 HAVE / 缺口 NEED / 方案，含四級 RBAC（`SUPPORT`/`OPERATIONS`/`FINANCE`/`SUPER_ADMIN`）、稽核、工單 | 設計提案，未實作 |
+| **`docs/ADMIN_CONSOLE_DESIGN.md`** | 後台九大模組設計：現狀 HAVE / 缺口 NEED / 方案，含四級 RBAC（`SUPPORT`/`OPERATIONS`/`FINANCE`/`SUPER_ADMIN`）、稽核、工單 | ✅ **大部分已實作**（見 §2.11）；行號引用已失效，見該文件頂部註記 |
 | **`docs/IN_TRIP_REDESIGN.md`** | in-trip + 預約重設計：新狀態機、到達雙重驗證、違約即時扣款 + 冷靜期、保證金閘門、schema、API、前端、$5 平台費、22 個**終點地標**（純下客）預約與司機分類 filter | 設計提案，7 個 DECISION **全部已拍板**；深圳灣邊界缺陷待拍板 |
 | **`docs/LANDMARK_COORDINATES.md`** | 19 個即用地標的落客座標 + Google Maps 連結，供人手逐個覆核；含深圳灣港方口岸區的完整幾何分析與修法記錄 | 覆核清單（工具文件） |
 | **`docs/REALTIME_POSITION_COST.md`** | 實時位置每 tick 成本實測 + 擴展天花板 + 5 項優化 | 已實測 |
 | `docs/LINTING.md` | ruff 規則集與理由 | 少變 |
-| `docs/PROJECT_UNDERSTANDING.md` | 專案架構理解（交付物規模） | ⚠️ 見下 |
+| `docs/PROJECT_UNDERSTANDING.md` | 專案架構理解（交付物規模） | ✅ 2026-10-01 已全面重寫 |
 | `.workbuddy-ai/memory/YYYY-MM-DD.md` | 逐日流水、含沙盒陷阱 | **append-only，唔整理** |
 
-**⚠️ 已知過時**：`docs/PROJECT_UNDERSTANDING.md` 寫 HEAD = `446b7ee`、
-221 tests、54 Dart files、38 endpoints。實際係 `e50af99`、**687 tests**、
-**93 Dart tests**、**64 paths / 69 operations**、**29 vitest**。佢係嗰時寫嘅
-快照，未跟住之後嘅 commit 更新。
+> **✅ 已修正**：`docs/PROJECT_UNDERSTANDING.md` 曾停在 `4333f2a`（寫 HEAD =
+> `446b7ee`、221 tests、54 Dart files、38 endpoints）。**2026-10-01 已全面重寫**，
+> 現值：`1df6856`、**872 tests**、**81 paths / 88 operations**、**31 vitest**、
+> **131 ruff files**，並新增 RBAC 設計、`/auth/me` 雙形狀、`StarletteHTTPException`
+> cookie 陷阱等章節。
 
 > 計 route 數要讀 OpenAPI（`GET /openapi.json` 數 `paths` / operations），
 > **唔好 grep route decorator** —— 一個 `@router.get` 加 `@router.post`
@@ -502,9 +585,13 @@ Repository access 加 `dannisonluk/realtaxihk` → Permissions 給
 ## 8. 一頁睇完
 
 ```
-✅ 後端 64 paths / 69 ops / 687 tests / ruff lint + format clean — 生產就緒
+✅ 後端 81 paths / 88 ops / 872 tests / ruff lint + format clean（131 files）— 生產就緒
 ✅ mobile 21 畫面 / 93 tests / 0 diagnostics      — 三角色完整
-✅ admin-web React 重寫 / 29 vitest / UI verifier PASS — 7 條路由全部通過
+✅ admin-web React / 31 vitest / typecheck + build clean / UI verifier PASS
+✅ 後台治理：四級 RBAC（rank 比較、live row 為權威）+ 審計覆蓋金錢／狀態改動
+✅ 後台新增：帳戶管理 / 訂單監控 / 結算預覽+confirm token+CSV / 爭議 / 主體搜尋 / 頭像上傳
+✅ 修好一個真 bug：AppContext 讀 `user.role` 當 rank（實為 principal kind）
+   → 有效登入下導覽 0 項、每頁「沒有存取權限」；rank 在 `admin_role`
 ✅ location check：8 個 polygon 取代 bbox（舊 bbox 含深圳）
 ✅ 深圳灣口岸：`_HK_MAIN` 后海灣段 2 → 7 頂點，港方口岸區（香港租賃、司法管轄）
    納入境內；蛇口 / 南山 / 前海 / 深圳側管制站仍境外（實跑 212 點網格驗證）
@@ -518,19 +605,21 @@ Repository access 加 `dannisonluk/realtaxihk` → Permissions 給
 ✅ TOTP 綁定二維碼：本地 SVG 渲染，經獨立解碼器驗證解出正確 otpauth URI（明暗兩主題）
 ✅ challenge token 結構隔離、scope 提權不可行（實測）
 ✅ 秘密審計：.env 從未進 git，無硬編碼金鑰
-✅ push 已解決 — 0 未推（先前記錄嘅 token 阻塞已解除）
+❌ push 未做 — 用戶指示「只需 commit」；現時 4 個未推（token 仍未獲授權此 repo）
 
 ✅ `app/models` 拆包：886 行 → 5 個 bounded-context 模組 + `__init__` re-export
-   零呼叫點改動；DDL / relationship / alembic drift 逐項比對全等，687 tests 不變
+   零呼叫點改動；DDL / relationship / alembic drift 逐項比對全等
+✅ 全部 88 個 operation 都有 `response_model=`（此前 88 個中只有 1 個）
 
 ✅ SEV-1 已修：admin session 改為 HttpOnly refresh cookie（SameSite=Strict）
-   + CSRF double-submit；token refresh 路徑已通（實測 687 tests 含 cookie 測試）
-✅ ruff format --check 已通過（全樹 109 files）並加 CI gate — 不會復發
+   + CSRF double-submit；token refresh 路徑已通
+✅ ruff format --check 已通過（全樹 131 files）並加 CI gate — 不會復發
 ⚠️ SEV-2：`admin_auth.py` 用字串比對錯誤訊息決定 HTTP 狀態碼；
-   locked 帳號回 401 而非 429，客戶端無法區分（未改，屬客戶端體驗非安全洞）
+   locked 帳號回 401 而非 429（未改，屬客戶端體驗非安全洞）
 ⚠️ 根阻塞：**部署目標未定** — §4A 表面 7 項，實際 5 項下游於此（見 §5b）
 ⬜ 真正等 credentials 嘅只有 3 家 provider：Google Maps / FCM / WhatsApp
-⚠️ docs/PROJECT_UNDERSTANDING.md 內容過時（見 §6）
+✅ `docs/PROJECT_UNDERSTANDING.md` 已於 2026-10-01 全面重寫
+⚠️ `docs/*.md` 語言未統一（多數粵語，`IN_TRIP_REDESIGN.md` 尤其）—— 待一次 bulk 轉換
 
 新文件：docs/SECURITY.md · docs/DEPLOYMENT_REQUIREMENTS.md
 ```
