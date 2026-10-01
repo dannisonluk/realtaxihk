@@ -182,10 +182,7 @@ class TestDriverLocationIsGated:
         async with client.db_factory() as session:
             stored = (
                 await session.execute(
-                    text(
-                        "SELECT ST_AsText(current_location) FROM driver_profiles "
-                        "WHERE id = :id"
-                    ),
+                    text("SELECT ST_AsText(current_location) FROM driver_profiles WHERE id = :id"),
                     {"id": d["driver_id"]},
                 )
             ).scalar()

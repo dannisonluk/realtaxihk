@@ -60,6 +60,25 @@ HONG_KONG = {
     "Lo Wu": (22.5280, 114.1130),
     "Man Kam To": (22.5320, 114.1330),
     "Sha Tau Kok (HK side)": (22.5430, 114.2130),
+    # The Shenzhen Bay Port Hong Kong Port Area. On Shenzhen land, under Hong
+    # Kong jurisdiction — the HKSAR leases it until 2047-06-30 and applies Hong
+    # Kong law inside it. A taxi bound for Shenzhen Bay Port drops off at the
+    # public transport interchange here, so these must be inside. Two
+    # independent sources agree on the interchange position: OpenStreetMap
+    # `bus_station` way 581117553 (22.500992, 113.945654) and Wikimapia's
+    # 22°30'5"N 113°56'41"E (22.501390, 113.944720) — about 100 m apart.
+    "Shenzhen Bay Port PTI (OSM)": (22.500992, 113.945654),
+    "Shenzhen Bay Port PTI (Wikimapia)": (22.501390, 113.944720),
+    "Shenzhen Bay Port PTI, north edge": (22.503245, 113.945654),
+    "Shenzhen Bay Port PTI, south edge": (22.498739, 113.945654),
+    "Shenzhen Bay Port PTI, west edge": (22.500992, 113.943101),
+    "Shenzhen Bay Port PTI, east edge": (22.500992, 113.948207),
+    "Shenzhen Bay Port Area, footprint": (22.489500, 113.945000),
+    "Shenzhen Bay Bridge, HK landfall": (22.489000, 113.946000),
+    # Deep Bay's Hong Kong shore, either side of the port detour. Included to
+    # prove the detour did not detach the coast from the rest of the polygon.
+    "Ngau Hom Shek": (22.4700, 113.9300),
+    "Tsim Bei Tsui": (22.4870, 113.9900),
 }
 
 NOT_HONG_KONG = {
@@ -75,6 +94,20 @@ NOT_HONG_KONG = {
     "Shenzhen Yantian": (22.5580, 114.2400),
     "Shenzhen Airport": (22.6390, 113.8140),
     "Shenzhen Longgang": (22.7200, 114.2500),
+    # Shenzhen's Deep Bay / Shekou flank, adjacent to the new Shenzhen Bay Port
+    # detour. This is the leak the detour could plausibly have caused, so each
+    # point is a real place rather than a random coordinate: Shekou's east
+    # shore, the Shenzhen Bay checkpoint on the Shenzhen side, Deep Bay's
+    # northern water, Nanshan and Qianhai. All must stay refused — admitting
+    # the Port Area may not drag any Shenzhen land in with it.
+    "Shenzhen Shekou Sea World": (22.4855, 113.9160),
+    "Shenzhen Shekou, north": (22.5000, 113.9200),
+    "Shenzhen Shekou, north-east": (22.4980, 113.9320),
+    "Shenzhen Shekou east shore": (22.5010, 113.9360),
+    "Shenzhen Bay checkpoint": (22.5210, 113.9410),
+    "Shenzhen Bay Port, Shenzhen side": (22.5070, 113.9410),
+    "Shenzhen Qianhai": (22.5250, 113.8950),
+    "Deep Bay, northern water": (22.5200, 113.9300),
     # Elsewhere.
     "Macau": (22.1987, 113.5439),
     "Zhuhai": (22.2710, 113.5770),
@@ -170,3 +203,77 @@ def test_a_ferry_passenger_between_the_islands_is_handled():
     # not offshore at all. A test that "documents a gap" using a point that is
     # not in the gap documents nothing.
     assert not is_in_hong_kong(22.1900, 114.0350)
+
+
+def test_the_shenzhen_bay_port_area_defect_cannot_come_back():
+    """Pins the second boundary defect this module has had.
+
+    Before the Deep Bay detour, `_HK_MAIN` ran straight from Ngau Hom Shek to
+    the east side of Deep Bay: two vertices, slope `dlat/dlng = 1.125`. At the
+    interchange's longitude that edge sat at latitude 22.488861, and the
+    interchange is at 22.500992 — so the Hong Kong Port Area of Shenzhen Bay
+    Port was **1.34 km outside** the polygon. A taxi heading there was judged
+    to have left Hong Kong a kilometre and a half before it arrived, and the
+    order would have been refused with 422 `OUTSIDE_HK` at creation time.
+
+    This test states the old boundary as a line and keeps it from being
+    restored: if a future edit straightens that stretch back out, the
+    interchange drops outside again and this fails.
+    """
+    ngau_hom_shek = (22.4600, 113.9200)
+    deep_bay_east = (22.5050, 113.9600)
+    pti_lat, pti_lng = HONG_KONG["Shenzhen Bay Port PTI (OSM)"]
+
+    # Latitude of the old two-vertex edge at the interchange's longitude.
+    (lat_a, lng_a), (lat_b, lng_b) = ngau_hom_shek, deep_bay_east
+    slope = (lat_b - lat_a) / (lng_b - lng_a)
+    old_edge_lat = lat_a + slope * (pti_lng - lng_a)
+
+    assert old_edge_lat < pti_lat, "the old edge really did cut the corner"
+    assert pti_lat - old_edge_lat > 0.01, "and by a large margin (~1.3 km)"
+
+    # And the current boundary does not.
+    assert is_in_hong_kong(pti_lat, pti_lng)
+
+
+def test_admitting_the_port_area_did_not_admit_shenzhen():
+    """The detour must be a detour around the Port Area, not a broad lift.
+
+    Lifting the northern boundary anywhere in Deep Bay is exactly the change
+    that could re-create the module's original sin — a boundary that contains
+    Shenzhen. This walks a grid over the whole Deep Bay / Shekou corner and
+    asserts that nothing in it is closer to Shenzhen's built-up area than the
+    already-known-refused points. Concretely: every admitted coordinate must be
+    *south* of the Shenzhen-side waterfront, and there must be an admitted
+    corridor only where the Port Area is.
+
+    Checked as a property rather than a fixed list, because a list only catches
+    the points someone thought of.
+    """
+    # Shenzhen-side reference: Shekou's waterfront and the Shenzhen Bay
+    # checkpoint. The admitted region must not reach north of the checkpoint's
+    # latitude anywhere, and must not reach west of Shekou's east shore.
+    checkpoint_lat = NOT_HONG_KONG["Shenzhen Bay checkpoint"][0]
+    shekou_east_lng = NOT_HONG_KONG["Shenzhen Shekou east shore"][1]
+
+    # Step a grid across the Deep Bay corner and classify.
+    lat = 22.4700
+    while lat <= 22.5400:
+        lng = 113.9000
+        while lng <= 113.9700:
+            if is_in_hong_kong(lat, lng):
+                # North of the checkpoint and east of the bridge head is
+                # Shenzhen's land / the Shenzhen side of the port. Refuse.
+                if lat >= checkpoint_lat and lng < 113.9600:
+                    raise AssertionError(
+                        f"({lat:.4f}, {lng:.4f}) is north of the Shenzhen Bay "
+                        f"checkpoint but was admitted"
+                    )
+                # West of Shekou's east shore at the interchange's latitude is
+                # Shenzhen water/land, not Hong Kong.
+                if lat >= 22.4950 and lng < shekou_east_lng:
+                    raise AssertionError(
+                        f"({lat:.4f}, {lng:.4f}) is west of Shekou's east shore but was admitted"
+                    )
+            lng += 0.0025
+        lat += 0.0025

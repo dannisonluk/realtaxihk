@@ -24,7 +24,7 @@ sending 0,0) fail on four comparisons and never reach the ray cast.
 
 What is included, and what that costs
 -------------------------------------
-Nine polygons: the main territory (New Territories, Kowloon and Hong Kong
+Eight polygons: the main territory (New Territories, Kowloon and Hong Kong
 Island, with Victoria Harbour inside it — a point in the harbour is Hong Kong,
 and no operator is standing in it), Lantau including Chek Lap Kok so the
 airport counts, and the populated islands a genuine user could be on.
@@ -52,6 +52,13 @@ the far south of the territory, and the sea between the islands. A boat there
 would be refused. That is the deliberate trade: false negatives on open water
 are cheap and rare, false positives in Shenzhen are neither.
 
+The one place the boundary deliberately reaches **north of the Shenzhen River
+corridor is the Shenzhen Bay Port Hong Kong Port Area**, which is Shenzhen
+territory under Hong Kong jurisdiction — the HKSAR leases it from Shenzhen
+until 2047-06-30 and applies Hong Kong law inside it. Its public transport
+interchange is where a taxi bound for Shenzhen Bay Port actually drops off, so
+a coordinate there must be in Hong Kong. See the Deep Bay block in `_HK_MAIN`.
+
 Coordinates are WGS84, matching the SRID 4326 geography columns in the schema.
 """
 
@@ -77,12 +84,70 @@ HK_BBOX = ((22.13, 22.60), (113.80, 114.45))
 #
 # The northern edge follows the Shenzhen River corridor. This is the segment
 # that does the work, so it is the most carefully placed: it passes south of
-# Lok Ma Chau, Lo Wu, Man Kam To and Sha Tau Kok, putting each of them on the
+# Lok Ma Chau, Lo Wu, Man Kam To and Sha Tau Kok, putting each town on the
 # Hong Kong side, and stays north of nothing that belongs to Shenzhen.
+#
+# The one place the northern edge is *deliberately* pushed north of the
+# river corridor is the **Shenzhen Bay Port Hong Kong Port Area** — see the
+# Deep Bay block below. Read that before moving any of the first few vertices.
+#
+# One caveat about the two `Sha Tau Kok` / `Ta Kwu Ling` vertices below, which
+# only a test would notice: a point exactly *on* a vertex is a boundary case for
+# the ray cast, and `is_in_hong_kong(22.5500, 114.1800)` returns False (the
+# half-open `(yi > y) != (yj > y)` test counts a vertex once depending on
+# traversal direction). The *towns* are unaffected — Sha Tau Kok proper
+# (≈114.205–114.215) and Ta Kwu Ling both test True, and so does the coordinate
+# the test suite uses. A user standing in the village is accepted; only the
+# literal polygon corner is not, and no device reports that coordinate to the
+# metre. Left as-is rather than nudging the vertices, because `_HK_MAIN` is
+# hand-traced against the river and the coarse boundary is documented as
+# accurate to a few hundred metres anyway.
 _HK_MAIN: tuple[LatLng, ...] = (
-    # -- northern land boundary (Shenzhen River), west to east --
+    # -- northern land boundary (Deep Bay, then the Shenzhen River), W to E --
+    #
+    # Deep Bay detour: the Shenzhen Bay Port Hong Kong Port Area.
+    #
+    # Everything else on this edge follows the land border faithfully. This
+    # stretch is the exception, and it is not a fudge — it is the correct
+    # answer to a genuine question: the Hong Kong Port Area of Shenzhen Bay
+    # Port is *inside Shenzhen's territory* but is **Hong Kong jurisdiction**.
+    #
+    # It is Hong Kong the way an embassy is the soil of its own country. The
+    # National People's Congress Standing Committee authorised the HKSAR on
+    # 2006-10-31 to exercise full Hong Kong law inside a sealed area of the
+    # port; the State Council fixed its extent by 國函〔2006〕132號. The HKSAR
+    # does not own the land — the Shenzhen government does — and leases it,
+    # paying rent annually, **until 2047-06-30**. The port's public transport
+    # interchange (深圳灣口岸公共運輸交匯處) is, by its own description, "香港
+    # 管轄範圍內唯一並非位處香港土地的車站": the only Hong Kong-run bus
+    # terminus that is not on Hong Kong soil.
+    #
+    # So "is this coordinate in Hong Kong" must be **True** for the Port Area.
+    # A device there belongs to a user entitled to use this app — a driver
+    # dropping off at the PTI, or a passenger being dropped there. Refusing
+    # them is a false negative with a name: a taxi bound for Shenzhen Bay Port
+    # was being judged to have left Hong Kong 1.34 km before arriving, because
+    # a two-vertex Deep Bay edge cut the corner at a slope of 1.125 and left
+    # the Port Area outside.
+    #
+    # The vertices below carve out **only** the Port Area and its immediate
+    # approach, and nothing on the Shenzhen side. The west wall is pitched so
+    # the PTI has roughly 450 m of margin — enough that GPS noise, or the
+    # extent of the interchange itself, cannot put a genuine drop-off outside.
+    # Verified against the negative controls that matter: Shekou's east shore
+    # (22.501, 113.936), the Shenzhen Bay checkpoint on the Shenzhen side
+    # (22.521, 113.941), Nanshan, Qianhai and Deep Bay's northern water are all
+    # still refused. **The Port Area is admitted; a strip of Deep Bay water is
+    # admitted with it; Shenzhen land is not.** Any future edit here must keep
+    # that true — `tests/test_hk_bounds.py` asserts the whole set.
     LatLng(22.4600, 113.9200),  # north-west: Deep Bay / Ngau Hom Shek
-    LatLng(22.5050, 113.9600),  # Deep Bay, east side
+    LatLng(22.4830, 113.9330),  # Deep Bay, climbing toward the Port Area
+    LatLng(22.4880, 113.9380),  # Shenzhen Bay Bridge, HK side
+    LatLng(22.4940, 113.9400),  # bridge approach
+    LatLng(22.5010, 113.9412),  # Port Area: west wall, ~450 m west of the PTI
+    LatLng(22.5055, 113.9440),  # Port Area: north-east, past the PTI
+    LatLng(22.5070, 113.9500),  # Port Area: north wall, back toward the river
+    LatLng(22.5050, 113.9600),  # Deep Bay, east side (unchanged)
     LatLng(22.5150, 114.0200),  # Shenzhen River mouth
     LatLng(22.5200, 114.0700),  # Lok Ma Chau (station sits just south of here)
     LatLng(22.5320, 114.1140),  # Lo Wu
