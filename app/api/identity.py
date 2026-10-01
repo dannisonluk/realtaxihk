@@ -25,6 +25,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.schemas import (
+    EmailConfirmOut,
+    EmailRequestOut,
+    PhoneReverifyOut,
+    ProfileOut,
+    UsernameCheckOut,
+)
 from app.core.db import get_session
 from app.core.deps import Principal, require_active_user
 from app.core.exceptions import BusinessRuleError
@@ -119,7 +126,7 @@ async def _run(coro, session: AsyncSession):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/me")
+@router.get("/me", response_model=ProfileOut)
 async def me(
     user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
@@ -130,7 +137,7 @@ async def me(
     return _profile_out(row)
 
 
-@router.post("/profile")
+@router.post("/profile", response_model=ProfileOut)
 async def complete_profile(
     payload: ProfileIn,
     user: Principal = Depends(require_active_user),
@@ -157,7 +164,7 @@ async def complete_profile(
     return _profile_out(row)
 
 
-@router.get("/username-check")
+@router.get("/username-check", response_model=UsernameCheckOut)
 async def username_check(
     username: str,
     request: Request,
@@ -182,7 +189,7 @@ async def username_check(
     return {"username": username.strip().lower(), "available": available}
 
 
-@router.post("/email/request")
+@router.post("/email/request", response_model=EmailRequestOut)
 async def request_email(
     payload: EmailIn,
     request: Request,
@@ -206,7 +213,7 @@ async def request_email(
     return result
 
 
-@router.post("/email/confirm")
+@router.post("/email/confirm", response_model=EmailConfirmOut)
 async def confirm_email(
     payload: ConfirmIn,
     session: AsyncSession = Depends(get_session),
@@ -226,7 +233,7 @@ class PhoneReverifyIn(BaseModel):
     code: str = Field(pattern=r"^\d{6}$")
 
 
-@router.post("/phone/reverify")
+@router.post("/phone/reverify", response_model=PhoneReverifyOut)
 async def reverify_phone(
     payload: PhoneReverifyIn,
     request: Request,
@@ -264,9 +271,7 @@ async def reverify_phone(
         # A re-verify proves a number you already own. Accepting a new one here
         # would make this endpoint a silent phone-change primitive, bypassing
         # whatever safeguards a real change-of-number flow needs.
-        raise HTTPException(
-            status_code=400, detail="this number is not the one on your account"
-        )
+        raise HTTPException(status_code=400, detail="this number is not the one on your account")
 
     created = await _run(OtpService(session).verify_otp_for_user(row, payload.code), session)
     # `verify_otp_for_user` refuses unless the code was issued for *this* row's

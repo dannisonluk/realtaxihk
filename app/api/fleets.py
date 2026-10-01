@@ -28,9 +28,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.api.schemas import (
+    FleetMemberListOut,
+    FleetMemberRowOut,
+    FleetOut,
+    FleetPageOut,
+    FleetSettlementListOut,
+    FleetSettlementRunOut,
+    FleetViewOut,
+)
 from app.core.config import get_settings
 from app.core.db import get_session, get_session_factory
 from app.core.deps import Principal, require_active_user, require_admin
+from app.core.money import money_str
 from app.models import (
     DriverProfile,
     Fleet,
@@ -44,17 +54,22 @@ from app.services.fleet_service import FleetService, FleetSettlementService
 router = APIRouter(prefix="/api/v1/fleets", tags=["fleets"])
 admin_router = APIRouter(prefix="/api/v1/admin/fleets", tags=["admin"])
 
-_MONEY = Decimal("0.01")
-
 
 def _money(value) -> str:
-    """Fleet money renders to the cent.
+    """Fleet money renders to the cent, half-up.
 
-    The platform's own `money_str()` quantises to one decimal, which is fine for
-    the flat fee (always a whole dollar) but wrong here: a discounted fleet fee
-    lands on a cent, and `134.00` must not come back as `134.0`.
+    Routed through `money_str()` rather than a local `quantize` call. The local
+    version omitted the rounding mode, so it inherited `Decimal`'s
+    `ROUND_HALF_EVEN` default — meaning a fleet fee that landed on a half-cent
+    rounded the opposite way from the same figure in the platform-wide
+    settlement response. `money_str` is the project's one half-up 2-dp rule and
+    is already imported by every other money-emitting module.
+
+    The stale comment this replaced claimed `money_str()` "quantises to one
+    decimal", which was true before that function was corrected to 2 dp and is
+    exactly the kind of note that survives a fix and then justifies a bug.
     """
-    return str(Decimal(value).quantize(_MONEY))
+    return money_str(value)
 
 
 def _fleet_out(fleet: Fleet, *, member_count: int | None = None) -> dict:
@@ -167,7 +182,7 @@ async def _require_membership(session: AsyncSession, fleet_id, user_id) -> Fleet
 # ---------------------------------------------------------------------------
 
 
-@router.get("/me")
+@router.get("/me", response_model=FleetViewOut)
 async def my_fleet(
     user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
@@ -192,7 +207,7 @@ async def my_fleet(
     }
 
 
-@router.get("/{fleet_id}")
+@router.get("/{fleet_id}", response_model=FleetOut)
 async def fleet_detail(
     fleet_id: uuid.UUID,
     user: Principal = Depends(require_active_user),
@@ -204,7 +219,7 @@ async def fleet_detail(
     return _fleet_out(fleet, member_count=await service.active_member_count(fleet.id))
 
 
-@router.get("/{fleet_id}/members")
+@router.get("/{fleet_id}/members", response_model=FleetMemberListOut)
 async def fleet_members(
     fleet_id: uuid.UUID,
     user: Principal = Depends(require_active_user),
@@ -215,7 +230,7 @@ async def fleet_members(
     return {"items": [_member_out(m, d) for m, d in roster]}
 
 
-@router.get("/{fleet_id}/settlement")
+@router.get("/{fleet_id}/settlement", response_model=FleetSettlementListOut)
 async def fleet_settlement(
     fleet_id: uuid.UUID,
     limit: Annotated[int, Query(ge=1, le=200)] = 52,
@@ -233,7 +248,7 @@ async def fleet_settlement(
 # ---------------------------------------------------------------------------
 
 
-@admin_router.post("", status_code=status.HTTP_201_CREATED)
+@admin_router.post("", status_code=status.HTTP_201_CREATED, response_model=FleetOut)
 async def create_fleet(
     payload: FleetCreateIn,
     admin: Principal = Depends(require_admin),
@@ -251,7 +266,7 @@ async def create_fleet(
     return _fleet_out(fleet, member_count=0)
 
 
-@admin_router.get("")
+@admin_router.get("", response_model=FleetPageOut)
 async def list_fleets(
     status_filter: str | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -273,7 +288,7 @@ async def list_fleets(
     }
 
 
-@admin_router.get("/{fleet_id}")
+@admin_router.get("/{fleet_id}", response_model=FleetOut)
 async def admin_fleet_detail(
     fleet_id: uuid.UUID,
     admin: Principal = Depends(require_admin),
@@ -284,7 +299,7 @@ async def admin_fleet_detail(
     return _fleet_out(fleet, member_count=await service.active_member_count(fleet.id))
 
 
-@admin_router.patch("/{fleet_id}")
+@admin_router.patch("/{fleet_id}", response_model=FleetOut)
 async def update_fleet(
     fleet_id: uuid.UUID,
     payload: FleetUpdateIn,
@@ -305,7 +320,7 @@ async def update_fleet(
     return _fleet_out(fleet, member_count=await service.active_member_count(fleet.id))
 
 
-@admin_router.get("/{fleet_id}/members")
+@admin_router.get("/{fleet_id}/members", response_model=FleetMemberListOut)
 async def admin_fleet_members(
     fleet_id: uuid.UUID,
     include_left: bool = False,
@@ -318,7 +333,9 @@ async def admin_fleet_members(
     return {"items": [_member_out(m, d) for m, d in roster]}
 
 
-@admin_router.post("/{fleet_id}/members", status_code=status.HTTP_201_CREATED)
+@admin_router.post(
+    "/{fleet_id}/members", status_code=status.HTTP_201_CREATED, response_model=FleetMemberRowOut
+)
 async def add_fleet_member(
     fleet_id: uuid.UUID,
     payload: FleetMemberIn,
@@ -337,7 +354,7 @@ async def add_fleet_member(
     return _member_out(membership, driver)
 
 
-@admin_router.delete("/{fleet_id}/members/{driver_profile_id}")
+@admin_router.delete("/{fleet_id}/members/{driver_profile_id}", response_model=FleetMemberRowOut)
 async def remove_fleet_member(
     fleet_id: uuid.UUID,
     driver_profile_id: uuid.UUID,
@@ -356,7 +373,7 @@ async def remove_fleet_member(
     return _member_out(membership, driver)
 
 
-@admin_router.get("/{fleet_id}/settlement")
+@admin_router.get("/{fleet_id}/settlement", response_model=FleetSettlementListOut)
 async def admin_fleet_settlement(
     fleet_id: uuid.UUID,
     limit: Annotated[int, Query(ge=1, le=200)] = 52,
@@ -368,7 +385,7 @@ async def admin_fleet_settlement(
     return {"items": [_settlement_out(run) for run in runs]}
 
 
-@admin_router.post("/{fleet_id}/settlement/run")
+@admin_router.post("/{fleet_id}/settlement/run", response_model=FleetSettlementRunOut)
 async def run_fleet_settlement(
     fleet_id: uuid.UUID,
     period: Annotated[str | None, Query(pattern=r"^\d{4}-W\d{2}$")] = None,

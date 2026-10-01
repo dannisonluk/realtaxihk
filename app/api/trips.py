@@ -19,13 +19,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.schemas import TripLocationOut
 from app.core.db import get_session
 from app.core.deps import Principal, require_active_user
 
 router = APIRouter(prefix="/api/v1/trips", tags=["trips"])
 
 
-@router.get("/{order_id}/location")
+@router.get("/{order_id}/location", response_model=TripLocationOut)
 async def trip_location(
     order_id: str,
     user: Principal = Depends(require_active_user),

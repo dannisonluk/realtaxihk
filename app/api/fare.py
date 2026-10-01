@@ -13,6 +13,7 @@ from decimal import Decimal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
+from app.api.schemas import FareEstimateOut
 from app.core.config import get_settings
 from app.core.exceptions import BusinessRuleError
 from app.core.money import meter_str
@@ -69,24 +70,6 @@ class FareEstimateRequest(BaseModel):
         return v
 
 
-class FareEstimateResponse(BaseModel):
-    taxi_type: TaxiType
-    distance_km: Decimal
-    waiting_min: Decimal
-    meter_fare: str
-    discount_percent: str
-    meter_discount: str
-    meter_after_discount: str
-    surcharges: list[dict]
-    surcharges_total: str
-    tip: str
-    total_fare: str
-    tariff_version: str
-    is_estimate: bool
-    disclaimer_en: str
-    disclaimer_zh: str
-
-
 def _client_ip(request: Request) -> str:
     """Same right-anchored resolution as the auth module (SEC-07)."""
     settings = get_settings()
@@ -99,11 +82,11 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-@router.post("/estimate", response_model=FareEstimateResponse)
+@router.post("/estimate", response_model=FareEstimateOut)
 async def estimate_fare(
     payload: FareEstimateRequest,
     request: Request,
-) -> FareEstimateResponse:
+) -> FareEstimateOut:
     settings = get_settings()
     limiter = request.app.state.rate_limiter
     if not await limiter.allow(
@@ -133,7 +116,7 @@ async def estimate_fare(
         raise
     except ValueError as exc:
         raise BusinessRuleError(str(exc)) from exc
-    return FareEstimateResponse(
+    return FareEstimateOut(
         taxi_type=breakdown.taxi_type,
         distance_km=breakdown.distance_km,
         waiting_min=breakdown.waiting_min,

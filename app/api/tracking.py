@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.schemas import OkOut
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.deps import Principal, require_active_user
@@ -37,7 +38,7 @@ class LocationIn(BaseModel):
     online: bool = True
 
 
-@router.post("/location")
+@router.post("/location", response_model=OkOut)
 async def upsert_location(
     payload: LocationIn,
     request: Request,

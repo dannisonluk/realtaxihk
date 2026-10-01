@@ -16,6 +16,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.schemas import (
+    DriverProfileOut,
+    DriverProfileWithDepositOut,
+    LedgerPageOut,
+    RefundRequestOut,
+    RefundViewOut,
+)
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.deps import Principal, require_active_user, require_phone_current
@@ -72,7 +79,7 @@ async def _get_profile(session: AsyncSession, user_id) -> DriverProfile | None:
     )
 
 
-@router.post("/register", status_code=201)
+@router.post("/register", status_code=201, response_model=DriverProfileOut)
 async def register_driver(
     payload: DriverRegisterIn,
     user: Principal = Depends(require_phone_current),
@@ -93,7 +100,7 @@ async def register_driver(
     return _profile_out(profile)
 
 
-@router.get("/me")
+@router.get("/me", response_model=DriverProfileWithDepositOut, response_model_exclude_unset=True)
 async def my_driver_profile(
     user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
@@ -117,7 +124,7 @@ async def my_driver_profile(
     return out
 
 
-@router.get("/me/ledger")
+@router.get("/me/ledger", response_model=LedgerPageOut)
 async def my_ledger(
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
     after_id: Annotated[int | None, Query(ge=0)] = None,
@@ -177,7 +184,7 @@ def _refund_out(r: RefundRequest) -> dict:
     }
 
 
-@router.post("/me/refund/request", status_code=201)
+@router.post("/me/refund/request", status_code=201, response_model=RefundRequestOut)
 async def request_refund(
     payload: RefundRequestIn,
     user: Principal = Depends(require_phone_current),
@@ -200,7 +207,7 @@ async def request_refund(
     return _refund_out(refund)
 
 
-@router.get("/me/refund")
+@router.get("/me/refund", response_model=RefundViewOut)
 async def my_refund(
     user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),

@@ -18,6 +18,16 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.api.schemas import (
+    DepositAdjustOut,
+    DepositGrantOut,
+    DriverDetailOut,
+    DriverPageOut,
+    DriverReviewOut,
+    RefundDecisionOut,
+    RefundPageOut,
+    SettlementRunOut,
+)
 from app.core.config import get_settings
 from app.core.db import get_session, get_session_factory
 from app.core.deps import Principal, require_admin
@@ -59,7 +69,7 @@ _DECISION_TARGET = {
 }
 
 
-@router.get("/drivers")
+@router.get("/drivers", response_model=DriverPageOut)
 async def list_drivers(
     status_filter: str | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -190,7 +200,7 @@ def _ledger_out(entry: LedgerEntry) -> dict:
     }
 
 
-@router.get("/drivers/{driver_id}")
+@router.get("/drivers/{driver_id}", response_model=DriverDetailOut)
 async def driver_detail(
     driver_id: str,
     ledger_limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -272,7 +282,7 @@ async def driver_detail(
     )
 
 
-@router.post("/drivers/{driver_id}/review")
+@router.post("/drivers/{driver_id}/review", response_model=DriverReviewOut)
 async def review_driver(
     driver_id: str,
     payload: DriverReviewIn,
@@ -300,7 +310,7 @@ class DepositGrantIn(BaseModel):
     reference: str | None = Field(default=None, max_length=120)
 
 
-@router.post("/drivers/{driver_id}/deposit/grant")
+@router.post("/drivers/{driver_id}/deposit/grant", response_model=DepositGrantOut)
 async def grant_deposit(
     driver_id: str,
     payload: DepositGrantIn,
@@ -355,7 +365,7 @@ class DepositAdjustIn(BaseModel):
     reference: str | None = Field(default=None, max_length=60)
 
 
-@router.post("/drivers/{driver_id}/deposit/adjust")
+@router.post("/drivers/{driver_id}/deposit/adjust", response_model=DepositAdjustOut)
 async def adjust_deposit(
     driver_id: str,
     payload: DepositAdjustIn,
@@ -408,7 +418,7 @@ async def adjust_deposit(
     }
 
 
-@router.post("/settlement/weekly/run")
+@router.post("/settlement/weekly/run", response_model=SettlementRunOut)
 async def run_weekly_settlement(
     period: Annotated[str | None, Query(pattern=r"^\d{4}-W\d{2}$")] = None,
     admin: Principal = Depends(require_admin),
@@ -438,7 +448,7 @@ def _refund_out(r: RefundRequest) -> dict:
     }
 
 
-@router.get("/refunds")
+@router.get("/refunds", response_model=RefundPageOut)
 async def list_refunds(
     status_filter: Annotated[str | None, Query(pattern=r"^(PENDING|APPROVED|REJECTED)$")] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -467,7 +477,7 @@ class RefundDecisionIn(BaseModel):
     note: str = ""
 
 
-@router.post("/refunds/{refund_id}/decision")
+@router.post("/refunds/{refund_id}/decision", response_model=RefundDecisionOut)
 async def decide_refund(
     refund_id: uuid.UUID,
     payload: RefundDecisionIn,

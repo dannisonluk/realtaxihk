@@ -31,6 +31,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.schemas import (
+    LicenceListOut,
+    LicenceSubmissionOut,
+    PresignedUploadOut,
+)
 from app.core.db import get_session
 from app.core.deps import Principal, require_active_user, require_phone_current
 from app.core.exceptions import BusinessRuleError
@@ -95,9 +100,7 @@ def _client_ip(request: Request) -> str:
 
 async def _limit(request: Request, bucket: str, limit: int, window: int) -> None:
     limiter = request.app.state.rate_limiter
-    if not await limiter.allow(
-        f"licence:{bucket}:{_client_ip(request)}", limit, window
-    ):
+    if not await limiter.allow(f"licence:{bucket}:{_client_ip(request)}", limit, window):
         raise HTTPException(status_code=429, detail="too many requests — slow down")
 
 
@@ -116,7 +119,7 @@ async def _run(coro, session: AsyncSession):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/uploads")
+@router.post("/uploads", response_model=PresignedUploadOut)
 async def presign_upload(
     payload: UploadIn,
     request: Request,
@@ -141,7 +144,9 @@ async def presign_upload(
     )
 
 
-@router.post("/submissions", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/submissions", status_code=status.HTTP_201_CREATED, response_model=LicenceSubmissionOut
+)
 async def submit_licence(
     payload: SubmitIn,
     user: Principal = Depends(require_phone_current),
@@ -167,7 +172,7 @@ async def submit_licence(
     return result.as_dict()
 
 
-@router.get("/submissions")
+@router.get("/submissions", response_model=LicenceListOut)
 async def list_my_submissions(
     request: Request,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -190,13 +195,12 @@ async def list_my_submissions(
         "driver_status": profile.status.value,
         "max_submissions_per_day": MAX_SUBMISSIONS_PER_DAY,
         "required_document_kinds": [
-            k.value for k in
-            (DocumentKind.DRIVER_LICENCE, DocumentKind.TAXI_DRIVER_PASS)
+            k.value for k in (DocumentKind.DRIVER_LICENCE, DocumentKind.TAXI_DRIVER_PASS)
         ],
     }
 
 
-@router.get("/submissions/{submission_id}")
+@router.get("/submissions/{submission_id}", response_model=LicenceSubmissionOut)
 async def get_my_submission(
     submission_id: uuid.UUID,
     user: Principal = Depends(require_active_user),
@@ -208,7 +212,7 @@ async def get_my_submission(
     return _detail(sub)
 
 
-@router.post("/submissions/{submission_id}/withdraw")
+@router.post("/submissions/{submission_id}/withdraw", response_model=LicenceSubmissionOut)
 async def withdraw_submission(
     submission_id: uuid.UUID,
     user: Principal = Depends(require_active_user),

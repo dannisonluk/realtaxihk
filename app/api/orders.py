@@ -37,6 +37,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.schemas import OrderOut, OrderPageOut
 from app.core.db import get_session, get_session_factory
 from app.core.deps import Principal, require_active_user, require_phone_current
 from app.core.exceptions import BusinessRuleError
@@ -132,7 +133,7 @@ async def _driver_profile_of(session: AsyncSession, user_id) -> DriverProfile | 
     )
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, response_model=OrderOut)
 async def create_order(
     payload: OrderCreateIn,
     request: Request,
@@ -163,7 +164,7 @@ async def create_order(
     return order_out(order)
 
 
-@router.get("/nearby")
+@router.get("/nearby", response_model=OrderPageOut)
 async def nearby_orders(
     request: Request,
     lat: Annotated[float, Query(ge=22.1, le=22.6)],
@@ -194,11 +195,21 @@ async def nearby_orders(
         .scalars()
         .all()
     )
+    # Two filters, not one, and both are needed. Redis holds the *candidate*
+    # set ranked by distance, but it is not authoritative: an id can linger
+    # after the order was grabbed or cancelled (the ZREM in GrabService is
+    # best-effort), and the count=50 cap means a dense area can return ids whose
+    # rows no longer qualify. The SQL `status == BROADCASTING` predicate is the
+    # real gate; without it a driver could be shown an order that is already
+    # someone else's, and tapping it would produce a 409.
+    #
+    # Re-ordering by `ids` after the dict lookup preserves Redis's
+    # nearest-first order, which the SQL `IN (...)` would otherwise lose.
     by_id = {str(o.id): o for o in orders}
     return {"items": [order_out(by_id[i]) for i in ids if i in by_id]}
 
 
-@router.get("")
+@router.get("", response_model=OrderPageOut)
 async def my_orders(
     role: Annotated[str, Query(pattern=r"^(passenger|driver)$")] = "passenger",
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -237,7 +248,7 @@ async def my_orders(
     return {"items": [order_out(o) for o in rows]}
 
 
-@router.get("/{order_id}")
+@router.get("/{order_id}", response_model=OrderOut)
 async def order_detail(
     order_id: str,
     user: Principal = Depends(require_active_user),
@@ -254,7 +265,7 @@ async def order_detail(
     return order_out(order)
 
 
-@router.post("/{order_id}/grab")
+@router.post("/{order_id}/grab", response_model=OrderOut)
 async def grab_order(
     order_id: str,
     user: Principal = Depends(require_phone_current),
@@ -271,6 +282,12 @@ async def grab_order(
     won = await grab.grab(order_id=str(order.id), driver_user_id=str(user.id))
     if not won:
         raise HTTPException(status_code=409, detail="order was taken by another driver or is gone")
+    # `GrabService` mutated the row in its *own* session (it opens a
+    # session_factory session and commits there), so this request's identity map
+    # still holds the pre-grab copy — status BROADCASTING, driver_id None.
+    # Without this refresh the response would tell the winning driver they lost.
+    # `refresh` re-SELECTs by primary key, which is also what makes it safe to
+    # call on an object the other session's commit has already changed.
     await session.refresh(order)  # grab service committed in its own session
     return order_out(order)
 
@@ -284,7 +301,7 @@ async def _assigned_driver_guard(
     return profile
 
 
-@router.post("/{order_id}/arrive")
+@router.post("/{order_id}/arrive", response_model=OrderOut)
 async def order_arrive(
     order_id: str,
     user: Principal = Depends(require_active_user),
@@ -296,7 +313,7 @@ async def order_arrive(
     return order_out(order)
 
 
-@router.post("/{order_id}/start")
+@router.post("/{order_id}/start", response_model=OrderOut)
 async def order_start(
     order_id: str,
     user: Principal = Depends(require_active_user),
@@ -308,7 +325,7 @@ async def order_start(
     return order_out(order)
 
 
-@router.post("/{order_id}/complete")
+@router.post("/{order_id}/complete", response_model=OrderOut)
 async def order_complete(
     order_id: str,
     user: Principal = Depends(require_active_user),
@@ -320,7 +337,7 @@ async def order_complete(
     return order_out(order)
 
 
-@router.post("/{order_id}/cancel")
+@router.post("/{order_id}/cancel", response_model=OrderOut)
 async def order_cancel(
     order_id: str,
     payload: CancelIn,

@@ -23,6 +23,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.schemas import (
+    AdminMeOut,
+    AuthMeOut,
+    OkRevokedOut,
+    OtpRequestOut,
+    TokenPairOut,
+)
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.deps import Principal, require_active_user, require_live_principal
@@ -97,7 +104,7 @@ async def _revoke_access_tokens(request: Request, user_id) -> None:
     await revoke_user_tokens(request.app.state.redis_factory(), user_id)
 
 
-@router.post("/otp/request")
+@router.post("/otp/request", response_model=OtpRequestOut)
 async def otp_request(
     payload: OtpRequestIn,
     request: Request,
@@ -158,7 +165,7 @@ async def otp_request(
     return result
 
 
-@router.post("/otp/verify")
+@router.post("/otp/verify", response_model=TokenPairOut)
 async def otp_verify(
     payload: OtpVerifyIn,
     request: Request,
@@ -204,7 +211,7 @@ async def otp_verify(
     }
 
 
-@router.post("/refresh")
+@router.post("/refresh", response_model=TokenPairOut)
 async def refresh_tokens(
     payload: RefreshIn,
     request: Request,
@@ -242,7 +249,7 @@ async def refresh_tokens(
     }
 
 
-@router.post("/logout")
+@router.post("/logout", response_model=OkRevokedOut)
 async def logout(
     request: Request,
     user: Principal = Depends(require_active_user),
@@ -255,7 +262,7 @@ async def logout(
     return {"ok": True, "revoked": revoked}
 
 
-@router.get("/me")
+@router.get("/me", response_model=AuthMeOut | AdminMeOut)
 async def me(
     user: Principal = Depends(require_live_principal),
     session: AsyncSession = Depends(get_session),

@@ -27,6 +27,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.schemas import (
+    LicenceDecisionOut,
+    LicenceQueueOut,
+    LicenceReviewDetailOut,
+)
 from app.core.db import get_session
 from app.core.deps import Principal, require_admin
 from app.core.exceptions import BusinessRuleError
@@ -68,7 +73,7 @@ async def _guard(coro, session: AsyncSession):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/submissions")
+@router.get("/submissions", response_model=LicenceQueueOut)
 async def list_submissions(
     request: Request,
     status_filter: Annotated[str | None, Query(alias="status")] = "PENDING",
@@ -105,7 +110,7 @@ async def list_submissions(
     )
 
 
-@router.get("/submissions/{submission_id}")
+@router.get("/submissions/{submission_id}", response_model=LicenceReviewDetailOut)
 async def submission_detail(
     submission_id: uuid.UUID,
     ttl: Annotated[int, Query(ge=60, le=900)] = 300,
@@ -118,12 +123,10 @@ async def submission_detail(
     few images in one sitting, short enough that a copied URL is useless by the
     time anything leaks it.
     """
-    return await _guard(
-        LicenceReviewService(session).detail(submission_id, ttl_s=ttl), session
-    )
+    return await _guard(LicenceReviewService(session).detail(submission_id, ttl_s=ttl), session)
 
 
-@router.post("/submissions/{submission_id}/decide")
+@router.post("/submissions/{submission_id}/decide", response_model=LicenceDecisionOut)
 async def decide_submission(
     submission_id: uuid.UUID,
     payload: DecideIn,
