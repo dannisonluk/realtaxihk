@@ -62,7 +62,7 @@ if (!PASSWORD || !TOTP_SECRET) {
     'missing credentials: pass --password and --totp-secret (or set ' +
       'ADMIN_PASSWORD / ADMIN_TOTP_SECRET).\n' +
       'Create one with:\n' +
-      '  ADMIN_PASSWORD=... python scripts/create_admin_account.py \\\n' +
+      '  ADMIN_PASSWORD=... python scripts/ops/create_admin_account.py \\\n' +
       '      --username ops-admin --email ops-admin@realtaxihk.local --yes\n' +
       'then enrol TOTP through POST /api/v1/admin/auth/login and\n' +
       '/totp/enrol/confirm, and read the secret from admin_accounts.totp_secret.',
@@ -610,7 +610,7 @@ async function main() {
         await page.waitForFunction(
           () => {
             const text = document.body.innerText;
-            return ['成員名單', '每週結算', '結算紀錄', '加入成員'].every((needle) =>
+            return ['成員名單', '每週結算', '結算紀錄', '加入車隊成員'].every((needle) =>
               text.includes(needle),
             );
           },
@@ -622,7 +622,7 @@ async function main() {
       }
 
       const body = await safeBodyText(page);
-      const checks = ['成員名單', '每週結算', '結算紀錄', '加入成員'];
+      const checks = ['成員名單', '每週結算', '結算紀錄', '加入車隊成員'];
       const missing = checks.filter((needle) => !body.includes(needle));
       record(
         detailRendered && missing.length === 0,
