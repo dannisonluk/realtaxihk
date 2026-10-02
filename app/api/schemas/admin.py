@@ -658,3 +658,56 @@ class AdminSearchOut(BaseModel):
     truncated: bool
     query_too_short: bool
     min_query_length: int
+
+
+class AdminLiveDriverOut(BaseModel):
+    """One car on the live map: where it is, and what it is doing.
+
+    `order_id` / `order_status` are null for a driver who is online but
+    unassigned — the normal state for most of the fleet at any moment. They are
+    flat siblings rather than a nested object so the console's "running
+    vehicles" filter is `row.order_id !== null`, not a null check on a
+    sub-object that a serializer might materialise as `{}`.
+
+    `vehicle_reg_mark` is here because an operator identifies a car by its
+    plate, not by a UUID. It is already exposed by `DriverRowOut`, so this adds
+    no new disclosure.
+
+    Deliberately absent: `hk_id_last4` and every document key. A map needs to
+    know *where* a car is; the audited detail page is where a person is looked
+    at.
+
+    `lat` / `lng` are not optional. The query filters `current_location IS NOT
+    NULL`, so a row without a fix cannot reach this model — and a marker with no
+    position is not a thing the map could draw anyway.
+    """
+
+    driver_profile_id: str
+    status: str
+    taxi_type: str
+    vehicle_reg_mark: str
+    is_online: bool
+    last_location_at: str | None
+    lat: float
+    lng: float
+    order_id: str | None
+    order_status: str | None
+
+
+class AdminLiveDriversOut(BaseModel):
+    """`GET /admin/live/drivers` — the whole map in one poll.
+
+    `generated_at` is the server clock at the moment of the read, not the newest
+    `last_location_at`. The console needs both, and they answer different
+    questions: the first says how fresh the *snapshot* is, the second how stale
+    one individual car is. A car whose fix predates the poll interval is drawn
+    differently from one that moved a second ago, and that distinction is lost
+    if the payload only carries one timestamp.
+
+    `truncated` is stated for the same reason as in `AdminSearchOut`: a map that
+    silently drops the 501st car is indistinguishable from a fleet that shrank.
+    """
+
+    generated_at: str
+    drivers: list[AdminLiveDriverOut]
+    truncated: bool

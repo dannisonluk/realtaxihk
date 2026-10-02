@@ -18,7 +18,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import bindparam, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.schemas import (
@@ -26,6 +26,7 @@ from app.api.schemas import (
     AdminAccountPageOut,
     AdminDisputeDetailOut,
     AdminDisputePageOut,
+    AdminLiveDriversOut,
     AdminOrderDetailOut,
     AdminOrderPageOut,
     AdminPasswordResetOut,
@@ -1858,4 +1859,125 @@ async def search_subjects(
         "truncated": truncated,
         "query_too_short": len(normalize_query(q)) < MIN_SEARCH_LENGTH,
         "min_query_length": MIN_SEARCH_LENGTH,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# live map — where the fleet is right now
+# --------------------------------------------------------------------------- #
+
+# An order counts as "being run" once a driver has accepted it and before it is
+# finished. BROADCASTING is deliberately excluded: it has no driver yet, so it
+# cannot put a car on the map.
+_ACTIVE_ORDER_STATUSES = ("ACCEPTED", "DRIVER_ARRIVED", "IN_TRIP")
+
+# `LEFT JOIN LATERAL ... LIMIT 1` keeps this to exactly one row per driver.
+# A plain `LEFT JOIN orders ON o.driver_id = d.id AND o.status IN (...)` would
+# emit a second marker if a driver ever held two active orders — which the
+# state machine forbids, so the duplicate would be a data-integrity bug rendered
+# as two identical cars rather than as an error.
+#
+# `current_location IS NOT NULL` is what makes the `lat`/`lng` fields in the
+# response model non-optional, and it is why the spatial index on that column
+# is usable: a driver who has never pushed a position has nothing to draw.
+_LIVE_DRIVERS_SQL = text(
+    """
+    SELECT
+      d.id                          AS driver_profile_id,
+      d.status                      AS driver_status,
+      d.taxi_type                   AS taxi_type,
+      d.vehicle_reg_mark            AS vehicle_reg_mark,
+      d.is_online                   AS is_online,
+      d.last_location_at            AS last_location_at,
+      ST_AsText(d.current_location) AS wkt,
+      a.order_id                    AS order_id,
+      a.order_status                AS order_status
+    FROM driver_profiles d
+    LEFT JOIN LATERAL (
+      SELECT o.id AS order_id, o.status AS order_status
+      FROM orders o
+      WHERE o.driver_id = d.id
+        AND o.status IN :active_statuses
+      ORDER BY o.created_at DESC
+      LIMIT 1
+    ) a ON TRUE
+    WHERE d.current_location IS NOT NULL
+      AND (CAST(:include_offline AS boolean) OR d.is_online)
+    ORDER BY d.last_location_at DESC NULLS LAST
+    LIMIT :row_limit
+    """
+).bindparams(bindparam("active_statuses", expanding=True))
+
+
+@router.get("/live/drivers", response_model=AdminLiveDriversOut)
+async def live_drivers(
+    include_offline: bool = False,
+    limit: Annotated[int, Query(ge=1, le=2000)] = 500,
+    admin: Principal = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Every driver with a persisted position, and the order they are running.
+
+    **Polled, not pushed.** A handful of operators watching a map does not
+    justify a second WebSocket fan-out channel beside `/ws/trip/{order_id}`.
+    Polling an indexed read every 5-10 s is cheaper, needs no new background
+    task, and has no new failure mode. Sub-second freshness is the moment to
+    add a broadcast channel — not before.
+
+    The path is `/live/drivers`, not `/drivers/live`, because `/drivers/{id}`
+    is declared above: a literal segment in that position would be captured as
+    a driver id and every call would 404 with a confusing "invalid UUID".
+
+    **Not audited per poll**, for the same reason the subject search is not —
+    the console polls this every few seconds and the volume would bury the money
+    events the log exists to surface.
+
+    `require_admin` and no more: reading where the fleet is changes nothing and
+    moves no money, and the roster endpoint under the same gate already exposes
+    the plate.
+    """
+    # One row past the limit is fetched to answer `truncated` honestly:
+    # `len(rows) == limit` cannot distinguish "exactly this many" from "more,
+    # cut off", and a map that silently drops the 501st car looks like a fleet
+    # that shrank.
+    rows = (
+        await session.execute(
+            _LIVE_DRIVERS_SQL,
+            {
+                "active_statuses": list(_ACTIVE_ORDER_STATUSES),
+                "include_offline": include_offline,
+                "row_limit": limit + 1,
+            },
+        )
+    ).all()
+
+    truncated = len(rows) > limit
+
+    drivers = []
+    for row in rows[:limit]:
+        # `ST_AsText` yields "POINT(lng lat)" — longitude first, which is the
+        # opposite of how every other layer here speaks. The WHERE clause
+        # guarantees a value, so there is no None branch to take.
+        lng_str, lat_str = row.wkt[6:-1].split()
+        drivers.append(
+            {
+                "driver_profile_id": str(row.driver_profile_id),
+                "status": row.driver_status,
+                "taxi_type": row.taxi_type,
+                "vehicle_reg_mark": row.vehicle_reg_mark,
+                "is_online": row.is_online,
+                "last_location_at": (
+                    row.last_location_at.isoformat() if row.last_location_at else None
+                ),
+                "lat": float(lat_str),
+                "lng": float(lng_str),
+                "order_id": str(row.order_id) if row.order_id is not None else None,
+                "order_status": row.order_status,
+            }
+        )
+
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "drivers": drivers,
+        "truncated": truncated,
     }
