@@ -19,8 +19,8 @@
 
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **82 paths / 89 operations** · 894 tests |
-| Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**21 個畫面**，三角色） | ✅ 93 tests |
+| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **82 paths / 89 operations** · 897 tests |
+| Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**21 個畫面**，三角色） | ✅ 97 tests |
 | Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/js/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **68 vitest** · UI verifier PASS |
 
 一個 repo、三件完整交付物。定位：**Cap. 374D 合規的士資訊中介**（非的士營運商）。
@@ -641,13 +641,62 @@ nginx（掛 `deploy/nginx/realtaxihk.conf`）與 certbot（每 12 小時
 
 ---
 
+### 2.17 全代碼與 UI 設計審查 + 兩個未上鎖的讀取（2026-10-02）
+
+**後端與 Mobile 的深挖發現三個缺陷，全部是「讀源碼」而非「測試變紅」找到的**，
+且事後都以突變測試證明修復有效（見 commit `be90c7e`）：
+
+1. **WebSocket 握手佔住一條連線池連線，直到 socket 關閉。** FastAPI 在 handler
+   **return** 時才拆解 dependency，而 WebSocket 的 return 是 socket 關閉 —— 可能是
+   數小時。`Depends(get_session)` 因此每個開著的 socket 都釘住一條池連線。
+   測試套件**結構上看不到**：`tests/conftest.py` 用 `NullPool` 覆寫
+   `get_session` 與 `get_session_factory`，沒有上限可以撞。已改為握手在自己的
+   scoped session 內完成。
+2. **兩次並行的取消可以重複收 HK$50 罰款。** `order_cancel` 先讀、斷言狀態轉換、
+   寫 ledger、最後才寫狀態。兩個請求都讀到 `ACCEPTED`、都通過守衛、都寫了一筆。
+   `_get_order` 新增 `for_update=True`（cancel/arrive/start/complete 皆傳），
+   讓讀取與守衛原子化：後到者阻塞在列鎖上、重讀到 `CANCELLED`、在碰到 ledger
+   之前就被拒絕。
+3. **Mobile 用 double 相減計算金額。** 司機押金差額在 `500.00 - 499.70` 時顯示為
+   `HK$0.30000000000001137`。`Money.minus` / `Money.fromCents` 改以整數分運算。
+
+**UI 設計審查**（Apple HIG，逐頁讀過後引用，對比度以 token 的十六進位值實算）
+寫成 `docs/UI_DESIGN_REVIEW_2026-10-02.md`。**無 Critical，四項 High**：
+
+- `color-scheme: dark` 被無條件掛在 `:root[data-theme="system"]` 上，而
+  `@media (prefers-color-scheme: dark)` 只覆寫自訂屬性、**沒有重宣告
+  `color-scheme`**。於是「淺色系統 + 預設主題 `system`」（＝最多人會遇到的組合）
+  會用淺色調色盤配深色原生控件：捲軸、`<select>` 彈出層、checkbox 全部變深色。
+  `tool/check_theme_tokens.py` 只比對 `--*` 自訂屬性，看不到這一條。
+- `<input type="date">`（2 處）與 `type="email"`（1 處）**不在** `styles.css:613-618`
+  的選擇器清單內，因此完全沒有欄位樣式，卻與已套樣式的 `<select>` 並排。
+- 深色主題的 `--brand` 未調整（兩邊都是 `#d2232a`），作為文字時對 `--surface-2`
+  只有 **2.91:1**、對 `--surface` 3.31:1、側欄選中項 3.08:1（門檻 4.5:1）。
+- 淺色主題四種語意 chip 為 **4.17–4.40:1**（`.chip` 的底色是 currentColor 的 12%
+  疊在白底上，把底色推向文字色，必然降低對比）。
+
+另有 8 項 Medium（分段控制的選中狀態只靠 1.06:1 / 1.25:1 的色差、三個紅色色值
+幾乎相同卻各代表一個意思、`.gain`/`.loss` 是死碼且與 `ENTRY_TONE` 的實作相反、
+24 小時資料沒有無障礙替代表示、當成按鈕的 `.chip` 只有約 26px 等）與 5 項 Low。
+
+**報告同時記錄了「做得好的地方」** —— 這部分同樣具體：主題是三值而非布林、
+`--seg-active` 是獨立 token、地圖下方有等價表格、`generated_at` 與
+`last_location_at` 兩個時鐘分開、標記顏色寫在 CSS 讓主題切換零 JS 重繪、
+`.heat` 的 24 格不換行。
+
+**驗證**：`pytest` **894 → 897**（`--junit-xml` 讀：897/0/0/0）· `ruff check` clean ·
+`ruff format --check` clean（137 files）· mobile `run_tests.dart` 97 passed /
+0 failed · `dart_check.py` 58 files / 0 diagnostics。
+
+---
+
 ## 3. 驗證標準：「全部實跑」
 
 不接受「讀源碼覺得無問題」。每次改動都跑齊：
 
 ```bash
 uv run ruff check . && uv run ruff format --check .   # 或 ./.venv/Scripts/python.exe -m ruff
-uv run pytest -q                                       # 894 passed（用 --junit-xml 讀，見下）
+uv run pytest -q                                       # 897 passed（用 --junit-xml 讀，見下）
 uv run python scripts/verify/audit_response_models.py         # 68 块夹具 vs response_model，0 丢失
 cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run --no-file-parallelism --pool=forks
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
