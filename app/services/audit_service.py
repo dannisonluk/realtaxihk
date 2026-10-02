@@ -45,6 +45,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.client_ip import client_ip as resolve_client_ip
 from app.models import AdminAuditLog
 
 __all__ = [
@@ -132,9 +133,7 @@ async def record_audit(
     if request is not None:
         if client_ip is None:
             try:
-                from app.api.admin_auth import _client_ip
-
-                client_ip = _client_ip(request)
+                client_ip = resolve_client_ip(request)
             except Exception:  # pragma: no cover - request shape is ours, not a caller's
                 client_ip = None
         if ua is None:

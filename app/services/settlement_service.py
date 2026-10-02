@@ -32,7 +32,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.exceptions import BusinessRuleError
+from app.core.exceptions import BusinessRuleError, DuplicateReferenceError
 from app.core.money import money_str
 from app.models import (
     DriverDeposit,
@@ -170,10 +170,10 @@ class SettlementService:
                 "period": period,
                 # 2 dp via `money_str`, not `str()`. `str(Decimal(200))` is
                 # `"200"`, which renders beside `"200.00"` in the same payload
-                # and reads as a different kind of number. `run_weekly` predates
-                # this and still emits `str(fee)` — left alone deliberately,
-                # because it is a shipped contract with its own tests; the
-                # preview is new and has no such history to honour.
+                # and reads as a different kind of number. `run_weekly` used to
+                # emit `str(fee)` here and now matches — the two endpoints are
+                # read as a pair on the settlement page, and `admin.py` binds the
+                # confirm token to whichever string the preview produced.
                 "fee_hkd": money_str(fee),
                 "eligible_drivers": len(driver_ids),
                 "fleet_managed": fleet_managed_count,
@@ -264,9 +264,89 @@ class SettlementService:
             # preview say "40 drivers" and the run charge 41.
             driver_ids, fleet_managed_count = await self._eligible_driver_ids(session)
 
+            # Pre-load both things the loop would otherwise select one driver at a
+            # time: the references already claimed for this week, and the deposit
+            # rows. This is the same pair of queries `preview_weekly` already
+            # batched.
+            #
+            # What is deliberately NOT batched: the charge itself. Each driver
+            # still gets its own session and its own commit, because one bad
+            # account must not abort the run and a crash halfway through must
+            # leave the already-charged drivers charged. Two read-only SELECTs per
+            # driver, however, bought nothing that isolation needs — they were
+            # just N+1. On a 5,000-driver roster that is 10,000 round trips per
+            # week, on a job that runs inside the single `_job_loop`.
+            #
+            # The pre-load is a *hint*, not a guarantee: a concurrent run can
+            # claim a reference between this query and the append below. That case
+            # is still caught by `DuplicateReferenceError` (and by the unique index
+            # behind it), which is why the fast path here may never become the only
+            # path.
+            references = {
+                driver_id: reference_for_weekly(driver_id, period) for driver_id in driver_ids
+            }
+
+            claimed: dict[str, LedgerEntry] = {}
+            if references:
+                claimed = {
+                    row.reference: row
+                    for row in (
+                        (
+                            await session.execute(
+                                select(LedgerEntry).where(
+                                    LedgerEntry.reference.in_(list(references.values()))
+                                )
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
+                }
+
+            # Deliberately NOT pre-loading the deposit rows.
+            #
+            # That was tried and reverted: hoisting the "is there a deposit row?"
+            # check out of the loop makes a driver whose row was deleted between
+            # the pre-check and the append look like a clean `skipped` instead of
+            # a `failed`. The two are a lost fee apart — `skipped` reports a clean
+            # run, `failed` reports that the platform did not collect. Letting
+            # `append()` raise is what distinguishes them, so the check must stay
+            # inside the try below.
+            #
+            # The reference pre-load above is safe to hoist precisely because it
+            # short-circuits to the *same* outcome the loop body would reach:
+            # "already charged -> skipped" or "reference held by something else ->
+            # tampered". There is no third case hiding behind it.
+
         charged = skipped = failed = tampered = 0
         for driver_id in driver_ids:
-            reference = reference_for_weekly(driver_id, period)
+            reference = references[driver_id]
+
+            # Fast path, from the pre-load. `continue` here avoids opening a
+            # session at all for the two most common outcomes (already charged, or
+            # never funded); the loop body below still re-checks under its own
+            # session, because the pre-load can be stale.
+            existing_hint = claimed.get(reference)
+            if existing_hint is not None:
+                if (
+                    existing_hint.entry_type == LedgerEntryType.WEEKLY_FEE_DEDUCTION
+                    and Decimal(existing_hint.amount_hkd) == -fee
+                ):
+                    skipped += 1
+                else:
+                    # SEC-13: the reference is held by something that is NOT this
+                    # week's fee. Do not treat it as "already charged".
+                    logger.critical(
+                        "weekly settlement: reference %s held by %s/%s — fee NOT "
+                        "collected for driver %s",
+                        reference,
+                        existing_hint.entry_type.value,
+                        existing_hint.amount_hkd,
+                        driver_id,
+                    )
+                    tampered += 1
+                continue
+
             try:
                 async with self.session_factory() as session:
                     existing = (
@@ -323,36 +403,34 @@ class SettlementService:
                     )
                     await session.commit()
                     charged += 1
+            except DuplicateReferenceError:
+                # The fee IS collected exactly once, so this really is a skip.
+                #
+                # Kept as a **separate `except` clause** rather than a test inside
+                # a single `except BusinessRuleError` handler: the two outcomes
+                # ("skipped" vs "failed") are one lost fee apart, and a typed
+                # clause cannot be silently reclassified by rewording a message
+                # three modules away. `DuplicateReferenceError` subclasses
+                # `BusinessRuleError`, so this narrows the branch without changing
+                # how anything else catches it.
+                logger.debug("weekly settlement: %s already charged for %s", period, driver_id)
+                skipped += 1
             except BusinessRuleError as exc:
-                # Two different failures land here and they must NOT be counted
-                # the same way (see the module docstring on SEC-13):
+                # Everything else — e.g. "driver deposit account not found", which
+                # `append()` raises when the deposit row was deleted between the
+                # pre-check and the append. That driver was NOT charged, so
+                # counting it as `skipped` would report a clean run while the
+                # platform silently lost the fee.
                 #
-                #  * "duplicate ledger reference" — the pre-check above passed
-                #    but `append()` lost the insert race to a concurrent run.
-                #    The fee IS collected exactly once, so this really is a skip.
-                #  * anything else — e.g. "driver deposit account not found",
-                #    which `append()` raises when the deposit row was deleted
-                #    between the pre-check and the append. That driver was NOT
-                #    charged, so counting it as `skipped` would report a clean
-                #    run while the platform silently lost the fee.
-                #
-                # `exc.message` is the discriminator. It is a poor one — a
-                # stringly-typed check on a message — which is why it is
-                # commented: a future change to either message must revisit
-                # this branch.
-                if "duplicate ledger reference" in exc.message:
-                    logger.debug("weekly settlement: %s already charged for %s", period, driver_id)
-                    skipped += 1
-                else:
-                    # `exception` (not `error`) so the traceback is attached —
-                    # this branch means a driver was silently NOT charged, and
-                    # the stack is the only thing that says why.
-                    logger.exception(
-                        "weekly settlement: charge failed for driver %s: %s",
-                        driver_id,
-                        exc.message,
-                    )
-                    failed += 1
+                # `exception` (not `error`) so the traceback is attached — this
+                # branch means a driver was silently NOT charged, and the stack is
+                # the only thing that says why.
+                logger.exception(
+                    "weekly settlement: charge failed for driver %s: %s",
+                    driver_id,
+                    exc.message,
+                )
+                failed += 1
             except Exception:
                 # Never let one driver abort the whole settlement run.
                 logger.exception("weekly settlement failed for driver %s", driver_id)
@@ -369,7 +447,12 @@ class SettlementService:
             )
         return {
             "period": period,
-            "fee_hkd": str(fee),
+            # `money_str`, not `str()`: the preview mints its confirm token from
+            # exactly this key (`admin.py` binds `fee_hkd` as the preview
+            # rendered it), and the console shows preview then run side by side.
+            # `str(Decimal(200))` is `"200"`, so the pair read as two different
+            # numbers for one fee. See the note on the preview below.
+            "fee_hkd": money_str(fee),
             "eligible_drivers": len(driver_ids),
             "fleet_managed": fleet_managed_count,
             "charged": charged,

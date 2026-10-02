@@ -41,7 +41,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BusinessRuleError
+from app.core.exceptions import BusinessRuleError, DuplicateReferenceError
 from app.models import DriverDeposit, DriverProfile, LedgerEntry, LedgerEntryType
 
 
@@ -162,13 +162,12 @@ class LedgerService:
         if deposit is None:
             raise BusinessRuleError("driver deposit account not found")
 
-        balance_after = Decimal(deposit.balance_hkd) + amount
+        balance_after = deposit.balance_hkd + amount
         # Negative balances are allowed (arrears): a penalty may exceed the
         # remaining deposit; the driver owes the platform until topped up.
 
         deposit.balance_hkd = balance_after
-        deposit.held_hkd = Decimal(deposit.held_hkd)
-        deposit.is_fulfilled = balance_after >= Decimal(deposit.required_hkd)
+        deposit.is_fulfilled = balance_after >= deposit.required_hkd
 
         entry = LedgerEntry(
             driver_profile_id=driver_profile_id,
@@ -185,7 +184,14 @@ class LedgerService:
             await session.flush()
         except IntegrityError as exc:
             # Lost a same-reference race — the unique index backstop fired.
-            raise BusinessRuleError("duplicate ledger reference", {"reference": reference}) from exc
+            #
+            # `DuplicateReferenceError`, not a bare `BusinessRuleError`: callers
+            # must be able to tell "already collected, so this is a skip" apart
+            # from every other 400 without matching the message text. See the
+            # class docstring.
+            raise DuplicateReferenceError(
+                "duplicate ledger reference", {"reference": reference}
+            ) from exc
         return entry
 
     @staticmethod

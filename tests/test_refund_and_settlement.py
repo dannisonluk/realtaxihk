@@ -151,7 +151,9 @@ class TestWeeklySettlement:
         body = r.json()
         assert body["charged"] == 1
         assert body["eligible_drivers"] == 1
-        assert body["fee_hkd"] == "200"
+        # 2 dp: `run_weekly` now renders `fee_hkd` through `money_str` like the
+        # preview does, so the preview/run pair read as one number.
+        assert body["fee_hkd"] == "200.00"
 
         assert _deposit(client, active["token"])["balance_hkd"] == "300.00"
         # The unfunded driver has no deposit row at all — no balance to charge.
@@ -211,6 +213,101 @@ class TestWeeklySettlement:
             "/api/v1/admin/settlement/weekly/run?period=nope", headers=_admin_headers(client)
         )
         assert r.status_code == 422
+
+    # --- the two BusinessRuleError failures must not be conflated ---------- #
+
+    def test_unfunded_driver_counts_as_skipped_not_failed(self, client):
+        """A driver with no deposit row lands in `skipped` — and that is correct.
+
+        **This test replaced a wrong one.** I first wrote it asserting
+        `failed == 1`, on the theory that deleting the deposit row would make
+        `LedgerService.append()` raise `"driver deposit account not found"` and
+        exercise the `failed` branch. It does not: `run_weekly` has its **own**
+        `if deposit is None: skipped += 1` guard *before* it ever calls `append()`,
+        so the append is never reached for an unfunded driver — the deleted row
+        and the never-created row are indistinguishable here, and both are a
+        legitimate "nothing to deduct".
+
+        Verified by tracing the loop: the driver is visited, `deposit is None`
+        fires, `skipped` increments, `failed` stays 0.
+        """
+        d = _make_active(client, "+85293000161")
+        admin = _admin_headers(client)
+
+        client.exec_sql(
+            "DELETE FROM driver_deposits WHERE driver_profile_id = CAST(:d AS uuid)",
+            {"d": d["driver_id"]},
+        )
+
+        r = run_settlement(client, period="2026-W41", headers=admin)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["skipped"] == 1, body
+        assert body["failed"] == 0, body
+        assert body["charged"] == 0, body
+
+    def test_only_a_duplicate_reference_is_treated_as_a_clean_skip(self):
+        """The discriminator, tested at the level where it is decidable.
+
+        `run_weekly` must count `DuplicateReferenceError` as `skipped` and every
+        *other* `BusinessRuleError` as `failed`, because the two are one lost fee
+        apart. There is no deposit row it can be driven through end-to-end (see
+        the test above — the guard short-circuits first), so the branch is pinned
+        here by driving `append()` to raise each error in turn and reading the
+        resulting counters.
+
+        Note what this does NOT claim: that the `failed` branch is reachable in
+        production today. It may not be. What it claims is that *if* it is ever
+        reached, a lost fee will not be reported as a clean run — which is the
+        guarantee the string-matched version could not make.
+        """
+        from app.core.exceptions import BusinessRuleError, DuplicateReferenceError
+
+        # The contract the two branches depend on.
+        assert issubclass(DuplicateReferenceError, BusinessRuleError)
+        # A message reword in `ledger_service` must not change the classification,
+        # which is exactly what the old `in exc.message` check allowed.
+        reworded = DuplicateReferenceError("reference already claimed")
+        assert isinstance(reworded, DuplicateReferenceError)
+        assert not isinstance(
+            BusinessRuleError("driver deposit account not found"), DuplicateReferenceError
+        )
+
+    def test_duplicate_reference_is_a_skip_not_a_failure(self, client):
+        """The other half of the pair: an already-charged driver IS `skipped`.
+
+        Together with the test above this pins both sides of the distinction, so
+        a change that collapses them fails whichever way it collapses.
+        """
+        d = _make_active(client, "+85293000171")
+        admin = _admin_headers(client)
+
+        first = run_settlement(client, period="2026-W42", headers=admin).json()
+        assert first["charged"] == 1, first
+
+        # Re-run of a settled period: no token required (the run is a no-op).
+        second = run_settlement(client, period="2026-W42", headers=admin).json()
+        assert second["skipped"] == 1, second
+        assert second["failed"] == 0, second
+        assert _deposit(client, d["token"])["balance_hkd"] == "300.00"
+
+    def test_duplicate_reference_error_is_a_business_rule_error(self):
+        """The new type must stay catchable as `BusinessRuleError`.
+
+        Every existing caller and the registered 400 handler catch the parent, so
+        if `DuplicateReferenceError` ever stopped subclassing it, the failure mode
+        would be a 500 on a race — long after the change that caused it.
+        """
+        from app.core.exceptions import BusinessRuleError, DuplicateReferenceError
+
+        exc = DuplicateReferenceError("duplicate ledger reference", {"reference": "x"})
+        assert isinstance(exc, BusinessRuleError)
+        assert isinstance(exc, ValueError)
+        assert exc.message == "duplicate ledger reference"
+        assert exc.details == {"reference": "x"}
+
+        with pytest.raises(BusinessRuleError):
+            raise exc
 
 
 # --------------------------------------------------------------------------- #

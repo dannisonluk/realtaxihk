@@ -41,6 +41,36 @@ class NotFoundError(LookupError):
         self.details = details or {}
 
 
+class DuplicateReferenceError(BusinessRuleError):
+    """A ledger append lost a same-`reference` race (SEC-13).
+
+    A **subclass** of `BusinessRuleError`, so every existing caller that catches
+    the parent — and the 400 handler, which is registered on the parent — keeps
+    working unchanged. It exists so that callers which must tell *this* failure
+    apart from every other 400 can do it with `except`, not by matching the
+    message text.
+
+    Why that matters (`settlement_service.run_weekly`): two different failures
+    arrive as `BusinessRuleError` and they must not be counted the same way.
+
+      * this one — the pre-check passed but `flush()` lost the insert race to a
+        concurrent run. The fee **is** collected, exactly once, so the driver is
+        correctly counted as `skipped`.
+      * anything else — e.g. `"driver deposit account not found"`, raised when
+        the deposit row was deleted between the pre-check and the append. That
+        driver was **not** charged, so counting it as `skipped` would report a
+        clean run while the platform silently lost the fee.
+
+    That branch used to discriminate on `"duplicate ledger reference" in
+    exc.message`. Rewording the message in `ledger_service` would then have
+    flipped a lost fee into a clean report, with no test failing — so the
+    message stops being load-bearing here.
+    """
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
+        super().__init__(message, details)
+
+
 def _error(code: str, message: str, details: Any = None) -> dict:
     return {"code": code, "message": message, "details": details or {}}
 

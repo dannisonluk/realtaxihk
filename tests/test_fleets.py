@@ -388,7 +388,7 @@ class TestFleetSettlement:
         r = _run_fleet_settlement(client, fleet["id"])
         assert r.status_code == 200, r.text
         body = r.json()
-        assert body["gross_fee_hkd"] == "200"
+        assert body["gross_fee_hkd"] == "200.00"
         assert body["fee_hkd"] == "150.00"  # 200 less 25%
         assert body["charged"] == 1
         assert body["collected_hkd"] == "150.00"

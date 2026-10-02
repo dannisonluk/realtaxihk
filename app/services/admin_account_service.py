@@ -97,8 +97,14 @@ class AdminAccountService:
         self.session = session
 
     async def list_accounts(self) -> list[AdminAccount]:
-        """Newest seniority first, then oldest account — the order an
-        operator scans when looking for "who can do what"."""
+        """Alphabetical by username — a stable, predictable scan order.
+
+        Seniority is a *column* in the console, not the sort key. `role` is
+        stored as a `VARCHAR(16)`, so `ORDER BY role` would sort the names
+        (`FINANCE` < `OPERATIONS` < `SUPPORT` < `SUPER_ADMIN`), not the ranks;
+        the real hierarchy lives in `AdminRole.rank` and would need a `CASE`
+        to express here. Not worth it unless an operator asks.
+        """
         result = await self.session.execute(select(AdminAccount).order_by(AdminAccount.username))
         return list(result.scalars().all())
 

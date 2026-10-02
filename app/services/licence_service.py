@@ -179,15 +179,14 @@ class LicenceService:
     # -- reads -------------------------------------------------------------- #
 
     async def get_profile(self, user_id: uuid.UUID) -> DriverProfile | None:
-        return (
-            (
-                await self.session.execute(
-                    select(DriverProfile).where(DriverProfile.user_id == user_id)
-                )
-            )
-            .scalars()
-            .first()
-        )
+        """Thin wrapper so this service keeps its own seam for tests.
+
+        Delegates to `DriverProfile.for_user`, which is the one place the query
+        lives. The method is kept rather than replaced at the call sites because
+        `require_profile` below turns the `None` into a domain error, and tests
+        patch this seam.
+        """
+        return await DriverProfile.for_user(self.session, user_id)
 
     async def require_profile(self, user_id: uuid.UUID) -> DriverProfile:
         profile = await self.get_profile(user_id)
