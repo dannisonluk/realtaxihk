@@ -84,6 +84,25 @@ function buildRouter() {
         { path: 'search', element: <SearchPage /> },
         { path: 'orders', element: <OrdersPage /> },
         { path: 'orders/:orderId', element: <OrderDetailPage /> },
+        // Every role, like `/orders`: the server guards this with
+        // `require_admin` and nothing more, so a stricter guard here would hide
+        // a page the API is willing to serve.
+        //
+        // **Route-level `lazy`, and it is about the bundle rather than the
+        // request.** Leaflet plus its stylesheet is ~48 kB gzipped, which took
+        // the single console bundle from 463 kB to 621 kB and tripped the
+        // 500 kB warning — a 34% increase that every operator would download in
+        // order to look at orders and refunds. Splitting it here means the map
+        // is fetched the first time someone opens it, and `createHashRouter` is
+        // a data router, so the chunk is loaded before the route renders rather
+        // than after (which is what `React.lazy` alone would do, with a
+        // flash of fallback in between).
+        {
+          path: 'live',
+          lazy: async () => ({
+            Component: (await import('../pages/LiveMapPage')).LiveMapPage,
+          }),
+        },
         { path: 'disputes', element: <DisputesPage /> },
         { path: 'disputes/:disputeId', element: <DisputesPage /> },
         {

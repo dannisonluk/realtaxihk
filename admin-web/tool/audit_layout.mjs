@@ -86,6 +86,7 @@ function urlFor(hash) {
 const ROUTES = [
   { hash: '#/', page: 'dashboard' },
   { hash: '#/orders', page: 'orders' },
+  { hash: '#/live', page: 'live' },
   { hash: '#/search', page: 'search' },
   { hash: '#/disputes', page: 'disputes' },
   { hash: '#/kyc', page: 'kyc' },
@@ -242,6 +243,44 @@ function installStubs(page, hits) {
           },
         ],
         sort: { by: 'bucket', dir: 'asc' },
+      });
+    }
+
+    // --- live map (its own envelope: `{generated_at, drivers, truncated}`) -
+    // Not `Paged<T>`, so it cannot fall through to the generic stub below. The
+    // second row carries a plate long enough to be a fleet name, which is the
+    // point of this auditor: a table that has only ever seen `AB1234` has never
+    // been asked to truncate anything.
+    if (want('/admin/live/drivers')) {
+      return json({
+        generated_at: '2026-10-02T12:00:00+08:00',
+        drivers: [
+          {
+            driver_profile_id: '00000000-0000-4000-8000-000000000001',
+            status: 'ACTIVE',
+            taxi_type: 'NT',
+            vehicle_reg_mark: 'AB1234',
+            is_online: true,
+            last_location_at: '2026-10-02T11:59:50+08:00',
+            lat: 22.3193,
+            lng: 114.1694,
+            order_id: '00000000-0000-4000-8000-0000000000aa',
+            order_status: 'IN_TRIP',
+          },
+          {
+            driver_profile_id: '00000000-0000-4000-8000-000000000002',
+            status: 'ACTIVE',
+            taxi_type: 'URBAN',
+            vehicle_reg_mark: 'WAN CHAI — HAPPY VALLEY CIRCUIT (NIGHT SHIFT)',
+            is_online: true,
+            last_location_at: '2026-10-02T11:40:00+08:00',
+            lat: 22.2783,
+            lng: 114.1747,
+            order_id: null,
+            order_status: null,
+          },
+        ],
+        truncated: false,
       });
     }
 

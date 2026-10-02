@@ -53,6 +53,11 @@ const NAV: NavItem[] = [
   // caller is still waiting.
   { path: '/search', labelKey: 'nav.search', badge: null, end: false, role: 'SUPPORT' },
   { path: '/orders', labelKey: 'nav.orders', badge: null, end: false, role: 'SUPPORT' },
+  // Next to the orders list because it answers the same kind of question — what
+  // is happening *now* — and it is the page support opens when a passenger asks
+  // where their driver is. SUPPORT is the floor, matching the server: the
+  // endpoint is guarded by `require_admin` and nothing more.
+  { path: '/live', labelKey: 'nav.live', badge: null, end: false, role: 'SUPPORT' },
   { path: '/disputes', labelKey: 'nav.disputes', badge: null, end: false, role: 'SUPPORT' },
   // Sits next to KYC because the two are the same job — checking a driver's
   // paperwork — split only because the licence is a recurring, document-shaped

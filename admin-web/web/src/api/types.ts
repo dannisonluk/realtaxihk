@@ -894,3 +894,56 @@ export interface AvatarPresign {
   max_bytes: number;
   content_type: string;
 }
+
+// ---------------------------------------------------------------------------
+// Live map
+// ---------------------------------------------------------------------------
+
+/**
+ * One car on the live map: where it is, and what it is doing.
+ *
+ * `lat` / `lng` are **not** nullable, and that is a fact about the server rather
+ * than optimism: the query filters `current_location IS NOT NULL`, so a driver
+ * with no position fix is *absent* from the list rather than present with null
+ * coordinates. Typing them as nullable here would oblige every renderer to
+ * invent a fallback for a case the API cannot produce, and the obvious fallback
+ * — `0` — puts the car in the Gulf of Guinea.
+ *
+ * `order_id` / `order_status` are null for a driver who is online but
+ * unassigned, which is most of the fleet most of the time. They are flat
+ * siblings rather than a nested object, so "is this car running a trip" is
+ * `order_id !== null` and not a null check on a sub-object.
+ */
+export interface AdminLiveDriver {
+  driver_profile_id: string;
+  status: string;
+  taxi_type: string;
+  vehicle_reg_mark: string;
+  is_online: boolean;
+  last_location_at: string | null;
+  lat: number;
+  lng: number;
+  order_id: string | null;
+  order_status: string | null;
+}
+
+/**
+ * The whole map in one poll.
+ *
+ * **Two timestamps, and they are not interchangeable.** `generated_at` is the
+ * server clock at the moment of the read — how fresh the *snapshot* is —
+ * whereas `last_location_at` is per car — how stale one *vehicle* is. A view
+ * that showed only the first would draw a car that stopped reporting ten minutes
+ * ago exactly like one that moved a second ago, which is the single most
+ * misleading thing a live map can do.
+ *
+ * `truncated` is stated rather than derived, for the same reason as in
+ * `SearchResponse`: `drivers.length === limit` does not tell you whether more
+ * exist, and a map that silently drops the 501st car is indistinguishable from a
+ * fleet that shrank.
+ */
+export interface AdminLiveDrivers {
+  generated_at: string;
+  drivers: AdminLiveDriver[];
+  truncated: boolean;
+}

@@ -80,6 +80,7 @@ const NOT_FOUND = () => text('notFound.title');
 const DASHBOARD = () => text('dashboard.title');
 const LOGIN = () => text('login.title');
 const ANALYTICS = () => text('analytics.title');
+const LIVE = () => text('live.title');
 const NO_ACCESS = () => text('noPermission.title');
 
 /**
@@ -389,4 +390,66 @@ describe('the boot gate', () => {
     // redirect here would silently rewrite a link they may have been sent.
     expect(window.location.hash).toBe('#/analytics');
   });
+
+  /**
+   * The live map is the console's only **code-split** route — Leaflet is ~46 kB
+   * gzipped, so it is fetched on demand instead of being shipped to every
+   * operator — and that makes it the one route where a wiring mistake is
+   * invisible. A `lazy` function that resolves to the wrong shape renders
+   * *nothing*: no error, no request, no fallback. It is the same silent blank
+   * page this file was written to catch, in a new place.
+   *
+   * So the assertion is the rendered heading, not the route table.
+   */
+  it('resolves the code-split live map route', async () => {
+    window.location.hash = '#/live';
+    seedSession();
+    stubTransport(
+      {
+        '/auth/me': ADMIN_ME,
+        '/admin/live/drivers': {
+          generated_at: '2026-10-02T12:00:00+08:00',
+          drivers: [],
+          truncated: false,
+        },
+      },
+      10,
+    );
+
+    await renderAndSettle(root);
+    // The chunk resolves a tick after the boot gate does, and the page then
+    // makes its own request, so one more turn is needed than for a static route.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+
+    expect(heading()).not.toBe(NOT_FOUND());
+    expect(heading()).toBe(LIVE());
+    expect(window.location.hash).toBe('#/live');
+  });
+});
+
+/**
+ * Leaflet, stubbed — and only for this file.
+ *
+ * jsdom has no layout engine, so a real `L.map()` builds a zero-height canvas
+ * and draws nothing. Keeping the stub here leaves this file about *routing*:
+ * the question is whether `#/live` resolves to the map page at all. What the map
+ * then does with Leaflet's API is `LiveMapPage.test.tsx`'s subject, asserted
+ * against a mock of the calls.
+ *
+ * `vi.mock` is hoisted above the imports, so its position in the file is
+ * irrelevant — it is written at the end only because that is where it reads
+ * best next to the one test that needs it.
+ */
+vi.mock('leaflet', () => {
+  const layerGroup = { addTo: () => layerGroup, clearLayers: () => undefined };
+  const marker = { bindTooltip: () => marker, on: () => marker, addTo: () => marker };
+  const leaflet = {
+    map: () => ({ remove: () => undefined, addLayer: () => undefined }),
+    tileLayer: () => ({ addTo: () => undefined }),
+    layerGroup: () => layerGroup,
+    circleMarker: () => marker,
+  };
+  return { default: leaflet, ...leaflet };
 });

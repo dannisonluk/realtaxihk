@@ -916,6 +916,92 @@ table.data tbody tr:hover { background: var(--hover); }
   display: inline-block;
 }
 
+/* ---- live map -------------------------------------------------------- */
+
+/* A **fixed** height, and it is load-bearing rather than decorative: Leaflet
+   measures its container at construction time, so a canvas with no intrinsic
+   height collapses to 0px and the map renders as a blank strip — with no error
+   in the console and nothing in the DOM to indicate why. */
+.livemap__canvas {
+  height: 460px;
+  border-radius: var(--radius-field);
+  overflow: hidden;
+  /* Leaflet's panes sit at z-index 200–700. `0` here keeps the map inside its
+     own stacking context so it cannot paint over the sticky table header when
+     the page is scrolled. */
+  z-index: 0;
+}
+
+/* Marker colour is set here rather than in the Leaflet options so that a theme
+   switch repaints with no JavaScript involved: the rules below read the same
+   custom properties the rest of the console does, and the browser re-resolves
+   them when `<html data-theme>` changes.
+
+   This works because Leaflet writes `stroke`/`fill` as SVG *presentation
+   attributes*, and any stylesheet rule outranks a presentation attribute. The
+   `.livemap__canvas` prefix is there to clear `.leaflet-interactive`, which
+   Leaflet's own stylesheet sets at the same specificity. */
+.livemap__canvas .livemap__pin--running {
+  stroke: var(--brand);
+  fill: var(--brand);
+  fill-opacity: 0.85;
+}
+
+.livemap__canvas .livemap__pin--idle {
+  stroke: var(--focus);
+  fill: var(--focus);
+  fill-opacity: 0.85;
+}
+
+/* A car that has stopped reporting. Deliberately desaturated rather than
+   hidden: it is still a car, and its last known position is still useful. */
+.livemap__canvas .livemap__pin--stale {
+  stroke: var(--text-dim);
+  fill: var(--text-dim);
+  fill-opacity: 0.35;
+}
+
+.livemap__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.livemap__key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* The legend dots are HTML, so they take `background`/`border-color` rather
+   than the SVG `fill`/`stroke` above — the two rule sets never meet, because
+   the SVG ones are scoped to `.livemap__canvas`. */
+.livemap__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 2px solid currentcolor;
+}
+
+.livemap__swatch.livemap__pin--running {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.livemap__swatch.livemap__pin--idle {
+  background: var(--focus);
+  border-color: var(--focus);
+}
+
+.livemap__swatch.livemap__pin--stale {
+  background: var(--text-dim);
+  border-color: var(--text-dim);
+}
+
 /* A sortable column header. The button fills the cell so the whole header is
    clickable, and inherits the table's type rather than the control default. */
 .th-sort {

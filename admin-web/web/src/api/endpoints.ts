@@ -14,6 +14,7 @@ import type {
   AdminAccountPage,
   AdminDriverRow,
   AdminIdentity,
+  AdminLiveDrivers,
   AdminLoginResult,
   AdminOrderDetail,
   AdminOrderRow,
@@ -359,6 +360,34 @@ export const endpoints = {
      */
     detail: (client: ApiClient, orderId: string) =>
       client.get<AdminOrderDetail>(`/api/v1/admin/orders/${encodeURIComponent(orderId)}`),
+  },
+
+  /**
+   * The live fleet map: every driver with a position fix, plus the trip they are
+   * on if they have one.
+   *
+   * **Polled, not pushed.** There is deliberately no websocket for this. The
+   * endpoint is a *snapshot*, which means the page owns the refresh rate, can
+   * stop asking when the tab is hidden, and cannot be left holding a half-applied
+   * stream of deltas after a reconnect. The passenger and driver apps do stream
+   * positions — they need to, because a moving marker is the product — but an
+   * operations view does not, and paying for a second fan-out channel to serve
+   * one is how a free feature becomes a billed one.
+   *
+   * `includeOffline` exists because "the fleet" and "the cars actually working"
+   * are different questions. Filtering the second out of the first in the client
+   * would re-implement the server's own `is_online` rule, and the two would
+   * disagree the first time that rule changed.
+   */
+  live: {
+    drivers: (client: ApiClient, { includeOffline = false, limit = 500 }: {
+      includeOffline?: boolean;
+      limit?: number;
+    } = {}) =>
+      client.get<AdminLiveDrivers>('/api/v1/admin/live/drivers', {
+        include_offline: includeOffline,
+        limit,
+      }),
   },
 
   /**
