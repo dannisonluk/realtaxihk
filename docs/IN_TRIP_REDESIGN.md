@@ -1,4 +1,21 @@
-# In-Trip 業務邏輯重新設計
+# In-Trip 業務邏輯重新設計 / In-Trip Redesign
+
+> **EN — Summary.** A redesign proposal for the in-trip phase (P4), not yet
+> implemented. It widens the order state machine beyond today's `IN_TRIP →
+> COMPLETED` dead end, adding `DESTINATION_CHANGED` (non-terminal) and
+> `INTERRUPTED` (terminal), plus a per-trip platform fee and the rules for
+> when a driver may refuse or end a trip.
+>
+> **Read this before editing `ORDER_TRANSITIONS`.** The state machine has two
+> invariants asserted by tests — terminal states have no outgoing edges, and
+> `CANCELLED` is unreachable once a trip is under way. `INTERRUPTED` is
+> terminal while `DESTINATION_CHANGED` is not, so both must be re-checked when
+> this lands. The state machine's own docstring flags this.
+>
+> **中文摘要**：這是 **P4 in-trip 重新設計的提案，尚未實作**。它把訂單狀態機由現時
+> `IN_TRIP → COMPLETED` 的死巷擴闊，加入 `DESTINATION_CHANGED`（非終態）與
+> `INTERRUPTED`（終態）。**改動 `ORDER_TRANSITIONS` 之前務必先讀**——
+> 狀態機有兩條由測試守住的不變式，加入這兩個狀態時必須重新檢查。
 
 > 本文回應需求：「行程出發後即可由平台扣費（每趟 $5）；in-trip 階段的 cancel
 > 與 change destination 區分狀態；司機接單後原則上不得違約，除非乘客態度惡劣、

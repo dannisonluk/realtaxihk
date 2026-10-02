@@ -1,4 +1,21 @@
-# 部署目標決策簡報（P-5）
+# 部署目標決策簡報 / Deploy Target Decision (P-5)
+
+> **EN — Summary.** A decision document, not a tutorial: the options, the
+> numbers, and the choice. **Decided (2026-10-02) — Option A, with nginx as the
+> reverse proxy.** See `deploy/`.
+>
+> **Why the reverse proxy is part of the decision and not an afterthought**: it
+> is where TLS terminates, where the trusted-proxy hop count becomes real
+> (`TRUSTED_PROXY_COUNT`), and — via its custom `log_format` using `$uri` rather
+> than `$request_uri` — the thing that stops the WebSocket `?token=` query
+> string from being written to disk. Choosing the proxy is choosing those three
+> behaviours.
+>
+> **中文摘要**：這是一份用來**做決定**的文件，不是教學：選項、數字、結論。
+> **已決定（2026-10-02）—— 選項 A，反向代理用 nginx。**
+> 反代為何屬於「選型」而非事後細節：TLS 在此終結、`TRUSTED_PROXY_COUNT` 在此才
+> 成立、而其自訂 `log_format` 用 `$uri` 而非 `$request_uri`，正是令 WS 的
+> `?token=` 查詢字串不會落地的原因。
 
 - **日期**：2026-09-30
 - **狀態**：**已決定（2026-10-02）—— 選項 A，反向代理用 nginx。** 見 `deploy/`。

@@ -1,4 +1,18 @@
-# 地標落客座標 — 人手覆核清單
+# 地標落客座標 — 人手覆核清單 / Landmark Drop-off Coordinates
+
+> **EN — Summary.** A manual review checklist, not authoritative data. Every
+> coordinate here passes the project's own `is_in_hong_kong()` boundary check —
+> but **passing the boundary check does not make a coordinate a legal drop-off
+> point.**
+>
+> **The distinction this document exists to make**: "the geometric centre of a
+> landmark" is not "a place a taxi can stop". A boundary test can only answer
+> whether somewhere is inside Hong Kong; it cannot answer whether a vehicle may
+> legally stop there. Someone has to look at each one.
+>
+> **中文摘要**：這是**人手覆核清單，不是權威資料**。清單上的座標本身都通過專案自身的
+> `is_in_hong_kong()` 邊界檢查，但**通過邊界檢查不等於可以合法落客**。
+> 本文存在的意義正是這個區別：「地標的幾何中心」不等於「的士可以停車落客的位置」。
 
 > **用途**：這份清單供人手（或營運同事）用 Google Maps 逐個覆核落客位置。
 > 座標本身已通過專案自身的 `is_in_hong_kong()` 邊界檢查，

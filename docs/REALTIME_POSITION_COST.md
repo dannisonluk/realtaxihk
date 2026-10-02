@@ -1,4 +1,16 @@
-# 實時定位功能的系統資源分析
+# 實時定位功能的系統資源分析 / Realtime Position: Cost Analysis
+
+> **EN — Summary.** Measured, not estimated — reproducible via
+> `scripts/verify/bench_location_pipeline.py`.
+>
+> **Headline result: CPU is not the bottleneck** (0.1% of a tick). The binding
+> constraint is elsewhere, and the document names it with numbers. This matters
+> because the intuitive fix (throttle the tick rate) addresses the thing that
+> was never the problem.
+>
+> **中文摘要**：**實測，非估算**，可用 `bench_location_pipeline.py` 重現。
+> 結論先講：**CPU 完全不是瓶頸**（佔整個 tick 的 0.1%），真正的限制在別處。
+> 這一點重要，因為直覺上的解法（降低推送頻率）修的是一個從來不是問題的東西。
 
 **日期**：2026-10-01
 **方法**：實測，非估算。可重現的基準腳本：`scripts/verify/bench_location_pipeline.py`

@@ -1,4 +1,23 @@
-# 部署需求清單（Deployment Requirements）
+# 部署需求清單 / Deployment Requirements
+
+> **EN — Summary.** The actionable checklist for a deploy: what must be
+> provisioned, which secrets must exist before the first boot, and the order to
+> do it in. Companion to [`DEPLOY_TARGET_DECISION.md`](DEPLOY_TARGET_DECISION.md)
+> — that one says **which** target, this one says **what to prepare once it is
+> chosen**.
+>
+> **Two things that bite in the wrong order:**
+> - Credentials must exist **before** the first `docker compose up`, or nginx
+>   restart-loops. Get the certificate with `certbot certonly --standalone`
+>   first.
+> - Most blockers here are **not** code and **not** credentials — they are
+>   undecided choices (a hostname, a backup destination). Those are cheap to
+>   resolve and expensive to defer, because everything downstream waits on them.
+>
+> **中文摘要**：可執行的部署清單——要準備什麼、哪些秘密必須在第一次啟動前就存在、
+> 以及次序。與選型文件互補。兩個容易做錯次序的地方：憑證必須在第一次 `up` **之前**
+> 存在（否則 nginx 無限重啟）；而這裡多數阻塞項**既不是程式問題也不是憑證問題**，
+> 而是**未做的選擇**（主機名、備份目的地）。
 
 - **日期**：2026-10-01
 - **狀態**：可執行清單。與 `DEPLOY_TARGET_DECISION.md`（選型取捨）互補 ——

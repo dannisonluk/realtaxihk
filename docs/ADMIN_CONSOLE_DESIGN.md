@@ -1,4 +1,21 @@
-# 管理後台功能設計
+# 管理後台功能設計 / Admin Console Design
+
+> **EN — Summary.** The functional design for the admin console: the four-level
+> `AdminRole`, what each screen does, the audit requirements, and the RBAC
+> reasoning. **Most of it is now implemented** — this is a design document that
+> describes the current state, so its line references were re-pointed at the
+> current code (unlike the dated audit snapshots elsewhere in `docs/`).
+>
+> **The design decision worth carrying forward**: roles are compared by **rank**
+> (`role.rank >= FINANCE.rank`), never by set membership. A set means every new
+> role requires re-reading every tuple that enumerates roles, and one missed
+> tuple is an open route. Rank makes default-deny automatic.
+>
+> **中文摘要**：管理後台的功能設計——四級 `AdminRole`、各畫面職責、審計要求、
+> 以及 RBAC 的理由。**大部分已經實作**，所以本文件的行號引用已重新指向現行位置
+> （與 `docs/` 其他有日期的審計快照不同）。最值得帶走的一個設計決定：
+> **角色用排名比較，不用集合成員**——集合的話每次新增角色都要重讀每一組枚舉，
+> 漏一組就是一條開放的路由。
 
 > **⚠️ 狀態（2026-10-01 更新）**：本文件是**設計提案**，其中**大部分已經實作**。
 > 已落地的部分：四級 RBAC（`AdminRole` rank 比較、`require_role` 閘）、審計覆蓋
