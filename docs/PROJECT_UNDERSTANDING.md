@@ -20,7 +20,7 @@
 
 | 交付物 | 位置 | 規模 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | **82 paths / 89 operations** · **928 tests** | ✅ 生產就緒 |
+| 後端 API | `app/` | **82 paths / 89 operations** · **955 tests** | ✅ 生產就緒 |
 | Flutter App | `mobile/` | 58 files, 11,558 LOC | ✅ 三角色完整 |
 | Web 管理後台 | `admin-web/web/`（React + Vite）＋ `admin-web/js/`（legacy） | src **13,109 LOC**（ts/tsx，不含測試）· **69 vitest** | ✅ 全部路由通過 |
 

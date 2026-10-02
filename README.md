@@ -7,10 +7,15 @@ Money math is exact (`Decimal`, never float); every fare response carries biling
 Cap. 374D disclaimers; every estimate embeds a `tariff_version` so historical orders
 stay auditable.
 
-**Status: production-hardened.** 928 backend tests green (+ 93 mobile, 54 contract
-fixtures, browser UI verifier PASS). Start with
-[`docs/WORK_SUMMARY.md`](docs/WORK_SUMMARY.md) for the whole picture — what's built,
-what's verified, and what still needs credentials or a deployment target.
+**Status: production-hardened.** 955 backend tests green (+ 97 mobile, 54 contract
+fixtures, browser UI verifier PASS).
+
+**New here? Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first** — a
+guided tour of how a trip flows from hail to settlement, where money is allowed
+to change, and which invariants are load-bearing. It carries inline Chinese
+commentary on the core logic. Then
+[`docs/WORK_SUMMARY.md`](docs/WORK_SUMMARY.md) for the whole picture — what's
+built, what's verified, and what still needs credentials or a deployment target.
 Full audit + fix log: [`docs/PRODUCTION_READINESS.md`](docs/PRODUCTION_READINESS.md)
 (4 bugs, 7 P0, 10 P1, 10 P2 — all closed). Lint gate + cleanup log:
 [`docs/LINTING.md`](docs/LINTING.md). Security: [`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md).
@@ -35,7 +40,7 @@ cp .env.example .env          # adjust if needed; see Configuration below
 # 4. run + verify
 .venv/Scripts/python scripts/dev/serve_and_probe.py   # detached uvicorn + health wait
 .venv/Scripts/python scripts/verify/verify_api.py        # one-shot API smoke
-.venv/Scripts/python -m pytest -q                 # 928 tests
+.venv/Scripts/python -m pytest -q                 # 955 tests
 uv run ruff check . && uv run ruff format --check .
 ```
 
@@ -71,8 +76,10 @@ scripts/          # tooling, grouped by what you are doing (see scripts/README.m
 tests/            # pytest — unit + module + WS streaming + hardening regression
 mobile/           # Flutter client (Android first) — driver, passenger and admin surfaces
 admin-web/        # zero-build ES-module console for the management and admin teams
-docs/             # WORK_SUMMARY.md (overview), PRODUCTION_READINESS.md (audit),
-                  #   SECURITY_AUDIT.md (SEC-01..31), LINTING.md, PROJECT_UNDERSTANDING.md
+docs/             # ARCHITECTURE.md (start here — guided tour + inline Chinese
+                  #   commentary on the core logic), WORK_SUMMARY.md (overview),
+                  #   PRODUCTION_READINESS.md (audit), SECURITY_AUDIT.md (SEC-01..31),
+                  #   LINTING.md, PROJECT_UNDERSTANDING.md
 ```
 
 ## API
@@ -179,7 +186,7 @@ unconfigured), Sentry/Prometheus (optional).
 .venv/Scripts/python -m pytest -q        # needs db+redis containers up
 ```
 
-- 928 tests over 38 files: fare unit tests, per-module API tests, WS streaming,
+- 955 tests over 38 files: fare unit tests, per-module API tests, WS streaming,
   fleet management / roster / settlement, backup retention and restore-drill
   guards, console contrast guards, and `test_hardening.py` (14 regression tests
   for every fixed finding).
