@@ -152,23 +152,13 @@ class FleetMemberIn(BaseModel):
     note: str | None = None
 
 
-async def _driver_profile_of(session: AsyncSession, user_id) -> DriverProfile | None:
-    from sqlalchemy import select
-
-    return (
-        (await session.execute(select(DriverProfile).where(DriverProfile.user_id == user_id)))
-        .scalars()
-        .first()
-    )
-
-
 async def _require_membership(session: AsyncSession, fleet_id, user_id) -> FleetMembership:
     """A driver may only read the fleet they are actually on.
 
     Returns 404 rather than 403 for a fleet that exists but is not theirs, so the
     endpoint cannot be used to enumerate which fleets exist.
     """
-    driver = await _driver_profile_of(session, user_id)
+    driver = await DriverProfile.for_user(session, user_id)
     if driver is None:
         raise HTTPException(status_code=404, detail="fleet not found")
     membership = await FleetService(session).membership_of(driver.id)
@@ -188,7 +178,7 @@ async def my_fleet(
     session: AsyncSession = Depends(get_session),
 ):
     """The fleet the caller drives for. `{"fleet": null}` when not on one."""
-    driver = await _driver_profile_of(session, user.id)
+    driver = await DriverProfile.for_user(session, user.id)
     if driver is None:
         return {"fleet": None, "membership": None}
 

@@ -33,6 +33,7 @@ from app.api.schemas import (
     ProfileOut,
     UsernameCheckOut,
 )
+from app.core.client_ip import client_ip
 from app.core.db import get_session
 from app.core.deps import Principal, require_active_user
 from app.core.exceptions import BusinessRuleError
@@ -70,21 +71,6 @@ class EmailIn(BaseModel):
 
 class ConfirmIn(BaseModel):
     token: str = Field(min_length=16, max_length=512)
-
-
-def _client_ip(request: Request) -> str:
-    """Caller address; X-Forwarded-For only behind a trusted proxy (SEC-07)."""
-    from app.core.config import get_settings
-
-    settings = get_settings()
-    if settings.trusted_proxy_count > 0:
-        fwd = request.headers.get("x-forwarded-for")
-        if fwd:
-            hops = [h.strip() for h in fwd.split(",") if h.strip()]
-            if hops:
-                idx = max(0, len(hops) - settings.trusted_proxy_count)
-                return hops[idx]
-    return request.client.host if request.client else "unknown"
 
 
 def _profile_out(user: User) -> dict:
@@ -181,7 +167,7 @@ async def username_check(
     """
     limiter = request.app.state.rate_limiter
     if not await limiter.allow(
-        f"identity:username-check:{_client_ip(request)}",
+        f"identity:username-check:{client_ip(request)}",
         _CHECK_IP_RATE_LIMIT,
         _CHECK_IP_WINDOW_S,
     ):
@@ -200,7 +186,7 @@ async def request_email(
 ):
     limiter = request.app.state.rate_limiter
     if not await limiter.allow(
-        f"identity:email:{_client_ip(request)}", _EMAIL_IP_RATE_LIMIT, _EMAIL_IP_WINDOW_S
+        f"identity:email:{client_ip(request)}", _EMAIL_IP_RATE_LIMIT, _EMAIL_IP_WINDOW_S
     ):
         raise HTTPException(status_code=429, detail="too many verification emails — try later")
 
@@ -259,7 +245,7 @@ async def reverify_phone(
 
     limiter = request.app.state.rate_limiter
     if not await limiter.allow(
-        f"identity:phone-reverify:{_client_ip(request)}",
+        f"identity:phone-reverify:{client_ip(request)}",
         _PHONE_REVERIFY_IP_RATE_LIMIT,
         _PHONE_REVERIFY_IP_WINDOW_S,
     ):

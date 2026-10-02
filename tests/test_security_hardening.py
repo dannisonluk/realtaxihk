@@ -80,6 +80,67 @@ class TestConfigFailClosed:
         with pytest.raises(ValidationError, match="entropy"):
             Settings(_env_file=None, app_env="dev", jwt_secret_key="x" * 64)
 
+    # --- prod CORS / proxy-trust (found by the 2026-10-12 review) --------- #
+
+    @staticmethod
+    def _prod(**over):
+        """A minimal prod config that passes every check except the one under
+        test. Named so a failure here reads as "the prod baseline broke", not as
+        the assertion being wrong."""
+        base: dict = {
+            "_env_file": None,
+            "app_env": "prod",
+            "jwt_secret_key": _STRONG_SECRET,
+            "postgres_password": "a-real-password",
+            "smtp_host": "smtp.example.com",
+            "smtp_from": "noreply@example.com",
+            "public_base_url": "https://api.example.com",
+            "trusted_proxy_count": 1,
+            "cors_origins": ["https://admin.example.com"],
+        }
+        base.update(over)
+        return base
+
+    def test_prod_baseline_is_accepted(self):
+        """Guards the tests below: if the baseline itself stopped passing, every
+        other assertion in this block would 'pass' for the wrong reason."""
+        assert Settings(**self._prod()).app_env == "prod"
+
+    def test_prod_rejects_default_cors_origins(self):
+        """The four loopback origins are a dev convenience. Leaving them in prod
+        is worse than useless: `http://localhost:8081` is an origin anyone can
+        serve, so a page on a laptop could reach the production API with the
+        operator's cookies."""
+        with pytest.raises(ValidationError, match="CORS_ORIGINS"):
+            Settings(**self._prod(cors_origins=[]))
+
+    def test_prod_rejects_wildcard_cors_origin(self):
+        """A wildcard plus `allow_credentials=True` lets any site read
+        authenticated responses."""
+        with pytest.raises(ValidationError, match="must not contain"):
+            Settings(**self._prod(cors_origins=["*"]))
+
+    def test_prod_rejects_plain_http_cors_origin(self):
+        """A plain-http origin admits a network attacker into a session that
+        carries cookies."""
+        with pytest.raises(ValidationError, match="https://"):
+            Settings(**self._prod(cors_origins=["http://admin.example.com"]))
+
+    def test_prod_rejects_zero_trusted_proxies(self):
+        """SEC-07: with 0, X-Forwarded-For is ignored entirely — behind the
+        documented nginx deploy that collapses every per-IP rate limit into one
+        shared bucket, so one abuser throttles every user."""
+        with pytest.raises(ValidationError, match="TRUSTED_PROXY_COUNT"):
+            Settings(**self._prod(trusted_proxy_count=0))
+
+    def test_dev_is_unaffected_by_the_prod_cors_checks(self, monkeypatch):
+        """The dev defaults must keep working — this is the whole point of
+        scoping the new checks to `app_env == 'prod'`."""
+        monkeypatch.delenv("CORS_ORIGINS", raising=False)
+        s = Settings(_env_file=None, app_env="dev", jwt_secret_key=_STRONG_SECRET)
+        assert s.trusted_proxy_count == 0
+        assert len(s.cors_origins) == 4
+
     def test_dev_otp_needs_the_explicit_switch(self, monkeypatch):
         # The suite does NOT set ALLOW_DEV_OTP (it reads codes from the notify
         # seam), so "switch off" is already the ambient state; clear it anyway
@@ -113,9 +174,13 @@ class TestForwardedFor:
         ]
         assert statuses.count(429) >= 3, statuses
 
-    def test_rightmost_hop_is_used_when_a_proxy_is_trusted(self, client, monkeypatch):
+    def test_rightmost_hop_is_used_when_a_proxy_is_trusted(self, monkeypatch):
         """With one trusted hop, the last element is the peer nginx actually saw."""
-        from app.api.auth import _client_ip
+        # Imported from its own module, not from a route module: `_client_ip` was
+        # five byte-identical copies and is now one function in
+        # `app/core/client_ip.py`. The test reads it there so it keeps testing the
+        # implementation rather than one endpoint's import of it.
+        from app.core.client_ip import client_ip
 
         class _Req:
             def __init__(self):
@@ -123,7 +188,7 @@ class TestForwardedFor:
                 self.client = type("C", (), {"host": "10.0.0.1"})()
 
         monkeypatch.setattr(
-            "app.api.auth.get_settings",
+            "app.core.client_ip.get_settings",
             lambda: Settings(
                 _env_file=None,
                 app_env="dev",
@@ -131,7 +196,42 @@ class TestForwardedFor:
                 trusted_proxy_count=1,
             ),
         )
-        assert _client_ip(_Req()) == "9.9.9.9"
+        assert client_ip(_Req()) == "9.9.9.9"
+
+    def test_the_attacker_supplied_prefix_is_never_returned(self, monkeypatch):
+        """The specific SEC-07 defect: `[0]` is the part a client controls.
+
+        This is the assertion that would have failed against the original
+        implementation, where `x_forwarded_for.split(',')[0]` returned `1.2.3.4`
+        — an address the caller chose.
+        """
+        from app.core.client_ip import client_ip
+
+        class _Req:
+            def __init__(self):
+                # nginx APPENDS the real peer, so the client's own value sits
+                # first and the trustworthy one sits last.
+                self.headers = {"x-forwarded-for": "6.6.6.6, 198.51.100.7"}
+                self.client = type("C", (), {"host": "10.0.0.1"})()
+
+        monkeypatch.setattr(
+            "app.core.client_ip.get_settings",
+            lambda: Settings(
+                _env_file=None,
+                app_env="dev",
+                jwt_secret_key=_STRONG_SECRET,
+                trusted_proxy_count=1,
+            ),
+        )
+        assert client_ip(_Req()) == "198.51.100.7"
+
+    def test_every_module_shares_one_implementation(self):
+        """Five byte-identical copies is five places to reintroduce SEC-07."""
+        from app.api import admin_auth, auth, fare, identity, licence
+        from app.core.client_ip import client_ip
+
+        for module in (auth, admin_auth, fare, identity, licence):
+            assert module.client_ip is client_ip, module.__name__
 
 
 # --------------------------------------------------------------------------- #

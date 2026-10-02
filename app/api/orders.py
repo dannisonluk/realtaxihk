@@ -66,6 +66,12 @@ _MAX_TUNNELS = 8
 
 
 def _redis(request: Request):
+    # Request-scoped handle for `GrabService`, which is the one thing here that
+    # needs a Redis client of its own (grab runs in a session-factory session
+    # and takes its lock through this handle). `state.redis_factory()` builds
+    # per call on purpose: a client is bound to the event loop that created it,
+    # so caching one on `app.state` would break the moment uvicorn runs more
+    # than one loop — see `app/core/db.py`.
     return request.app.state.redis_factory()
 
 
@@ -161,14 +167,6 @@ async def _get_order(session: AsyncSession, order_id: str, *, for_update: bool =
     return order
 
 
-async def _driver_profile_of(session: AsyncSession, user_id) -> DriverProfile | None:
-    return (
-        (await session.execute(select(DriverProfile).where(DriverProfile.user_id == user_id)))
-        .scalars()
-        .first()
-    )
-
-
 @router.post("", status_code=201, response_model=OrderOut)
 async def create_order(
     payload: OrderCreateIn,
@@ -261,7 +259,7 @@ async def my_orders(
     """
     q = select(Order).order_by(Order.created_at.desc(), Order.id.desc()).limit(limit)
     if role == "driver":
-        profile = await _driver_profile_of(session, user.id)
+        profile = await DriverProfile.for_user(session, user.id)
         if profile is None:
             return {"items": []}
         scope = Order.driver_id == profile.id
@@ -292,7 +290,7 @@ async def order_detail(
 ):
     """P2-1: participants (or admin) can read one order."""
     order = await _get_order(session, order_id)
-    profile = await _driver_profile_of(session, user.id)
+    profile = await DriverProfile.for_user(session, user.id)
     is_party = order.passenger_id == user.id or (
         profile is not None and order.driver_id == profile.id
     )
@@ -309,7 +307,7 @@ async def grab_order(
     factory=Depends(get_session_factory),
     redis=Depends(_redis),
 ):
-    profile = await _driver_profile_of(session, user.id)
+    profile = await DriverProfile.for_user(session, user.id)
     if profile is None or profile.status != DriverStatus.ACTIVE:
         raise HTTPException(status_code=403, detail="only ACTIVE drivers can grab orders")
 
@@ -331,7 +329,7 @@ async def grab_order(
 async def _assigned_driver_guard(
     session: AsyncSession, order: Order, user: Principal
 ) -> DriverProfile:
-    profile = await _driver_profile_of(session, user.id)
+    profile = await DriverProfile.for_user(session, user.id)
     if profile is None or order.driver_id is None or order.driver_id != profile.id:
         raise HTTPException(status_code=403, detail="not the assigned driver")
     return profile
@@ -385,7 +383,7 @@ async def order_cancel(
     # transition is written after it: two concurrent cancels would otherwise
     # both see ACCEPTED and both charge. See `_get_order`.
     order = await _get_order(session, order_id, for_update=True)
-    profile = await _driver_profile_of(session, user.id)
+    profile = await DriverProfile.for_user(session, user.id)
     is_passenger = order.passenger_id == user.id
     is_assigned_driver = profile is not None and order.driver_id == profile.id
     if not (is_passenger or is_assigned_driver):

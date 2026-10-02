@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.schemas import FareEstimateOut
+from app.core.client_ip import client_ip
 from app.core.config import get_settings
 from app.core.exceptions import BusinessRuleError
 from app.core.money import meter_str
@@ -70,18 +71,6 @@ class FareEstimateRequest(BaseModel):
         return v
 
 
-def _client_ip(request: Request) -> str:
-    """Same right-anchored resolution as the auth module (SEC-07)."""
-    settings = get_settings()
-    if settings.trusted_proxy_count > 0:
-        fwd = request.headers.get("x-forwarded-for")
-        if fwd:
-            hops = [h.strip() for h in fwd.split(",") if h.strip()]
-            if hops:
-                return hops[max(0, len(hops) - settings.trusted_proxy_count)]
-    return request.client.host if request.client else "unknown"
-
-
 @router.post("/estimate", response_model=FareEstimateOut)
 async def estimate_fare(
     payload: FareEstimateRequest,
@@ -90,7 +79,7 @@ async def estimate_fare(
     settings = get_settings()
     limiter = request.app.state.rate_limiter
     if not await limiter.allow(
-        f"fare:estimate:ip:{_client_ip(request)}",
+        f"fare:estimate:ip:{client_ip(request)}",
         settings.fare_estimate_ip_rate_limit,
         settings.fare_estimate_ip_window_s,
     ):

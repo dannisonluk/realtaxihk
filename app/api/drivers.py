@@ -71,21 +71,13 @@ def _profile_out(dp: DriverProfile) -> dict:
     }
 
 
-async def _get_profile(session: AsyncSession, user_id) -> DriverProfile | None:
-    return (
-        (await session.execute(select(DriverProfile).where(DriverProfile.user_id == user_id)))
-        .scalars()
-        .first()
-    )
-
-
 @router.post("/register", status_code=201, response_model=DriverProfileOut)
 async def register_driver(
     payload: DriverRegisterIn,
     user: Principal = Depends(require_phone_current),
     session: AsyncSession = Depends(get_session),
 ):
-    if await _get_profile(session, user.id) is not None:
+    if await DriverProfile.for_user(session, user.id) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="driver profile exists")
     profile = DriverProfile(
         user_id=user.id,
@@ -105,7 +97,7 @@ async def my_driver_profile(
     user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
-    profile = await _get_profile(session, user.id)
+    profile = await DriverProfile.for_user(session, user.id)
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no driver profile")
     deposit = (
@@ -138,7 +130,7 @@ async def my_ledger(
     the last row the client already holds; `next_cursor` stays non-null only
     while a full page came back.
     """
-    profile = await _get_profile(session, user.id)
+    profile = await DriverProfile.for_user(session, user.id)
     if profile is None:
         raise HTTPException(status_code=404, detail="no driver profile")
     q = (
@@ -196,7 +188,7 @@ async def request_refund(
     leaves the platform. Requesting suspends the driver, which stops dispatch
     and pauses the weekly service fee. At most one open request per driver.
     """
-    profile = await _get_profile(session, user.id)
+    profile = await DriverProfile.for_user(session, user.id)
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no driver profile")
     refund = await RefundService(session).request(
@@ -213,7 +205,7 @@ async def my_refund(
     session: AsyncSession = Depends(get_session),
 ):
     """The driver's most recent refund request (null if they never filed one)."""
-    profile = await _get_profile(session, user.id)
+    profile = await DriverProfile.for_user(session, user.id)
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no driver profile")
     row = (

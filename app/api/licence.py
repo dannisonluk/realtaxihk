@@ -36,6 +36,7 @@ from app.api.schemas import (
     LicenceSubmissionOut,
     PresignedUploadOut,
 )
+from app.core.client_ip import client_ip
 from app.core.db import get_session
 from app.core.deps import Principal, require_active_user, require_phone_current
 from app.core.exceptions import BusinessRuleError
@@ -83,24 +84,9 @@ class SubmitIn(BaseModel):
     note: str | None = Field(default=None, max_length=500)
 
 
-def _client_ip(request: Request) -> str:
-    """Caller address; X-Forwarded-For only behind a trusted proxy (SEC-07)."""
-    from app.core.config import get_settings
-
-    settings = get_settings()
-    if settings.trusted_proxy_count > 0:
-        fwd = request.headers.get("x-forwarded-for")
-        if fwd:
-            hops = [h.strip() for h in fwd.split(",") if h.strip()]
-            if hops:
-                idx = max(0, len(hops) - settings.trusted_proxy_count)
-                return hops[idx]
-    return request.client.host if request.client else "unknown"
-
-
 async def _limit(request: Request, bucket: str, limit: int, window: int) -> None:
     limiter = request.app.state.rate_limiter
-    if not await limiter.allow(f"licence:{bucket}:{_client_ip(request)}", limit, window):
+    if not await limiter.allow(f"licence:{bucket}:{client_ip(request)}", limit, window):
         raise HTTPException(status_code=429, detail="too many requests — slow down")
 
 

@@ -117,11 +117,7 @@ async def trip_socket(
         order_id_str = str(order.id)
         is_passenger = order.passenger_id == user.id
         driver_id_on_order = order.driver_id
-        profile = (
-            (await session.execute(select(DriverProfile).where(DriverProfile.user_id == user.id)))
-            .scalars()
-            .first()
-        )
+        profile = await DriverProfile.for_user(session, user.id)
         profile_id = profile.id if profile is not None else None
         # P0-3: a deactivated account must not keep a live socket. One PK read;
         # a suspended driver re-checks per tick (DRIVER_NOT_ACTIVE).
@@ -195,6 +191,11 @@ async def trip_socket(
             await send({"type": "error", "code": "OUTSIDE_HK"})
             return
         async with factory() as ops:
+            # Deliberately NOT `DriverProfile.for_user`. That helper loads the
+            # whole row, and this runs on every location tick from every
+            # connected driver — the hot path of the whole product. Selecting the
+            # two columns the check actually needs keeps a per-tick query off the
+            # ORM's object construction.
             row = (
                 await ops.execute(
                     select(DriverProfile.id, DriverProfile.status).where(

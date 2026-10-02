@@ -30,6 +30,7 @@ from app.api.schemas import (
     OtpRequestOut,
     TokenPairOut,
 )
+from app.core.client_ip import client_ip
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.deps import Principal, require_active_user, require_live_principal
@@ -71,30 +72,6 @@ def _user_out(user) -> dict:
     }
 
 
-def _client_ip(request: Request) -> str:
-    """Resolve the caller's address without trusting client-supplied headers.
-
-    SEC-07: the previous implementation took `x_forwarded_for.split(",")[0]` —
-    the LEFTMOST element, which is exactly the part an attacker controls. nginx's
-    `$proxy_add_x_forwarded_for` *appends* the real peer, so even a correct
-    deployment left the attacker-controlled prefix in position 0 and every IP
-    rate limit was bypassable by rotating the header.
-
-    Now: X-Forwarded-For is ignored entirely unless `TRUSTED_PROXY_COUNT > 0`,
-    and when it is read we count hops from the RIGHT — `[-trusted]` is the peer
-    as seen by the outermost trusted proxy, which no client can forge.
-    """
-    settings = get_settings()
-    if settings.trusted_proxy_count > 0:
-        fwd = request.headers.get("x-forwarded-for")
-        if fwd:
-            hops = [h.strip() for h in fwd.split(",") if h.strip()]
-            if hops:
-                idx = max(0, len(hops) - settings.trusted_proxy_count)
-                return hops[idx]
-    return request.client.host if request.client else "unknown"
-
-
 async def _revoke_access_tokens(request: Request, user_id) -> None:
     """Set the user's revocation epoch so every issued access token dies.
 
@@ -112,7 +89,7 @@ async def otp_request(
 ):
     settings = get_settings()
     limiter = request.app.state.rate_limiter
-    ip = _client_ip(request)
+    ip = client_ip(request)
 
     if not await limiter.allow(
         f"otp:ip:{ip}", settings.otp_ip_rate_limit, settings.otp_ip_window_s
@@ -173,7 +150,7 @@ async def otp_verify(
 ):
     limiter = request.app.state.rate_limiter
     if not await limiter.allow(
-        f"otp:verify:ip:{_client_ip(request)}", _VERIFY_IP_RATE_LIMIT, _VERIFY_IP_WINDOW_S
+        f"otp:verify:ip:{client_ip(request)}", _VERIFY_IP_RATE_LIMIT, _VERIFY_IP_WINDOW_S
     ):
         raise HTTPException(status_code=429, detail="too many verification attempts")
 
@@ -301,12 +278,3 @@ async def me(
         "phone_masked": mask_phone(db_user.phone_e164),
         "role": db_user.role.value,
     }
-
-
-def require_role(role: UserRole):
-    async def _guard(user: Principal = Depends(require_active_user)) -> Principal:
-        if user.role != role:
-            raise HTTPException(status_code=403, detail=f"{role.value} role required")
-        return user
-
-    return _guard

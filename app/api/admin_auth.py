@@ -50,6 +50,7 @@ from app.core.admin_cookies import (
     read_refresh_cookie,
     set_session_cookies,
 )
+from app.core.client_ip import client_ip
 from app.core.db import get_session
 from app.core.deps import require_live_admin_refresh_session
 from app.core.exceptions import BusinessRuleError
@@ -87,26 +88,6 @@ class RecoveryIn(BaseModel):
 class ConfirmEnrolIn(BaseModel):
     challenge_token: str = Field(min_length=16, max_length=512)
     code: str = Field(min_length=6, max_length=7)
-
-
-def _client_ip(request: Request) -> str:
-    """Resolve the caller address, trusting X-Forwarded-For only behind a proxy.
-
-    Same rule as `app.api.auth._client_ip` (SEC-07): read hops from the RIGHT.
-    The leftmost element is the part a client controls, so counting from there
-    would make every admin rate limit bypassable by rotating a header.
-    """
-    from app.core.config import get_settings
-
-    settings = get_settings()
-    if settings.trusted_proxy_count > 0:
-        fwd = request.headers.get("x-forwarded-for")
-        if fwd:
-            hops = [h.strip() for h in fwd.split(",") if h.strip()]
-            if hops:
-                idx = max(0, len(hops) - settings.trusted_proxy_count)
-                return hops[idx]
-    return request.client.host if request.client else "unknown"
 
 
 def _service(request: Request, session: AsyncSession) -> AdminAuthService:
@@ -172,7 +153,7 @@ async def login(
     """Step 1: username + password. Returns a challenge, never an access token."""
     svc = _service(request, session)
     outcome = await _run(
-        svc.login(username=payload.username, password=payload.password, ip=_client_ip(request)),
+        svc.login(username=payload.username, password=payload.password, ip=client_ip(request)),
         session,
     )
 
@@ -207,7 +188,7 @@ async def verify_totp(
     svc = _service(request, session)
     account = await _run(
         svc.verify_totp(
-            challenge_token=payload.challenge_token, code=payload.code, ip=_client_ip(request)
+            challenge_token=payload.challenge_token, code=payload.code, ip=client_ip(request)
         ),
         session,
     )
@@ -230,7 +211,7 @@ async def recovery(
     svc = _service(request, session)
     account = await _run(
         svc.consume_recovery_code(
-            challenge_token=payload.challenge_token, code=payload.code, ip=_client_ip(request)
+            challenge_token=payload.challenge_token, code=payload.code, ip=client_ip(request)
         ),
         session,
     )
@@ -251,7 +232,7 @@ async def begin_enrolment(
     """
     svc = _service(request, session)
     outcome = await _run(
-        svc.login(username=payload.username, password=payload.password, ip=_client_ip(request)),
+        svc.login(username=payload.username, password=payload.password, ip=client_ip(request)),
         session,
     )
     if outcome.enrolment is None:
@@ -284,7 +265,7 @@ async def confirm_enrolment(
     svc = _service(request, session)
     account = await _run(
         svc.complete_enrolment(
-            challenge_token=payload.challenge_token, code=payload.code, ip=_client_ip(request)
+            challenge_token=payload.challenge_token, code=payload.code, ip=client_ip(request)
         ),
         session,
     )

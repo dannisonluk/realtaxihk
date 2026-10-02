@@ -19,7 +19,6 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas import OkOut
@@ -64,11 +63,7 @@ async def upsert_location(
     # which is what the coordinate feeds.
     require_in_hong_kong(payload.lat, payload.lng, field="location")
 
-    profile = (
-        (await session.execute(select(DriverProfile).where(DriverProfile.user_id == user.id)))
-        .scalars()
-        .first()
-    )
+    profile = await DriverProfile.for_user(session, user.id)
     if profile is None or profile.status != DriverStatus.ACTIVE:
         raise HTTPException(status_code=403, detail="only ACTIVE drivers can stream location")
 
