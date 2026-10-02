@@ -281,6 +281,54 @@ class Settings(BaseSettings):
                     "still the default."
                 )
 
+            # CORS: the four loopback origins above are a dev convenience, and
+            # leaving them in prod is worse than useless — `http://localhost:8081`
+            # is an origin *anyone* can serve, so a page on a developer's laptop
+            # could talk to the production API with the operator's cookies. Fail
+            # closed rather than allow-list a default nobody meant to ship.
+            #
+            # A wildcard is refused for the same reason: `allow_credentials=True`
+            # and `*` is a combination browsers reject anyway, so a deploy that
+            # "worked" in a browser test would be one where CORS was silently
+            # broken for the real console.
+            if not self.cors_origins:
+                raise ValueError(
+                    "CORS_ORIGINS must be set when APP_ENV=prod — the admin console "
+                    "is served from its own origin and every request from it would "
+                    "otherwise fail with an opaque browser error and nothing in the "
+                    "server log."
+                )
+            for origin in self.cors_origins:
+                if origin.strip() == "*":
+                    raise ValueError(
+                        "CORS_ORIGINS must not contain '*' in prod: credentials are "
+                        "sent with every console request, and a wildcard origin lets "
+                        "any site read authenticated responses."
+                    )
+                if not origin.startswith("https://"):
+                    raise ValueError(
+                        f"CORS_ORIGINS entries must be https:// in prod, got {origin!r}. "
+                        "A plain-http origin admits a network attacker into an "
+                        "authenticated session."
+                    )
+
+            # SEC-07: this is the number that decides whether X-Forwarded-For is
+            # read at all. It ships as 0 — correct only for a directly-exposed app.
+            # Behind nginx (which every documented deploy is: see
+            # `deploy/nginx/`), 0 means the header is ignored and *every* caller
+            # behind the proxy shares one rate-limit bucket — the forwarded
+            # address is never even looked at, so per-IP limits silently collapse
+            # into a single global one. Refuse the combination rather than let it
+            # throttle all users together.
+            if self.trusted_proxy_count <= 0:
+                raise ValueError(
+                    "TRUSTED_PROXY_COUNT must be >= 1 when APP_ENV=prod — the "
+                    "documented deployment puts nginx in front of the app, and with "
+                    "0 the X-Forwarded-For header is ignored entirely, collapsing "
+                    "every per-IP rate limit into one shared bucket. Set it to the "
+                    "number of proxies you actually control."
+                )
+
         # 3) SEC-04: a secret must exist and carry real entropy. Length alone is not
         #    enough — "x" * 64 is 64 chars and zero entropy.
         if not self.jwt_secret_key:

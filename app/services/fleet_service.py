@@ -23,13 +23,14 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.exceptions import BusinessRuleError
+from app.core.exceptions import BusinessRuleError, DuplicateReferenceError
+from app.core.money import money_str, quantize_money
 from app.models import (
     DriverDeposit,
     DriverProfile,
@@ -51,11 +52,6 @@ from app.services.settlement_service import period_key
 
 logger = logging.getLogger("realtaxihk.fleet")
 
-# Money is HKD; the platform's own money_str() quantises to one decimal, but a
-# per-member fee that has been discounted can land on a half cent, so fleet
-# arithmetic keeps two.
-_CENT = Decimal("0.01")
-
 
 def discounted_fee(fee_hkd: Decimal, discount_percent: Decimal) -> Decimal:
     """The per-member fee after the fleet's volume discount.
@@ -71,7 +67,7 @@ def discounted_fee(fee_hkd: Decimal, discount_percent: Decimal) -> Decimal:
             {"discount_percent": str(discount)},
         )
     net = Decimal(fee_hkd) * (Decimal(100) - discount) / Decimal(100)
-    return net.quantize(_CENT, rounding=ROUND_HALF_UP)
+    return quantize_money(net)
 
 
 class FleetService:
@@ -370,6 +366,14 @@ class FleetSettlementService:
                 )
             discount = Decimal(fleet.weekly_fee_discount_percent)
             per_member = discounted_fee(gross, discount)
+            # Pulled out as plain scalars BEFORE the session closes. The loop
+            # below (and the totals dict) runs outside the `async with`, so
+            # touching `fleet.<attr>` there only works while the attribute is a
+            # plain loaded column — the moment someone adds a relationship and
+            # reads it, or `expire_on_commit` is turned on, every weekly
+            # settlement raises `DetachedInstanceError` midway through. A string
+            # cannot do that.
+            fleet_name = fleet.name
 
             # Only members whose *driver profile* is ACTIVE are billable: a
             # SUSPENDED or TERMINATED member is not on the road, and one still in
@@ -453,7 +457,7 @@ class FleetSettlementService:
                             driver_profile_id=driver_id,
                             entry_type=LedgerEntryType.WEEKLY_FEE_DEDUCTION,
                             amount_hkd=-per_member,
-                            note=f"fleet service fee {period} ({fleet.name})",
+                            note=f"fleet service fee {period} ({fleet_name})",
                             reference=reference,
                         )
                         await session.commit()
@@ -461,9 +465,22 @@ class FleetSettlementService:
                         collected += per_member
                     else:
                         skipped += 1
-            except BusinessRuleError:
+            except DuplicateReferenceError:
+                # The fee IS collected exactly once — this really is a skip.
+                # Narrowed from the bare `BusinessRuleError` it used to catch: that
+                # version also swallowed "driver deposit account not found", so a
+                # member whose deposit row had been deleted between the pre-check
+                # and the append was reported as *already paid* while the fleet
+                # silently collected nothing from them. The two failures are one
+                # lost fee apart and must not share a branch.
                 logger.debug("fleet settlement: %s already charged for %s", period, driver_id)
                 skipped += 1
+            except BusinessRuleError as exc:
+                # NOT charged. Surface it rather than counting it as a skip.
+                logger.exception(
+                    "fleet settlement: charge failed for driver %s: %s", driver_id, exc.message
+                )
+                failed += 1
             except Exception:
                 # One member must never abort the whole fleet's settlement.
                 logger.exception("fleet settlement failed for driver %s", driver_id)
@@ -471,21 +488,23 @@ class FleetSettlementService:
 
         totals = {
             "fleet_id": str(fleet_id),
-            "fleet_name": fleet.name,
+            "fleet_name": fleet_name,
             "period": period,
-            "gross_fee_hkd": str(gross),
+            # All four money keys go through `money_str` so they are 2 dp and
+            # read as the same *kind* of number. Before this, `gross`/`per_member`
+            # rendered as `"200"` (they come from `str(Decimal(200))`) while
+            # `collected` was quantised to `"150.00"` — one payload, two
+            # precisions, and `collected_hkd` was the only one that was right.
+            # `discount_percent` stays `str()`: it is a percentage, not money.
+            "gross_fee_hkd": money_str(gross),
             "discount_percent": str(discount),
-            "fee_hkd": str(per_member),
+            "fee_hkd": money_str(per_member),
             "member_count": len(member_ids),
             "charged": charged,
             "skipped": skipped,
             "failed": failed,
             "tampered": tampered,
-            # Quantised, because `collected` starts at Decimal("0") and stays
-            # there when nobody is charged — without this a zero-collection week
-            # reports "0" while a partial one reports "150.00", and the operator
-            # UI would have to special-case the difference.
-            "collected_hkd": str(collected.quantize(_CENT, rounding=ROUND_HALF_UP)),
+            "collected_hkd": money_str(collected),
         }
 
         # Upsert the aggregate: one row per (fleet, week), so a re-run updates

@@ -60,6 +60,22 @@ def meter_str(v: Decimal) -> str:
     return str(Decimal(v).quantize(_TICK, rounding=ROUND_HALF_UP))
 
 
+def quantize_money(v: Decimal) -> Decimal:
+    """Round a money value to cents, half-up, and **keep it a `Decimal`**.
+
+    `money_str` is for values going on the wire. This is for values that must
+    keep being arithmetic: a fee that will be multiplied by a member count, a
+    figure assigned to a `Numeric(10, 2)` column, a running total. Rounding is
+    identical to `money_str` on purpose — the only difference is the return type,
+    and having a Decimal-producing call site reach for `quantize(Decimal("0.01"))`
+    is how the half-even default creeps back in (see the module docstring).
+
+    `fleet_service` used to carry its own private `_CENT` for exactly this and
+    was the last such copy.
+    """
+    return Decimal(v).quantize(_CENT, rounding=ROUND_HALF_UP)
+
+
 def ratio_str(v: Decimal | int | str) -> str:
     """Canonical 2-dp wire form for a **derived** figure, half-up.
 
