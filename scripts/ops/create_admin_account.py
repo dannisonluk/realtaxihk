@@ -8,7 +8,7 @@ approve refunds, adjust the deposit ledger and run fleet settlement, so an
 account-creation path reachable from the internet is the last thing it should
 have. That leaves a CLI as the only way to bring the first one into existence.
 
-`scripts/create_admin.py` is a *different* script for a different thing: it
+`scripts/ops/create_admin.py` is a *different* script for a different thing: it
 grants `users.role = ADMIN`, which is the legacy console identity. This one
 creates the credential-bearing account with the TOTP second factor.
 
@@ -23,8 +23,8 @@ generate a code for, and the account would then be locked out by design.
 
 Usage
 -----
-    .venv/Scripts/python.exe scripts/create_admin_account.py --list
-    .venv/Scripts/python.exe scripts/create_admin_account.py \\
+    .venv/Scripts/python.exe scripts/ops/create_admin_account.py --list
+    .venv/Scripts/python.exe scripts/ops/create_admin_account.py \\
         --username dannison --email dannison@example.com --name "Dannison"
 
 The password is read from `ADMIN_PASSWORD` or prompted for; it is never taken as
@@ -43,7 +43,7 @@ import sys
 import uuid
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from sqlalchemy import select  # noqa: E402

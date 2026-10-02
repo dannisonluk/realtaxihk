@@ -1,6 +1,6 @@
 /// Decodes every captured response in `test/fixtures/` with the **real** models.
 ///
-/// `scripts/gen_mobile_fixtures.py` boots the API and writes raw responses to
+/// `scripts/dev/gen_mobile_fixtures.py` boots the API and writes raw responses to
 /// `test/fixtures/`; this is the other half of that loop.
 ///
 /// **Why it still exists now that the API declares response models.** It was
@@ -15,7 +15,7 @@
 /// handler passes every Python test and breaks the app. This is the only check
 /// that would catch that.
 ///
-/// The Python-side counterpart is `scripts/audit_response_models.py`, which
+/// The Python-side counterpart is `scripts/verify/audit_response_models.py`, which
 /// proves each fixture's keys survive its `response_model=` (a response model is
 /// a filter, and a missing field silently deletes data from the response). Run
 /// both after a backend change — they fail in different places.
@@ -36,7 +36,7 @@
 ///
 /// Run it after any backend change:
 ///
-///     python scripts/gen_mobile_fixtures.py
+///     python scripts/dev/gen_mobile_fixtures.py
 ///     dart run tool/verify_contract.dart
 ///
 /// It fails if a fixture has no decoder **or** a decoder has no fixture, so a

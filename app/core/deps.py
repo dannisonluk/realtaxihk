@@ -223,7 +223,7 @@ async def require_admin(
     """
     if not user.is_admin:
         # A user token, even one carrying role=ADMIN (the legacy
-        # `users.role = ADMIN` identity from `scripts/create_admin.py`), does not
+        # `users.role = ADMIN` identity from `scripts/ops/create_admin.py`), does not
         # open the console. Those are the credentials of a *different* thing.
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="admin privileges required"

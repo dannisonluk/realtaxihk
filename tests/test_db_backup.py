@@ -2,7 +2,7 @@
 
 These cover the logic that decides *what happens to files on disk*, which is
 the part of a backup tool that can destroy data. The end-to-end path (a real
-`pg_dump`, a real restore) is exercised by `scripts/db_backup.py verify`, which
+`pg_dump`, a real restore) is exercised by `scripts/ops/db_backup.py verify`, which
 needs a live Postgres and therefore is not a unit test — see the drill output in
 `docs/PRODUCTION_READINESS.md`.
 
@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.db_backup import (
+from scripts.ops.db_backup import (
     NAME_RE,
     SCRATCH_SUFFIX,
     BackupError,

@@ -15,7 +15,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 BASE = "http://127.0.0.1:8000"
 TOKEN = None
@@ -26,7 +26,7 @@ def clear_rate_limits() -> None:
     """Drop this app's rate-limit windows before booting.
 
     The OTP per-IP bucket has a 600s TTL and lives in Redis, so it survives a
-    server restart. Run this straight after `scripts/security_verify.py` — which
+    server restart. Run this straight after `scripts/verify/security_verify.py` — which
     deliberately exhausts that bucket to prove SEC-07 — and the first OTP request
     here fails with an opaque 429. Only this app's own `rl:realtaxi:*` keys are
     touched.

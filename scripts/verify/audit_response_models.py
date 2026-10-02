@@ -21,7 +21,7 @@ pass by being vacuous.
 
 Run after any change to `app/api/schemas/` or a route decorator:
 
-    python scripts/audit_response_models.py
+    python scripts/verify/audit_response_models.py
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ import json
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 import app.api.schemas as schemas
 from app.api.schemas import (

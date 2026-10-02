@@ -1,7 +1,7 @@
 """Post-fix verification probe — boots the REAL server and asserts each previously
 proven finding no longer reproduces.
 
-Run:  .venv/Scripts/python.exe scripts/security_verify.py
+Run:  .venv/Scripts/python.exe scripts/verify/security_verify.py
 
 Each check prints PASS (attack blocked) or FAIL (still exploitable). Non-destructive:
 it only creates throwaway users/orders, and never mutates existing data.
@@ -16,7 +16,7 @@ Probe fixes (2026-09-29, third pass):
   validator runs. Added a sub-cap payload (120 KB) that isolates the validator.
 
 Fourth pass (this one) — the probe stopped depending on a planted admin row:
-- the ADMIN is created at startup with `scripts/create_admin.py` (random UUID) and
+- the ADMIN is created at startup with `scripts/ops/create_admin.py` (random UUID) and
   revoked on the way out, instead of being a fixed well-known UUID that had been
   hand-written into the dev database. That fixed id was a skeleton key identical
   in every deployment, and this probe was its only justification;
@@ -38,7 +38,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from app.core.config import get_settings  # noqa: E402
@@ -91,7 +91,7 @@ def provision_admin() -> None:
     `require_admin` re-reads the `users` row, so a forged ADMIN token is
     worthless without a matching row. That row used to be a fixed UUID planted
     in the dev database by hand — which made this probe, in effect, its only
-    justification. Creating it here with `scripts/create_admin.py` removes that
+    justification. Creating it here with `scripts/ops/create_admin.py` removes that
     circularity and exercises the P2-11 bootstrap path for real.
     """
     global ADMIN_UUID, ADMIN_PHONE

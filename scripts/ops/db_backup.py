@@ -44,26 +44,26 @@ the archive on the host where retention and upload can see it.
 Examples
 --------
     # the nightly run
-    python scripts/db_backup.py backup
+    python scripts/ops/db_backup.py backup
 
     # force a route rather than probing
-    python scripts/db_backup.py --via-docker backup
-    python scripts/db_backup.py --via host backup
+    python scripts/ops/db_backup.py --via-docker backup
+    python scripts/ops/db_backup.py --via host backup
 
     # off-host copy, without this script knowing the provider. Runs once per
     # new archive; a non-zero exit fails the run.
-    python scripts/db_backup.py backup \\
+    python scripts/ops/db_backup.py backup \\
         --upload-cmd 'rclone copy {file} remote:realtaxi-backups/'
 
     # the drill — restore the newest dump and compare row counts
-    python scripts/db_backup.py verify
+    python scripts/ops/db_backup.py verify
 
     # what is on disk
-    python scripts/db_backup.py list
+    python scripts/ops/db_backup.py list
 
 Scheduling is the operator's call, and it is one line of cron:
 
-    17 3 * * *  cd /srv/realtaxihk && .venv/bin/python scripts/db_backup.py backup
+    17 3 * * *  cd /srv/realtaxihk && .venv/bin/python scripts/ops/db_backup.py backup
 
 `--upload-cmd` takes a shell command with `{file}` and `{name}` substituted.
 Keep the credential for the remote in that command's environment (an rclone
@@ -86,9 +86,9 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 
 # `pg_dump` is custom-format (-Fc): compressed, and restorable table-by-table.
 # Plain SQL would be readable but neither compressible nor selectively

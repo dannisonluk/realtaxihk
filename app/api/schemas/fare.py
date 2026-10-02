@@ -91,7 +91,7 @@ class FareEstimateOut(BaseModel):
     **Do not "fix" these to `str`.** Doing so makes the model reject the
     `Decimal` the handler actually passes, and the route 500s. An audit script
     caught exactly that mistake before it shipped —
-    `scripts/audit_response_models.py` checks the model against the handler's
+    `scripts/verify/audit_response_models.py` checks the model against the handler's
     real output shape, not against a plausible-looking type.
     """
 

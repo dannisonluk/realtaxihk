@@ -19,7 +19,7 @@ Stages 1-3 need a live DB; stage 4 needs Redis. Each is skipped with a note if
 its dependency is unreachable, so the script is still useful on a bare checkout.
 
 Run:
-    ./.venv/Scripts/python.exe scripts/bench_location_pipeline.py
+    ./.venv/Scripts/python.exe scripts/verify/bench_location_pipeline.py
 """
 
 from __future__ import annotations

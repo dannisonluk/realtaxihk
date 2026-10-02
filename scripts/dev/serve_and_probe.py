@@ -8,7 +8,7 @@ from pathlib import Path
 import httpx
 import uvicorn
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 tmp = PROJECT_ROOT / ".tmp"
 tmp.mkdir(exist_ok=True)
 # handle stays open on purpose: the child process inherits it as stdout

@@ -21,7 +21,7 @@ moment it stops answering, which turns a permanent wedge into a ~2s blip.
 
 Usage:
 
-    python scripts/api_supervisor.py --port 8000 --check-interval 2
+    python scripts/dev/api_supervisor.py --port 8000 --check-interval 2
 
 The supervisor owns the port for the life of the process. It exits when it
 receives SIGTERM/SIGINT, taking its child (and the child's children) with it.
@@ -39,7 +39,7 @@ import time
 import urllib.error
 import urllib.request
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PY = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
 
 

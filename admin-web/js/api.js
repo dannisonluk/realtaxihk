@@ -279,7 +279,7 @@ export class ApiClient {
 // Typed endpoint wrappers
 //
 // One place per endpoint, so no view builds a path by hand. The paths here are
-// the contract; `tests/test_fleets.py` and `scripts/gen_mobile_fixtures.py` pin
+// the contract; `tests/test_fleets.py` and `scripts/dev/gen_mobile_fixtures.py` pin
 // the same ones from the other side.
 // ---------------------------------------------------------------------------
 

@@ -17,10 +17,10 @@ So this script boots the real app, drives the real endpoints over HTTP, and
 writes the raw responses to disk. `mobile/tool/verify_contract.dart` then decodes
 every fixture with the real Dart models. Re-run it whenever the API changes:
 
-    python scripts/gen_mobile_fixtures.py
+    python scripts/dev/gen_mobile_fixtures.py
 
 It is a development tool: it opts into `ALLOW_DEV_OTP=true` to log in without
-WhatsApp credentials, exactly as `scripts/live_smoke.py` does. The dev rail is
+WhatsApp credentials, exactly as `scripts/verify/live_smoke.py` does. The dev rail is
 refused outright when APP_ENV=prod, and the code is never echoed in a response.
 
 It resets the five fixture phones and the fixture fleet before it starts, and
@@ -43,7 +43,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 OUT = ROOT / "mobile" / "test" / "fixtures"
 PORT = 8123
 BASE = f"http://127.0.0.1:{PORT}"
@@ -175,7 +175,7 @@ def reset_dev_state() -> None:
 
 def admin_cli(*args: str) -> None:
     result = subprocess.run(
-        [sys.executable, "scripts/create_admin.py", *args, "--yes"],
+        [sys.executable, "scripts/ops/create_admin.py", *args, "--yes"],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -274,7 +274,7 @@ def main() -> int:  # a linear script, not a library
         _capture(record)
 
         manifest = {
-            "generated_by": "scripts/gen_mobile_fixtures.py",
+            "generated_by": "scripts/dev/gen_mobile_fixtures.py",
             "note": (
                 "Raw responses from the real API. Each entry names the Dart model in "
                 "mobile/lib/models that must decode it; mobile/tool/verify_contract.dart "
@@ -434,12 +434,12 @@ def _capture(record: Any) -> None:  # a linear capture sequence
     # ---- driver works the order ----------------------------------------
     status, located = req(
         "POST",
-        "/api/v1/driver/location",
+        "/api/v1/drivers/location",
         {"lat": 22.3200, "lng": 114.1700, "online": True},
         token=driver_token,
     )
     assert status == 200, located
-    record("driver_location", "POST /api/v1/driver/location", located)
+    record("driver_location", "POST /api/v1/drivers/location", located)
 
     status, grabbed = req("POST", f"/api/v1/orders/{order_id}/grab", token=driver_token)
     assert status == 200, grabbed

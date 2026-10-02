@@ -1,6 +1,6 @@
 """Security verification probe — proves each finding with a REAL request.
 
-Run:  .venv/Scripts/python.exe scripts/security_probe.py
+Run:  .venv/Scripts/python.exe scripts/verify/security_probe.py
 """
 
 import asyncio
@@ -16,7 +16,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 import asyncpg  # noqa: E402
@@ -80,7 +80,7 @@ def provision_admin():
     `require_admin` re-reads the `users` row, so a forged ADMIN token is
     worthless without a matching row. That row used to be a fixed UUID planted
     in the dev database by hand — which made this probe, in effect, its only
-    justification. Creating it here with `scripts/create_admin.py` removes that
+    justification. Creating it here with `scripts/ops/create_admin.py` removes that
     circularity and exercises the P2-11 bootstrap path for real.
     """
     global ADMIN_UUID, ADMIN_PHONE
@@ -570,7 +570,7 @@ def check_d():
             ("GET", "/api/v1/drivers/me", None),
             ("GET", "/api/v1/drivers/me/ledger", None),
             ("GET", "/api/v1/drivers/me/refund", None),
-            ("POST", "/api/v1/driver/location", {"lat": 22.3, "lng": 114.17}),
+            ("POST", "/api/v1/drivers/location", {"lat": 22.3, "lng": 114.17}),
             ("GET", f"/api/v1/trips/{order_id}/location", None),
             ("GET", "/api/v1/orders", None),  # control: uses require_active_user
         ]

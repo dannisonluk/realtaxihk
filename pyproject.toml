@@ -85,17 +85,17 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "app/core/config.py" = ["S104", "S105"]   # container 0.0.0.0 default + documented dev-only secrets
 "tests/*" = ["S101", "S105", "S106", "S107"]   # pytest asserts + literal test secrets are intentional
-"scripts/*" = ["S310", "S603", "S607"]    # localhost dev tooling: urlopen/subprocess vs own server
-"scripts/live_smoke.py" = ["S101"]        # asserts are the smoke checks themselves
+"scripts/**" = ["S310", "S603", "S607"]    # localhost dev tooling: urlopen/subprocess vs own server
+"scripts/verify/live_smoke.py" = ["S101"]        # asserts are the smoke checks themselves
 # Same rationale: this harness's `assert`s ARE the fixture contract checks — each
 # one pins a response shape the mobile client decodes.
-"scripts/gen_mobile_fixtures.py" = ["S101"]
+"scripts/dev/gen_mobile_fixtures.py" = ["S101"]
 # The adversarial probes (docs/SECURITY_AUDIT.md). `assert` IS the check here;
 # the hardcoded "secrets" are the known-bad values the probe must prove are
 # rejected, so they have to be literals; and unpacking a whole response only to
 # assert on one field is noise, not a defect.
-"scripts/security_probe.py" = ["S101", "S105", "SIM115", "RUF059"]
-"scripts/security_verify.py" = ["S101", "S105", "RUF059"]
+"scripts/verify/security_probe.py" = ["S101", "S105", "SIM115", "RUF059"]
+"scripts/verify/security_verify.py" = ["S101", "S105", "RUF059"]
 # Same class as scripts/: local dev tooling that drives its own server over a
 # pipe. The `assert`s are the harness's own invariants (the stream handles it
 # just opened), and `subprocess.Popen` runs an argument list it built itself.

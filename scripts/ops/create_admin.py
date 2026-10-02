@@ -13,9 +13,9 @@ i.e. the platform cannot go live.
 
 Usage
 -----
-    .venv/Scripts/python.exe scripts/create_admin.py --list
-    .venv/Scripts/python.exe scripts/create_admin.py --phone +85291234567
-    .venv/Scripts/python.exe scripts/create_admin.py --phone +85291234567 --yes
+    .venv/Scripts/python.exe scripts/ops/create_admin.py --list
+    .venv/Scripts/python.exe scripts/ops/create_admin.py --phone +85291234567
+    .venv/Scripts/python.exe scripts/ops/create_admin.py --phone +85291234567 --yes
 
 Notes
 -----
@@ -39,7 +39,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from sqlalchemy import select  # noqa: E402

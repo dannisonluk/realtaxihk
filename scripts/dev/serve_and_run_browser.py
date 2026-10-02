@@ -11,14 +11,37 @@ import socket
 import subprocess
 import sys
 import time
+from pathlib import Path
 
-ROOT = r"C:\Users\user\Desktop\csluk2001\-commited\realtaxihk"
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PY = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
-NODE_WS = r"C:\Users\user\.workbuddy-ai\binaries\node\workspace\node_modules"
-NODE = r"C:\Users\user\.workbuddy-ai\binaries\node\versions\22.22.2-3\node.exe"
+
+# `playwright` is NOT a top-level package on this machine. It ships *nested*
+# inside the Playwright CLI — `<node>/versions/<ver>/node_modules/@playwright/
+# cli/node_modules/playwright` — and `node/workspace/node_modules` is empty, so
+# pointing NODE_PATH there (as this script used to) makes `import 'playwright'`
+# fail with MODULE_NOT_FOUND before the browser ever opens. Resolve it instead.
+_NODE_VERSIONS = Path(r"C:\Users\user\.workbuddy-ai\binaries\node\versions")
+_PLAYWRIGHT_PARENT = next(
+    (
+        p
+        for p in sorted(_NODE_VERSIONS.glob("*/node_modules/@playwright/cli/node_modules"))
+        if (p / "playwright").is_dir()
+    ),
+    None,
+)
+if _PLAYWRIGHT_PARENT is None:
+    print(
+        "[FATAL] could not find playwright under "
+        f"{_NODE_VERSIONS}\\*\\node_modules\\@playwright\\cli\\node_modules",
+        flush=True,
+    )
+    sys.exit(2)
+NODE_WS = str(_PLAYWRIGHT_PARENT)
+NODE = str(_PLAYWRIGHT_PARENT.parents[3] / "node.exe")
 
 # The script plus its own flags, given as one shell-style string:
-#   python scripts/serve_and_run_browser.py "admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081"
+#   python scripts/dev/serve_and_run_browser.py "admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081"
 SCRIPT = sys.argv[1] if len(sys.argv) > 1 else r"admin-web\tool\.ui-check\debug_login.mjs"
 SCRIPT_ARGV = SCRIPT.split()
 
@@ -133,7 +156,7 @@ try:
     # turns a run-killing wedge into a ~2s blip. The supervisor also carries the
     # SEC-31 `--no-proxy-headers` flag for its uvicorn child.
     api = spawn(
-        [PY, "scripts/api_supervisor.py", "--port", "8000", "--check-interval", "2"],
+        [PY, "scripts/dev/api_supervisor.py", "--port", "8000", "--check-interval", "2"],
         "api",
         env,
     )
@@ -141,7 +164,13 @@ try:
         print(api.stdout.read()[-4000:], flush=True)
         sys.exit(1)
 
-    serve = spawn([PY, "admin-web/serve.py", "--port", "8081"], "console", env, stream=True)
+    # `--dist` is not optional here. Without it `serve.py` serves the *legacy*
+    # hand-rolled bundle, and `verify_ui.mjs` deliberately refuses to run against
+    # it (no `#login-username`, different asset paths) — so the one-command flow
+    # this script exists to provide would abort on every run.
+    serve = spawn(
+        [PY, "admin-web/serve.py", "--port", "8081", "--dist"], "console", env, stream=True
+    )
     if not wait_port("127.0.0.1", 8081, 30, "console"):
         sys.exit(1)
 

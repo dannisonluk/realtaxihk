@@ -219,7 +219,7 @@ def test_an_otp_user_token_cannot_reach_admin_routes(client):
 def test_a_user_token_carrying_an_admin_role_claim_is_still_refused(client):
     """`role=ADMIN` on a user token is not enough — the `scope` claim is.
 
-    The legacy identity from `scripts/create_admin.py` sets `users.role = ADMIN`.
+    The legacy identity from `scripts/ops/create_admin.py` sets `users.role = ADMIN`.
     That row is a real, active user row, so a guard that only checked
     "row exists and role is ADMIN" would let it straight in. `scope` is what
     distinguishes the two, and it must not be forgeable from the outside.

@@ -15,13 +15,24 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 
 STRONG_SECRET = "Zx9q7Lm2Wp4Rt6Yk8Bn3Vc5Hj1Sd0Fg6"  # noqa: S105 — drill fixture, not a credential
 COMMITTED_DEV_SECRET = "dev-only-secret-change-in-prod-0123456789abcdef-0123456789abcdef"  # noqa: S105 — the value we must prove is rejected
 
 # Settings we always control, so an inherited value cannot leak into a case.
-MANAGED = ("APP_ENV", "ALLOW_DEV_OTP", "JWT_SECRET_KEY", "POSTGRES_PASSWORD")
+# SMTP_HOST/SMTP_FROM/PUBLIC_BASE_URL are in here for the same reason as the
+# secrets: if one were inherited from the ambient environment, a "refuse" case
+# could pass for the wrong reason (or a boot case could be masked).
+MANAGED = (
+    "APP_ENV",
+    "ALLOW_DEV_OTP",
+    "JWT_SECRET_KEY",
+    "POSTGRES_PASSWORD",
+    "SMTP_HOST",
+    "SMTP_FROM",
+    "PUBLIC_BASE_URL",
+)
 
 CASES = [
     (
@@ -66,8 +77,20 @@ CASES = [
         "entropy",
     ),
     (
+        # "Proper secrets" means *everything* the prod validator demands — not
+        # just the three it demanded when this drill was written. The P-2 SMTP /
+        # PUBLIC_BASE_URL checks were added later and this case silently rotted:
+        # nothing runs the drill in CI (`.github/workflows/ci.yml` is ruff +
+        # pytest only), so it sat at 6/7 without anyone seeing it.
         "prod with proper secrets",
-        {"APP_ENV": "prod", "JWT_SECRET_KEY": STRONG_SECRET, "POSTGRES_PASSWORD": "real"},
+        {
+            "APP_ENV": "prod",
+            "JWT_SECRET_KEY": STRONG_SECRET,
+            "POSTGRES_PASSWORD": "real",
+            "SMTP_HOST": "smtp.example.com",
+            "SMTP_FROM": "no-reply@example.com",
+            "PUBLIC_BASE_URL": "https://api.realtaxihk.com",
+        },
         True,
         "BOOTED",
     ),

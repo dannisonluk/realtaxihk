@@ -72,7 +72,7 @@ class ProfileOut(BaseModel):
     currently call it. It is therefore the one schema in this package not backed
     by a captured response, and it is derived field-for-field from
     `app/api/identity.py::_profile_out` instead. When the app starts using it,
-    add it to `scripts/gen_mobile_fixtures.py` so it joins the enforced set.
+    add it to `scripts/dev/gen_mobile_fixtures.py` so it joins the enforced set.
 
     `phone_reverify_*` is sent as **both** the raw deadline and the derived
     decision. A reminder and a soft block are different moments about a week

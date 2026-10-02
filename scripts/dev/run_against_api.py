@@ -4,7 +4,7 @@
 concurrency test that shows whether a connection reset is uvicorn's doing or the
 console proxy's) need the API alone. This is that harness.
 
-    python scripts/run_against_api.py <probe.py>
+    python scripts/dev/run_against_api.py <probe.py>
 """
 
 import contextlib
@@ -15,7 +15,7 @@ import sys
 import time
 import urllib.request
 
-ROOT = r"C:\Users\user\Desktop\csluk2001\-commited\realtaxihk"
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PY = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
 
 PROBE = sys.argv[1]
@@ -24,8 +24,8 @@ PROBE = sys.argv[1]
 # Python 3.12 on Windows defaults to `ProactorEventLoop`, and under it uvicorn
 # intermittently accepts a TCP connection and then never serves it — measured
 # at ~1 in 10 requests timing out for 30s while the other 9 answer in 0.2s
-# (`scripts/probe_concurrency.py`). Selector does not show it. Override with
-# `LOOP=<name> python scripts/run_against_api.py ...`.
+# (`scripts/verify/probe_concurrency.py`). Selector does not show it. Override with
+# `LOOP=<name> python scripts/dev/run_against_api.py ...`.
 LOOP = os.environ.get("LOOP", "asyncio")
 
 # Extra uvicorn flags for the experiment being run, e.g.
