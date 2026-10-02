@@ -73,7 +73,7 @@ export function OrdersPage() {
       <div className="filters">
         <button
           type="button"
-          className={status === 'open' ? 'chip chip--brand' : 'chip'}
+          className={status === 'open' ? 'chip chip--action chip--brand' : 'chip chip--action'}
           aria-pressed={status === 'open'}
           onClick={() => {
             setStatus('open');
@@ -84,7 +84,7 @@ export function OrdersPage() {
         </button>
         <button
           type="button"
-          className={status === '' ? 'chip chip--brand' : 'chip'}
+          className={status === '' ? 'chip chip--action chip--brand' : 'chip chip--action'}
           aria-pressed={status === ''}
           onClick={() => {
             setStatus('');
@@ -105,7 +105,7 @@ export function OrdersPage() {
           <button
             key={value}
             type="button"
-            className={status === value ? 'chip chip--brand' : 'chip'}
+            className={status === value ? 'chip chip--action chip--brand' : 'chip chip--action'}
             aria-pressed={status === value}
             onClick={() => {
               setStatus(value);

@@ -83,7 +83,7 @@ export function AuditPage() {
           <button
             key={item.key}
             type="button"
-            className={event === item.value ? 'chip chip--brand' : 'chip'}
+            className={event === item.value ? 'chip chip--action chip--brand' : 'chip chip--action'}
             aria-pressed={event === item.value}
             onClick={() => {
               setEvent(item.value);
@@ -186,7 +186,7 @@ function AuditTableRow({
     <>
       <tr>
         <td>{formatTime(row.created_at, formatLocale)}</td>
-        <td className="mono" style={{ fontSize: 12 }}>
+        <td className="mono t-caption1">
           {row.event}
         </td>
         <td>

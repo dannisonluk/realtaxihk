@@ -235,8 +235,20 @@ export const zhHant = {
     status: '狀態',
     type: '類型',
     time: '時間',
-    createdAt: '建立時間',
-    createdDate: '建立日期',
+    // Punctuation is *language*, not decoration. `、` and `。` are correct in
+    // Chinese and wrong in English — the login page was rendering
+    // "Google Authenticator、Microsoft Authenticator" to an English operator,
+    // because the separator was a literal in the JSX. A list separator and a
+    // sentence terminator are locale resources like any other string.
+    listSeparator: '、',
+    sentenceEnd: '。',
+    // The parentheses around the plate and the taxi type in the KYC and driver
+    // dialogs. Full-width in Chinese, half-width in English -- and English also
+    // wants a space *before* the opening one, which is why that space lives in
+    // this value rather than in the markup. `KycPage` had the closing one
+    // hardcoded in the wrong place and rendered `車牌 AB1234）市區的士`.
+    parenOpen: '（',
+    parenClose: '）',
     lastUpdate: '最後更新',
     balance: '結餘',
     reference: '參考',
@@ -328,7 +340,10 @@ export const zhHant = {
   // -------------------------------------------------------- dashboard ----
   dashboard: {
     title: '總覽',
-    sub: '平台即時狀況。',
+    // "即時" was wrong: this screen is a one-shot read with no refresh button
+    // and no polling, so nothing about it is live. Compare `live.sub`, which
+    // really does poll.
+    sub: '平台狀況一覽。',
     pendingKyc: '待審核司機',
     pendingKycHint: '全部司機 {{total}} 位',
     pendingRefunds: '待處理退款',
@@ -665,7 +680,7 @@ export const zhHant = {
     suspendTitle: '暫停司機帳戶',
     terminateTitle: '終止司機帳戶',
     restoreTitle: '恢復司機帳戶',
-    dialogPlate: '車牌 {{plate}}（',
+    dialogPlate: '車牌 {{plate}}',
     dialogApproveNote: '通過後狀態會變成「待繳按金」，需存入按金才會正式啟用接單。',
     dialogRestoreNote: '恢復後狀態會回到「待繳按金」或「已啟用」，視按金餘額而定。',
     dialogTerminateNote: '終止後司機無法再接單，且不可回復。',
@@ -980,7 +995,7 @@ export const zhHant = {
     depositAccount: '按金帳戶',
     depositAccountYes: '已建立',
     depositAccountNo: '尚未建立（從未存入）',
-    dialogPlate: '車牌 {{plate}}（',
+    dialogPlate: '車牌 {{plate}}',
     dialogApproveNote: '通過後狀態會變成「待繳按金」，需存入按金才會正式啟用接單。',
     dialogRestoreNote: '恢復後狀態會回到「待繳按金」或「已啟用」，視按金餘額而定。',
     dialogTerminateNote: '終止後司機無法再接單，且不可回復。',
@@ -1042,6 +1057,16 @@ export const zhHant = {
     breakdownEmptyHint: '試著放寬日期範圍，或改用「全部車型」。',
     hourlyAria: '每個時段的平均每日收入',
     hourRange: '時段（香港時間，0–23 時）',
+    // The accessible equivalent of the two charts. `HourBarChart` is a single
+    // `role="img"` whose tooltip is mouse-only, and `HourHeatStrip` is also
+    // `role="img"` — which makes its children presentational, so the numbers in
+    // its `title` attributes never reach the accessibility tree. Without these
+    // rows, "which hour earns most" has no answer for a screen reader.
+    hourTableSummary: '以表格檢視 24 小時數據',
+    hourTableCaption: '各時段的平均每日收入、訂單數與有營運日數',
+    colHour: '時段',
+    colAvgPerDay: '平均每日收入',
+    colActiveDays: '有營運日數',
     tipAvg: '平均每日 {{amount}}',
     tipOrders: '{{orders}} 張訂單 · 有營運 {{days}} 日 · 該時段日均 ',
     heatmapTitle: '熱力圖 · 平均每日收入',

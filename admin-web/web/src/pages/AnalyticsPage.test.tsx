@@ -173,11 +173,23 @@ describe('the analytics page', () => {
     expect(calls.some((u) => u.includes('/api/v1/admin/analytics/heatmap'))).toBe(true);
   });
 
+  /**
+   * The rows of the *breakdown* table, not the charts' 24-hour table.
+   *
+   * There are two `<table class="data">`s on this page. A bare
+   * `querySelectorAll('tbody tr')` silently started returning 26 rows instead of
+   * 2 the moment the accessible hour table was added — which is why this is a
+   * named helper rather than an inline query, and why the tests below are
+   * scoped rather than weakened.
+   */
+  const breakdownRows = (host: HTMLElement) =>
+    [...host.querySelectorAll('tbody tr')].filter((row) => !row.closest('details'));
+
   it('renders one table row per bucket', async () => {
     stubTransport();
     await renderAndSettle(root);
 
-    const rows = container.querySelectorAll('tbody tr');
+    const rows = breakdownRows(container);
     expect(rows).toHaveLength(2);
     expect(rows[0]?.textContent).toContain('2026-09-01');
     expect(rows[1]?.textContent).toContain('2026-09-02');
@@ -187,7 +199,13 @@ describe('the analytics page', () => {
     stubTransport();
     await renderAndSettle(root);
 
-    const text = container.textContent ?? '';
+    // Scoped to the breakdown table. The hour table legitimately renders
+    // `HK$0.00` for the hours with no trips, so asserting over the whole page
+    // would report that as the very bug this test exists to catch.
+    const text = breakdownRows(container)
+      .map((row) => row.textContent ?? '')
+      .join(' ');
+
     // The cents must survive. `"0.10"` rendered as `0.1` would be the visible
     // symptom of a view that had parsed the server's string back to a number.
     expect(text).toContain('HK$0.10');
@@ -195,6 +213,43 @@ describe('the analytics page', () => {
     expect(text).toContain('HK$1,234.40');
     // A sub-cent-looking value must not be rounded away to nothing.
     expect(text).not.toContain('HK$0.00');
+  });
+
+  it('offers the 24 hours as a table for readers who cannot use the charts', async () => {
+    stubTransport();
+    await renderAndSettle(root);
+
+    // Both charts are `role="img"`: the bar chart's tooltip is driven by
+    // `onMouseEnter` on a non-focusable `<rect>`, and a `role="img"`'s children
+    // are presentational, so the heat strip's `title` attributes never reach the
+    // accessibility tree. This table is the only accessible path to the numbers.
+    const details = container.querySelector('details.chart__data');
+    expect(details).toBeTruthy();
+    expect(details?.querySelector('summary')?.textContent).toBe(
+      text('analytics.hourTableSummary'),
+    );
+    expect(details?.querySelector('caption')?.textContent).toBe(
+      text('analytics.hourTableCaption'),
+    );
+    expect(details?.querySelectorAll('thead th')).toHaveLength(4);
+
+    const rows = [...(details?.querySelectorAll('tbody tr') ?? [])];
+    expect(rows).toHaveLength(24);
+
+    // The peak hour from the fixture, cell by cell — the point being that the
+    // number behind the mouse-only tooltip is now readable.
+    const peak = rows.find((row) => row.textContent?.startsWith('19:00'));
+    expect([...(peak?.querySelectorAll('td') ?? [])].map((cell) => cell.textContent)).toEqual([
+      '19:00',
+      'HK$200.00',
+      '2',
+      '1',
+    ]);
+
+    // And the quiet hours are rows too rather than being omitted: "0" is data,
+    // which is the same reason the chart draws a bar for every hour.
+    const quiet = rows.find((row) => row.textContent?.startsWith('03:00'));
+    expect(quiet?.querySelectorAll('td')[1]?.textContent).toBe('HK$0.00');
   });
 
   it('always draws 24 heat map cells', async () => {

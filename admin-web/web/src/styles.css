@@ -620,13 +620,19 @@ body {
 
 /* A stat card that is a link. Three of the four dashboard cards navigate, so
    the affordance has to be visible: without it a card that is clickable and a
-   card that is not look identical, and nothing happens on hover. */
+   card that is not look identical, and nothing happens on hover.
+ *
+ * The class goes on the `<Link>`, because that is the grid item; the card
+ * itself is the `.stat` inside it. So the hover and the focus ring have to be
+ * forwarded inward -- styling the wrapper alone would change nothing a user can
+ * see, which is exactly the defect being fixed. */
 .stat--link {
   display: block;
   color: inherit;
   text-decoration: none;
+  border-radius: var(--radius-card);
 }
-.stat--link:hover {
+.stat--link:hover .stat {
   border-color: var(--brand-text);
   background: var(--hover);
 }
@@ -948,8 +954,57 @@ table.data tbody tr:hover { background: var(--hover); }
 /* The day chart. `position: relative` anchors the hover tooltip, which is
    absolutely placed so it never pushes the chart's own height around as the
    pointer moves between bars. */
+/* A chart drawn in a `viewBox`, so *everything* inside it scales with the
+   container -- including the text. At the natural 720-unit width the axis
+   labels render at the 10px they were authored at; in a 436px card (a 500px
+   window, past the 860px breakpoint) the same labels render at 6.1px, and at a
+   1080px card at 15px. Only the first of those is a defect, and the fix is to
+   stop the shrink rather than to enlarge the type: below 720px the chart keeps
+   its real size and the strip scrolls sideways.
+
+   The scroll container is `.chart` itself rather than a new wrapper, which also
+   puts the tooltip in the right place -- it is `right: 0`, and inside a scroll
+   container that means the *visible* right edge rather than the far end of a
+   card the chart does not fill. */
 .chart {
   position: relative;
+  overflow-x: auto;
+}
+
+.chart > svg {
+  /* `width="100%"` in the markup, floored at the `viewBox` width. Below it the
+     scale factor would drop under 1 and take the text with it. */
+  min-width: 720px;
+}
+
+/* The charts' accessible equivalent (see `HourTable`). Collapsed by default,
+   because 24 rows is a lot of scroll to impose on a reader who already has the
+   chart -- but the summary has to read as something you can open, and has to be
+   a comfortable target, so it gets the same 44px floor as everything else. */
+.chart__data {
+  margin-top: var(--space-3);
+}
+
+.chart__data > summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--target);
+  cursor: pointer;
+  color: var(--text-dim);
+  border-radius: var(--radius-field);
+}
+
+.chart__data > summary:hover {
+  color: var(--text);
+}
+
+.chart__data > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.chart__data[open] > summary {
+  margin-bottom: var(--space-2);
 }
 
 .chart__tip {
@@ -1107,7 +1162,13 @@ table.data tbody tr:hover { background: var(--hover); }
 }
 
 /* A sortable column header. The button fills the cell so the whole header is
-   clickable, and inherits the table's type rather than the control default. */
+   clickable, and inherits the table's type rather than the control default.
+ *
+ * "Fills the cell" was only true horizontally: the button is as tall as its
+ * text (18px) while the cell is 34px, so the actual sort target was the text
+ * box alone. The padding grows the hit area back over the cell's own padding
+ * and the matching negative margin puts the layout exactly where it was --
+ * 18 + 8 + 8, then -8 -8. Nothing moves; only the target gets bigger. */
 .th-sort {
   all: unset;
   cursor: pointer;
@@ -1118,6 +1179,8 @@ table.data tbody tr:hover { background: var(--hover); }
   color: inherit;
   width: 100%;
   justify-content: inherit;
+  padding: var(--space-2) 0;
+  margin: calc(-1 * var(--space-2)) 0;
 }
 
 .th-sort:hover { color: var(--brand-text); }

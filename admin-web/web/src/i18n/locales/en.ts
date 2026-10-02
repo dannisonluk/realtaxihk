@@ -235,8 +235,13 @@ export const en = {
     status: 'Status',
     type: 'Type',
     time: 'Time',
-    createdAt: 'Created',
-    createdDate: 'Created',
+    // See `zh-Hant.ts` — punctuation is a locale resource, not a literal.
+    listSeparator: ', ',
+    sentenceEnd: '.',
+    // See `zh-Hant.ts`. The leading space is English typography, so it belongs
+    // to the locale rather than to the JSX.
+    parenOpen: ' (',
+    parenClose: ')',
     lastUpdate: 'Last updated',
     balance: 'Balance',
     reference: 'Reference',
@@ -326,7 +331,9 @@ export const en = {
   // -------------------------------------------------------- dashboard ----
   dashboard: {
     title: 'Dashboard',
-    sub: 'Live platform status.',
+    // Not "Live": this screen is a one-shot read with no refresh button and no
+    // polling. The live map is the page that polls.
+    sub: 'Platform status at a glance.',
     pendingKyc: 'Drivers awaiting review',
     pendingKycHint: '{{total}} drivers in total',
     pendingRefunds: 'Refunds awaiting action',
@@ -667,7 +674,7 @@ export const en = {
     suspendTitle: 'Suspend driver account',
     terminateTitle: 'Terminate driver account',
     restoreTitle: 'Restore driver account',
-    dialogPlate: 'Plate {{plate}} (',
+    dialogPlate: 'Plate {{plate}}',
     dialogApproveNote:
       'After approval the status becomes “deposit required”; the driver starts taking trips once the deposit is met.',
     dialogRestoreNote:
@@ -990,7 +997,7 @@ export const en = {
     depositAccount: 'Deposit account',
     depositAccountYes: 'Created',
     depositAccountNo: 'Not created (never deposited)',
-    dialogPlate: 'Plate {{plate}} (',
+    dialogPlate: 'Plate {{plate}}',
     dialogApproveNote:
       'After approval the status becomes “deposit required”; the driver starts taking trips once the deposit is met.',
     dialogRestoreNote:
@@ -1055,6 +1062,12 @@ export const en = {
     breakdownEmptyHint: 'Try widening the date range, or switch to “All taxi types”.',
     hourlyAria: 'Average daily revenue by hour',
     hourRange: 'Hour (Hong Kong time, 0–23)',
+    // See `zh-Hant.ts` — the charts' accessible equivalent.
+    hourTableSummary: 'View the 24 hours as a table',
+    hourTableCaption: 'Average daily earnings, orders and active days, by hour',
+    colHour: 'Hour',
+    colAvgPerDay: 'Avg per day',
+    colActiveDays: 'Active days',
     tipAvg: 'Daily average {{amount}}',
     tipOrders: '{{orders}} orders · active {{days}} days · that hour’s daily average ',
     heatmapTitle: 'Heat map · average daily revenue',

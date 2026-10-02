@@ -433,7 +433,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
               {t('login.noApp')}
               {AUTHENTICATOR_APPS.map((app, index) => (
                 <span key={app.url}>
-                  {index > 0 ? '、' : ' '}
+                  {index > 0 ? t('common.listSeparator') : ' '}
                   <a href={app.url} target="_blank" rel="noreferrer noopener">
                     {app.name}
                   </a>
@@ -457,10 +457,4 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
       </div>
     </div>
   );
-}
-
-/** Re-exported so a view can show the same "not an admin" dialog if needed. */
-export function notAnAdminDialog() {
-  // Kept for the callers that still reference it; the console no longer routes
-  // a non-admin here, because `/admin/auth/login` refuses them at step 1.
 }

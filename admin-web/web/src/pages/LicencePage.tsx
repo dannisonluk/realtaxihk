@@ -295,14 +295,14 @@ function DetailBody({ detail }: { detail: LicenceSubmissionDetail }) {
       {missingKinds.length > 0 ? (
         <p style={{ color: 'var(--danger)', marginTop: 0 }}>
           {t('licence.missingKinds', {
-            kinds: missingKinds.map((kind) => labels.documentKind(kind)).join('、'),
+            kinds: missingKinds.map((kind) => labels.documentKind(kind)).join(t('common.listSeparator')),
           })}
         </p>
       ) : null}
       {notStored.length > 0 ? (
         <p style={{ color: 'var(--danger)' }}>
           {t('licence.declaredNotUploaded')}
-          {notStored.map((doc) => labels.documentKind(doc.kind)).join('、')}
+          {notStored.map((doc) => labels.documentKind(doc.kind)).join(t('common.listSeparator'))}
         </p>
       ) : null}
 
@@ -318,7 +318,7 @@ function DetailBody({ detail }: { detail: LicenceSubmissionDetail }) {
                 <Chip tone="danger">{t('licence.docMissing')}</Chip>
               )}
             </div>
-            <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>
+            <div className="dim t-caption1" style={{ marginTop: 6 }}>
               {doc.content_type} · {formatBytes(doc.stored_size_bytes ?? doc.size_bytes)}
               {doc.stored_size_bytes !== null && doc.stored_size_bytes !== doc.size_bytes ? (
                 <span>{t('licence.docDeclared', { size: formatBytes(doc.size_bytes) })}</span>
@@ -337,7 +337,7 @@ function DetailBody({ detail }: { detail: LicenceSubmissionDetail }) {
                 {t('licence.docOpen', { minutes: Math.round(doc.url_expires_in / 60) })}
               </a>
             ) : (
-              <div className="dim" style={{ marginTop: 8, fontSize: 12 }}>
+              <div className="dim t-caption1" style={{ marginTop: 8 }}>
                 {t('licence.docPending')}
               </div>
             )}
@@ -345,7 +345,7 @@ function DetailBody({ detail }: { detail: LicenceSubmissionDetail }) {
         ))}
       </div>
 
-      <div className="dim" style={{ fontSize: 12, marginTop: 12 }}>
+      <div className="dim t-caption1" style={{ marginTop: 12 }}>
         {t('licence.submitId', { id: '' })}<span className="mono">{shortId(detail.id)}</span>
         {detail.reviewed_by ? (
           <>
@@ -389,7 +389,8 @@ function DecideBody({
     <div className="stack">
       <p style={{ margin: 0 }}>
         {t('licence.dialogLicence', { no: '' })}<span className="mono">{row.licence_no}</span>
-        {formatDate(row.expires_on, formatLocale)}。
+        {formatDate(row.expires_on, formatLocale)}
+        {t('common.sentenceEnd')}
       </p>
 
       {approve ? (

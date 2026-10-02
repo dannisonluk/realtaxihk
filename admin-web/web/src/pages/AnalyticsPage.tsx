@@ -284,6 +284,7 @@ export function AnalyticsPage() {
 
               <HourBarChart hours={hours} scaleMax={scaleMax} />
               <HourHeatStrip hours={hours} scaleMax={scaleMax} />
+              <HourTable hours={hours} />
 
               <p className="dim t-footnote" style={{ marginTop: 12 }}>
                 {t('analytics.noOrdersNote')}
@@ -578,5 +579,77 @@ function HourHeatStrip({
         <span className="dim t-footnote">{t('analytics.scaleHigh', { max: scaleMax })}</span>
       </div>
     </div>
+  );
+}
+
+/**
+ * The 24 hours as a table -- the accessible equivalent of the two charts above.
+ *
+ * Neither chart is readable without sight, and the gap is not hypothetical:
+ *
+ *   * `HourBarChart` is a single `role="img"` whose tooltip is driven by
+ *     `onMouseEnter` on a `<rect>`. A `<rect>` is not focusable, so every number
+ *     behind that tooltip is mouse-only.
+ *   * `HourHeatStrip` is also `role="img"`, and a `role="img"`'s children are
+ *     presentational. Every value in its `title` attributes is therefore absent
+ *     from the accessibility tree -- the attribute still gives a sighted user a
+ *     native tooltip, but a screen reader never sees it.
+ *
+ * The breakdown table further down the page does not cover this: it holds the
+ * day/week/month buckets, which is a different dataset. So "which hour earns
+ * most" had no answer for a screen reader or for a keyboard.
+ *
+ * A `<details>` rather than an always-open table, because 24 rows is a lot of
+ * scroll to impose on a reader who already has the chart -- while the summary is
+ * a real focus stop, which the chart's rectangles are not. Same shape as
+ * `LiveMapPage`, where the table under the map is the accessible equivalent
+ * rather than a duplicate.
+ */
+function HourTable({ hours }: { hours: AnalyticsHeatmap['hours'] }) {
+  const { t } = useI18n();
+
+  // An empty range has nothing to tabulate, and an empty `<table>` announced as
+  // a table is worse than no table at all.
+  if (hours.length === 0) return null;
+
+  return (
+    <details className="chart__data">
+      <summary className="t-footnote">{t('analytics.hourTableSummary')}</summary>
+      <div className="table-wrap">
+        <table className="data">
+          <caption className="sr-only">{t('analytics.hourTableCaption')}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{t('analytics.colHour')}</th>
+              <th scope="col" style={{ textAlign: 'end' }}>
+                {t('analytics.colAvgPerDay')}
+              </th>
+              <th scope="col" style={{ textAlign: 'end' }}>
+                {t('analytics.colOrders')}
+              </th>
+              <th scope="col" style={{ textAlign: 'end' }}>
+                {t('analytics.colActiveDays')}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {hours.map((slot) => (
+              <tr key={slot.hour}>
+                <td>{String(slot.hour).padStart(2, '0')}:00</td>
+                <td className="num" style={{ textAlign: 'end' }}>
+                  <Money value={slot.avg_per_day_hkd} />
+                </td>
+                <td className="num" style={{ textAlign: 'end' }}>
+                  {slot.orders}
+                </td>
+                <td className="num" style={{ textAlign: 'end' }}>
+                  {slot.active_days}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
   );
 }

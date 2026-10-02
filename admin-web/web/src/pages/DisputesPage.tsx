@@ -125,7 +125,7 @@ function DisputeQueue() {
       <div className="filters">
         <button
           type="button"
-          className={openOnly ? 'chip chip--brand' : 'chip'}
+          className={openOnly ? 'chip chip--action chip--brand' : 'chip chip--action'}
           aria-pressed={openOnly}
           onClick={() => setOpenOnly(!openOnly)}
         >
@@ -133,7 +133,7 @@ function DisputeQueue() {
         </button>
         <button
           type="button"
-          className={overdueOnly ? 'chip chip--brand' : 'chip'}
+          className={overdueOnly ? 'chip chip--action chip--brand' : 'chip chip--action'}
           aria-pressed={overdueOnly}
           onClick={() => setOverdueOnly(!overdueOnly)}
         >
@@ -141,7 +141,7 @@ function DisputeQueue() {
         </button>
         <button
           type="button"
-          className={unassignedOnly ? 'chip chip--brand' : 'chip'}
+          className={unassignedOnly ? 'chip chip--action chip--brand' : 'chip chip--action'}
           aria-pressed={unassignedOnly}
           onClick={() => setUnassignedOnly(!unassignedOnly)}
         >
@@ -149,7 +149,7 @@ function DisputeQueue() {
         </button>
         <button
           type="button"
-          className={severity === '' ? 'chip chip--brand' : 'chip'}
+          className={severity === '' ? 'chip chip--action chip--brand' : 'chip chip--action'}
           aria-pressed={severity === ''}
           onClick={() => setSeverity('')}
         >
@@ -159,7 +159,7 @@ function DisputeQueue() {
           <button
             key={value}
             type="button"
-            className={severity === value ? 'chip chip--brand' : 'chip'}
+            className={severity === value ? 'chip chip--action chip--brand' : 'chip chip--action'}
             aria-pressed={severity === value}
             onClick={() => setSeverity(value)}
           >

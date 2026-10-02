@@ -229,7 +229,7 @@ export function AccountsPage() {
                         ) : null}
                       </td>
                       <td>{account.full_name || <span className="dim">—</span>}</td>
-                      <td className="mono" style={{ fontSize: 12 }}>
+                      <td className="mono t-caption1">
                         {account.email}
                       </td>
                       <td>

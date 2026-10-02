@@ -27,7 +27,25 @@
  *      its label took a second line.
  *   4. **Any element leaving the viewport** horizontally, by more than a
  *      tolerance — reported with its selector so the cause is identifiable.
+ *      Two exemptions, both of which are "the thing that looks wrong is the
+ *      thing working": an element inside a container that scrolls horizontally
+ *      on purpose (`table.data` on a phone), and an element inside the Leaflet
+ *      map, which sizes its panes larger than its box and clips them by design.
+ *      `.sr-only` is likewise allow-listed for check 2 — it is 1px with hidden
+ *      overflow *by definition*.
  *   5. **Console errors / page exceptions**, as in the other verifiers.
+ *   6. **SVG text scaled below its authored size.** A chart drawn in a `viewBox`
+ *      with `width: 100%` scales *everything* inside it, text included, so the
+ *      axis labels shrink with the card: the analytics chart's 10-unit labels
+ *      render at 6.1px in a 436px card. `getComputedStyle` cannot see this — it
+ *      reports the authored size — so the scale factor is recovered from the
+ *      rendered width against the `viewBox` and applied by hand. This is the
+ *      check that would have caught it, and it is why the default run is at
+ *      1440px *and* why `--width 500` is worth running separately.
+ *   7. **Interactive controls under 28px tall.** Check 3 only catches a nav
+ *      label that *grew*; nothing caught a control that shrank. A `.chip` — a
+ *      label treatment — used as a filter button measured 21px on the orders
+ *      page, which is how "one class, two jobs" stayed invisible.
  *
  * The API is stubbed at the network layer, so this needs no database and no
  * running backend: only a static server on the built console.
@@ -118,6 +136,12 @@ const ELLIPSIS_OK = [
   '.cell-ellipsis',
   '.brand__sub',
   '.sidebar__foot',
+  // `.sr-only` is 1px square with `overflow: hidden` *by definition* -- that is
+  // the technique. Its text is 200-300px wide inside a 1px box, so every
+  // visually-hidden caption, legend or label reads as "clipped text" and the
+  // check reports the one pattern that exists to help a screen reader. It is
+  // deliberately clipped, so it belongs here rather than in the failure list.
+  '.sr-only',
 ];
 
 /**
@@ -435,6 +459,21 @@ for (const combo of COMBOS) {
 
       const clipped = [];
       const escaped = [];
+
+      /**
+       * Subtrees the console does not author.
+       *
+       * Leaflet sizes its tile pane and its zoom pane *larger* than the map box
+       * and clips them with `overflow: hidden` — that is how panning works. So
+       * the tiles genuinely extend past the map, and the container genuinely
+       * reports `scrollWidth > clientWidth` for its own control layer. Neither is
+       * a defect the console can fix, and the guarantee that matters — that the
+       * *page* does not overflow — is still checked, and still holds. Without
+       * this exemption the map page cannot pass, which is how it came to be
+       * absent from `ROUTES` while the docs claimed it rendered clean.
+       */
+      const thirdParty = (el) => el.closest('.leaflet-container') !== null;
+
       for (const el of document.querySelectorAll('body *')) {
         const style = getComputedStyle(el);
         if (style.display === 'none' || style.visibility === 'hidden') continue;
@@ -449,7 +488,7 @@ for (const combo of COMBOS) {
           (el.textContent ?? '').trim().length > 0
         ) {
           const allowed = ellipsisOk.some((sel) => el.matches(sel) || el.closest(sel));
-          if (!allowed) {
+          if (!allowed && !thirdParty(el)) {
             clipped.push({
               el: describe(el),
               scrollWidth: el.scrollWidth,
@@ -481,7 +520,7 @@ for (const combo of COMBOS) {
           return false;
         };
 
-        if (rect.right > vw + 1 && !inScroller(el)) {
+        if (rect.right > vw + 1 && !inScroller(el) && !thirdParty(el)) {
           escaped.push({
             el: describe(el),
             right: Math.round(rect.right),
@@ -499,6 +538,61 @@ for (const combo of COMBOS) {
         }
       }
 
+      // (6) SVG text that the viewBox scaled *down*.
+      //
+      // The authored size is what `getComputedStyle` returns, and it is a lie
+      // about what is on screen: everything inside the svg is multiplied by the
+      // `viewBox` scale factor. Recover that factor from the rendered width and
+      // apply it, then compare against what the label was authored at — the
+      // invariant is "never smaller than authored", which is exactly what
+      // `min-width` on the svg restores.
+      const scaledText = [];
+      for (const svg of document.querySelectorAll('.chart svg')) {
+        const box = (svg.getAttribute('viewBox') ?? '').trim().split(/[\s,]+/).map(Number);
+        const rendered = svg.getBoundingClientRect().width;
+        if (box.length !== 4 || !box[2] || !rendered) continue;
+        const scale = rendered / box[2];
+        for (const node of svg.querySelectorAll('text')) {
+          const authored = parseFloat(getComputedStyle(node).fontSize);
+          if (!Number.isFinite(authored)) continue;
+          const effective = authored * scale;
+          if (effective < authored - 0.05) {
+            scaledText.push({
+              text: (node.textContent ?? '').trim().slice(0, 12),
+              authored: Math.round(authored * 10) / 10,
+              effective: Math.round(effective * 10) / 10,
+              scale: Math.round(scale * 100) / 100,
+            });
+          }
+        }
+      }
+
+      // (7) interactive controls smaller than the 28px default.
+      //
+      // `tallNav` above only catches a control that grew; nothing caught one that
+      // shrank. The console's own rule is 44px (`--target`), but the bar here is
+      // the floor below which a control is genuinely awkward to hit: 28px, the
+      // macOS default control size. A `.chip` — a *label* treatment — used as a
+      // filter button measured 21px on the orders page, and 26px on the live map,
+      // which is how "the same class is both a label and a button" went unnoticed.
+      const smallTargets = [];
+      for (const el of document.querySelectorAll(
+        'button, a[href], summary, [role="button"], select',
+      )) {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        const style = getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') continue;
+        if (thirdParty(el)) continue;
+        if (r.height < 28) {
+          smallTargets.push({
+            el: describe(el),
+            height: Math.round(r.height),
+            text: (el.textContent ?? '').trim().slice(0, 20),
+          });
+        }
+      }
+
       return {
         htmlLang: doc.lang,
         theme: doc.dataset.theme,
@@ -506,6 +600,8 @@ for (const combo of COMBOS) {
         clipped,
         escaped,
         tallNav,
+        scaledText,
+        smallTargets,
         navWidth: Math.round(
           document.querySelector('.sidebar')?.getBoundingClientRect().width ?? 0,
         ),
@@ -537,6 +633,17 @@ for (const combo of COMBOS) {
     }
     for (const item of report.tallNav) {
       failures.push(`${label}: nav label wrapped — "${item.text}" is ${item.height}px tall`);
+    }
+    for (const item of report.scaledText.slice(0, 4)) {
+      failures.push(
+        `${label}: chart text "${item.text}" renders at ${item.effective}px, scaled from ` +
+          `${item.authored}px (x${item.scale}) — the viewBox is shrinking it`,
+      );
+    }
+    for (const item of report.smallTargets.slice(0, 6)) {
+      failures.push(
+        `${label}: ${item.el} is ${item.height}px tall (under 28px) — "${item.text}"`,
+      );
     }
     if (report.heading === '') {
       failures.push(`${label}: no heading rendered (page body empty?)`);
@@ -574,8 +681,8 @@ writeFileSync(resolve(OUT, 'layout-report.json'), JSON.stringify(results, null, 
 // A compact table, because the useful signal is the comparison across the four
 // combinations rather than any single number.
 console.log('');
-console.log('locale  theme  page              navW  ovf  clip  esc  tall  heading');
-console.log('-'.repeat(78));
+console.log('locale  theme  page              navW  ovf  clip  esc  tall  scl  small  heading');
+console.log('-'.repeat(91));
 for (const r of results) {
   console.log(
     [
@@ -587,6 +694,8 @@ for (const r of results) {
       String(r.clipped.length).padStart(5),
       String(r.escaped.length).padStart(4),
       String(r.tallNav.length).padStart(5),
+      String(r.scaledText.length).padStart(4),
+      String(r.smallTargets.length).padStart(6),
       ` ${r.heading.slice(0, 24)}`,
     ].join(' '),
   );

@@ -109,7 +109,7 @@ export function FleetsPage() {
           <button
             key={option.labelKey}
             type="button"
-            className={option.value === filter ? 'chip chip--brand' : 'chip'}
+            className={option.value === filter ? 'chip chip--action chip--brand' : 'chip chip--action'}
             aria-pressed={option.value === filter}
             onClick={() => setFilter(option.value)}
           >

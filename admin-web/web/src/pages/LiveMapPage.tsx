@@ -252,7 +252,7 @@ export function LiveMapPage() {
           <>
             <button
               type="button"
-              className={autoRefresh ? 'chip chip--brand' : 'chip'}
+              className={autoRefresh ? 'chip chip--action chip--brand' : 'chip chip--action'}
               aria-pressed={autoRefresh}
               onClick={() => setAutoRefresh((on) => !on)}
             >
@@ -260,7 +260,7 @@ export function LiveMapPage() {
             </button>
             <button
               type="button"
-              className={includeOffline ? 'chip chip--brand' : 'chip'}
+              className={includeOffline ? 'chip chip--action chip--brand' : 'chip chip--action'}
               aria-pressed={includeOffline}
               onClick={() => setIncludeOffline((on) => !on)}
             >

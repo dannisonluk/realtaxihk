@@ -76,21 +76,21 @@ export function DashboardPage() {
       {data ? (
         <>
           <div className="grid">
-            <Link to="/kyc" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <Link to="/kyc" className="stat--link">
               <Stat
                 label={t('dashboard.pendingKyc')}
                 value={data.pendingKyc}
                 hint={t('dashboard.pendingKycHint', { total: data.driverTotal })}
               />
             </Link>
-            <Link to="/refunds" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <Link to="/refunds" className="stat--link">
               <Stat
                 label={t('dashboard.pendingRefunds')}
                 value={data.pendingRefunds}
                 hint={t('dashboard.pendingRefundsHint', { total: data.refundTotal })}
               />
             </Link>
-            <Link to="/fleets" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <Link to="/fleets" className="stat--link">
               <Stat
                 label={t('dashboard.activeFleets')}
                 value={data.activeFleets}

@@ -276,8 +276,10 @@ function ReviewBody({
     <div className="stack">
       <p style={{ margin: 0 }}>
         {t('kyc.dialogPlate', { plate: '' })}
-        <span className="mono">{driver.vehicle_reg_mark ?? '—'}</span>）
+        <span className="mono">{driver.vehicle_reg_mark ?? '—'}</span>
+        {t('common.parenOpen')}
         {labels.taxiType(driver.taxi_type)}
+        {t('common.parenClose')}
       </p>
       {decision === 'approve' && driver.status === 'PENDING_KYC' ? (
         <p className="dim" style={{ margin: 0 }}>
