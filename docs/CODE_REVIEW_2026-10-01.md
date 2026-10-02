@@ -1,5 +1,7 @@
 # 深度程式碼審查報告
 
+> **歷史文件**：本文檔是 2026-10-01 的程式碼審查快照。其中的檔案數、行數與測試數量都是當時的數字，刻意不隨程式碼演進而更新；如需目前數字，請看 `docs/WORK_SUMMARY.md`。
+
 > **📌 這是一份有日期的快照。** 底下所有數字描述的是**審查當下**（2026-10-01
 > 早段，`667 tests` / `64 paths` / `69 operations`）的狀態，**不是** repo 現況。
 > 現況見 `docs/WORK_SUMMARY.md`（**872 tests / 81 paths / 88 operations /
@@ -238,7 +240,7 @@ keys = [k async for k in r.scan_iter(match="rl:*")]   # 修復前
 
 - **少**了 429：一個測試靠「連打 `limit + 3` 次」來逼出 429
   （`test_rotating_xff_does_not_reset_the_ip_bucket`）。計數器在它數到一半時
-  被別的行程清掉 → 次數歸零 → 永遠追不上 limit → 一次 429 都冇。
+  被別的行程清掉 → 次數歸零 → 永遠追不上 limit → 一次 429 都沒有。
 - **多**了 429：反過來，一個測試在**別的測試**累積了計數之後才跑，
   於是它自己的正常請求被拒絕（`test_exactly_one_service_grab_wins`、
   `test_listing_counts_each_fleet_independently`）。
@@ -248,7 +250,7 @@ keys = [k async for k in r.scan_iter(match="rl:*")]   # 修復前
 **為甚麼這是真缺陷**：這**不是**「不要並行跑就好」可以打發的 ——
 CI matrix、測試分片、開發者在 CI 跑時自己再跑一次，都會命中。
 而且症狀（多一個 429 / 少一個 429）**與成因完全無關聯外觀**，
-會讓人去查 `RateLimiter` 或 admin auth 的邏輯，那裡其實冇 bug。
+會讓人去查 `RateLimiter` 或 admin auth 的邏輯，那裡其實沒有 bug。
 
 **修法**（三層，只改隔離不動產品行為）：
 

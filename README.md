@@ -7,7 +7,7 @@ Money math is exact (`Decimal`, never float); every fare response carries biling
 Cap. 374D disclaimers; every estimate embeds a `tariff_version` so historical orders
 stay auditable.
 
-**Status: production-hardened.** 272 backend tests green (+ 93 mobile, 54 contract
+**Status: production-hardened.** 872 backend tests green (+ 93 mobile, 54 contract
 fixtures, browser UI verifier PASS). Start with
 [`docs/WORK_SUMMARY.md`](docs/WORK_SUMMARY.md) for the whole picture — what's built,
 what's verified, and what still needs credentials or a deployment target.
@@ -29,8 +29,8 @@ cp .env.example .env          # adjust if needed; see Configuration below
 .venv/Scripts/python -m alembic upgrade head
 
 # 4. run + verify
-.venv/Scripts/python scripts/serve_and_probe.py   # detached uvicorn + health wait
-.venv/Scripts/python scripts/verify_api.py        # one-shot API smoke
+.venv/Scripts/python scripts/dev/serve_and_probe.py   # detached uvicorn + health wait
+.venv/Scripts/python scripts/verify/verify_api.py        # one-shot API smoke
 .venv/Scripts/python -m pytest -q                 # 120 tests
 uv run ruff check . && uv run ruff format --check .
 ```
@@ -55,9 +55,15 @@ app/
                   #   refresh (rotating tokens), notify (WhatsApp Cloud API, fail-closed),
                   #   fleet + settlement (the roster is the billing boundary)
 alembic/          # async migrations (postgis tables filtered via include_object)
-scripts/          # dev tooling — serve_and_probe, verify_api, stop_server,
-                  #   live_smoke (9-check E2E), prod_boot_drill, db_backup,
-                  #   gen_mobile_fixtures (pins the mobile wire format from the real API)
+scripts/          # tooling, grouped by what you are doing (see scripts/README.md)
+  ops/            #   operate a real environment — db_backup, create_admin,
+                  #   create_admin_account, enrol_admin_totp
+  verify/         #   produce a pass/fail verdict — audit_response_models, live_smoke,
+                  #   security_probe + security_verify, prod_boot_drill, verify_api,
+                  #   bench_location_pipeline, the three connection probes
+  dev/            #   local workflow glue — serve_and_probe, serve_and_run_browser,
+                  #   api_supervisor, stop_server, run_against_api, gen_mobile_fixtures
+                  #   (pins the mobile wire format from the real API)
 tests/            # pytest — unit + module + WS streaming + hardening regression
 mobile/           # Flutter client (Android first) — driver, passenger and admin surfaces
 admin-web/        # zero-build ES-module console for the management and admin teams
@@ -75,7 +81,7 @@ All routes under `/api/v1` unless noted. Auth = `Authorization: Bearer <access J
 | **Drivers** | `POST /drivers/register` · `GET /drivers/me` · `GET /drivers/me/ledger` |
 | **Fare** | `POST /fare/estimate` |
 | **Orders** | `POST /orders` · `GET /orders/nearby` · `GET /orders` · `GET /orders/{id}` · `POST /orders/{id}/grab` · `.../arrive` · `.../start` · `.../complete` · `.../cancel` |
-| **Driver GPS** | `POST /driver/location` |
+| **Driver GPS** | `POST /drivers/location` |
 | **Trips** | `GET /trips/{order_id}/location` (REST snapshot for WS reconnects) |
 | **Admin — KYC** | `GET /admin/drivers` · `POST /admin/drivers/{id}/review` · `POST /admin/drivers/{id}/deposit/grant` · `POST /admin/drivers/{id}/deposit/adjust` |
 | **Admin — refunds** | `GET /admin/refunds` · `POST /admin/refunds/{id}/decision` |
@@ -156,7 +162,7 @@ Live socket close codes: `4401` unauthenticated, `4403` forbidden, `4404` unknow
   source address.
 - `METRICS_TOKEN` must be set for `/metrics` to be mounted at all.
 
-(`scripts/prod_boot_drill.py` verifies the prod rails.)
+(`scripts/verify/prod_boot_drill.py` verifies the prod rails.)
 
 Key groups: DB/Redis connection, JWT + token lifetimes, OTP limits, request-body and
 WebSocket caps, background-job intervals + retention windows, security headers,
@@ -169,7 +175,7 @@ unconfigured), Sentry/Prometheus (optional).
 .venv/Scripts/python -m pytest -q        # needs db+redis containers up
 ```
 
-- 272 tests over 14 files: fare unit tests, per-module API tests, WS streaming,
+- 872 tests over 31 files: fare unit tests, per-module API tests, WS streaming,
   fleet management / roster / settlement, backup retention and restore-drill
   guards, and `test_hardening.py` (14 regression tests for every fixed finding).
 - Per-test isolated Postgres databases (template clone) — no cross-test state.
@@ -179,7 +185,7 @@ unconfigured), Sentry/Prometheus (optional).
 Both clients are verified against the **real** API rather than mocks:
 
 ```bash
-.venv/Scripts/python scripts/gen_mobile_fixtures.py    # capture the real wire format
+.venv/Scripts/python scripts/dev/gen_mobile_fixtures.py    # capture the real wire format
 .venv/Scripts/python mobile/tool/dart_check.py mobile  # analyzer, over LSP
 # `playwright` is not a top-level package here: it is nested under the Playwright
 # CLI. The path is version-specific — substitute the one under
@@ -204,18 +210,18 @@ is driven over LSP by a Python harness. See `mobile/README.md` and
 ## Ops quick reference
 
 ```bash
-.venv/Scripts/python scripts/live_smoke.py       # 9-check end-to-end (needs server up)
-.venv/Scripts/python scripts/stop_server.py      # stop detached uvicorn
-.venv/Scripts/python scripts/prod_boot_drill.py  # verify prod fail-fast guard
-.venv/Scripts/python scripts/security_verify.py  # re-run every audit finding against a live server
-.venv/Scripts/python scripts/security_probe.py all   # the original attack probe (boots its own server)
+.venv/Scripts/python scripts/verify/live_smoke.py       # 9-check end-to-end (needs server up)
+.venv/Scripts/python scripts/dev/stop_server.py      # stop detached uvicorn
+.venv/Scripts/python scripts/verify/prod_boot_drill.py  # verify prod fail-fast guard
+.venv/Scripts/python scripts/verify/security_verify.py  # re-run every audit finding against a live server
+.venv/Scripts/python scripts/verify/security_probe.py all   # the original attack probe (boots its own server)
 ```
 
 Both security scripts boot their own uvicorn on :8000, so stop anything already
 listening there first. They only create throwaway users/orders. See
 `docs/SECURITY_AUDIT.md` for what each check corresponds to.
 
-### Backups (`scripts/db_backup.py`)
+### Backups (`scripts/ops/db_backup.py`)
 
 The ledger is the financial record, so a dump nobody has restored is not a
 backup. `verify` is the part that matters: it restores the newest archive into
@@ -223,13 +229,13 @@ a scratch database and compares exact row counts, table by table.
 
 ```bash
 # the nightly run
-.venv/Scripts/python scripts/db_backup.py backup
+.venv/Scripts/python scripts/ops/db_backup.py backup
 
 # the drill — restores, compares, drops the scratch db
-.venv/Scripts/python scripts/db_backup.py verify
+.venv/Scripts/python scripts/ops/db_backup.py verify
 
 # what is on disk, and what retention would prune
-.venv/Scripts/python scripts/db_backup.py list
+.venv/Scripts/python scripts/ops/db_backup.py list
 ```
 
 Off-host copying is deliberately the operator's command, not a hard-coded
@@ -237,7 +243,7 @@ provider — the deploy target is not decided yet, and a backup script that
 assumes S3 is a backup script that breaks on the next host:
 
 ```bash
-.venv/Scripts/python scripts/db_backup.py backup \
+.venv/Scripts/python scripts/ops/db_backup.py backup \
   --upload-cmd        'rclone copy {file} remote:realtaxi-backups/' \
   --upload-verify-cmd 'rclone lsf remote:realtaxi-backups/'
 ```
@@ -249,7 +255,7 @@ the archive is there.
 Cron line (note it does **not** need the API running):
 
 ```
-17 3 * * *  cd /srv/realtaxihk && .venv/bin/python scripts/db_backup.py backup
+17 3 * * *  cd /srv/realtaxihk && .venv/bin/python scripts/ops/db_backup.py backup
 ```
 
 Retention defaults to 7 daily + 4 weekly, counted by **calendar distance**, so

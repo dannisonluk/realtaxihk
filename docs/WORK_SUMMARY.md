@@ -1,17 +1,17 @@
 # realtaxihk — 工作總覽
 
-- **生成日期**：2026-09-30（**2026-10-01 更新**：併入 location check、analytics、console deep-link 修正；測試數由 272 更正為 616。**本輪再更新**：修好 SEV-1 admin session、統一 money 精度入口、套用 `ruff format` 並加 CI gate、補上 TOTP 綁定二維碼的渲染與測試；測試數 616 → **656**（**本輪 667**：新增 5 個 HTTP error-code + 6 個 state-machine 不變式測試）。**最後一輪**：修好深圳灣口岸邊界缺陷（`_HK_MAIN` 后海灣段 2 → 7 頂點），測試數 667 → **687**（新增 18 個口岸邊界參數化案例 + 2 個回歸測試）。**本輪再更新**：`app/models/__init__.py`（886 行）拆成 5 個 bounded-context 模組 + `__init__` re-export，測試維持 **687** 不變 —— 見 §2.9。**本輪再更新**：新增 `app/api/schemas/` 套件並為**全部 69 個 operation** 補上 `response_model=`（此前 69 個中只有 1 個），令 `/openapi.json` 首次描述真實響應形狀；測試維持 **687** 不變 —— 見 §2.10。**最新一輪（§2.11）**：RBAC 四級角色 + 審計覆蓋金錢／狀態改動、帳戶管理、訂單監控、結算預覽／確認 token／CSV 匯出、爭議實體、主體搜尋、頭像上傳，以及六個對應的後台畫面 —— 測試 **687 → 872**（+185），console **29 → 31 vitest**（+2），API **64/69 → 81 paths / 88 operations**）
-- **HEAD**：`main` 上最新 commit —— **刻意唔寫死 hash**（寫死過三次，每次之後
-  嘅 commit 都令佢變錯；要查：`git log --oneline -1`）；
+- **生成日期**：2026-09-30（**2026-10-01 更新**：併入 location check、analytics、console deep-link 修正；測試數由 272 更正為 616。**本輪再更新**：修好 SEV-1 admin session、統一 money 精度入口、套用 `ruff format` 並加 CI gate、補上 TOTP 綁定二維碼的渲染與測試；測試數 616 → **656**（**本輪 667**：新增 5 個 HTTP error-code + 6 個 state-machine 不變式測試）。**最後一輪**：修好深圳灣口岸邊界缺陷（`_HK_MAIN` 后海灣段 2 → 7 頂點），測試數 667 → **687**（新增 18 個口岸邊界參數化案例 + 2 個回歸測試）。**本輪再更新**：`app/models/__init__.py`（886 行）拆成 5 個 bounded-context 模組 + `__init__` re-export，測試維持 **687** 不變 —— 見 §2.9。**本輪再更新**：新增 `app/api/schemas/` 套件並為**全部 69 個 operation** 補上 `response_model=`（此前 69 個中只有 1 個），令 `/openapi.json` 首次描述真實響應形狀；測試維持 **687** 不變 —— 見 §2.10。**最新一輪（§2.11）**：RBAC 四級角色 + 審計覆蓋金錢／狀態改動、帳戶管理、訂單監控、結算預覽／確認 token／CSV 匯出、爭議實體、主體搜尋、頭像上傳，以及六個對應的後台畫面 —— 測試 **687 → 872**（+185），console **29 → 31 vitest**（+2），API **64/69 → 81 paths / 88 operations**）。**最新一輪（§2.13）**：結構整理 —— `app/api/` 命名統一為 `admin_x`、`/api/v1/driver` → `/api/v1/drivers`、`scripts/` 拆為 `{ops,verify,dev}`、由 `create_app()` 抽出 lifespan 輔助函數；測試維持 **872** 不變，並修好一個腐爛的驗證腳本（`prod_boot_drill` 6/7 → 7/7））
+- **HEAD**：`main` 上最新 commit —— **刻意不寫死 hash**（寫死過三次，每次之後
+  的 commit 都令它變錯；要查：`git log --oneline -1`）；
   `origin/main..HEAD` = **有未推 commit**（查：`git rev-list --count origin/main..HEAD`，見 §5）；
   working tree **clean**。
-- **現時狀態**：`pytest` **872 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean（131 files）** · console `tsc` clean + **31 vitest passed** · `npm run build` 344.67 kB（gzip 109.14 kB）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · API **81 paths / 88 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
+- **現時狀態**：`pytest` **872 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean** · console `tsc` clean + **57 vitest passed（8 files）** · `npm run build` 463.18 kB（gzip 142.84 kB）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · `audit_layout` **48 renders clean（4 locale/theme 組合）** · API **81 paths / 88 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
 - **✅ 已解決：管理員 session 15 分鐘硬死** —— 已改為 `HttpOnly` refresh cookie（`SameSite=Strict`，path `/api/v1/admin/auth`）＋ CSRF double-submit。詳見 `SECURITY.md`
 
-> **呢份文件嘅用途**：一份可以單獨睇完嘅總覽 —— 做過咩、而家係咩狀態、
-> 仲有咩未做、邊樣需要你出手。其他 `docs/*` 係**主題深入報告**（安全、
-> 上線就緒、lint），`.workbuddy-ai/memory/*.md` 係**逐日流水**（append-only，
-> 唔整理）。呢份係索引 + 摘要，唔取代佢哋。
+> **這份文件的用途**：一份可以單獨看完的總覽 —— 做過什麼、現在是什麼狀態、
+> 還有什麼未做、哪一項需要你出手。其他 `docs/*` 是**主題深入報告**（安全、
+> 上線就緒、lint），`.workbuddy-ai/memory/*.md` 是**逐日流水**（append-only，
+> 不整理）。這份是索引 + 摘要，不取代它們。
 
 ---
 
@@ -21,17 +21,17 @@
 |---|---|---|---|
 | 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **81 paths / 88 operations** · 872 tests |
 | Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**21 個畫面**，三角色） | ✅ 93 tests |
-| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/js/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **31 vitest** · UI verifier PASS |
+| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/js/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **57 vitest** · UI verifier PASS |
 
 一個 repo、三件完整交付物。定位：**Cap. 374D 合規的士資訊中介**（非的士營運商）。
 
 ---
 
-## 2. 做過嘅嘢（按主題，非按時間）
+## 2. 做過的事（按主題，非按時間）
 
 ### 2.1 後端 — 上線阻塞修復
 
-`docs/PRODUCTION_READINESS.md` 記錄咗完整 audit：**4 個掃描中發現嘅真 bug**
+`docs/PRODUCTION_READINESS.md` 記錄了完整 audit：**4 個掃描中發現的真 bug**
 ＋ **7 個 P0** ＋ **10 個 P1** ＋ **10 個 P2**，全部處理。
 
 重點（每項都有 TDD 背書）：
@@ -40,7 +40,7 @@
 |---|---|---|
 | B2 / P0-1 | ledger `append()` 無行級鎖 → 並發 lost update（兩個 request 同讀 balance=500，各自 +100，後者覆蓋前者 → **帳目靜靜地錯**） | `SELECT ... FOR UPDATE` + 條件式 UPDATE 仲裁 + `asyncio.gather` 並發測試 |
 | P0-2 | Prod fail-safe：`JWT_SECRET` / `ALLOW_DEV_OTP` 誤設定就全平台失守 | `config.py` `model_validator(mode="after")` — prod 下拒絕不安全組合 |
-| P0-3 | `is_active` 從未被執行 → 封禁功能唔存在 | 加去 auth 依賴鏈 |
+| P0-3 | `is_active` 從未被執行 → 封禁功能不存在 | 加去 auth 依賴鏈 |
 | P0-5 | Geo index ghost entries 污染派單 | — |
 | B1 | `/auth/me` 對已刪除 user 會 `NameError` → 500 | — |
 | B3 | `tip` 無上限 → DB overflow → 500 | 加 `le=100000` |
@@ -48,55 +48,55 @@
 
 ### 2.2 安全 — SEC-01 ~ SEC-31 全數處理
 
-`docs/SECURITY_AUDIT.md`（43 KB）逐條記錄。最重要嗰條：
+`docs/SECURITY_AUDIT.md`（43 KB）逐條記錄。最重要那條：
 
-**SEC-13 — ledger reference 命名空間。** 舊 contract 收 caller 提供嘅
-`reference`，撞中就直接**原樣回傳舊 row**（唔核對 entry_type／金額）。
+**SEC-13 — ledger reference 命名空間。** 舊 contract 收 caller 提供的
+`reference`，撞中就直接**原樣回傳舊 row**（不核對 entry_type／金額）。
 由於 `weekly:{driver}:{period}` 同 `refund:{id}` 共用一個 flat namespace，
-任何寫得到 ledger 嘅人（管理員，或者持有偽造 admin token 嘅攻擊者）可以
+任何能寫入 ledger 的人（管理員，或者持有偽造 admin token 的攻擊者）可以
 預植 `weekly:<driver>:2099-W03`，之後真實結算見到「已收費」就跳過該司機，
-**靜靜地永遠收唔到 HK$200**，而報告顯示一切正常（`skipped`）。
+**靜靜地永遠收不到 HK$200**，而報告顯示一切正常（`skipped`）。
 同一個手法令退款可以無 REFUND debit 就 APPROVED。
 
-兩個防禦：① `append()` 拒絕 entry_type／金額唔符嘅 reference hit；
+兩個防禦：① `append()` 拒絕 entry_type／金額不符的 reference hit；
 ② 每個用途由 server mint 專屬 prefix（`grant:` / `weekly:` / `fleet:` /
-`refund:` / `adj:`），令跨用途碰撞根本表達唔到。
+`refund:` / `adj:`），令跨用途碰撞根本無法表達。
 
-### 2.3 Money 精度 — 「儲存用 cent，唔用 decile」
+### 2.3 Money 精度 — 「儲存用 cent，不用 decile」
 
-**呢個係一個真正嘅生產 bug，唔係重構。**
+**這是一個真正的生產 bug，不是重構。**
 
-- DB 欄位係 `Numeric(10,2)`，cent 本來就精確儲存（實測
+- DB 欄位是 `Numeric(10,2)`，cent 本來就精確儲存（實測
   `DriverDeposit(balance_hkd=Decimal("0.5"))` 讀返 `Decimal('0.50')`）。
 - **缺陷在 serialiser**：`money_str` quantise 去 `Decimal("0.1")`，docstring
   寫「canonical wire precision = \$0.1 (smallest meter tick)」——
   將一個**車費**規則誤用到**帳本**金額。
 - 後果：`0.05 → "0.1" → HK\$0.10`；`0.01 → "0.0" → HK\$0.00`（同空帳戶無法區分）。
-- 亦發現 `Decimal.quantize` 預設係 banker's rounding（`150.45 → 150.4`），
+- 亦發現 `Decimal.quantize` 預設是 banker's rounding（`150.45 → 150.4`），
   同車費引擎（`150.45 → 150.5`）矛盾 → 兩個 helper 都明確用 `ROUND_HALF_UP`。
 
 **修法**：兩個精度各有其名 —— `money_str` **2 dp**（儲存金額）、
 `meter_str` **1 dp**（錶費數字）。3 個 commit（`f65fdb4` / `712d1a8` / `542fc6b`）。
 
 > 值得一提：最後一個 bug（`admin.py:157` 一個遺留 `"0.0"` 字面值）**只有讀
-> live response 才搵得到** —— 每個 driver detail payload 都有 1 個 1dp 值
+> live response 才找得到** —— 每個 driver detail payload 都有 1 個 1dp 值
 > 夾在 4 個 2dp 值中間。所有 unit test 都通過。
 
 ### 2.4 `ADJUSTMENT` ledger 業務流（`4333f2a`，最新）
 
 `LedgerEntryType.ADJUSTMENT` 只有 enum 定義、**零實作**，但**三個前端都已
-渲染「調整」chip** —— UI 對外承諾咗一個後端永遠產生唔到嘅 type。
+渲染「調整」chip** —— UI 對外承諾了一個後端永遠無法產生的 type。
 
 新增 `POST /admin/drivers/{id}/deposit/adjust`：signed amount、`reason` 必填、
 ±HK\$5,000 上限、`adj:` 命名空間。
 
 順手修兩個真缺陷：
-1. **`_ledger_out` 從來唔輸出 `created_by`** —— 寫入 DB 4 處、讀取 0 處。
-   管理員操作有記名但 API 完全睇唔到。已加（admin 視角；司機
-   `/me/ledger` 刻意唔加，operator id 係內部資料）。
-2. **mobile `isCredit` 硬編 `adjustment == true`** —— 但調整係 signed，
-   一半情況顯示錯方向。確認無 production code 讀過 → **刪除**（唔係修好），
-   direction 一律讀 `amount_hkd` 正負。原本個 test 仲 assert 咗 bug 係正確行為。
+1. **`_ledger_out` 從不輸出 `created_by`** —— 寫入 DB 4 處、讀取 0 處。
+   管理員操作有記名但 API 完全看不到。已加（admin 視角；司機
+   `/me/ledger` 刻意不加，operator id 是內部資料）。
+2. **mobile `isCredit` 硬編 `adjustment == true`** —— 但調整是 signed，
+   一半情況顯示錯方向。確認無 production code 讀過 → **刪除**（不是修好），
+   direction 一律讀 `amount_hkd` 正負。原本那個 test 還 assert 了 bug 是正確行為。
 
 ### 2.5 前端 — Apple 設計 + React 管理後台
 
@@ -108,94 +108,94 @@
 
 ### 2.6 備份與還原演練（P1-4，2026-09-30）
 
-`scripts/db_backup.py`。**還原演練係重點** —— 冇還原過嘅 dump 只係假設。
+`scripts/ops/db_backup.py`。**還原演練是重點** —— 沒有還原過的 dump 只是假設。
 
 實跑結果（真 Postgres 16.4）：`49 tables / 17,627 rows`，source vs restore
 逐表 count 完全一致。
 
-過程中捉到 4 個**只有真跑才會現形**嘅 bug：
+過程中捉到 4 個**只有真跑才會現形**的 bug：
 
-1. **`pg_restore --list` 收 host path**，但 docker transport 下個 tool 跑喺
-   container 裡面 → 找不到檔案。要改成 stdin 灌入（同 restore 一樣嘅橋）。
-2. **`subprocess.run(shell=True)` 喺 Windows 用 `cmd.exe`**，`;` 唔係分隔符。
-   實測 `echo hi >&2; exit 7` **回 0** → 一個失敗嘅上載被報成成功 ——
-   備份最惡劣嘅失敗模式（靜靜地冇 copy 到，但每晚都報 OK）。
+1. **`pg_restore --list` 收 host path**，但 docker transport 下該 tool 跑在
+   container 裡面 → 找不到檔案。要改成 stdin 灌入（同 restore 一樣的橋）。
+2. **`subprocess.run(shell=True)` 在 Windows 用 `cmd.exe`**，`;` 不是分隔符。
+   實測 `echo hi >&2; exit 7` **回 0** → 一個失敗的上載被報成成功 ——
+   備份最惡劣的失敗模式（靜靜地沒有 copy 到，但每晚都報 OK）。
    改成明確 `sh -c`。
-3. **Windows 路徑經 `sh` 會被食走反斜線**：`C:\Users\user\x.dump` →
-   `C:Usersuserx.dump`。`{file}` 完全用唔到。改用 `as_posix()`。
-4. **「上載 OK」原來只係「command exit 0」** —— `true` 都會 pass。
-   加 `--upload-verify-cmd`，要真係問 remote 攞到 archive 名先算數。
+3. **Windows 路徑經 `sh` 會被吞掉反斜線**：`C:\Users\user\x.dump` →
+   `C:Usersuserx.dump`。`{file}` 完全用不到。改用 `as_posix()`。
+4. **「上載 OK」原來只是「command exit 0」** —— `true` 都會 pass。
+   加 `--upload-verify-cmd`，要真的問 remote 取得 archive 名才算數。
 
-保留策略係 GFS（7 daily + 4 weekly），按**日曆距離**而唔係檔案數量計 ——
-weekly 層要捱得過「幾日後才發現」嘅問題，所以 40 日 / keep 7+3 實測
-仍然留住 Sep 20 同 Sep 13（各自 ISO week 最舊嘅一份）。
+保留策略是 GFS（7 daily + 4 weekly），按**日曆距離**而不是檔案數量計 ——
+weekly 層要經得起「幾日後才發現」的問題，所以 40 日 / keep 7+3 實測
+仍然留住 Sep 20 同 Sep 13（各自 ISO week 最舊的一份）。
 
 ### 2.7 測試基建
 
-- **Mobile fixtures 係「生成」唔係手寫**：`scripts/gen_mobile_fixtures.py`
+- **Mobile fixtures 是「生成」不是手寫**：`scripts/dev/gen_mobile_fixtures.py`
   起 API、打真 endpoint、寫低 raw response；`mobile/tool/verify_contract.dart`
-  用真 Dart model 解碼。手改 fixture 會令佢同 API 脫節。
+  用真 Dart model 解碼。手改 fixture 會令它同 API 脫節。
 - **Admin UI verifier**（`admin-web/tool/verify_ui.mjs`）：真瀏覽器、真 API，
-  捉三類「讀源碼睇唔到」嘅缺陷 —— module 載入失敗、render 拋錯、靜默 API 唔 match。
-- `docs/LINTING.md`：ruff 單一 linter，**explicit rule selection**（唔用
-  default），令 ruff 升級唔會靜靜地改咗個 gate。66 errors → 0。
+  捉三類「讀源碼看不到」的缺陷 —— module 載入失敗、render 拋錯、靜默 API 不 match。
+- `docs/LINTING.md`：ruff 單一 linter，**explicit rule selection**（不用
+  default），令 ruff 升級不會靜靜地改了該 gate。66 errors → 0。
 
 ### 2.8 身份與服務範圍（P-1 ~ P-5，2026-09-30 ~ 10-01）
 
 - **P-1 Admin 認證**：`admin_accounts` 獨立於 `users`，username + password +
-  強制 TOTP。三步狀態機，`/login` 只回 5 分鐘 challenge token（結構上唔可以
-  當 access token 用）。`/totp/enrol` **先唔寫入 DB**，等 admin 證明識生成碼
-  才 persist —— 避免「secret 入咗庫但冇掃碼」嘅永久鎖死。
+  強制 TOTP。三步狀態機，`/login` 只回 5 分鐘 challenge token（結構上不可以
+  當 access token 用）。`/totp/enrol` **暫不寫入 DB**，等 admin 證明懂得生成碼
+  才 persist —— 避免「secret 入了庫但沒有掃碼」的永久鎖死。
   authenticator 選型見 `docs/ADMIN_AUTH.md`。
 - **P-2 Uber 形狀註冊**：email 驗證 + 每月手機重新驗證（soft block）。
 - **P-3 的士證人工審核**：admin 改狀態。
-- **P-4 每月重新驗證**：soft block，唔阻現有行程。
+- **P-4 每月重新驗證**：soft block，不阻礙現有行程。
 - **P-5 部署目標**：`docs/DEPLOY_TARGET_DECISION.md`（仍待用戶拍板）。
 - **Location check**：`app/core/hk_bounds.py` —— 8 個 polygon 取代
-  `lat 22.1-22.6, lng 113.8-114.5` 嘅 bbox，因為**舊 bbox 含深圳**
+  `lat 22.1-22.6, lng 113.8-114.5` 的 bbox，因為**舊 bbox 含深圳**
   （Futian / Luohu / Bao'an 全部在內）。Server 為準，403 帶 `OUTSIDE_HK`。
 - **Analytics**：`app/services/analytics_service.py` + `#/analytics`。
   `timezone('Asia/Hong_Kong', completed_at)` 同時用於 SELECT 同 GROUP BY，
-  半開區間 `[00:00 HKT, 翌日 00:00 HKT)`。收入 = COMPLETED 訂單嘅
+  半開區間 `[00:00 HKT, 翌日 00:00 HKT)`。收入 = COMPLETED 訂單的
   `estimated_total_hkd`（已含折扣與貼士）。
 
 ### 2.9 `app/models` 拆包（結構重構，2026-10-01）
 
 原本 `app/models/__init__.py` 一個檔案 886 行、24 個 model、4 個用 banner
-分隔嘅區段。拆成 **5 個 bounded-context 模組 + 1 個 private base**：
+分隔的區段。拆成 **5 個 bounded-context 模組 + 1 個 private base**：
 
 | 檔案 | 行數 | 內容 |
 |---|---|---|
-| `_base.py` | 40 | 唯一嘅 `Base`（private，唔喺 `__all__`） |
+| `_base.py` | 40 | 唯一的 `Base`（private，不在 `__all__`） |
 | `user.py` | 402 | users / driver_profiles / deposits / orders / ledger / otp / refresh / refund |
 | `admin.py` | 260 | admin 身份、TOTP、session、audit、email token |
 | `fleet.py` | 206 | fleets / memberships / settlement runs |
 | `licence.py` | 187 | P-3 licence submissions + documents |
 | `__init__.py` | 118 | 全部 re-export + `configure_mappers()` |
 
-**零呼叫點改動**：所有 consumer 一向都係 `from app.models import X`
-（grep 證實冇任何 `from app.models.<sub>`），所以 `__init__` re-export 之後
-31 個公開名字嘅 import 路徑完全唔變。
+**零呼叫點改動**：所有 consumer 一向都是 `from app.models import X`
+（grep 證實沒有任何 `from app.models.<sub>`），所以 `__init__` re-export 之後
+31 個公開名字的 import 路徑完全不變。
 
-**點解唔會拆爛 relationship**：SQLAlchemy 靠 class registry 解析
-`relationship()` target，所以 class 可以跨模組互相引用；但前提係
-**所有貢獻 mapped class 嘅模組都要喺 `configure_mappers()` 之前 import 咗**。
-`__init__` 嘅 import 就係做呢件事，跟住**主動**叫 `configure_mappers()`，
-令爛咗嘅 relationship 喺 `import app.models` 即刻炸，而唔係等到某次 query
-先炸。跨模組嘅邊有 4 條：`User.driver_profile`、
+**為什麼不會拆爛 relationship**：SQLAlchemy 靠 class registry 解析
+`relationship()` target，所以 class 可以跨模組互相引用；但前提是
+**所有貢獻 mapped class 的模組都要在 `configure_mappers()` 之前 import 了**。
+`__init__` 的 import 就是做這件事，接著**主動**叫 `configure_mappers()`，
+令損壞了的 relationship 在 `import app.models` 即刻炸，而不是等到某次 query
+先炸。跨模組的邊有 4 條：`User.driver_profile`、
 `DriverProfile.licence_submissions`、`DriverLicenceSubmission.driver_profile`、
 `DriverLicenceSubmission.documents`。
 
-**重構點樣證明冇改行為**（唔止「test 過」）：
-1. 將 HEAD 版本 + 工作區版本嘅 metadata 逐表 diff —— columns / types /
+**重構如何證明沒有改變行為**（不止「test 過」）：
+1. 將 HEAD 版本 + 工作區版本的 metadata 逐表 diff —— columns / types /
    nullability / defaults / indexes / FKs / unique constraints / PK
-   **全部 17 張表一模一樣**（唯一差異係記憶體 address，同 `_uuid` vs
-   `uuid.uuid4` 嘅 function 名 —— 已改返一致）。
+   **全部 17 張表一模一樣**（唯一差異是記憶體 address，同 `_uuid` vs
+   `uuid.uuid4` 的 function 名 —— 已改回一致）。
 2. 12 條 relationship（含方向、`uselist`、local columns、cascade options）
    **完全相同**。
-3. `alembic check` 嘅 autogenerate drift **逐字節相同**（refactor 前後都係
-  同樣 2449 字元嘅 ops list —— 即係話本專案本來就有一批未收嘅 drift，
-   呢次 refactor **冇增加**）。
+3. `alembic check` 的 autogenerate drift **逐字節相同**（refactor 前後都是
+  同樣 2449 字元的 ops list —— 即是說本專案本來就有一批未收的 drift，
+   這次 refactor **沒有增加**）。
 4. `pytest` 687 → **687**（`--junit-xml` 讀：687/0/0/0）。
 
 ---
@@ -223,7 +223,7 @@ weekly 層要捱得過「幾日後才發現」嘅問題，所以 40 日 / keep 7
 | `admin.py` | `DriverRowOut` / `DriverDetailOut` / 三种 deposit 写入响应 |
 | `admin_auth.py` | 三步登录状态机的 challenge / session 形状 |
 | `fleet.py` | 车队、成员名单、结算（三种不同分页形状） |
-| `licence.py` / `licence_admin.py` | 司机侧与运营侧执照视图 |
+| `licence.py` / `admin_licence.py` | 司机侧与运营侧执照视图 |
 
 **结果**：69 / 69 个 operation 现在都有真实的响应 schema（此前 1 / 69），
 `/openapi.json` 共引用 48 个不同的响应模型。
@@ -267,7 +267,7 @@ weekly 層要捱得過「幾日後才發現」嘅問題，所以 40 日 / keep 7
 
 **验证**（四层，与 §2.9 同规格）：
 
-1. **新增 `scripts/audit_response_models.py`** —— 遍历 `manifest.json` 的 route → fixture
+1. **新增 `scripts/verify/audit_response_models.py`** —— 遍历 `manifest.json` 的 route → fixture
    映射，断言每份夹具的键集是其模型字段集的**子集**。**68 个夹具块全部通过**，即没有任何
    响应会因 `response_model=` 而丢数据。
 2. **该审计已证明「会失败」**（避免写一个永远 pass 的检查）：注入一个模型未声明的键，审计
@@ -277,7 +277,7 @@ weekly 層要捱得過「幾日後才發現」嘅問題，所以 40 日 / keep 7
 4. `ruff check` clean · `ruff format --check` clean（125 files）。
 
 **与 Dart 契约检查的分工**（两者都要跑，失败点不同）：
-- `scripts/audit_response_models.py` 校验 **Python schema ↔ 夹具**；
+- `scripts/verify/audit_response_models.py` 校验 **Python schema ↔ 夹具**；
 - `mobile/tool/verify_contract.dart` 校验 **Dart 解码器 ↔ 字节**。
 一次「模型与处理函数同时改名」会通过全部 Python 测试，却弄坏客户端 —— 只有后者能发现。
 
@@ -363,20 +363,134 @@ SUPPORT session 的導覽有 `#/search`/`#/orders`/`#/audit` 而**無**
 伺服器每 request 重讀 live row，真正阻止的是「渲染一個每個請求都會 403 的頁面」。
 
 **验证**：`pytest` **687 → 872**（`--junit-xml` 读：872/0/0/0）·
-`ruff check` + `format --check` clean（131 files）· OpenAPI **81 paths / 88 operations**，
-`scripts/audit_response_models.py` 68 块 fixture OK · console `tsc` clean、
-**31 vitest passed**、`npm run build` clean。
+`ruff check` + `format --check` clean（140 files）· OpenAPI **81 paths / 88 operations**，
+`scripts/verify/audit_response_models.py` 68 块 fixture OK · console `tsc` clean、
+**57 vitest passed**、`npm run build` clean。
 
 ---
 
+### 2.12 后台 UI 验证跑通 + 修复 harness 两个静默缺陷（2026-10-02）
+
+`admin-web/tool/verify_ui.mjs`（真浏览器驱动 React 后台）**此前从未在 HEAD 上跑过**
+—— 它的「一条命令」入口 `scripts/dev/serve_and_run_browser.py` 有两处缺陷，各自都会
+让运行失败或跑错东西：
+
+1. **起了 legacy bundle 而非 React build。** 脚本调用
+   `serve.py --port 8081`，缺 `--dist`。`serve.py` 默认服务 `admin-web/`（旧版
+   hand-rolled ES module），而 `verify_ui.mjs` 会**明文拒绝**旧版（没有
+   `#login-username`、资源路径不同）。→ 已加 `--dist`。
+2. **`NODE_PATH` 指向一个空目录。** 脚本写死
+   `node/workspace/node_modules`，但 **`playwright` 不在那里** —— 它嵌在
+   `<node>/versions/<ver>/node_modules/@playwright/cli/node_modules/playwright`。
+   后果是 `import 'playwright'` 直接 `MODULE_NOT_FOUND`。→ 改为动态解析（并会在
+   找不到时 fail loudly）。
+
+修好之后首次真跑，抓到**一个真实回归**：
+
+```
+FAIL  fleet detail: renders — missing 加入成員
+```
+
+i18n 那次提交（`dd5a1e4`）把该按钮从 legacy 的 `加入成員` 改成
+`加入車隊成員`（`zh-Hant.ts` → `fleetDetail.addMember`），但 verifier 的
+needle 仍是旧字符串。因为是 **substring** 匹配，`'加入車隊成員'.includes('加入成員')`
+为 false —— 三个 needle 匹配、第四个不匹配。→ 已更新 needle。
+
+**产品无 bug，是测试 artifact 漂移**：React 页面确实渲染了加入成员入口。
+
+**跑法**（凭据可自举，不必问用户）：
+
+```bash
+ADMIN_PASSWORD='...' .venv/Scripts/python.exe scripts/ops/create_admin_account.py \
+    --username verify-ui --email verify-ui@realtaxihk.local --yes
+ADMIN_PASSWORD='...' .venv/Scripts/python.exe scripts/ops/enrol_admin_totp.py \
+    --username verify-ui --super-admin          # 新建的账号是 SUPPORT，跑不了财务页
+.venv/Scripts/python.exe scripts/dev/serve_and_run_browser.py \
+    "admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 \
+     --username verify-ui --password '<pw>' --totp-secret '<secret>'"
+```
+
+**结果：`--- admin console UI check: PASS ---`，63 项检查全过，0 FAIL。**
+
+> 新增 `scripts/ops/enrol_admin_totp.py`：`create_admin_account.py` **刻意不代 enrol**
+> （脚本写的 secret 没人证明过能生成 code，是经典 lockout），所以此前唯一取得
+> `totp_secret` 的方法是人手开浏览器扫 QR。这个脚本headless 走完同一条真实流程
+> （`POST /admin/auth/login` → `POST /admin/auth/totp/enrol/confirm`），
+> 使整个验证可重复。
+
+---
+
+### 2.13 結構整理：命名統一 · 路徑統一 · `scripts/` 分組 · lifespan 抽出（2026-10-02）
+
+四項純結構重構，目標是消除「同一件事有兩種寫法」的歧義。**每一項之後都重跑完整
+驗證（872 tests + ruff + response-model 審計），維持全綠。**
+
+**① `app/api/` 命名統一為 `admin_x`**
+原本 `admin.py` / `admin_auth.py` 用 `admin_` 前綴，但 `analytics_admin.py` /
+`licence_admin.py` 用 `_admin` 後綴 —— 同一層目錄兩種慣例。已改名為
+`admin_analytics.py` / `admin_licence.py`（`app/api/schemas/licence_admin.py` 同步為
+`admin_licence.py`），router 別名亦改為 `admin_*_router`。純改名，無行為變更。
+
+**② `POST /api/v1/driver/location` → `/api/v1/drivers/location`**
+`drivers.py` 用 `/api/v1/drivers`、`licence.py` 用 `/api/v1/drivers/licence`，
+唯獨 `tracking.py` 用單數 `/api/v1/driver` —— API 中唯一的單數 collection，
+也是唯一無法從另外兩者推斷的路徑。已統一為複數。
+**這是 breaking change**，故一次過更新全部消費端：`app/api/tracking.py`、
+`app/api/schemas/_envelope.py`（docstring）、mobile 的 `driver_repository.dart`、
+三個 driver 畫面與 router 的註解、`mobile/test/fixtures/manifest.json`、
+`tests/test_geo_and_limits.py`（4 處）、`tests/test_service_area.py`（4 處）、
+`scripts/verify/security_probe.py`、`scripts/dev/gen_mobile_fixtures.py`、
+`README.md`、`AndroidManifest.xml` 註解。
+**刻意不動 `docs/SECURITY_AUDIT.md` 的逐字探測輸出** —— 那是歷史記錄，
+改了就不再是真實記錄；改為在文首加「路徑更名說明」。
+
+**③ `scripts/` 拆成 `{ops, verify, dev}`**
+20 個平放腳本改為按**「你在做什麼」**分組，規則寫在 `scripts/README.md`：
+- `ops/`（4）—— 操作真實環境：`db_backup`、`create_admin`、`create_admin_account`、`enrol_admin_totp`
+- `verify/`（10）—— 產出通過／失敗判定：`audit_response_models`、`live_smoke`、
+  `security_probe`、`security_verify`、`prod_boot_drill`、`verify_api`、
+  `bench_location_pipeline`、三個連線探測
+- `dev/`（6）—— 本地流程黏合：`serve_and_probe`、`serve_and_run_browser`、
+  `api_supervisor`、`stop_server`、`run_against_api`、`gen_mobile_fixtures`
+
+搬家本身機械，但有幾處**真正的耦合**必須一併處理：
+- 每個腳本都以 `__file__` 推算 repo root，多一層目錄就要多一跳。同時修好兩個
+  **硬編碼絕對路徑**（`run_against_api.py`、`serve_and_run_browser.py` 寫死
+  `C:\Users\...`）—— 那是可移植性缺陷，不只是深度問題。
+- `pyproject.toml` 的 `per-file-ignores` 原本寫 `"scripts/*"`，而 glob 的 `*`
+  **不跨 `/`** → 搬家後忽略規則會靜靜失效。已改為 `"scripts/**"`，並用
+  「同樣內容放在 `app/` 會報 S607、放在 `scripts/dev/` 不報」**正面驗證**該 glob 生效。
+- `tests/test_db_backup.py` 以 `from scripts.db_backup import ...` 匯入，
+  已改為 `scripts.ops.db_backup`。
+- 全樹 78 處 markdown 引用 + 44 處原始碼 docstring 引用已同步更新，
+  並以 grep 確認沒有殘留舊路徑。
+
+**④ 從 `create_app()` 抽出 `_start_background_jobs()` / `_shutdown_resources()`**
+`create_app()` 內的 `lifespan` 原本有約 80 行維護接線（三個背景任務 + Redis／engine
+收尾），把 application factory 的主要敘事淹沒。已抽成三個模組層函數：
+`_start_background_jobs(app, settings)`、`_stop_background_jobs(tasks)`、
+`_shutdown_resources(app)`，`lifespan` 縮成 8 行。
+**任務名稱 `geo_sweep` / `pdpo_purge` / `weekly_settlement` 原樣保留** ——
+`tests/test_hardening.py::TestLifespanBackgroundJobs` 正是靠這些名字斷言
+「哪些任務啟動了」，而不是靠數量。
+
+**⑤ 附帶修好一個腐爛的驗證腳本（非本次重構引入）**
+`scripts/verify/prod_boot_drill.py` 實測為 **6/7**。「prod with proper secrets」
+一例只設了 3 個 secret，但 P-2 之後 prod validator 另外要求 `SMTP_HOST`／`SMTP_FROM`
+與 https 的 `PUBLIC_BASE_URL` —— 於是 validator 依設計拒絕啟動，該例報 BAD。
+**CI 只跑 ruff + pytest，不跑這支 drill**，所以它靜靜地腐爛了。
+已補齊該例設定、把相關變數加入 `MANAGED`（防止環境繼承令案例以錯誤理由通過），
+現為 **7/7**。並已用 `git show HEAD:` 的舊版做 A/B 對照，確認此為**既有**問題、
+而非本次重構引入。
+
 ## 3. 驗證標準：「全部實跑」
 
-唔接受「讀源碼覺得無問題」。每次改動都跑齊：
+不接受「讀源碼覺得無問題」。每次改動都跑齊：
 
 ```bash
 uv run ruff check . && uv run ruff format --check .   # 或 ./.venv/Scripts/python.exe -m ruff
 uv run pytest -q                                       # 872 passed（用 --junit-xml 讀，見下）
-uv run python scripts/audit_response_models.py         # 68 块夹具 vs response_model，0 丢失
+uv run python scripts/verify/audit_response_models.py         # 68 块夹具 vs response_model，0 丢失
 cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run --no-file-parallelism --pool=forks
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
 cd mobile && python tool/dart_check.py .               # LSP，非 flutter analyze
@@ -384,14 +498,14 @@ cd mobile && dart --packages=.dart_tool/package_config.json tool/verify_contract
 NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@playwright/cli/node_modules" \
   node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 \
     --username ops-admin --password "$ADMIN_PASSWORD" --totp-secret "$ADMIN_TOTP_SECRET"
-# 備份：唔止跑 backup，一定要跑埋 drill
-.venv/Scripts/python scripts/db_backup.py backup
-.venv/Scripts/python scripts/db_backup.py verify      # 還原 + 逐表核對 row count
+# 備份：不止跑 backup，還要跑 drill
+.venv/Scripts/python scripts/ops/db_backup.py backup
+.venv/Scripts/python scripts/ops/db_backup.py verify      # 還原 + 逐表核對 row count
 ```
 
 **關鍵**：改動 money 格式後，要對**真 server + 真 Postgres** 做 live 驗證，
-唔可以只信 TestClient。上面 2.3 嗰個 `"0.0"` bug 就係咁搵到；2.6 嗰 4 個
-備份 bug 亦一樣 —— 全部係「讀源碼睇唔到、真跑先爆」。
+不可以只信 TestClient。上面 2.3 那個 `"0.0"` bug 就是這樣找到；2.6 那 4 個
+備份 bug 亦一樣 —— 全部是「讀源碼看不到、真跑才爆」。
 
 ---
 
@@ -401,52 +515,64 @@ NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@pl
 
 | 項目 | 阻塞原因 |
 |---|---|
-| **P1-1 WS token 走 `?token=`** | `app/api/ws.py:73` 仍係 query param。現設計**有文件說明係刻意**（瀏覽器 WS 無 header 通道），已有 `StripTokenQueryFilter` 兜底。要真正解決需定 TLS 反代（nginx/Caddy）。 |
-| **P1-4 備份 — off-host destination 未揀** | ~~無 pg_dump cron~~ **2026-09-30 更新：script 已完成並實跑 PASS**（`scripts/db_backup.py`，27 tests，還原演練 49 tables / 17,627 rows 全對）。只剩**揀 destination**（見 §5）。原本判為「需要 credentials」係唔準確 —— 只係未揀去邊。 |
-| **WhatsApp / FCM / Google Maps 未接** | config 欄位存在、env 空。需要三家 provider 嘅憑證。 |
+| **P1-1 WS token 走 `?token=`** | `app/api/ws.py:73` 仍是 query param。現設計**有文件說明是刻意**（瀏覽器 WS 無 header 通道），已有 `StripTokenQueryFilter` 兜底。要真正解決需定 TLS 反代（nginx/Caddy）。 |
+| **P1-4 備份 — off-host destination 未選擇** | ~~無 pg_dump cron~~ **2026-09-30 更新：script 已完成並實跑 PASS**（`scripts/ops/db_backup.py`，27 tests，還原演練 49 tables / 17,627 rows 全對）。只剩**選擇 destination**（見 §5）。原本判為「需要 credentials」是不準確 —— 只是未選擇去哪裡。 |
+| **WhatsApp / FCM / Google Maps 未接** | config 欄位存在、env 空。需要三家 provider 的憑證。 |
 | **P2-2 遺留：部分退款** | 現時只做全額退還。 |
 | **P2-2 遺留：實際打款渠道** | 只寫 ledger，轉帳仍線下人手。需要真實支付渠道。 |
 | **P2-3 `distance_km` 由 client 自報** | 乘客可亂報。374D 下估價僅供參考、風險可控，但廣播排序會被 gaming。需 `GOOGLE_MAPS_API_KEY`。 |
-| **P2-4 Sentry／錯誤聚合** | ~~淨係差 Sentry~~ **2026-09-30 更正：Sentry 已經接好**（`app/main.py:63-70`，`sentry_dsn` 有值就 init，無 `sentry-sdk` 就 warn 而唔會炸）。真正短缺嘅只係一個 DSN。 |
+| **P2-4 Sentry／錯誤聚合** | ~~只差 Sentry~~ **2026-09-30 更正：Sentry 已經接好**（`app/main.py:63-70`，`sentry_dsn` 有值就 init，無 `sentry-sdk` 就 warn 而不會炸）。真正短缺的只是一個 DSN。 |
 
 ### B. 已知產品層取捨（非 bug，記錄在案）
 
-- **調整唔會 activate 司機** —— 刻意。更正係記帳、唔係付款；維持
+- **調整不會 activate 司機** —— 刻意。更正是記帳、不是付款；維持
   `DEPOSIT_REQUIRED`。
 - **負餘額合法（arrears）** —— 罰款／費用可以超過按金，司機欠平台。
-- **`ADJUSTMENT` 單一管理員直接寫入** —— 由你揀。無雙人覆核，靠
+- **`ADJUSTMENT` 單一管理員直接寫入** —— 由你選擇。無雙人覆核，靠
   `created_by` 審計。若日後要防內部舞弊，需改成申請→批准流程。
   （**2026-10-01 更新**：爭議裁決的 `moves_money` 路徑已加 FINANCE 角色閘，
   是職責分離的第一步；`ADJUSTMENT` 本身仍為單人。）
 - **搜尋不逐次審計** —— 高頻讀取，寫滿審計表會淹沒真正的金錢事件。刻意。
 
-### C. 文件語言未統一（技術債，非阻塞）
+### C. ~~文件語言未統一~~ ✅ 已完成（2026-10-02）
 
-`docs/*.md` 多數以**粵語**寫成（同用戶偏好的書面語不一致）。`docs/IN_TRIP_REDESIGN.md`
-（2,031 行）尤其嚴重。§2.9 之後的新章節已改用書面語，但舊章節未回頭改。
-適合用一次 bulk 轉換處理（已有 `bulk-text-refactor` skill 可用）。
+`docs/*.md` 原本多數以**粵語**寫成，與用戶偏好的書面語不一致；
+`docs/IN_TRIP_REDESIGN.md`（2,031 行）尤其嚴重。
+**已於 2026-10-02 全部改寫為書面語（繁體）** —— `docs/` 全部 15 份文檔，
+外加 `README.md` / `admin-web/README.md` / `mobile/README.md`。
+驗證方式：以一份 30 餘字的粵語專用字清單（粵語才有的字與語法標記）掃描全部文檔，
+僅餘 `仲裁`、`關係` 等**本身即為書面語**的假陽性。
 
-### D. 行號引用失效
+### D. 行號引用失效 ✅ 已處理（2026-10-02）
 
-`app/models/` 佈局改動後，`docs/ADMIN_CONSOLE_DESIGN.md` 與
-`docs/PRODUCTION_READINESS.md` 內的**行號引用**已失效（檔案已重新編排）。
-內容本身仍正確，只是指向的行數不再準確。
+`app/models/` 佈局改動後，部分文檔的**行號引用**失效。處理方式按文檔性質分開：
+
+- **`docs/ADMIN_CONSOLE_DESIGN.md`**（設計文件，描述現況）→ **重新指向現行位置**：
+  `app/models/admin.py:195`→`:281`、`:50`→`:108`、`app/core/deps.py:192`→`:324`、
+  `app/api/admin_auth.py:408`→`:414`、`app/services/admin_auth_service.py:190`→`:177`、
+  `mobile/README.md:96`→`:135`。
+  同時更正一個**實質錯誤**：該文件原本斷言「稽核只有一個寫入點」「沒有 role 欄位」，
+  但三個缺口（稽核覆蓋／RBAC／爭議載體）其後均已修復，已加更正區塊說明。
+- **`docs/PRODUCTION_READINESS.md`**（帶日期的審計快照）→ **不改行號**，
+  保留「行號已失效」的註記。重新編號反而會誤導：那些引用指向的是**當時**
+  有問題的代碼，而該代碼其後已被改寫。**重新編號會假裝那些發現仍描述現況。**
+- **`docs/CODE_REVIEW_2026-10-01.md`** → 加「歷史文件」標記，數字刻意不更新。
 
 ---
 
-## 5. Push 狀態：❌ 仍然推唔到（token 未獲授權此 repo）— 已由用戶豁免
+## 5. Push 狀態：❌ 仍然推送不到（token 未獲授權此 repo）— 已由用戶豁免
 
-**已 commit，但推唔到。** 2026-10-01 實測：
+**已 commit，但推送不到。** 2026-10-01 實測：
 
 | 檢查 | 結果 |
 |---|---|
 | `git push`（token 放 URL，`-c credential.helper=`） | **403** `Write access to repository not granted` |
 | 同一 token `GET /user` | `"login": "dannisonluk"` —— **帳號正確** |
-| 同一 token `GET /repos/dannisonluk/realtaxihk` | **404** —— private repo 冇權限就係回 404 |
+| 同一 token `GET /repos/dannisonluk/realtaxihk` | **404** —— private repo 沒有權限就是回 404 |
 
-**先前本節寫「token 阻塞已解除」係錯嘅。** fine-grained PAT 係**逐個 repo
-授權**，所以「token 屬於 dannisonluk」同「token 掂得到 realtaxihk」係兩件
-獨立嘅事。**要你出手**：去 GitHub token 設定加 `dannisonluk/realtaxihk` +
+**先前本節寫「token 阻塞已解除」是錯的。** fine-grained PAT 是**逐個 repo
+授權**，所以「token 屬於 dannisonluk」同「token 能存取 realtaxihk」是兩件
+獨立的事。**要你出手**：去 GitHub token 設定加 `dannisonluk/realtaxihk` +
 `Contents: Read and write`。
 
 > **✅ 2026-10-01 用戶指示：「你不需要 push，只需要 commit」。** 最新一輪的
@@ -454,43 +580,43 @@ NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@pl
 > `git rev-list --count origin/main..HEAD`）；
 > 之前累積的 commit 亦一併未推。要真正同步，仍需上面的 token 授權。
 
-> **⚠️ 更正（2026-10-01 稍後）：本節原本寫「working tree clean」，當時係錯嘅。**
-> `git rev-list --count origin/main..HEAD` 只證明**已 commit 嘅嘢都推咗**，
-> 完全冇講過工作區嘅狀態。實測 `git status --short` 係 **61 個已修改 +
+> **⚠️ 更正（2026-10-01 稍後）：本節原本寫「working tree clean」，當時是錯的。**
+> `git rev-list --count origin/main..HEAD` 只證明**已 commit 的東西都推了**，
+> 完全沒有講過工作區的狀態。實測 `git status --short` 是 **61 個已修改 +
 > 33 個未追蹤**（1827 insertions, 1218 deletions）—— §2.9（models 拆包）、
-> §2.10（response_model 集中化）、呢一輪嘅 QR 改動、以及 `docs/` 入面
-> 8 份新文件**全部未 commit**。呢個就係「好似未做完」嘅實質原因。
+> §2.10（response_model 集中化）、這一輪的 QR 改動、以及 `docs/` 入面
+> 8 份新文件**全部未 commit**。這個就是「好似未做完」的實質原因。
 >
-> 兩個檢查答緊兩條唔同嘅問題，**唔可以互相代替**：
-> - `rev-list origin/main..HEAD` → **有冇未推嘅 commit**
-> - `git status --short` → **有冇未 commit 嘅改動**
+> 兩個檢查回答的是兩條不同的問題，**不可以互相代替**：
+> - `rev-list origin/main..HEAD` → **有沒有未推的 commit**
+> - `git status --short` → **有沒有未 commit 的改動**
 >
-> 已按邏輯分 7 個階段補 commit。現時 working tree **真係 clean**。
+> 已按邏輯分 7 個階段補 commit。現時 working tree **真的 clean**。
 
 ### 5a. 歷史記錄：token 權限診斷（保留，因其為可複用教訓）
 
-以下係當時嘅診斷，保留作為**方法論**參考（同類問題會再出現）：
+以下是當時的診斷，保留作為**方法論**參考（同類問題會再出現）：
 
 | 檢查 | 結果 |
 |---|---|
-| `git push`（credential helper 開著） | **掛住**，`timeout 120` 後 exit 124 |
-| `apply-ez/.env` 嘅 PAT | token **有效**，`GET /user` 回 `"login": "dannisonluk"`（帳號正確） |
+| `git push`（credential helper 開著） | **掛起**，`timeout 120` 後 exit 124 |
+| `apply-ez/.env` 的 PAT | token **有效**，`GET /user` 回 `"login": "dannisonluk"`（帳號正確） |
 | 同一個 token 讀 `dannisonluk/realtaxihk` | **404 Not Found** |
-| 匿名讀同一個 repo | 都係 404 |
+| 匿名讀同一個 repo | 都是 404 |
 
-兩個 404 併起來只指向一個結論：**repo 係 private，而個 token 冇被授權存取佢**。
-fine-grained PAT 係**逐個 repo 授權**嘅，所以「token 屬於 dannisonluk」同
-「token 掂得到 realtaxihk」係兩件獨立嘅事 —— 前者成立唔代表後者。
-GitHub 對無權限嘅 private repo 一律回 404 而唔係 403，就係唔想洩漏 repo 存在。
+兩個 404 併起來只指向一個結論：**repo 是 private，而該 token 沒有被授權存取它**。
+fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonluk」同
+「token 能存取 realtaxihk」是兩件獨立的事 —— 前者成立不代表後者。
+GitHub 對無權限的 private repo 一律回 404 而不是 403，就是不想洩漏 repo 存在。
 
 **解法**：GitHub → Settings → Developer settings → Fine-grained tokens →
 Repository access 加 `dannisonluk/realtaxihk` → Permissions 給
 **`Contents: Read and write`**。
 
-> ⚠️ **`git push` 喺呢部機係無聲掛住**，唔係網絡問題 —— 係
-> `git-credential-manager.exe` 等緊互動輸入，而工具會 timeout 殺掉佢，
-> 加上輸出被 pipe 住所以連一行都冇 flush。`git ls-remote` 照樣成功，令人
-> 誤以為 remote 通。要推就用 repo 自己嘅 token + 停用 credential helper：
+> ⚠️ **`git push` 在這部機器是無聲掛起**，不是網絡問題 —— 是
+> `git-credential-manager.exe` 正在等待互動輸入，而工具會 timeout 殺掉它，
+> 加上輸出被 pipe 緩衝所以連一行都沒有 flush。`git ls-remote` 照樣成功，令人
+> 誤以為 remote 通。要推就用 repo 自己的 token + 停用 credential helper：
 >
 > ```bash
 > TOKEN=$(grep '^GITHUB_PERSONAL_ACCESS_TOKEN=' .env | cut -d= -f2- | tr -d '\r\n"')
@@ -498,59 +624,75 @@ Repository access 加 `dannisonluk/realtaxihk` → Permissions 給
 >   push "https://x-access-token:${TOKEN}@github.com/dannisonluk/realtaxihk.git" main
 > ```
 
-> ⚠️ 另外：**唔好用一個會成功嘅寫入嚟做權限探測**。`PUT /contents/<path>` 探完
-> 唔止會話你知結果，仲會真係建立檔案同 push 一個 commit。要探就用
+> ⚠️ 另外：**不要用一個會成功的寫入來做權限探測**。`PUT /contents/<path>` 探完
+> 不止會告訴你結果，還會真的建立檔案同 push 一個 commit。要探就用
 > `POST /git/blobs`（只產生 dangling object），或者用 `curl -o /dev/null -D -`
 > 淨讀 header。
 
-> ⚠️ 缺少 `workflows` scope 時，push 會**整個被拒**（唔止係 workflow 檔），
+> ⚠️ 缺少 `workflows` scope 時，push 會**整個被拒**（不只是 workflow 檔），
 > 錯誤訊息會明寫 `refusing to allow a Personal Access Token to create or update
-> workflow ... without 'workflow' scope`。唔好猜邊個 permission 缺失 ——
-> 讀 response 嘅 `x-accepted-github-permissions` header，佢會直接指名。
+> workflow ... without 'workflow' scope`。不要猜哪個 permission 缺失 ——
+> 讀 response 的 `x-accepted-github-permissions` header，它會直接指名。
 
-### 5b. 部署目標未定 — 呢個係下一個根阻塞
+### 5b. 部署目標未定 — 這個是下一個根阻塞
 
-用戶 2026-09-30 確認：**未決定部署去邊**。§4A 表面睇係「7 項等 credentials」，
-但實際 5 項都係**下游**於呢個決定：
+用戶 2026-09-30 確認：**未決定部署到哪裡**。§4A 表面看似是「7 項等 credentials」，
+但實際 5 項都是**下游**於這個決定：
 
 | §4A 項目 | 真正阻塞 |
 |---|---|
-| P1-4 備份 destination | 去邊儲 |
-| P1-1 TLS 反代 | 喺邊度跑 |
-| P2-2 打款渠道 | 用邊個 provider |
-| Google Maps / FCM / WhatsApp | **真正嘅 key 阻塞（3 項）** |
+| P1-4 備份 destination | 儲存到哪裡 |
+| P1-1 TLS 反代 | 在哪裡運行 |
+| P2-2 打款渠道 | 用哪個 provider |
+| Google Maps / FCM / WhatsApp | **真正的 key 阻塞（3 項）** |
 | P2-4 Sentry | 只差一個 DSN |
 
-所以下一步唔係逐項啃，而係**先定部署目標**。定咗之後，backup destination
-同 TLS 反代就跟住解。`scripts/db_backup.py` 刻意設計成
-`--upload-cmd` / `--via auto`，就係唔想喺 destination 未定之前鎖死任何 provider。
+所以下一步不是逐項啃，而是**先定部署目標**。定了之後，backup destination
+同 TLS 反代就隨之解決。`scripts/ops/db_backup.py` 刻意設計成
+`--upload-cmd` / `--via auto`，就是不想在 destination 未定之前鎖死任何 provider。
 
 **建議已寫成兩份文件**：`docs/DEPLOY_TARGET_DECISION.md`（A/B/C 選型取捨）
-同 `docs/DEPLOYMENT_REQUIREMENTS.md`（選定之後嘅完整需求清單）。
+同 `docs/DEPLOYMENT_REQUIREMENTS.md`（選定之後的完整需求清單）。
 
 ---
 
-### 5c. ✅ `ruff format --check` 已通過
+### 5c. ⚠️ `ruff format --check` 曾再次漂移（已修复）
 
-`ruff format app/ tests/ scripts/` 已套用，並已 commit。現時兩個 gate 都乾淨：
+`ruff format` 曾套用并提交，两个 gate 当时都是干净的。**但 2026-10-02 复查发现
+`admin-web/web/tool/check_theme_tokens.py` 又变回未格式化**（由 `dd5a1e4`
+「bilingual UI」那次提交引入），所以 `ruff format --check .` 在 HEAD 上是
+**失败**的：
+
+```
+./.venv/Scripts/python.exe -m ruff format --check .  # 1 file would be reformatted
+```
+
+已修复，现在两个 gate 恢复干净：
 
 ```
 ./.venv/Scripts/python.exe -m ruff check .           # All checks passed!
-./.venv/Scripts/python.exe -m ruff format --check .  # 109 files already formatted
+./.venv/Scripts/python.exe -m ruff format --check .  # <N> files already formatted
 ```
 
-`ruff format` 是**純格式**改動（行寬合併／拆分），不影響行為 —— 套用後
-687 個測試全數通過可作佐證。
+> **不要引用那個 `N`。** 同一棵樹實測過 140／141／143，且與
+> `ruff check --show-files` 的數目不同 —— 該計數並不穩定。
+> 判準是 **exit code**，不是那個計數。
 
-已加入 CI gate 防復發（`.github/workflows/ci.yml`）：
+**教训**：`ruff check` 干净**不代表** `ruff format --check` 干净 —— 两者是独立的
+gate，lint 规则（E501 等）抓不到引号风格、行合并这类纯格式差异。`admin-web/`
+**不在** `extend-exclude` 内，所以前端目录下的 `.py` 工具脚本同样受格式门禁约束。
+
+`ruff format` 是**纯格式**改动（引号统一、行宽合并／拆分），不影响行为。
+
+CI gate（`.github/workflows/ci.yml`）：
 
 ```yaml
 - name: Format check (ruff format)
   run: uv run ruff format --check .
 ```
 
-> 注意：`.pre-commit-config.yaml` 仍然不存在，所以本地 commit 不會自動檢查；
-> 靠 CI 這道 gate 攔截。如要更早發現，可考慮加 pre-commit hook。
+> 注意：`.pre-commit-config.yaml` 仍然不存在，所以本地 commit 不会自动检查；
+> 靠 CI 这道 gate 拦截。这次漂移正是「本地不检查、CI 又没跑」的结果。
 
 ---
 
@@ -572,18 +714,18 @@ Repository access 加 `dannisonluk/realtaxihk` → Permissions 給
 | **`docs/REALTIME_POSITION_COST.md`** | 實時位置每 tick 成本實測 + 擴展天花板 + 5 項優化 | 已實測 |
 | `docs/LINTING.md` | ruff 規則集與理由 | 少變 |
 | `docs/PROJECT_UNDERSTANDING.md` | 專案架構理解（交付物規模） | ✅ 2026-10-01 已全面重寫 |
-| `.workbuddy-ai/memory/YYYY-MM-DD.md` | 逐日流水、含沙盒陷阱 | **append-only，唔整理** |
+| `.workbuddy-ai/memory/YYYY-MM-DD.md` | 逐日流水、含沙盒陷阱 | **append-only，不整理** |
 
 > **✅ 已修正**：`docs/PROJECT_UNDERSTANDING.md` 曾停在 `4333f2a`（寫 HEAD =
 > `446b7ee`、221 tests、54 Dart files、38 endpoints）。**2026-10-01 已全面重寫**，
-> 現值：**872 tests**、**81 paths / 88 operations**、**31 vitest**、
-> **131 ruff files**，並新增 RBAC 設計、`/auth/me` 雙形狀、`StarletteHTTPException`
-> cookie 陷阱等章節。（**HEAD 刻意唔寫死** —— 之前寫死過三次，每次之後嘅 commit
-> 都令佢變錯。）
+> 現值：**872 tests**、**81 paths / 88 operations**、**57 vitest**、
+> **140 ruff files**，並新增 RBAC 設計、`/auth/me` 雙形狀、`StarletteHTTPException`
+> cookie 陷阱等章節。（**HEAD 刻意不寫死** —— 之前寫死過三次，每次之後的 commit
+> 都令它變錯。）
 
 > 計 route 數要讀 OpenAPI（`GET /openapi.json` 數 `paths` / operations），
-> **唔好 grep route decorator** —— 一個 `@router.get` 加 `@router.post`
-> 疊埋同一個 function 會數漏。
+> **不要 grep route decorator** —— 一個 `@router.get` 加 `@router.post`
+> 疊加於同一個 function 會漏數。
 
 ---
 
@@ -591,24 +733,24 @@ Repository access 加 `dannisonluk/realtaxihk` → Permissions 給
 
 | 症狀 | 真因 | 解法 |
 |---|---|---|
-| `curl` 打 `127.0.0.1` 回 `502 upstream connect failed` | 沙盒 proxy 攔截，**即使個 port 根本無嘢聽** | 用 Python `urllib` + `ProxyHandler({})`；`NO_PROXY` 對 curl 唔可靠 |
-| `dart run` / `flutter` 全部死 | Avast 注入 `dart.exe`，Dart 開唔到 pipe（`CreateFile failed 231`） | `dart --packages=.dart_tool/package_config.json <script>`；LSP 用 `tool/dart_check.py .` |
-| `dart analyze` 死 | 同上（會 spawn analysis server） | 用 `tool/dart_check.py .` |
+| `curl` 打 `127.0.0.1` 回 `502 upstream connect failed` | 沙盒 proxy 攔截，**即使該 port 根本沒有東西在聽** | 用 Python `urllib` + `ProxyHandler({})`；`NO_PROXY` 對 curl 不可靠 |
+| **Dart 完全無法開啟 child process**（不限於 `cmd.exe`：`where` / `git` / `adb` / `dartaotruntime` 全部一樣）→ `flutter --version`、`flutter build apk`、`dart analyze`、`dart run` 全部失敗 | Dart 在 Windows 用**具名管道**接 child 的 stdio，沙盒令 `CreatePipe`/`CreateFile` 回 `ERROR_PIPE_BUSY (231)`。**停用沙盒也不行**，是 host 限制；Python 用匿名管道所以正常 | `dart --packages=.dart_tool/package_config.json <script>`（繞過 dartdev）；靜態檢查用 `python mobile/tool/dart_check.py` |
+| **`flutter build apk` 在此沙盒做不到**（已查證） | `flutter` 第一件事是跑 `git log` 取得版本新鮮度 → spawn `git.exe` → 231，**根本未到 Gradle**；就算到，Gradle wrapper 都要 `cmd.exe` | 在 host / CI 跑 `cd mobile && flutter build apk --debug`。此沙盒只可以驗證 Dart 源碼：`dart_check.py` + `run_tests.dart` + `verify_contract.dart` |
 | Background server 無聲死 | Bash tool call 內 `cmd &` 隨 shell 退出被收割 | 用 `run_in_background=true` + `TaskStop` |
-| 用 `conftest.ADMIN_ID` mint token 打 live server → 401 | 佢係每個 test session 隨機 `uuid4()` | 讀真 DB：`docker exec realtaxi-db psql -U realtaxi -d realtaxihk -c "SELECT id FROM users WHERE role='ADMIN';"`（DB user 係 `realtaxi` 唔係 `postgres`） |
-| 要 login 但 OTP code 唔喺 response（SEC-02） | 刻意設計 | `ALLOW_DEV_OTP=true` + code `123456` |
-| 本機完全冇 `pg_dump` / `psql` / `createdb` | 只有 `realtaxi-db` container 裡面有 | `scripts/db_backup.py --via auto` 自動 fallback 去 `docker exec` |
-| `subprocess.run(cmd, shell=True)` 回 0 但 command 係失敗嘅 | Windows 用 `cmd.exe`，`;` 唔係分隔符（`echo hi >&2; exit 7` → rc 0） | 明確 `subprocess.run(["sh","-c",cmd])` |
-| 傳 Windows 路徑入 `sh -c` 會被食反斜線 | `C:\Users\x` → `C:Usersx` | `.as_posix()` 傳正斜線 |
+| 用 `conftest.ADMIN_ID` mint token 打 live server → 401 | 它是每個 test session 隨機 `uuid4()` | 讀真 DB：`docker exec realtaxi-db psql -U realtaxi -d realtaxihk -c "SELECT id FROM users WHERE role='ADMIN';"`（DB user 是 `realtaxi` 不是 `postgres`） |
+| 要 login 但 OTP code 不在 response（SEC-02） | 刻意設計 | `ALLOW_DEV_OTP=true` + code `123456` |
+| 本機完全沒有 `pg_dump` / `psql` / `createdb` | 只有 `realtaxi-db` container 裡面有 | `scripts/ops/db_backup.py --via auto` 自動 fallback 至 `docker exec` |
+| `subprocess.run(cmd, shell=True)` 回 0 但 command 是失敗的 | Windows 用 `cmd.exe`，`;` 不是分隔符（`echo hi >&2; exit 7` → rc 0） | 明確 `subprocess.run(["sh","-c",cmd])` |
+| 傳 Windows 路徑入 `sh -c` 會被吞掉反斜線 | `C:\Users\x` → `C:Usersx` | `.as_posix()` 傳正斜線 |
 
 ---
 
-## 8. 一頁睇完
+## 8. 一頁看完
 
 ```
-✅ 後端 81 paths / 88 ops / 872 tests / ruff lint + format clean（131 files）— 生產就緒
+✅ 後端 81 paths / 88 ops / 872 tests / ruff lint + format clean — 生產就緒
 ✅ mobile 21 畫面 / 93 tests / 0 diagnostics      — 三角色完整
-✅ admin-web React / 31 vitest / typecheck + build clean / UI verifier PASS
+✅ admin-web React / 57 vitest / typecheck + build clean / UI verifier PASS
 ✅ 後台治理：四級 RBAC（rank 比較、live row 為權威）+ 審計覆蓋金錢／狀態改動
 ✅ 後台新增：帳戶管理 / 訂單監控 / 結算預覽+confirm token+CSV / 爭議 / 主體搜尋 / 頭像上傳
 ✅ 修好一個真 bug：AppContext 讀 `user.role` 當 rank（實為 principal kind）
@@ -634,13 +776,15 @@ Repository access 加 `dannisonluk/realtaxihk` → Permissions 給
 
 ✅ SEV-1 已修：admin session 改為 HttpOnly refresh cookie（SameSite=Strict）
    + CSRF double-submit；token refresh 路徑已通
-✅ ruff format --check 已通過（全樹 131 files）並加 CI gate — 不會復發
+⚠️ ruff format --check **曾復發**：`dd5a1e4` 引入未格式化的
+   `admin-web/web/tool/check_theme_tokens.py`，2026-10-02 已再修（全樹 clean）。
+   CI gate 有，但本地無 `.pre-commit-config.yaml`，所以漏檢了整整一輪
 ⚠️ SEV-2：`admin_auth.py` 用字串比對錯誤訊息決定 HTTP 狀態碼；
    locked 帳號回 401 而非 429（未改，屬客戶端體驗非安全洞）
 ⚠️ 根阻塞：**部署目標未定** — §4A 表面 7 項，實際 5 項下游於此（見 §5b）
-⬜ 真正等 credentials 嘅只有 3 家 provider：Google Maps / FCM / WhatsApp
+⬜ 真正等 credentials 的只有 3 家 provider：Google Maps / FCM / WhatsApp
 ✅ `docs/PROJECT_UNDERSTANDING.md` 已於 2026-10-01 全面重寫
-⚠️ `docs/*.md` 語言未統一（多數粵語，`IN_TRIP_REDESIGN.md` 尤其）—— 待一次 bulk 轉換
+✅ `docs/*.md` 已全部改寫為**書面語（繁體）**（2026-10-02，含 2,031 行的 `IN_TRIP_REDESIGN.md`）
 
 新文件：docs/SECURITY.md · docs/DEPLOYMENT_REQUIREMENTS.md
 ```

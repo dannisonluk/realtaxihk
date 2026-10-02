@@ -113,15 +113,42 @@ NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@pl
     --username ops-admin --password "$ADMIN_PASSWORD" --totp-secret "$ADMIN_TOTP_SECRET"
 ```
 
+Or do all of it with one command. `scripts/dev/serve_and_run_browser.py` holds the
+API, the console and the browser script in a single process, which is the only
+way a server survives between tool calls in this environment:
+
+```bash
+.venv/Scripts/python.exe scripts/dev/serve_and_run_browser.py \
+  "admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 \
+   --username verify-ui --password '<pw>' --totp-secret '<secret>'"
+```
+
+It starts `serve.py` **with `--dist`** — without it the legacy bundle is served
+and the verifier refuses to run, so the one-command form used to abort every
+time. It also resolves `NODE_PATH` to the nested Playwright install; the old
+hard-coded `node/workspace/node_modules` is empty, so `import 'playwright'`
+failed with `MODULE_NOT_FOUND` before the browser ever opened.
+
+Credentials do not have to be asked for. Provision an account, then enrol it
+headlessly (the account is created `SUPPORT`; the verifier drives the finance
+routes, so promote it):
+
+```bash
+ADMIN_PASSWORD='...' .venv/Scripts/python.exe scripts/ops/create_admin_account.py \
+    --username verify-ui --email verify-ui@realtaxihk.local --yes
+ADMIN_PASSWORD='...' .venv/Scripts/python.exe scripts/ops/enrol_admin_totp.py \
+    --username verify-ui --super-admin
+```
+
 ### Signing in
 
 The console signs in against `admin_accounts`, **not** `users`. It is username +
 password + a 6-digit TOTP code — a phone number cannot sign in, and the `users`
-table's `ADMIN` role (what `scripts/create_admin.py` grants) is not enough to get
+table's `ADMIN` role (what `scripts/ops/create_admin.py` grants) is not enough to get
 past the console's login screen. Create an admin account instead:
 
 ```bash
-ADMIN_PASSWORD='...' .venv/Scripts/python.exe scripts/create_admin_account.py \
+ADMIN_PASSWORD='...' .venv/Scripts/python.exe scripts/ops/create_admin_account.py \
     --username ops-admin --email ops-admin@realtaxihk.local --yes
 ```
 
@@ -329,14 +356,14 @@ GET  /api/v1/admin/fleets?limit=100&offset=0            -> 200 17.6ms
 GET  /api/v1/admin/fleets?status_filter=ACTIVE...       -> API unreachable: [WinError 10054]
 ```
 
-Evidence, all reproducible with the scripts in `scripts/`:
+Evidence, all measured on this machine:
 
 | Probe | Result |
 |---|---|
-| `scripts/probe_sequential.py` (20 requests, one after another) | 9 ok, then **every** later request times out |
-| `scripts/probe_concurrency.py` (10 at once) | 9 ok, 1 times out at 30s |
-| `scripts/probe_retry.py` (3 retries each) | the wedged requests fail **all three** times |
-| `scripts/probe_fleet_http.py` (the console's 6 calls, direct) | server logs 6×200 in ~80ms; one client times out at 90s |
+| `scripts/verify/probe_sequential.py` (20 requests, one after another) | 9 ok, then **every** later request times out |
+| `scripts/verify/probe_concurrency.py` (10 at once) | 9 ok, 1 times out at 30s |
+| `scripts/verify/probe_retry.py` (3 retries each) | the wedged requests fail **all three** times |
+| an ad-hoc probe of the console's 6 fleet calls, direct — **not committed** (a throwaway) | server logs 6×200 in ~80ms; one client times out at 90s |
 | bare `http.server` on the **same port** (20 requests) | **20/20 ok** — the OS loopback stack is fine |
 | 20 requests over **one reused** connection | still stops at 9 — it is not a connection count |
 | a fresh API process, same probe | a fresh run of up to 15+ requests |
@@ -358,9 +385,9 @@ chance. Four mitigations exploit that rather than pretending to fix it:
    still an order of magnitude above the p100 for a healthy request (<200ms), so
    it never fires on a working API, and a wedged batch frees the pool three times
    sooner.
-2. **The API is restarted, not just retried.** `scripts/api_supervisor.py`
+2. **The API is restarted, not just retried.** `scripts/dev/api_supervisor.py`
    health-checks the API and restarts uvicorn the moment it stops answering; a
-   fresh process serves a fresh budget. `scripts/serve_and_run_browser.py` starts
+   fresh process serves a fresh budget. `scripts/dev/serve_and_run_browser.py` starts
    the API this way. Without it the console cannot code around a server that has
    stopped answering, and a retry just re-hits the dead process.
 3. **The client retries.** `api.js` retries a **GET** up to three times on a

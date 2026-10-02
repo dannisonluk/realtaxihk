@@ -289,4 +289,4 @@ epsilon 內縮。
 - `ADMIN_AUTH.md` —— 管理員認證模型與 authenticator 選型
 - `DEPLOYMENT_REQUIREMENTS.md` —— 部署需求與 gap list
 - `WORK_SUMMARY.md` —— 整體工作總覽
-- 驗證方法：`scripts/security_verify.py`、`tests/test_security_hardening.py`
+- 驗證方法：`scripts/verify/security_verify.py`、`tests/test_security_hardening.py`

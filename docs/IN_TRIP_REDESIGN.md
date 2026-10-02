@@ -73,22 +73,22 @@ ORDER_TRANSITIONS = {
 **(a) `IN_TRIP` 是死胡同 —— 只能向前完成。**
 `IN_TRIP: {COMPLETED}`。途中撞車、乘客中途要求改目的地、乘客願意落車而司機同時
 在路邊等客，全部都無法表達。實際上系統會逼營運同事「照按 complete」然後私下處理，
-即係帳目同現實脫節。
+即是帳目與現實脫節。
 
 **(b) 平台從未向「行程」收費。**
-現行收入模型係**每週服務費**（`weekly_fee_hkd = 200`，`WEEKLY_FEE_DEDUCTION`）。
+現行收入模型是**每週服務費**（`weekly_fee_hkd = 200`，`WEEKLY_FEE_DEDUCTION`）。
 `LedgerEntryType` 只有 DEPOSIT_TOPUP / WEEKLY_FEE_DEDUCTION / PENALTY_DEDUCTION /
-REFUND / ADJUSTMENT —— **冇「按趟收費」呢個 type**。
+REFUND / ADJUSTMENT —— **沒有「按趟收費」這個 type**。
 
 **(c) 乘客端沒有付款工具。**
-`DriverDeposit` 只覆蓋司機；乘客 `User` 冇錢包、冇綁卡、冇信用額。
+`DriverDeposit` 只覆蓋司機；乘客 `User` 沒有錢包、沒有綁卡、沒有信用額。
 `fare_calculator.py` 的免責聲明明確寫：
 
 > 「車費估價僅供參考。平台僅屬資訊中介，最終車資由乘客與司機自願協商確認
 > （香港法例第374D章）。」
 
-即係**車資唔經平台**，係司機收現金 / 自己收款。所以「$5 平台費」唔可能係
-「由車資抽成」—— 平台冇收到過車資。呢點係 §9 的 DECISION 之一。
+即是**車資不經平台**，是司機收現金 / 自己收款。所以「$5 平台費」不可能是
+「由車資抽成」—— 平台沒有收到過車資。這點是 §9 的 DECISION 之一。
 
 ---
 
@@ -107,7 +107,7 @@ class OrderStatus(str, enum.Enum):
     IN_TRIP = "IN_TRIP"
     # --- 新增 ---
     DESTINATION_CHANGED = "DESTINATION_CHANGED"  # 行程中改目的地（非終態，回落 IN_TRIP）
-    INTERRUPTED = "INTERRUPTED"              # 行程提前結束（終態，即時生效，唔等 admin）
+    INTERRUPTED = "INTERRUPTED"              # 行程提前結束（終態，即時生效，不等 admin）
     # --- 原有終態 ---
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
@@ -116,14 +116,14 @@ class OrderStatus(str, enum.Enum):
 > **修訂（依用戶第二輪澄清）**：原本設計有 `INTERRUPT_PENDING`（等 admin 裁決）
 > 這個中間態，**已刪除**。理由：
 >
-> - 改地點**唔涉及 admin** —— 行程已經開始、平台已經收到費用，改地點只是重新
+> - 改地點**不涉及 admin** —— 行程已經開始、平台已經收到費用，改地點只是重新
 >   估價，行程繼續。
-> - 中斷**即時生效**，雙方都**唔需要等 admin**。行程真的出事（撞車、衝突），
->   要人即刻停低，唔可以要求佢等 15 分鐘等一個 admin 上線。
+> - 中斷**即時生效**，雙方都**不需要等 admin**。行程真的出事（撞車、衝突），
+>   要人立即停下，不可以要求他等 15 分鐘等一個 admin 上線。
 > - admin 只在**事後**介入 —— 處理 dispute、判斷款項誰屬（見 §4.4）。
 >
-> 呢個修訂令整個設計**更簡單**（少一個狀態、少一個凍結期），亦更符合現實：
-> 一個乘客在撞車後需要的是「我唔想繼續」，唔係「我提交咗申請」。
+> 這個修訂令整個設計**更簡單**（少一個狀態、少一個凍結期），亦更符合現實：
+> 一個乘客在撞車後需要的是「我不想繼續」，不是「我提交了申請」。
 
 > **修訂（依用戶第三輪）**：新增 `PENDING_ARRIVAL_CONFIRM`。
 > 司機按「已到達」不再直接轉 `DRIVER_ARRIVED`，而是先進這個「待乘客核對」態。
@@ -134,13 +134,13 @@ class OrderStatus(str, enum.Enum):
 | 狀態 | 為什麼需要 | 為什麼不是別的 |
 |---|---|---|
 | `PENDING_ARRIVAL_CONFIRM` | 「到達」必須雙重驗證（GPS + 乘客尾 4 位）。這個態就是「GPS 過了、等乘客核對」。 | **不能跳過**：若司機一按就等於到達，司機就可以在 500 米外單方面剝奪乘客的取消權。 |
-| `DESTINATION_CHANGED` | 需求明確要求「cancel 與 change destination 區分狀態」。 | **非常態（non-terminal）**：改目的地之後行程繼續，所以它會轉返 `IN_TRIP`。**不涉及 admin。** |
-| `INTERRUPTED` | 行程提前結束，必須與 `COMPLETED` 分開，否則收入報表會把「冇行完的單」算成完成單。**終態，即時生效。** | 不重用 `CANCELLED`：取消是「未出發」相關，中斷是「已出發但提前結束」，理賠、結算、統計三者都不同。 |
+| `DESTINATION_CHANGED` | 需求明確要求「cancel 與 change destination 區分狀態」。 | **非常態（non-terminal）**：改目的地之後行程繼續，所以它會轉回 `IN_TRIP`。**不涉及 admin。** |
+| `INTERRUPTED` | 行程提前結束，必須與 `COMPLETED` 分開，否則收入報表會把「沒有行完的單」算成完成單。**終態，即時生效。** | 不重用 `CANCELLED`：取消是「未出發」相關，中斷是「已出發但提前結束」，理賠、結算、統計三者都不同。 |
 
-> **核心不變式：`CANCELLED` 唔再從任何已驗證到達之後的狀態可達。**
-> 到達（`DRIVER_ARRIVED`）之後就冇「取消」，只有「中斷」。
-> 呢個區分令一切非正常結束都留下結構化的原因（`interruption_reason`），
-> 供 admin **事後**判決 —— 而唔是行程中卡住等人。
+> **核心不變式：`CANCELLED` 不再從任何已驗證到達之後的狀態可達。**
+> 到達（`DRIVER_ARRIVED`）之後就沒有「取消」，只有「中斷」。
+> 這個區分令一切非正常結束都留下結構化的原因（`interruption_reason`），
+> 供 admin **事後**判決 —— 而不是行程中卡住等人。
 
 ### 2.2 新轉移表
 
@@ -167,9 +167,9 @@ ORDER_TRANSITIONS: dict[OrderStatus, set[OrderStatus]] = {
     IN_TRIP: {
         COMPLETED,
         DESTINATION_CHANGED,
-        INTERRUPTED,          # 即時，唔經 admin
+        INTERRUPTED,          # 即時，不經 admin
     },
-    # 改目的地：行程繼續，所以一定會轉返 IN_TRIP
+    # 改目的地：行程繼續，所以一定會轉回 IN_TRIP
     DESTINATION_CHANGED: {
         IN_TRIP,
         COMPLETED,               # 改完即刻到達，是可能的
@@ -184,7 +184,7 @@ ORDER_TRANSITIONS: dict[OrderStatus, set[OrderStatus]] = {
 **不變式（應寫成 property-based test，不只是一個 dict）：**
 
 1. `CANCELLED` 的前驅**只能**是 `CREATED` / `BROADCASTING` / `ACCEPTED` /
-   `PENDING_ARRIVAL_CONFIRM`。**冇任何 `DRIVER_ARRIVED` 或之後的狀態可以走到
+   `PENDING_ARRIVAL_CONFIRM`。**沒有任何 `DRIVER_ARRIVED` 或之後的狀態可以走到
    `CANCELLED`。**
 2. 三個終態 `{COMPLETED, INTERRUPTED, CANCELLED}` 的出度為零。
 3. 「有 `completed_at`」的所有單，狀態必為 `COMPLETED`。
@@ -207,7 +207,7 @@ ORDER_TRANSITIONS: dict[OrderStatus, set[OrderStatus]] = {
                         ┌───────────────────────────────────────────────────┴──────────────┤
                         v                        v                                         v
                 INTERRUPTED ●            COMPLETED ●                          DESTINATION_CHANGED
-                (即時，唔等 admin)                                                  │    │
+                (即時，不等 admin)                                                  │    │
                         ^                                                           │    │
                         │                                                           │    └──> COMPLETED ●
                         └───────────────────────────────────────────────────────────┘
@@ -215,7 +215,7 @@ ORDER_TRANSITIONS: dict[OrderStatus, set[OrderStatus]] = {
 
   ● = 終態（出度為零）
   DRIVER_ARRIVED 之後：CANCELLED 不可達 —— 只有 COMPLETED / INTERRUPTED。
-  admin 唔在路徑上 —— 佢只在事後處理 dispute，唔阻塞任何轉移。
+  admin 不在路徑上 —— 它只在事後處理 dispute，不阻塞任何轉移。
 ```
 
 ---
@@ -228,11 +228,11 @@ ORDER_TRANSITIONS: dict[OrderStatus, set[OrderStatus]] = {
 ALTER TABLE orders
   -- 出發時間。IN_TRIP 的起點，$5 平台費的計費基準，也是「行程時長」的起點。
   ADD COLUMN started_at               timestamptz,
-  -- 平台費快照。為什麼要存快照而唔係查 config：一個歷史訂單的金額，
-  -- 唔應該因為未來改 config 而改變（同 tariff_version 的理由一樣）。
+  -- 平台費快照。為什麼要存快照而不是查 config：一個歷史訂單的金額，
+  -- 不應該因為未來改 config 而改變（與 tariff_version 的理由一樣）。
   ADD COLUMN platform_fee_hkd         numeric(10,2),
   ADD COLUMN platform_fee_charged_at  timestamptz,
-  -- 改目的地：保留原始目的地，唔覆蓋，令「實際行程 vs 原先行程」可審計。
+  -- 改目的地：保留原始目的地，不覆蓋，令「實際行程 vs 原先行程」可審計。
   ADD COLUMN original_dropoff_address text,
   ADD COLUMN original_dropoff_location geography(POINT, 4326),
   ADD COLUMN destination_changed_at   timestamptz,
@@ -241,7 +241,7 @@ ALTER TABLE orders
   ADD COLUMN interruption_reason      varchar(32),   -- enum, 見 3.2
   ADD COLUMN interrupted_at           timestamptz,
   ADD COLUMN interrupted_by_kind      varchar(16),   -- 'passenger' | 'driver'
-  -- 到達驗證（見 §5.1）：到達唔再係司機單方面說了算。
+  -- 到達驗證（見 §5.1）：到達不再是司機單方面說了算。
   ADD COLUMN arrival_claimed_at       timestamptz,   -- 司機按「已到達」的時間
   ADD COLUMN arrival_gps_distance_m   numeric(7,1),  -- 按鈕當時與上車點的距離
   ADD COLUMN arrival_confirmed_at     timestamptz,   -- 乘客核對尾 4 位成功的時間
@@ -258,7 +258,7 @@ ALTER TABLE orders
 > 後者是「到達已證實」。若混為一談，「司機按了 5 次才成功」這個事實就消失了。
 > `driver_arrived_at` 現在應該只在 `arrival_confirmed_at` 有值時才寫。
 
-> **為什麼 `original_dropoff_*` 而唔係建 `order_destination_changes` 子表？**
+> **為什麼 `original_dropoff_*` 而不是建 `order_destination_changes` 子表？**
 > 若只改一次（絕大多數情況），子表是殺雞用牛刀。若需要完整改動史，
 > 就在同一張 migration 加子表（見 §3.3 的 `order_events`）—— 兩者不衝突：
 > 欄位供報表做 `WHERE destination_change_count > 0` 的快速過濾，
@@ -268,7 +268,7 @@ ALTER TABLE orders
 
 ```python
 class InterruptionReason(str, enum.Enum):
-    """中斷原因。刻意用 enum 而唔係自由文字：
+    """中斷原因。刻意用 enum 而不是自由文字：
     這是分派給 admin 的判決依據，需要可統計、可分派規則。"""
 
     ACCIDENT = "ACCIDENT"                  # 撞車 / 交通意外
@@ -290,7 +290,7 @@ class InterruptionReason(str, enum.Enum):
 ### 3.3 新增 `order_disputes` 表（**事後**處理，非阻塞）
 
 > **修訂**：原本的 `order_interrupt_requests` 表（附 partial unique index 保證
-> 同時只有一個 PENDING）**已不需要** —— 因為中斷唔再經審批。取而代之的是一張
+> 同時只有一個 PENDING）**已不需要** —— 因為中斷不再經審批。取而代之的是一張
 > **事後** dispute 表：中斷即時生效，admin 之後才判斷錢誰屬。
 
 ```sql
@@ -307,7 +307,7 @@ CREATE TABLE order_disputes (
     status          varchar(16) NOT NULL DEFAULT 'OPEN',
                     -- OPEN | INVESTIGATING | RESOLVED | ESCALATED | CLOSED
     assigned_admin_id uuid REFERENCES admin_accounts(id),   -- 可為 NULL，未指派
-    -- 裁決：錢誰屬。寫成明確欄位而唔係從 ledger 反推 —— 反推會令
+    -- 裁決：錢誰屬。寫成明確欄位而不是從 ledger 反推 —— 反推會令
     -- 「未裁決」與「裁決為 NONE」無法區分。
     resolution      varchar(24),   -- 'NONE' | 'CHARGE_PASSENGER' | 'CHARGE_DRIVER'
                                    -- | 'REFUND_PLATFORM_FEE' | 'WAIVED_PLATFORM_FEE'
@@ -319,7 +319,7 @@ CREATE TABLE order_disputes (
     updated_at      timestamptz NOT NULL DEFAULT now()
 );
 
--- 一張單可以有多個 dispute（乘客 + 司機各提一個），但已解決的唔應該重複開
+-- 一張單可以有多個 dispute（乘客 + 司機各提一個），但已解決的不應該重複開
 CREATE INDEX ix_disputes_open
     ON order_disputes (status, sla_due_at)
     WHERE status IN ('OPEN', 'INVESTIGATING', 'ESCALATED');
@@ -327,7 +327,7 @@ CREATE INDEX ix_disputes_open
 CREATE INDEX ix_disputes_order ON order_disputes (order_id);
 ```
 
-**觸發規則（自動開單，唔靠人記得開）：**
+**觸發規則（自動開單，不靠人記得開）：**
 
 | 觸發 | `source` | 預設 `against_kind` |
 |---|---|---|
@@ -337,7 +337,7 @@ CREATE INDEX ix_disputes_order ON order_disputes (order_id);
 | admin 手動開單 | `ADMIN_CREATED` | 由 admin 指定 |
 
 > **為什麼自動開單？** 中斷之後「誰是誰非」需要有人判。如果靠當事人自己
-> 去開單，出事那一刻人人都忙著處理現場，之後就冇人記得。**由系統在
+> 去開單，出事那一刻人人都忙著處理現場，之後就沒有人記得。**由系統在
 > `INTERRUPTED` 的同一 transaction 內開單**，保證每一宗中斷都有一張有 owner、
 > 有 SLA 的記錄。
 
@@ -359,7 +359,7 @@ CREATE INDEX ix_order_events_order_time ON order_events (order_id, created_at);
 ```
 
 **這張表解決什麼問題？** 現在一張有爭議的行程，要重建發生過什麼，只能靠
-`orders` 的最終欄位值 + 一堆 log line。有了事件表，「呢張單 14:03 改過目的地、
+`orders` 的最終欄位值 + 一堆 log line。有了事件表，「這張單 14:03 改過目的地、
 14:20 司機按了中斷（撞車）、14:21 系統自動開 dispute」是一條可讀的時間軸。
 **這與 `AdminAuditLog` 是不同層**：audit log 答「哪個 admin 做了什麼」，
 order_events 答「這張單發生過什麼」。兩者都應該有。
@@ -378,12 +378,12 @@ class LedgerEntryType(str, enum.Enum):
     DISPUTE_ADJUSTMENT = "DISPUTE_ADJUSTMENT"      # 新增：dispute 裁決的加收 / 退還
 ```
 
-> `native_enum=False`，所以加 enum member **唔需要** migration 去改 DB type
+> `native_enum=False`，所以加 enum member **不需要** migration 去改 DB type
 > —— 只需確認欄位長度夠（`SAEnum` 預設 VARCHAR(30)，最長的
 > `CANCELLATION_PENALTY` 是 20 字元，安全）。
 >
 > **`PLATFORM_TRIP_FEE` 的收款方式已拍板，見 §9 DECISION-1。**
-> **`CANCELLATION_PENALTY` 是即時扣款（唔等裁決），見 §9 DECISION-5。**
+> **`CANCELLATION_PENALTY` 是即時扣款（不等裁決），見 §9 DECISION-5。**
 
 ### 3.6 預約服務（Pre-booking）所需欄位與表
 
@@ -397,19 +397,19 @@ class LedgerEntryType(str, enum.Enum):
 #### 3.6.1 為什麼預約服務對這個業務特別有價值
 
 > **修訂（依用戶第五輪，重要）**：**地標是「終點 / 下客點」，不是上客點。**
-> 顯示方式：司機睇單時，**地圖上直接標出終點地標**，令司機一眼就知
-> 「呢張單去機場 / 去迪士尼」，可以快速判斷接唔接。
+> 顯示方式：司機看單時，**地圖上直接標出終點地標**，令司機一眼就知
+> 「這張單去機場 / 去迪士尼」，可以快速判斷接不接。
 > **完全不考慮上客 —— 上客點永遠是乘客即時的實際位置。**
 >
 > 這一點簡化了整個設計：
 > - `landmarks` **不需要 `pickup_point` 欄位**（見 §3.6.3）。
-> - 邊境口岸的「港方上車點」問題**唔再存在** —— 因為只做**終點顯示**，
+> - 邊境口岸的「港方上車點」問題**不再存在** —— 因為只做**終點顯示**，
 >   而去口岸的乘客是由香港市區上車、**落客在口岸附近**。
 >   所以口岸的 `location` 用**港方實際可落客的位置**（見 §9 DECISION-7）；
 >   若直接用口岸大樓的中心座標，`require_in_hong_kong` 會在**建立訂單時**
 >   就 422 拒絕（實測：深圳灣原座標曾被判為境外，現已修正；文錦渡原座標仍為境外，
 >   故改用紅橋新村文錦渡路的港方車道路段）。
-> - 司機 filter 的分類，本質是「**我想去邊類終點**」——
+> - 司機 filter 的分類，本質是「**我想去哪類終點**」——
 >   機場單的價值是「回程可能有單」，迪士尼單的價值是「閉園時段定了」，
 >   兩者的**營運模式**不同，所以值得分開 filter。
 
@@ -426,8 +426,8 @@ class LedgerEntryType(str, enum.Enum):
 即時單是「誰先看到誰搶」，預約單是「誰先規劃誰得」。這改變了司機的
 工作模式，由「守株待兔」變成「排班」。
 
-> **地標在司機端是「目的地標記」** —— 司機睇到「→ 香港國際機場」
-> 比睇到「→ 22.3126, 113.9173」有意義得多。所以 `landmarks` 的核心價值
+> **地標在司機端是「目的地標記」** —— 司機看到「→ 香港國際機場」
+> 比看到「→ 22.3126, 113.9173」有意義得多。所以 `landmarks` 的核心價值
 > 是**把座標翻譯成司機認得的目的地**，同時提供 filter 的分類維度。
 
 #### 3.6.2 `orders` 新增欄位
@@ -444,14 +444,14 @@ ALTER TABLE orders
   -- 目的地地標（見 3.6.4）。指向 landmarks 表，可為 NULL（自由輸入的目的地）。
   ADD COLUMN dropoff_landmark_id   uuid REFERENCES landmarks(id) ON DELETE SET NULL,
   -- 預約單的狀態：'PENDING'（未開始廣播）| 'BROADCASTING' | 'MATCHED'
-  -- 用獨立欄位而唔係塞進 OrderStatus：預約的「未開始」是一個**時間**概念，
+  -- 用獨立欄位而不是塞進 OrderStatus：預約的「未開始」是一個**時間**概念，
   -- 而 OrderStatus 是**流程**概念。混在一起會令狀態機多出一個只在預約單
   -- 才合理的狀態，污染所有即時單的邏輯。
   ADD COLUMN prebook_state         varchar(16);
 ```
 
 > **為什麼 `prebook_state` 不進 `OrderStatus`？** 一個 `CREATED` 的預約單
-> 與一個 `CREATED` 的即時單，在**流程上**是同一個位置（都係「未廣播」）。
+> 與一個 `CREATED` 的即時單，在**流程上**是同一個位置（都是「未廣播」）。
 > 差別只在**時間**：預約單要等到 `prebook_visible_from` 才開始廣播。
 > 用一個獨立的欄位 + 一個背景 job 在到點時把 `OrderStatus` 由 `CREATED`
 > 推到 `BROADCASTING`，就保留了 `OrderStatus` 的純粹性。
@@ -473,7 +473,7 @@ CREATE TABLE landmarks (
     -- 分類令司機能 filter：'AIRPORT' | 'BORDER' | 'THEME_PARK' | 'MALL'
     -- | 'OFFICE' | 'WATERFRONT' | 'VENUE' | 'HOSPITAL' | 'OTHER'
     category     varchar(24) NOT NULL,
-    -- 終點座標。用「司機能實際停車落客」的位置，唔一定是建築物幾何中心。
+    -- 終點座標。用「司機能實際停車落客」的位置，不一定是建築物幾何中心。
     -- 必須落在 is_in_hong_kong() 內，否則建單即 422。
     location     geography(POINT, 4326) NOT NULL,
     -- 地理圍欄半徑（米）：判斷「終點是否就是這個地標」用這個。
@@ -487,10 +487,10 @@ CREATE INDEX ix_landmarks_location ON landmarks USING gist (location);
 CREATE INDEX ix_landmarks_category ON landmarks (category) WHERE is_active;
 ```
 
-> **`location` 是「落客點」而唔是「地標中心」。** 兩者通常很接近，
+> **`location` 是「落客點」而不是「地標中心」。** 兩者通常很接近，
 > 但對機場 / 迪士尼 / 紅館這類地方，**的士落客區**可能在幾百米外。
-> 寧可填落客區，唔好填建築物中心 —— 因為司機睇地圖是要**開車去**，
-> 唔是去打卡。**具體落客座標仍需人手覆核**（見 §9 DECISION-7）。
+> 寧可填落客區，不要填建築物中心 —— 因為司機看地圖是要**開車去**，
+> 不是去打卡。**具體落客座標仍需人手覆核**（見 §9 DECISION-7）。
 
 **初始資料：19 個即用地標（含深圳灣口岸，見 §9 DECISION-7），
 座標全部經 `is_in_hong_kong()` 驗證。**
@@ -539,7 +539,7 @@ CREATE INDEX ix_landmarks_category ON landmarks (category) WHERE is_active;
 > ⚠️ **`location` 的座標仍需人手覆核落客位置（不是建築物中心）。**
 > `HKIA` 應填**的士落客區**、迪士尼用**的士上落客區**、紅館用**暢運道對出**。
 > 我填入的是社群地圖的地標中心，**作為開發用途足夠，上線前必須覆核** ——
-> 因為司機睇地圖是要**開車去落客**，座標偏幾百米就會走錯入口。
+> 因為司機看地圖是要**開車去落客**，座標偏幾百米就會走錯入口。
 
 #### 3.6.4 預約單的流程
 
@@ -563,12 +563,12 @@ CREATE INDEX ix_landmarks_category ON landmarks (category) WHERE is_active;
   → 直到以下任一事件發生才結束：
       (a) 有司機搶到（→ ACCEPTED, prebook_state='MATCHED'）
       (b) 到達 scheduled_pickup_at 仍無人接（→ 升級為即時廣播）
-  → **不要實作「廣播 N 分鐘後收回」** —— 那會令乘客在到點前冇車
+  → **不要實作「廣播 N 分鐘後收回」** —— 那會令乘客在到點前沒有車
 
-司機睇單（關鍵：地圖顯示）
+司機看單（關鍵：地圖顯示）
   → 即時單：上車點 pin + 終點 pin
   → 預約單：**終點地標以圖示 + 名稱顯示**（「→ 香港國際機場」），
-    令司機一眼辨識，唔需要自己看座標猜
+    令司機一眼辨識，不需要自己看座標猜
   → 符合司機 filter 分類的，會主動推送
 
 司機搶單
@@ -576,8 +576,8 @@ CREATE INDEX ix_landmarks_category ON landmarks (category) WHERE is_active;
   → status: BROADCASTING → ACCEPTED, prebook_state = 'MATCHED'
 ```
 
-> **司機睇單時見到的是「終點地標」** —— 這是整個功能的介面核心。
-> 一張「→ 香港國際機場，21:30」的預約單，對一個想搵長途單的司機，
+> **司機看單時見到的是「終點地標」** —— 這是整個功能的介面核心。
+> 一張「→ 香港國際機場，21:30」的預約單，對一個想尋找長途單的司機，
 > 價值遠高於一個座標。**地標是把座標翻譯成可判斷的資訊。**
 
 **參數（已由用戶在 DECISION-6 拍板）：**
@@ -588,14 +588,14 @@ CREATE INDEX ix_landmarks_category ON landmarks (category) WHERE is_active;
 | 最短預約提前量 | **2 小時** | 少於 2 小時 → 422 `TOO_SOON`，引導走即時單 |
 | 最長預約提前量 | **3 天** | 超過 3 天 → 422 `TOO_FAR` |
 | 可見性終止條件 (a) | 有司機搶到 → 對其他司機立即消失 | 與即時單的 `GrabService` 一致（Redis 原子） |
-| 可見性終止條件 (b) | 到 `scheduled_pickup_at` 仍未有人搶 → 自動轉為即時廣播（加大半徑） | 否則乘客會靜靜哋冇車 |
+| 可見性終止條件 (b) | 到 `scheduled_pickup_at` 仍未有人搶 → 自動轉為即時廣播（加大半徑） | 否則乘客會靜靜地沒有車 |
 
 > **`broadcast_lead_time` 的語意（第六輪釐清）**：它是「**多早開始曝光**」，
 > 不是「**曝光多久**」。我上一輪把它讀成後者，所以誤以為 30 分鐘太短
 > 而建議調到 45–60 分鐘 —— 那個疑問的前提是錯的，見 §9 DECISION-6。
 
 > **「未匹配自動升級為即時廣播」是一個必須做的設計**，不是可選項。
-> 若預約單到時間冇人接就靜靜取消，乘客會在 21:00 站在迪士尼門口冇車。
+> 若預約單到時間沒有人接就靜靜取消，乘客會在 21:00 站在迪士尼門口沒有車。
 > 這比一開始就拒絕預約更糟 —— 至少拒絕是即時知道的。
 
 #### 3.6.5 司機端的 filter（用戶明確要求）
@@ -627,7 +627,7 @@ CREATE INDEX ix_landmarks_category ON landmarks (category) WHERE is_active;
 ```
 
 > **Filter 的 checkbox 與 `landmarks.category` 是 1:1 對應** ——
-> 唔要另設一套 UI 專用分類，否則兩邊會靜靜漂移。
+> 不要另設一套 UI 專用分類，否則兩邊會靜靜漂移。
 > UI 只是把 9 個 enum 值渲染成中文標籤。
 >
 > **Filter 篩選的是「終點類別」**（我想去哪類地方），
@@ -638,10 +638,10 @@ CREATE INDEX ix_landmarks_category ON landmarks (category) WHERE is_active;
 ```sql
 CREATE TABLE driver_booking_preferences (
     driver_profile_id uuid PRIMARY KEY REFERENCES driver_profiles(id) ON DELETE CASCADE,
-    -- 想接的「終點」地標分類（array 而唔係多行，因為這是純過濾條件，沒有獨立生命週期）
+    -- 想接的「終點」地標分類（array 而不是多行，因為這是純過濾條件，沒有獨立生命週期）
     categories        varchar(24)[] NOT NULL DEFAULT '{}',
     -- 司機想「由哪一區開始」接單。這是**自由文字的地區名**，不是地標 ——
-    -- 因為地標是終點，司機的起點偏好是「我通常喺觀塘開工」這種區位概念。
+    -- 因為地標是終點，司機的起點偏好是「我通常在觀塘開工」這種區位概念。
     preferred_origin_area varchar(64),
     -- 可接的時段（每日，當地時間）
     available_from    time,
@@ -653,7 +653,7 @@ CREATE TABLE driver_booking_preferences (
 > **修訂（第五輪）**：原本的 `preferred_origin_landmark_id` 已改為
 > `preferred_origin_area`（自由文字 / 地區 enum）。
 > 原因：**地標是終點**，用終點地標做「起點偏好」在語意上是錯的。
-> 「我通常喺觀塘開工」的正確表達是一個**地區**，不是一個地標。
+> 「我通常在觀塘開工」的正確表達是一個**地區**，不是一個地標。
 > （若日後要結構化，可改成 `districts` 對照表，但現階段自由文字足夠。）
 
 **通知邏輯：** 背景 job 推送新預約單時，只推送給符合 filter 的司機。
@@ -849,20 +849,20 @@ POST /api/v1/orders/{order_id}/change-destination
 
 1. 校驗 `order.status in {IN_TRIP, DESTINATION_CHANGED}`，否則 409。
 2. 若 `destination_change_count == 0`：先把**現有** `dropoff_*` 抄到
-   `original_dropoff_*`（只抄一次，唔覆蓋，令「最初想去邊」永久可查）。
+   `original_dropoff_*`（只抄一次，不覆蓋，令「最初想去哪裡」永久可查）。
 3. `assert_order_transition(status, DESTINATION_CHANGED)`。
 4. 呼叫 `calculate_fare()` 用**新**距離重新估價，寫入 `orders.fare_json`
    的新版本（`is_estimate=True`），同時 `orders.estimated_total_hkd` 更新。
 5. `destination_change_count += 1`，`destination_changed_at = now()`。
 6. 寫 `order_events`（`DEST_CHANGED`，payload 含舊/新目的地）。
 7. **響應**包含新的估價 —— 前端必須即刻顯示「新估價 HK$X，實際車資仍由你與
-   司機協商」，唔可以靜靜哋改咗個數。
+   司機協商」，不可以靜靜地改了這個數。
 
 > **不變式**：`destination_change_count` 要有上限（建議 3）。
 > 否則乘客可以無限次改目的地來規避取消費用或拖時間。超出即 429 並附
 > 「請與司機直接溝通或提出中斷」。
 
-### 4.2 中斷行程（**即時生效，唔等 admin**）
+### 4.2 中斷行程（**即時生效，不等 admin**）
 
 ```
 POST /api/v1/orders/{order_id}/interrupt
@@ -885,8 +885,8 @@ POST /api/v1/orders/{order_id}/interrupt
    或安全類原因則 `AUTO_INTERRUPTED_SAFETY`）。
 6. 寫 `order_events`。
 7. **發通知**：對方即時收到 + admin 佇列收到一張新 dispute。
-   > 這裡必須用真實推送，唔可以靠輪詢 —— 見 §7。
-8. **響應即時回 `INTERRUPTED`** —— 冇「等待中」狀態，冇「請停靠等待」。
+   > 這裡必須用真實推送，不可以靠輪詢 —— 見 §7。
+8. **響應即時回 `INTERRUPTED`** —— 沒有「等待中」狀態，沒有「請停靠等待」。
 
 > **設計理由（依用戶澄清）**：行程真的出事，要人即刻停低。要求當事人
 > 「提交申請然後等 admin 批」是把行政流程放在人身安全之上。
@@ -933,14 +933,14 @@ POST /api/v1/admin/disputes/{id}/resolve
 
 | `resolution` | 會計動作 |
 |---|---|
-| `NONE` | 錢唔動（撞車屬正當，$5 照收） |
+| `NONE` | 錢不動（撞車屬正當，$5 照收） |
 | `CHARGE_PASSENGER` | 向乘客收違約罰款（見 §6 的全額 / 50% 規則） |
 | `CHARGE_DRIVER` | 從司機保證金扣（寫 `DISPUTE_ADJUSTMENT`） |
 | `REFUND_PLATFORM_FEE` | 退還 $5（寫 `DISPUTE_ADJUSTMENT`，`+5`） |
 | `WAIVED_PLATFORM_FEE` | $5 從未收 / 註銷 |
 
-> **`resolution` 必須顯式選擇，唔可以有 default。** 動錢的裁決，
-> 「我冇揀所以跟 default」是不能接受的回答。同 `DepositAdjustIn.reason`
+> **`resolution` 必須顯式選擇，不可以有 default。** 動錢的裁決，
+> 「我沒有選擇所以跟 default」是不能接受的回答。與 `DepositAdjustIn.reason`
 > 必填是同一個原則。
 
 3. **全部寫 `AdminAuditLog`**（P3 的稽核擴充）—— 這是 admin 動錢的動作，
@@ -964,7 +964,7 @@ POST /api/v1/orders/{order_id}/start
 2. **扣 $5 平台費**：寫 `LedgerEntry`，`entry_type = PLATFORM_TRIP_FEE`，
    `amount_hkd = -5`，`driver_profile_id = 該司機`，
    `order_id = 該單`，**`reference = f"trip:{order_id}"`**。
-   > `reference` 唯一 → 重複 `/start` 唔會扣兩次。同 `weekly:<period>`
+   > `reference` 唯一 → 重複 `/start` 不會扣兩次。與 `weekly:<period>`
    > 同一模式（`uq_ledger_reference` partial unique index 已存在）。
 3. 寫 `order_events`。
 
@@ -980,17 +980,17 @@ POST /api/v1/orders/{order_id}/start
 **現狀已部分覆蓋**：`order_cancel` 對 ACCEPTED / DRIVER_ARRIVED 的司機取消
 扣 `no_show_penalty_hkd`（HK$50）。但：
 
-- **`reason` 是自由文字，不驗證。** 司機打「乘客醉酒」就等於豁免，冇人審。
+- **`reason` 是自由文字，不驗證。** 司機打「乘客醉酒」就等於豁免，沒有人審。
 - **`IN_TRIP` 的司機取消不可達**（狀態機擋死），所以 in-trip 違約的懲罰
-  根本冇路徑。
-- **乘客一方完全冇違約成本。** 乘客在司機到達後取消是免費的。
+  根本沒有路徑。
+- **乘客一方完全沒有違約成本。** 乘客在司機到達後取消是免費的。
 
 **重設計後的規則矩陣：**
 
 | 階段 | 誰能單方結束 | 機制 | 財務後果 |
 |---|---|---|---|
 | BROADCASTING / ACCEPTED | 雙方 | `POST /cancel` | 免費 |
-| **DRIVER_ARRIVED（已驗證到達）** | **雙方都不能取消** | 冇路徑 | 見下 |
+| **DRIVER_ARRIVED（已驗證到達）** | **雙方都不能取消** | 沒有路徑 | 見下 |
 | IN_TRIP | 雙方 | `POST /interrupt` | 即時結束；錢由事後 dispute 判 |
 
 ### 5.1 到達驗證（新增）—— 取消鎖定的前提條件
@@ -1154,7 +1154,7 @@ DRIVER_ARRIVED: {IN_TRIP, INTERRUPTED},  # 取消權在此鎖定
 
 **違約罰款**（在 `DRIVER_ARRIVED` 或之後，一方造成行程無實質進行）：
 
-> 注意用詞：到達之後**冇「取消」**（`CANCELLED` 不可達，見 §2.2 不變式 1）。
+> 注意用詞：到達之後**沒有「取消」**（`CANCELLED` 不可達，見 §2.2 不變式 1）。
 > 表格講的是**違約責任**，觸發事件可能是 `INTERRUPTED`（即時），
 > 或者 admin 事後判定的違約（例如司機在 `DRIVER_ARRIVED` 後長時間不開車）。
 
@@ -1178,12 +1178,12 @@ DRIVER_ARRIVED: {IN_TRIP, INTERRUPTED},  # 取消權在此鎖定
 
 | 階段 | 司機成本 | 取消後果 |
 |---|---|---|
-| `CREATED` / `BROADCASTING` | 冇（仲未有人接單） | **免費取消**，寫 `CANCELLED` |
+| `CREATED` / `BROADCASTING` | 沒有（尚未有人接單） | **免費取消**，寫 `CANCELLED` |
 | `ACCEPTED` / `PENDING_ARRIVAL_CONFIRM` | **有**（已接單、已出發、已在路上） | 取消**成立但構成違約**，按 §5.2 基準（乘客 100% / 司機 50%）**即時扣款 + 15 分鐘冷靜期** |
 
 > **為什麼不硬鎖？** 由 `ACCEPTED` 到「到達」可能幾分鐘到十幾分鐘。
 > 硬鎖等於禁止乘客在等車期間改變主意 —— 而乘客改變主意本身不是罪，
-> 只是有代價。**用定價取代禁止**：想取消就付代價，唔想付就等。
+> 只是有代價。**用定價取代禁止**：想取消就付代價，不想付就等。
 >
 > **扣款與冷靜期都是即時的**（DECISION-5）：即時寫
 > `CANCELLATION_PENALTY` ledger + 即時設 Redis 冷靜期 key。
@@ -1192,7 +1192,7 @@ DRIVER_ARRIVED: {IN_TRIP, INTERRUPTED},  # 取消權在此鎖定
 > **同時收緊 `ACCEPTED` 起的取消 `reason`：** 改成必填 `reason_code`
 > （用 `InterruptionReason` enum）。因為由 `ACCEPTED` 起的取消已經有違約
 > 後果，**一個不驗證的自由文字欄位就是違約判斷的繞過口**。
-> 乘客醉酒 / 司機拒載等例外應可被審計，而唔是打一行字就免罰。
+> 乘客醉酒 / 司機拒載等例外應可被審計，而不是打一行字就免罰。
 
 **計費基準**：同 §5.2 —— 該單的估價快照，乘客 100%、司機 50%。
 
@@ -1203,8 +1203,8 @@ DRIVER_ARRIVED: {IN_TRIP, INTERRUPTED},  # 取消權在此鎖定
 |---|---|---|
 | IN_TRIP | 可以，用 `POST /interrupt` | 即時結束；由事後 dispute 判 |
 
-**關鍵：in-trip 的是非曲直移交 admin 事後判斷，而唔係即時阻擋。**
-理由：in-trip 的爭議（究竟係乘客嘔吐定係司機想甩單）無法用規則判斷，
+**關鍵：in-trip 的是非曲直移交 admin 事後判斷，而不是即時阻擋。**
+理由：in-trip 的爭議（究竟是乘客嘔吐還是司機想放棄訂單）無法用規則判斷，
 強行自動化必然誤判。`orders.interrupted_by_kind='driver'` +
 `interruption_reason` 就是交給 admin 的證據。若 admin 判 `CHARGE_DRIVER`，
 寫 `DISPUTE_ADJUSTMENT`，金額由 admin 決定。
@@ -1216,9 +1216,9 @@ DRIVER_ARRIVED: {IN_TRIP, INTERRUPTED},  # 取消權在此鎖定
 >   **即時扣款 + 15 分鐘冷靜期**（DECISION-5）。
 > - `DRIVER_ARRIVED` 或之後 —— **不可取消**，只能 `INTERRUPTED`（即時生效）。
 >
-> 分別在於「有冇一個客觀事實（司機已到）做分界」。到達前係**時序**問題，
-> 規則可以判斷；到達後係**是非**問題，規則判斷唔到。
-> **能自動化的自動化，唔能嘅唔好假裝可以。**
+> 分別在於「有沒有一個客觀事實（司機已到）做分界」。到達前是**時序**問題，
+> 規則可以判斷；到達後是**是非**問題，規則判斷不到。
+> **能自動化的自動化，不能的不要假裝可以。**
 
 ---
 
@@ -1306,11 +1306,11 @@ DRIVER_ARRIVED: {IN_TRIP, INTERRUPTED},  # 取消權在此鎖定
 └────────────────────────────────────────────┘
 ```
 
-> **唔好再顯示一個灰色的「取消」按鈕。** 一個存在但按不了（或按了要付
+> **不要再顯示一個灰色的「取消」按鈕。** 一個存在但按不了（或按了要付
 > 全額）的按鈕比沒有按鈕更糟 —— 它引誘人按，然後懲罰他。
 > 到達後的正確動作是給一條**出路**（申訴），而不是一個陷阱。
 
-**為什麼「中斷」按鈕要放在「改目的地」旁邊而唔是藏進選單？**
+**為什麼「中斷」按鈕要放在「改目的地」旁邊而不是藏進選單？**
 撞車的時候，人是在驚慌狀態。埋藏三層選單的功能在那種時刻等於不存在。
 兩個動作都是「行程中途的重大變更」，放在同一排是合理的資訊層級。
 
@@ -1389,7 +1389,7 @@ DRIVER_ARRIVED: {IN_TRIP, INTERRUPTED},  # 取消權在此鎖定
 ```
 
 > **兩邊共用同一個 `InterruptionReason` enum**，但前端只顯示該角色合理的選項。
-> 這樣做，DB 只有一個 enum，但 UI 唔會出現「司機投訴自己態度惡劣」這種選項。
+> 這樣做，DB 只有一個 enum，但 UI 不會出現「司機投訴自己態度惡劣」這種選項。
 > 後端**仍然要校驗**（`interrupted_by_kind='driver'` 時拒絕
 > `PASSENGER_MISCONDUCT` 這種「乘客的錯但司機提出」的不合理組合）——
 > 前端過濾是禮貌，後端校驗是授權。
@@ -1528,7 +1528,7 @@ P1 / P2 的分析已確認：**行程生命週期事件從未被 publish**，
 - `arrival-claim` 與 `interrupt` 後，**對方端立即**呼叫一次 `GET /orders/{id}`。
 - 前端輪詢間隔在 `PENDING_ARRIVAL_CONFIRM` 與 `INTERRUPTED` 邊界上
   縮短至 2 秒（僅過渡期）。
-  （這是臨時措施，唔應該寫進長期設計。）
+  （這是臨時措施，不應該寫進長期設計。）
 
 ---
 
@@ -1540,7 +1540,7 @@ P1 / P2 的分析已確認：**行程生命週期事件從未被 publish**，
 | 2 | `orders` 加 15 欄位、`order_disputes`、`order_events` | Alembic migration | 見 §3.1 / §3.3 / §3.4 |
 | 3 | 重寫 `ORDER_TRANSITIONS` | `app/services/state_machine.py` | 加 property test 守住 §2.2 的四條不變式 |
 | 4 | `arrival-claim` + `arrival-confirm`（拆取代 `/arrive`） | `app/api/orders.py` | **含 GPS 距離計算** |
-| 5 | `change-destination` 端點（唔經 admin） | `app/api/orders.py` | |
+| 5 | `change-destination` 端點（不經 admin） | `app/api/orders.py` | |
 | 6 | `interrupt` 端點（**即時生效** + 自動開 dispute） | `app/api/orders.py` | 單一 transaction |
 | 7 | `start` 加 `started_at` + $5 扣費 | `app/api/orders.py` | 已拍板：向司機收 |
 | 8 | `cancel` 加 `reason_code` 校驗（到達後不可取消） | `app/api/orders.py` | 見 §5.2 |
@@ -1555,7 +1555,7 @@ P1 / P2 的分析已確認：**行程生命週期事件從未被 publish**，
 | 17 | 乘客 / 司機 / admin 前端 | `mobile/...` + `admin-web/web/src/pages/` | |
 | 18 | badge 計數 + RBAC 接線 | `admin-web` 總覽 API + `Shell.tsx` | 依賴 P3 |
 
-**測試重點（唔可以只測 happy path）：**
+**測試重點（不可以只測 happy path）：**
 
 **狀態機不變式（property-based）：**
 - `DRIVER_ARRIVED -> CANCELLED` 必須被拒絕（P4 的核心不變式）。
@@ -1564,12 +1564,12 @@ P1 / P2 的分析已確認：**行程生命週期事件從未被 publish**，
 - 三個終態出度為零。
 
 **到達驗證：**
-- GPS 距離 > 半徑 → 422，**且訂單狀態維持 ACCEPTED**（唔可以偷偷改狀態）。
+- GPS 距離 > 半徑 → 422，**且訂單狀態維持 ACCEPTED**（不可以偷偷改狀態）。
 - `current_location IS NULL` → 422，**不可以當作通過**。
 - body GPS 與 DB `current_location` 差異 > 500 米 → 拒絕（偽造偵測）。
 - 尾 4 位正確 → `DRIVER_ARRIVED` + `arrival_confirmed_at` 同時寫入。
 - 尾 4 位錯誤 3 次 → 回 `ACCEPTED` + 開一張 dispute，**且 3 次之後第 4 次
-  仍然被拒**（唔可以因為計數器重設而變成無限嘗試）。
+  仍然被拒**（不可以因為計數器重設而變成無限嘗試）。
 - **用司機的電話尾數輸入必須失敗**（測：確認驗證的是乘客的號碼）——
   這是防止寫錯成選項 B 的回歸測試。
 
@@ -1577,9 +1577,9 @@ P1 / P2 的分析已確認：**行程生命週期事件從未被 publish**，
 - 到達前 `POST /cancel` 即時生效且免費。
 - 到達後 `POST /cancel` 必須 409 且**不寫任何 ledger**。
 - `ACCEPTED` / `PENDING_ARRIVAL_CONFIRM` 取消 → **即時**寫
-  `CANCELLATION_PENALTY`（唔等裁決）**且**設 15 分鐘 Redis 冷靜期 key。
+  `CANCELLATION_PENALTY`（不等裁決）**且**設 15 分鐘 Redis 冷靜期 key。
 - 違約扣款 idempotency：`reference = f"penalty:{order_id}:{party}"`，
-  重複呼叫唔可以扣兩次。
+  重複呼叫不可以扣兩次。
 - 冷靜期生效：乘客違約後 15 分鐘內 `POST /orders` 回 429 `COOLDOWN`；
   司機違約後 `POST /orders/{id}/grab` 回 429。**15 分鐘後自動恢復**
   （用假時鐘測 TTL 過期）。
@@ -1587,9 +1587,9 @@ P1 / P2 的分析已確認：**行程生命週期事件從未被 publish**，
   之後可以立即再開單 / 接單。
 
 **動錢：**
-- `resolution` 缺省時請求必須 422（唔可以有 default）。
+- `resolution` 缺省時請求必須 422（不可以有 default）。
 - dispute 裁決必須寫出一行 `AdminAuditLog`。
-- `PLATFORM_TRIP_FEE` 的 idempotency：重複 `/start` 唔可以扣兩次
+- `PLATFORM_TRIP_FEE` 的 idempotency：重複 `/start` 不可以扣兩次
   （用 `reference = "trip:<order_id>"`）。
 - 中斷必須**在同一 transaction 內**開出 dispute（測：若 dispute 寫入失敗，
   中斷也要回滾）。
@@ -1635,26 +1635,26 @@ P1 / P2 的分析已確認：**行程生命週期事件從未被 publish**，
 `amount_hkd = -5`，`driver_profile_id = 該司機`，
 `reference = f"trip:{order_id}"`（唯一，防重複扣）。
 
-**你問邊個方案比較好 —— 我的答案：A，但理由同你想的不完全一樣。**
+**你問哪個方案比較好 —— 我的答案：A，但理由與你想的不完全一樣。**
 
-先講清楚三個方案**唔係同一個層次的東西**，所以「邊個好」要分兩步問：
+先講清楚三個方案**不是同一個層次的東西**，所以「哪個好」要分兩步問：
 
-**第一步：$5 邊個階段收？** 三個方案其實是**兩組**：
+**第一步：$5 哪個階段收？** 三個方案其實是**兩組**：
 
 - **A** = 現在就從司機保證金扣。**今天可以上線**，零新基建。
 - **B / C** = 都假設了一個尚未存在的東西：
-  - **B（乘客錢包）** 假設乘客有錢可扣 —— 但乘客端**今日冇錢包、冇綁卡**。
+  - **B（乘客錢包）** 假設乘客有錢可扣 —— 但乘客端**今日沒有錢包、沒有綁卡**。
   - **C（估價 surcharge）** 假設了車資經平台 —— 但**車資今日不經平台**。
 
-換句話說：**B 同 C 都唔係「另一個方案」，而係「一個未來的狀態」。**
-你話「稍後還是回到傳統的平台模式，金錢經過平台」——
-所以 B 同 C 描述的是**那個未來**，唔係現在的替代選項。
+換句話說：**B 與 C 都不是「另一個方案」，而是「一個未來的狀態」。**
+你說「稍後還是回到傳統的平台模式，金錢經過平台」——
+所以 B 與 C 描述的是**那個未來**，不是現在的替代選項。
 
 **第二步：既然結果是 A，就要處理 A 的兩個副作用：**
 
 | 副作用 | 為什麼嚴重 | 建議 |
 |---|---|---|
-| **保證金會被扣到負數** | 一個司機跑 100 趟 = -$500。保證金的意義是「違約時有錢可扣」，容許無限負值等於保證金制度失效。 | 見 DECISION-3：需要一個餘額門檻 + 預警 + 補款路徑。**這是 A 的真實成本，唔可以當作「加一行 ledger 就算」。** |
+| **保證金會被扣到負數** | 一個司機跑 100 趟 = -$500。保證金的意義是「違約時有錢可扣」，容許無限負值等於保證金制度失效。 | 見 DECISION-3：需要一個餘額門檻 + 預警 + 補款路徑。**這是 A 的真實成本，不可以當作「加一行 ledger 就算」。** |
 | **與週費 $200 並存** | $200/週 + $5/趟：一個日跑 15 單的司機每週 $725。 | 定價問題。**建議考慮 A 但把週費調低或取消** —— 否則等於雙重收費，司機必然抗拒。 |
 
 **所以我的具體建議：選 A，並且把它當作「取代一部份週費」而非「額外疊加」。**
@@ -1686,7 +1686,7 @@ $5/趟 的商業意義是「用者自付、多勞多付」，這比固定週費�
 
 - 少一個狀態、少一個凍結期、少一個「等裁決」佇列。
 - 但要新增 `order_disputes` 表（事後），且**在 `INTERRUPTED` 的同一
-  transaction 內自動開單** —— 否則「事後處理」會變成「冇人記得處理」。
+  transaction 內自動開單** —— 否則「事後處理」會變成「沒有人記得處理」。
 - SLA 仍然需要（見 DECISION-4），但 SLA 逾期**不再阻塞任何人** ——
   它只是一個內部提醒，行程早已結束。
 
@@ -1708,10 +1708,10 @@ $5/趟 的商業意義是「用者自付、多勞多付」，這比固定週費�
 - **必須配預警，不可讓司機無聲被鎖**：
   - 餘額 < **$100** → App 內顯著告警 + 一次性推送。
   - 餘額 < **$0** → 每日提醒 + 接單頁顯示鎖定狀態與補款入口。
-  - **唔會自動 `SUSPENDED`** —— `SUSPENDED` 是合規狀態（KYC / 紀律），
-    欠費只是帳務狀態，兩者不應混用。用「接單閘門」而唔是改 `DriverStatus`。
+  - **不會自動 `SUSPENDED`** —— `SUSPENDED` 是合規狀態（KYC / 紀律），
+    欠費只是帳務狀態，兩者不應混用。用「接單閘門」而不是改 `DriverStatus`。
 - **與 `is_fulfilled` 的關係**：`is_fulfilled` 是 `ACTIVE` 的**入職條件**
-  （一次性），**不是**持續條件。所以欠費**不會**把司機由 `ACTIVE` 拉返
+  （一次性），**不是**持續條件。所以欠費**不會**把司機由 `ACTIVE` 拉回
   `DEPOSIT_REQUIRED`（那會觸發整條重新入職流程）。改為在接單層加閘門，
   影響面最小。
 
@@ -1758,7 +1758,7 @@ $5/趟 的商業意義是「用者自付、多勞多付」，這比固定週費�
 > **用戶決定（2026-10-01 第四輪）**：「違約金即時扣款，司機 15 分鐘內不可以接單、
 > 乘客同理不能開單。」
 
-**結論：違約金即時寫 ledger（唔等裁決），同時對違約方施加 15 分鐘的
+**結論：違約金即時寫 ledger（不等裁決），同時對違約方施加 15 分鐘的
 「不可開新單」冷靜期。雙方對稱。**
 
 | 違約方 | 即時扣款 | 冷靜期 |
@@ -1769,10 +1769,10 @@ $5/趟 的商業意義是「用者自付、多勞多付」，這比固定週費�
 **這改變了 §5.2 / §5.2.1 的做法** —— 原本設計是「寫入待裁決，由 admin 判」。
 現在改為**先扣**，並保留申訴入口（人仍然可以事後推翻，但錢已經動了）。
 
-**為什麼冷靜期是 15 分鐘而唔是更長？** 這是「冷卻」而唔是「懲罰」——
+**為什麼冷靜期是 15 分鐘而不是更長？** 這是「冷卻」而不是「懲罰」——
 目的是打斷「一路違約、一路再開單」的即時套利。15 分鐘足以令
 「連續違約」不可行，又不足以令一個正常用戶覺得被鎖死。
-**這是真正的目的：令違約有摩擦成本，而唔是令違約者無法使用平台。**
+**這是真正的目的：令違約有摩擦成本，而不是令違約者無法使用平台。**
 
 **實作要點：**
 
@@ -1806,12 +1806,12 @@ $5/趟 的商業意義是「用者自付、多勞多付」，這比固定週費�
 | 提早廣播時間 | **30 分鐘**（沿用） | 到 `scheduled_pickup_at - 30min` 才開始廣播 |
 
 > **2 小時這個值改變了 §3.6.4 的參數表** —— 我原本建議 30 分鐘。
-> 用戶選 2 小時是合理的：30 分鐘的「預約」與即時單幾乎冇分別，
+> 用戶選 2 小時是合理的：30 分鐘的「預約」與即時單幾乎沒有分別，
 > 而 2 小時才真正叫「預約」（司機可以規劃一整個時段，
 > 乘客也可以真的為一個特定行程提前安排）。已同步更新 §3.6.4。
 
 **明確保留**：**未匹配的預約單，到 `scheduled_pickup_at` 仍未有人接，
-自動升級為即時廣播並加大半徑** —— 否則乘客會在約定時間站在原地冇車。
+自動升級為即時廣播並加大半徑** —— 否則乘客會在約定時間站在原地沒有車。
 
 **待你確認的細節（廣播窗口）** —— **已拍板（2026-10-01 第六輪）**：
 
@@ -1858,13 +1858,13 @@ $5/趟 的商業意義是「用者自付、多勞多付」，這比固定週費�
 
 **定位（第五輪確立）：地標 = 終點 / 下客點。** 用途有兩個：
 1. **乘客**用它選目的地。
-2. **司機**睇單時，地圖上直接顯示終點地標（「→ 香港國際機場」），
-   可以一眼判斷接唔接；並且可以按類別 filter 主動接收通知。
+2. **司機**看單時，地圖上直接顯示終點地標（「→ 香港國際機場」），
+   可以一眼判斷接不接；並且可以按類別 filter 主動接收通知。
 
 **上客點永遠是乘客的實際位置，與地標無關。** 因此：
 - `landmarks` **沒有 `pickup_point`**（已移除）。
 - 口岸地標的 `location` 用**港方實際可落客的位置**（去口岸的乘客在市區上車、
-  落客在口岸附近），唔再需要「港方上車點」的概念；但座標**仍必須在
+  落客在口岸附近），不再需要「港方上車點」的概念；但座標**仍必須在
   `is_in_hong_kong()` 內**，否則建立訂單時會 422（實測深圳灣、文錦渡原座標）。
 
 清單由原本 10 個擴充至 **19 個即用**（原本 18 個 + 深圳灣口岸 1 個；
@@ -2000,7 +2000,7 @@ LatLng(22.5150, 114.0200),  # 深圳河口（不變）
 > 尤其：HKIA 應該用**的士落客區**（不是客運大樓幾何中心）、
 > 迪士尼用**的士上落客區**、紅館用**暢運道對出**。
 > 現時的座標（見 §3.6.3）**足夠開發與測試**，但**上線前必須由人覆核落客位置** ——
-> 因為司機睇地圖是要**開車去落客**，偏幾百米就會走錯入口。
+> 因為司機看地圖是要**開車去落客**，偏幾百米就會走錯入口。
 
 ---
 
@@ -2026,6 +2026,6 @@ LatLng(22.5150, 114.0200),  # 深圳河口（不變）
 | `TripHub` 位置推送 | 否，但**被依賴** | §7：P4 令 P2 成為阻斷項 |
 | `RefundService` / 保證金 | 否 | `DISPUTE_ADJUSTMENT` 是新 entry type |
 | admin 退款 / 押金調整 | 否，**新增用途** | admin 推翻違約時要退款 **且** 清冷靜期（見 DECISION-5） |
-| analytics（由 `orders` 派生） | **必須更新** | `INTERRUPTED` 唔應計入「完成單」；要有「到達爭議次數」「預約單匹配率」「違約次數」新指標。**唔更新的話新狀態會靜靜污染現有數字。** |
-| P3 的 dispute 表 | **必須合併** | §4.4：`order_disputes` 就係同一張表，唔可以開兩張 |
+| analytics（由 `orders` 派生） | **必須更新** | `INTERRUPTED` 不應計入「完成單」；要有「到達爭議次數」「預約單匹配率」「違約次數」新指標。**不更新的話新狀態會靜靜污染現有數字。** |
+| P3 的 dispute 表 | **必須合併** | §4.4：`order_disputes` 就是同一張表，不可以開兩張 |
 

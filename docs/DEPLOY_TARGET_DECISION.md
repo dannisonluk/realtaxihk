@@ -47,7 +47,7 @@
 | **Redis 7（有狀態，非單純 cache）** | `docker-compose.yml` SEC-06 註解：rate-limit counters、grab locks、**Pub/Sub channels** | 需要真 Redis；不能只當 cache，**且 Pub/Sub 意味著多 instance 需要同一個 Redis** |
 | **WebSocket，跨 instance Pub/Sub** | `app/api/ws.py` 的 `hub.subscribe` / `publish`；`trip_service.py:43` | 若要多 instance，**必須共用 Redis Pub/Sub**；單 instance 則無此問題 |
 | **長連線（WS 常駐）** | 同上 | 排除純 request/response 的 serverless function 模型 |
-| **背景／定時工作** | `scripts/db_backup.py`（P1-4 nightly pg_dump） | 需要能跑 cron 的地方 |
+| **背景／定時工作** | `scripts/ops/db_backup.py`（P1-4 nightly pg_dump） | 需要能跑 cron 的地方 |
 | **持久檔案**：的士證、頭像 | Cloudflare R2（presigned upload） | 這項**已經獨立於主機**，是加分項 |
 | **HTTPS / TLS 終結** | compose 註解假設「TLS 是 reverse proxy 的責任」 | 需要 nginx/Caddy，或用平台的 LB |
 | **54 個 route decorators** | `grep -c` | 中等規模，非微服務 |
@@ -112,7 +112,7 @@ migrations 內建、loopback binding、SEC-06/07/19/31 註解全部齊）。
    `docker run --rm postgis/postgis:16-3.4 psql -c "SELECT PostGIS_Version()"`。
 3. **加一個 Caddy service** 到 compose：自動 TLS、reverse proxy 到 `api:8000`，
    然後 **把 `TRUSTED_PROXY_COUNT` 設為 1** —— 這正是 SEC-07 期待的設定。
-4. **定備份 destination（解 P1-4）**：`scripts/db_backup.py --via auto`，
+4. **定備份 destination（解 P1-4）**：`scripts/ops/db_backup.py --via auto`，
    本機保留 + 上傳到既有的 Cloudflare R2（R2 憑證已為頭像／的士證而設，可直接複用）。
 5. **定打款渠道（解 P2-2）**：VPS 不影響這項，但決定了部署就能接著談 provider。
 6. **補 3 個真 key**（Google Maps / FCM / WhatsApp）—— 這三項是**真正**的 credential 阻塞，

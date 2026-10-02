@@ -49,21 +49,60 @@ diagnostics" rather than an error. Read it before debugging it.
 (`packages/flutter_tools/templates/app/`) rather than by `flutter create`, for
 the same reason. It is a normal Android project; nothing about it is special.
 
+## Building an APK
+
+**Cannot be done on this machine** — it is the same pipe bug, and it fails
+before Gradle is ever reached. `flutter build apk` starts by running
+`git log` to check version freshness, which is a subprocess:
+
+```
+ProcessPackageException: ProcessException: 所有的管道例項都在使用中。
+  Command: ...\git.EXE -c log.showSignature=false log HEAD -n 1 --pretty=format:%ad --date=iso
+      at _DefaultProcessUtils.runSync (package:flutter_tools/src/base/process.dart:484)
+```
+
+Run it on the host or in CI instead:
+
+```bash
+cd mobile
+flutter build apk --debug     # or --release, once signing is configured
+```
+
+Two things to settle before a release build means anything:
+
+* **The release build type currently signs with the debug keys.**
+  `android/app/build.gradle.kts` has
+  `signingConfig = signingConfigs.getByName("debug")` and a
+  `TODO: Add your own signing config for the release build.` A debug APK is
+  fine; a release APK built this way is not shippable.
+* **`GOOGLE_MAPS_API_KEY` is absent from `android/local.properties`.** The build
+  still succeeds — the manifest placeholder resolves to empty and the map
+  surfaces render their labelled placeholder (`AppConfig.mapsConfigured`) — but
+  no map will draw.
+
+What *can* be verified here is the Dart source, and all of it passes: the four
+commands above (`tool/dart_check.py` reports 58 files / 0 diagnostics),
+`tool/run_tests.dart` (93 assertions) and `tool/verify_contract.dart`
+(54 fixtures, 0 failures).
+
 ## The contract is verified, not assumed
 
-`/openapi.json` types almost nothing: 28 paths, and all but one response schema
-is `{}`, because every response is a hand-built dict in `app/api/*`. A
-hand-written Dart model is therefore an *assumption* about the wire format, and
-an assumption checked only by reading the Python is not checked at all.
+`/openapi.json` **used to** type almost nothing: 28 paths, with all but one
+response schema published as `{}`, because every response was a hand-built dict
+in `app/api/*`. That has since been fixed — the API now declares a
+`response_model=` on all 88 operations and the spec carries 127 schemas (see
+`docs/WORK_SUMMARY.md` §2.10) — but the Dart models below were written when the
+spec was empty, so they are an *assumption* about the wire format. An assumption
+checked only by reading the Python is not checked at all.
 
 Two halves:
 
 ```bash
-python ../scripts/gen_mobile_fixtures.py      # boots the API, captures real responses
+python ../scripts/dev/gen_mobile_fixtures.py      # boots the API, captures real responses
 dart --packages=.dart_tool/package_config.json tool/verify_contract.dart
 ```
 
-The generator writes 42 raw responses to `test/fixtures/`, each with the
+The generator writes 54 raw responses to `test/fixtures/`, each with the
 endpoint it came from in `manifest.json`. The verifier decodes every one with
 the **real** models, and fails if a fixture has no decoder or a decoder has no
 fixture — so a new endpoint cannot be added to the generator and quietly go
@@ -188,7 +227,7 @@ then log in with any `+852` number and the code `123456`.
 dart --packages=.dart_tool/package_config.json tool/run_tests.dart
 ```
 
-92 assertions over the code with no Flutter dependency: money and date
+93 assertions over the code with no Flutter dependency: money and date
 formatting, the wire decoders, the enums, the error envelope, websocket frames,
 pagination, the models (including the fleet shapes), and the router redirect
 rules.

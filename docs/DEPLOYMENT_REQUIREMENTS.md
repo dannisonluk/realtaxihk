@@ -2,7 +2,7 @@
 
 - **日期**：2026-10-01
 - **狀態**：可執行清單。與 `DEPLOY_TARGET_DECISION.md`（選型取捨）互補 ——
-  該份講「揀邊個」，本份講「揀完之後要準備咩」。
+  該份說明「選擇哪一個」，本份說明「選定之後要準備什麼」。
 - **權威來源**：全部由 repo 讀出（`app/core/config.py`、`docker-compose.yml`、
   `pyproject.toml`、`admin-web/web/package.json`、`mobile/pubspec.yaml`），
   非估算。
@@ -20,7 +20,7 @@
 | 2 | **Redis ≥ 7** | `docker-compose.yml` SEC-06 註解：rate-limit counters、grab locks、**Pub/Sub** | Redis 5 不支援 `HELLO 3`，`redis-py` 8.x 連不上。**已實測失敗** |
 | 3 | **Redis 為有狀態，非快取** | 同上；Pub/Sub 用於多 instance WS | 多 instance 必須**共用同一 Redis**；清空 Redis 會令 rate-limit 與 lock 失效 |
 | 4 | **常駐 WebSocket** | `app/api/ws.py` `hub.publish/subscribe` | 排除純 request/response 的 serverless（Lambda、Cloud Run 預設） |
-| 5 | **可跑 cron / 定時工作** | `scripts/db_backup.py`（nightly）、`app/main.py` `_job_loop` | 需要長時間存活進程，或外部 scheduler |
+| 5 | **可跑 cron / 定時工作** | `scripts/ops/db_backup.py`（nightly）、`app/main.py` `_job_loop` | 需要長時間存活進程，或外部 scheduler |
 | 6 | **HTTPS 終結點** | compose 註解「TLS 是 reverse proxy 的責任」；`PUBLIC_BASE_URL` prod 強制 `https://` | 需 nginx / Caddy / 平台 LB |
 
 ---
@@ -198,9 +198,9 @@
    然後 **`TRUSTED_PROXY_COUNT=1`**。
 5. **設環境變數** —— §3.1 五個必填 + §3.2 連線 + §3.3 反代。
 6. **跑 migration** —— `alembic upgrade head`（compose command 已含）。
-7. **建管理員帳號** —— `python scripts/create_admin_account.py --username ... --yes`
+7. **建管理員帳號** —— `python scripts/ops/create_admin_account.py --username ... --yes`
    然後走 TOTP 註冊（`/admin/auth/login` → `/totp/enrol/confirm`）。
-8. **定備份** —— `scripts/db_backup.py --via auto`：本機保留 + 上傳 R2。
+8. **定備份** —— `scripts/ops/db_backup.py --via auto`：本機保留 + 上傳 R2。
    GFS 保留策略：7 日 + 4 週。**恢復演練已驗證**（49 表 / 17,627 行）。
 9. **建 console 靜態檔** —— `cd admin-web/web && npm ci && npm run build`，
    把 `dist/` 交給同一個 Caddy。

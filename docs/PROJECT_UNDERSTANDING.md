@@ -4,8 +4,8 @@
   個 commit；本文所有數字皆為**實跑得出**，非沿用舊值）。
 - **方法**：實際讀取全部源碼 + 實跑驗證（pytest、alembic、OpenAPI、
   response-model 審計、ruff、Dart contract/tests/analyzer、瀏覽器 UI verifier）。
-- **當前狀態**：本地 HEAD 係 `main` 上最新 commit（**唔寫死 hash** —— 之前寫死
-  過三次，每次之後嘅 commit 都令佢變成錯嘅。要查：`git log --oneline -1`）；
+- **當前狀態**：本地 HEAD 是 `main` 上最新 commit（**不寫死 hash** —— 之前寫死
+  過三次，其後每一次 commit 都會令它變成錯的。要查：`git log --oneline -1`）；
   `origin/main..HEAD` = **有未推 commit**（查：`git rev-list --count origin/main..HEAD`）
   （push 被 PAT 權限擋住，已由用戶豁免；見 `docs/WORK_SUMMARY.md` §5）。
   working tree clean。
@@ -21,8 +21,8 @@
 | 交付物 | 位置 | 規模 | 狀態 |
 |---|---|---|---|
 | 後端 API | `app/` | **81 paths / 88 operations** · **872 tests** | ✅ 生產就緒 |
-| Flutter App | `mobile/` | 56 files, 9,738 LOC | ✅ 三角色完整 |
-| Web 管理後台 | `admin-web/web/`（React + Vite）＋ `admin-web/js/`（legacy） | src **11,008 LOC** · 31 vitest | ✅ 全部路由通過 |
+| Flutter App | `mobile/` | 58 files, 11,558 LOC | ✅ 三角色完整 |
+| Web 管理後台 | `admin-web/web/`（React + Vite）＋ `admin-web/js/`（legacy） | src **12,328 LOC**（ts/tsx，不含測試）· **57 vitest** | ✅ 全部路由通過 |
 
 **重要**：題目要求的「任務 1」與「任務 2」**已經存在且已完成**。以下計畫是「識別餘下可延伸的缺口」，而非從零開發。
 
@@ -37,7 +37,7 @@
 - **`/openapi.json` 已完整**：81 paths，**全部 88 個 operation 都有 `response_model=`**
   （之前只有 1 個）。`response_model=` 是**過濾器**不是註解 —— FastAPI 會靜默丟棄
   模型未聲明的鍵，所以模型必須**由捕獲的 fixture 反推**，不能靠讀 handler。
-  驗證：`scripts/audit_response_models.py`（應印 `fixture blocks checked: 68` + `OK`）。
+  驗證：`scripts/verify/audit_response_models.py`（應印 `fixture blocks checked: 68` + `OK`）。
 
 ### 前端（Flutter）
 - **Riverpod 3** + **Dio** + **go_router 17** + `flutter_secure_storage` + `geolocator` + `google_maps_flutter` + `web_socket_channel`
@@ -52,7 +52,7 @@
 - **`admin-web/js/` 是 legacy**（vanilla JS、phone-OTP 登入），React 版已是
   username/password + TOTP。新功能一律寫 React 版。
 - 設計理由：持有支付平台的管理 session，不想引入數百個 install-time 執行 script 的依賴樹。
-- 驗證：`npm run typecheck`（`tsc --noEmit`）+ `npx vitest run`（31 tests）+
+- 驗證：`npm run typecheck`（`tsc --noEmit`）+ `npx vitest run`（57 tests）+
   `npm run build`。真瀏覽器另有 `admin-web/tool/verify_ui.mjs`。
 
 ---
@@ -84,7 +84,7 @@ router/     routing_rules.dart（純函數，可獨立測試）· app_router.dar
   `createHashRouter` 會即時讀 `window.location` 並訂閱 `hashchange`，
   而 `history.replaceState` 不 fire `hashchange`，module scope 會綁死錯 hash
 - **金錢在 wire 上一律字串** —— 不要「好心」轉 `number`，否則運算後畫面會出 `NaN`
-- `AdminUser` 係 `AdminIdentity` 的 alias（`api/session.ts`），**不要開第二個宣告**
+- `AdminUser` 是 `AdminIdentity` 的 alias（`api/session.ts`），**不要開第二個宣告**
 
 ---
 
@@ -157,12 +157,20 @@ router/     routing_rules.dart（純函數，可獨立測試）· app_router.dar
 | `pytest tests/ -q --junit-xml=...` | **872 passed / 0 failed / 0 error / 0 skipped** |
 | `alembic heads` | `a1c4e8b7f209 (head)` |
 | `alembic check` | 有**既有 baseline drift**（5 組 `uq_*`→`ix_*`、4 個 `VARCHAR`→`Enum`）；看**有無新增**，非「必須 FAIL」 |
-| `scripts/audit_response_models.py` | **68 fixture blocks + 88 operations，OK** |
+| `scripts/verify/audit_response_models.py` | **68 fixture blocks + 88 operations，OK** |
 | OpenAPI | **81 paths / 88 operations**，全部有 `response_model=` |
-| `ruff check` / `format --check` | clean / **131 files** |
-| console `tsc` / `vitest` / `build` | clean / **31 passed** / 344.67 kB（gzip 109.14 kB） |
-| Dart contract verifier | 54 decoded, 0 failures（由前次實跑；本沙盒跑不到 Dart，見 §2） |
-| Dart unit tests | 93 passed, 0 failed（同上） |
+| `ruff check` / `format --check` | clean / clean（全樹） |
+| console `tsc` / `vitest` / `build` | clean / **57 passed（8 files）** / 463.18 kB（gzip 142.84 kB） |
+| Dart contract verifier | 54 decoded, 0 failures（`dart --packages=… tool/verify_contract.dart`） |
+| Dart unit tests | 93 passed, 0 failed（`dart --packages=… tool/run_tests.dart`） |
+| Dart 靜態檢查 | 58 files, 0 diagnostics（`python mobile/tool/dart_check.py`） |
+| `admin-web/tool/audit_layout.mjs` | **48 renders clean**（{zh-Hant,en} × {light,dark} × 3 寬度） |
+
+> **更正（2026-10-02）**：本文件曾寫「本沙盒跑不到 Dart」。**這是錯的** ——
+> `dart <script>` 可以跑，只有 `dart analyze` / `flutter *` 這種**要 spawn 子程序**
+> 的才會死在 `ERROR_PIPE_BUSY (231)`。繞過 dartdev 即可：
+> `dart --packages=.dart_tool/package_config.json <script.dart>`。
+> 故 mobile 的三項驗證（contract / unit / 靜態檢查）**全部實跑過**。
 | **admin-web UI verifier（真瀏覽器）** | **PASS** — 全部路由零 error banner、零 console error |
 
 > **測試輸出陷阱**：`[safe-delete]` marker 會注入 stdout 並截斷 pytest 的 summary，
@@ -180,6 +188,9 @@ router/     routing_rules.dart（純函數，可獨立測試）· app_router.dar
 - **中斷的 background pytest 會留 orphan DB**（`realtaxihk_t_*`／`realtaxihk_v_*`），
   之後的 test 撞到新 migration 的表時 PDPO purge job 會 error，表面似 code bug。
   清法：`DROP DATABASE "<name>" WITH (FORCE)`。
+- **`ruff format --check .` 回報的「N files」不穩定** —— 同一棵樹實測過 140／141／143，
+  且與 `ruff check --show-files` 的數目不同。因此文檔**不引用**該數字；
+  判準是 **exit code**，不是那個計數。
 
 ---
 
@@ -190,8 +201,9 @@ router/     routing_rules.dart（純函數，可獨立測試）· app_router.dar
    （後台側已補：`OrderDetailPage`。）
 2. **行程歷史無分頁載入** — `OrderPage.nextCursor` 已備好，UI 只顯示第一頁。
 3. **Sentry 未接**（config 欄位在，`main.py` 有 init 分支，但 env 空）。
-4. **`docs/*.md` 語言未統一** — 多數係**粵語**寫（同用戶偏好嘅書面語唔一致），未統一。
-   `docs/IN_TRIP_REDESIGN.md` 尤其以粵語寫成，需要一次 bulk 轉換。
+4. ~~**`docs/*.md` 語言未統一**~~ **（2026-10-02 已完成）** — 原本多數以**粵語**撰寫，
+   與用戶偏好的書面語不一致。現已將 `docs/` 全部文檔改寫為**書面語（繁體）**，
+   包括篇幅最大的 `docs/IN_TRIP_REDESIGN.md`。
 
 > 上一版列的「管理後台的『司機詳情頁』缺失」**已完成** ——
 > `admin-web/web/src/pages/DriverDetailPage.tsx` 已有 KYC、存款、車隊、牌照、訂單全貌。
@@ -207,17 +219,17 @@ FCM v1 推送（需 service account RS256）、load test、ledger hash chain、�
 
 ## 8. 方法論教訓（值得記住）
 
-1. **寫「唔應該 leak」的測試，一定要用一個真係會 leak 的輸入證明佢會 fail。**
-   曾用「naive fix」寫邊界測試，該邊界根本冇 leak，報 0 violations —— 睇落似 pass，
-   其實測試冇用。換成真 leak 的邊界後即刻報 6 / 2 個 violation，測試才站得住。
+1. **寫「不應該 leak」的測試，一定要用一個真正會 leak 的輸入證明它會 fail。**
+   曾用「naive fix」寫邊界測試，該邊界根本沒有 leak，報 0 violations —— 看似 pass，
+   實際上測試無效。換成真正 leak 的邊界後立即報 6 / 2 個 violation，測試才站得住。
 2. **「共用 model」前要確認型別同語義都一致。** `/auth/logout` 的 `revoked` 是 **int**
    （吊銷數量），`/admin/auth/logout` 的是 **bool**。共用會令 pydantic 靜默把 `False` 轉 `1`。
-3. **handler 有時唔出某個 key 時，用 `response_model_exclude_unset=True`**，
+3. **handler 有時不出某個 key 時，用 `response_model_exclude_unset=True`**，
    不要用 default「補齊」。`GET /drivers/me` 無押金路徑只出 `{required_hkd, is_fulfilled}`，
    測試明確斷言 `"balance_hkd" not in <deposit>`（分辨「從未充值」vs「充過、現為零」）。
-   **不可為迎合 schema 而補齊 field —— 夹具同測試先係契約。**
+   **不可為迎合 schema 而補齊 field —— 夹具與測試才是契約。**
 4. **`pathlib.Path('.').rglob('*.py')` 在此沙盒會靜靜地回 0 個檔**（不 raise）。
-   寫掃描腳本一定要用**明確子目錄**（`Path('app')`），否則你會以為專案冇檔。
+   寫掃描腳本一定要用**明確子目錄**（`Path('app')`），否則你會以為專案沒有檔案。
 5. **不要用多個 pytest plugin／monkeypatch 同時 wrap 同一個函式**（如 `RateLimiter`）。
    wrapper 會疊加，令 call 被計多次，製造出假的「counter reset」，浪費大量時間追不存在的 bug。
    要 instrument 就 clean-room，一次一個。
