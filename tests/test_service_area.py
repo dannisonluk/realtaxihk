@@ -133,7 +133,7 @@ class TestDriverLocationIsGated:
     def test_hong_kong_location_is_accepted(self, client):
         d = _active_driver(client, "+85291600002")
         r = client.post(
-            "/api/v1/driver/location",
+            "/api/v1/drivers/location",
             headers={"Authorization": f"Bearer {d['token']}"},
             json={"lat": CENTRAL[0], "lng": CENTRAL[1], "online": True},
         )
@@ -148,7 +148,7 @@ class TestDriverLocationIsGated:
         """
         d = _active_driver(client, "+85291600003")
         r = client.post(
-            "/api/v1/driver/location",
+            "/api/v1/drivers/location",
             headers={"Authorization": f"Bearer {d['token']}"},
             json={"lat": SHENZHEN_FUTIAN[0], "lng": SHENZHEN_FUTIAN[1], "online": True},
         )
@@ -167,13 +167,13 @@ class TestDriverLocationIsGated:
 
         d = _active_driver(client, "+85291600004")
         ok = client.post(
-            "/api/v1/driver/location",
+            "/api/v1/drivers/location",
             headers={"Authorization": f"Bearer {d['token']}"},
             json={"lat": CENTRAL[0], "lng": CENTRAL[1], "online": True},
         )
         assert ok.status_code == 200, ok.text
         refused = client.post(
-            "/api/v1/driver/location",
+            "/api/v1/drivers/location",
             headers={"Authorization": f"Bearer {d['token']}"},
             json={"lat": SHENZHEN_FUTIAN[0], "lng": SHENZHEN_FUTIAN[1], "online": True},
         )

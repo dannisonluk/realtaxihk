@@ -73,7 +73,7 @@ class ErrorEnvelope(BaseModel):
 class OkOut(BaseModel):
     """`{"ok": true}` — the acknowledgement for fire-and-forget writes.
 
-    `POST /driver/location` is called every 3-5 s per online driver, so its body
+    `POST /drivers/location` is called every 3-5 s per online driver, so its body
     is deliberately a single boolean rather than the stored row.
     """
 

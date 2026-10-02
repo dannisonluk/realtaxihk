@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <!-- Driver location streaming and the passenger's pickup fix.
-         ACCESS_FINE_LOCATION is required for the driver: POST /driver/location
+         ACCESS_FINE_LOCATION is required for the driver: POST /drivers/location
          bounds coordinates to Hong Kong, and a coarse fix is not good enough to
          tell a pickup kerb from the next street. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>

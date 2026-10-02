@@ -1,5 +1,5 @@
 {
-  "generated_by": "scripts/gen_mobile_fixtures.py",
+  "generated_by": "scripts/dev/gen_mobile_fixtures.py",
   "note": "Raw responses from the real API. Each entry names the Dart model in mobile/lib/models that must decode it; mobile/tool/verify_contract.dart enforces that.",
   "sources": {
     "auth_otp_request": "POST /api/v1/auth/otp/request",
@@ -19,7 +19,7 @@
     "admin_review": "POST /api/v1/admin/drivers/{id}/review",
     "admin_grant": "POST /api/v1/admin/drivers/{id}/deposit/grant",
     "driver_me": "GET /api/v1/drivers/me (ACTIVE, funded)",
-    "driver_location": "POST /api/v1/driver/location",
+    "driver_location": "POST /api/v1/drivers/location",
     "order_grabbed": "POST /api/v1/orders/{id}/grab",
     "order_arrive": "POST /api/v1/orders/{id}/arrive",
     "order_start": "POST /api/v1/orders/{id}/start",

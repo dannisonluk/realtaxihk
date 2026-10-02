@@ -95,7 +95,7 @@ class TestGeoDispatch:
         d = _mk_active_driver(client, f"+852{916 * 10**5 + 30001}")
         h = {"Authorization": f"Bearer {d['token']}"}
         r = client.post(
-            "/api/v1/driver/location",
+            "/api/v1/drivers/location",
             headers=h,
             json={"lat": 22.284, "lng": 114.158, "online": True},
         )
@@ -120,7 +120,7 @@ class TestGeoDispatch:
         d = _mk_active_driver(client, f"+852{916 * 10**5 + 30003}")
         h = {"Authorization": f"Bearer {d['token']}"}
         client.post(
-            "/api/v1/driver/location",
+            "/api/v1/drivers/location",
             headers=h,
             json={"lat": 22.308, "lng": 113.918, "online": True},  # Tung Chung ~25km
         )
@@ -138,7 +138,7 @@ class TestGeoDispatch:
         d = _mk_active_driver(client, f"+852{916 * 10**5 + 30005}")
         h = {"Authorization": f"Bearer {d['token']}"}
         client.post(
-            "/api/v1/driver/location",
+            "/api/v1/drivers/location",
             headers=h,
             json={"lat": 22.284, "lng": 114.158, "online": True},
         )
@@ -164,7 +164,7 @@ class TestGeoDispatch:
     def test_location_requires_active_driver(self, client):
         token = _mk_user_token(client, f"+852{916 * 10**5 + 30007}")  # passenger
         r = client.post(
-            "/api/v1/driver/location",
+            "/api/v1/drivers/location",
             headers={"Authorization": f"Bearer {token}"},
             json={"lat": 22.284, "lng": 114.158, "online": True},
         )

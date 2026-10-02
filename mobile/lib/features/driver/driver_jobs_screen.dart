@@ -19,7 +19,7 @@ import '../shared/widgets.dart';
 ///
 /// `GET /orders/nearby` reads a Redis geo index, so the driver must be reporting
 /// a position for anything to be within range. Going online is therefore not
-/// cosmetic: it is what makes the list non-empty, and `POST /driver/location`
+/// cosmetic: it is what makes the list non-empty, and `POST /drivers/location`
 /// refuses a driver whose profile is not `ACTIVE`.
 class DriverJobsScreen extends ConsumerStatefulWidget {
   const DriverJobsScreen({super.key});

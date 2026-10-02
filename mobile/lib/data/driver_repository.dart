@@ -59,7 +59,7 @@ class DriverRepository {
     return MyRefund.fromJson(json).refund;
   }
 
-  /// `POST /driver/location` — PostGIS upsert, one row per driver.
+  /// `POST /drivers/location` — PostGIS upsert, one row per driver.
   ///
   /// Rate-limited per driver (`SEC-15`), because each call is an UPDATE and was
   /// previously unbounded. The driver app calls this every 3–5s while online;
@@ -69,7 +69,7 @@ class DriverRepository {
   /// reporting a position change.
   Future<void> pushLocation({required double lat, required double lng, bool online = true}) async {
     await _api.post(
-      '/api/v1/driver/location',
+      '/api/v1/drivers/location',
       data: <String, dynamic>{'lat': lat, 'lng': lng, 'online': online},
     );
   }

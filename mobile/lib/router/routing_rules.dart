@@ -51,7 +51,7 @@ abstract final class Routes {
 /// creates a PASSENGER (`otp_service.py`), `POST /drivers/register` only creates
 /// a `DriverProfile`, and `require_role()` in `app/api/auth.py` is never called.
 /// Driver capability is gated entirely on the *profile*: `grab` and
-/// `POST /driver/location` require `DriverStatus.ACTIVE`, and the rest of
+/// `POST /drivers/location` require `DriverStatus.ACTIVE`, and the rest of
 /// `/drivers/me/*` requires the profile to exist.
 ///
 /// So the routing model is: admin gets the console, everyone else gets the
