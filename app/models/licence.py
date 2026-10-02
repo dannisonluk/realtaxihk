@@ -116,7 +116,12 @@ class DriverLicenceSubmission(Base):
     # that is already expired is the whole point of collecting it.
     expires_on: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     status: Mapped[LicenceReviewStatus] = mapped_column(
-        SAEnum(LicenceReviewStatus, name="licence_review_status", native_enum=False),
+        SAEnum(
+            LicenceReviewStatus,
+            name="ck_licence_review_status",
+            native_enum=False,
+            create_constraint=True,
+        ),
         default=LicenceReviewStatus.PENDING,
         index=True,
     )
@@ -174,7 +179,12 @@ class DriverDocument(Base):
         index=True,
     )
     kind: Mapped[DocumentKind] = mapped_column(
-        SAEnum(DocumentKind, name="document_kind", native_enum=False)
+        SAEnum(
+            DocumentKind,
+            name="ck_document_kind",
+            native_enum=False,
+            create_constraint=True,
+        )
     )
     object_key: Mapped[str] = mapped_column(String(255), unique=True)
     content_type: Mapped[str] = mapped_column(String(128))

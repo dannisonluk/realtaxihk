@@ -45,7 +45,7 @@ def upgrade() -> None:
         sa.Column("contact_name", sa.String(length=80), nullable=True),
         sa.Column(
             "status",
-            sa.Enum("ACTIVE", "SUSPENDED", "DISSOLVED", name="fleet_status", native_enum=False),
+            sa.Enum("ACTIVE", "SUSPENDED", "DISSOLVED", name="ck_fleets_status", native_enum=False),
             nullable=False,
         ),
         sa.Column("weekly_fee_discount_percent", sa.Numeric(precision=5, scale=2), nullable=False),
@@ -76,14 +76,14 @@ def upgrade() -> None:
         sa.Column(
             "member_role",
             sa.Enum(
-                "OWNER", "MANAGER", "MEMBER", name="fleet_member_role", native_enum=False
+                "OWNER", "MANAGER", "MEMBER", name="ck_fleet_memberships_member_role", native_enum=False
             ),
             nullable=False,
         ),
         sa.Column(
             "status",
             sa.Enum(
-                "ACTIVE", "LEFT", "REMOVED", name="fleet_member_status", native_enum=False
+                "ACTIVE", "LEFT", "REMOVED", name="ck_fleet_memberships_status", native_enum=False
             ),
             nullable=False,
         ),

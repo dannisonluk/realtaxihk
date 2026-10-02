@@ -16,6 +16,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from geoalchemy2 import Geography
 from sqlalchemy import (
@@ -30,12 +31,14 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    select,
     text,
 )
 from sqlalchemy import (
     Enum as SAEnum,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models._base import Base
@@ -142,7 +145,13 @@ class User(Base):
     phone_e164: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     display_name: Mapped[str | None] = mapped_column(String(80))
     role: Mapped[UserRole] = mapped_column(
-        SAEnum(UserRole, name="user_role", native_enum=False), default=UserRole.PASSENGER
+        SAEnum(
+            UserRole,
+            name="ck_users_role",
+            native_enum=False,
+            create_constraint=True,
+        ),
+        default=UserRole.PASSENGER,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     phone_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -158,7 +167,9 @@ class User(Base):
     username: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
     given_name: Mapped[str | None] = mapped_column(String(60))
     family_name: Mapped[str | None] = mapped_column(String(60))
-    gender: Mapped[Gender | None] = mapped_column(SAEnum(Gender, name="gender", native_enum=False))
+    gender: Mapped[Gender | None] = mapped_column(
+        SAEnum(Gender, name="ck_users_gender", native_enum=False, create_constraint=True)
+    )
     # Cloudflare R2 object key, not a URL: the bucket and host are deployment
     # config, and storing a full URL bakes a CDN hostname into user rows that
     # then cannot be changed without a data migration.
@@ -170,7 +181,12 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String(255))
 
     account_status: Mapped[AccountStatus] = mapped_column(
-        SAEnum(AccountStatus, name="account_status", native_enum=False),
+        SAEnum(
+            AccountStatus,
+            name="ck_users_account_status",
+            native_enum=False,
+            create_constraint=True,
+        ),
         default=AccountStatus.UNVERIFIED,
     )
 
@@ -200,7 +216,12 @@ class DriverProfile(Base):
     vehicle_reg_mark: Mapped[str] = mapped_column(String(8), index=True)  # 車牌
     taxi_type: Mapped[str] = mapped_column(String(10))  # URBAN / NT / LANTAU
     status: Mapped[DriverStatus] = mapped_column(
-        SAEnum(DriverStatus, name="driver_status", native_enum=False),
+        SAEnum(
+            DriverStatus,
+            name="ck_driver_profiles_status",
+            native_enum=False,
+            create_constraint=True,
+        ),
         default=DriverStatus.PENDING_KYC,
     )
     kyc_reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
@@ -219,12 +240,38 @@ class DriverProfile(Base):
     licence_submissions: Mapped[list[DriverLicenceSubmission]] = relationship(  # noqa: F821
         back_populates="driver_profile", cascade="all, delete-orphan"
     )
-    # Current GPS position (updated every 3-5s while online)
+    # Current GPS position (updated every 3-5s while online).
+    # `Mapped[object | None]` is forced by GeoAlchemy2 — see the longer note on
+    # `Order.pickup_location` below. The `| None` is real (nullable column).
     current_location: Mapped[object | None] = mapped_column(
         Geography(geometry_type="POINT", srid=4326, spatial_index=False), nullable=True
     )
     is_online: Mapped[bool] = mapped_column(Boolean, default=False)
     last_location_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    @staticmethod
+    async def for_user(session: AsyncSession, user_id: uuid.UUID) -> DriverProfile | None:
+        """The driver profile belonging to `user_id`, or `None` if not a driver.
+
+        This exact query existed in six places — twice as a copy-pasted
+        `_driver_profile_of` (in `app/api/orders.py` and `app/api/fleets.py`,
+        identical apart from a function-local `import`), and four more times
+        inlined (`app/api/drivers.py` `_get_profile`, `app/api/tracking.py`,
+        `app/api/ws.py`, `app/services/licence_service.get_profile`).
+
+        It lives on the model rather than in a service because it is a pure
+        lookup with no policy: it does not check status, does not raise, does not
+        filter to ACTIVE. Every caller decides what a missing or non-ACTIVE
+        profile means, and those answers genuinely differ — 404 in `fleets.py`
+        (to avoid confirming a fleet exists), 403 in `tracking.py`, a silent
+        `None` in `ws.py`. Sharing the *query* is the fix for the duplication;
+        sharing the *verdict* would have been the bug.
+        """
+        return (
+            (await session.execute(select(DriverProfile).where(DriverProfile.user_id == user_id)))
+            .scalars()
+            .first()
+        )
 
 
 Index("ix_driver_profiles_location", DriverProfile.current_location, postgresql_using="gist")
@@ -237,9 +284,9 @@ class DriverDeposit(Base):
     driver_profile_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("driver_profiles.id", ondelete="CASCADE"), unique=True
     )
-    balance_hkd: Mapped[object] = mapped_column(Numeric(10, 2), default=0)  # available
-    held_hkd: Mapped[object] = mapped_column(Numeric(10, 2), default=0)  # locked pending refund
-    required_hkd: Mapped[object] = mapped_column(Numeric(10, 2), default=500)
+    balance_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)  # available
+    held_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)  # locked pending refund
+    required_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=500)
     is_fulfilled: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -260,11 +307,29 @@ class Order(Base):
         UUID(as_uuid=True), ForeignKey("driver_profiles.id", ondelete="SET NULL"), index=True
     )
     status: Mapped[OrderStatus] = mapped_column(
-        SAEnum(OrderStatus, name="order_status", native_enum=False),
+        SAEnum(
+            OrderStatus,
+            name="ck_orders_status",
+            native_enum=False,
+            create_constraint=True,
+        ),
         default=OrderStatus.CREATED,
         index=True,
     )
-    # Requested route
+    # Requested route.
+    #
+    # `Mapped[object]` on the two geography columns is **forced, not lazy**:
+    # GeoAlchemy2's `Geography` does not override `python_type`, and the base
+    # implementation returns `object` (SQLAlchemy 2.1 changed it from raising
+    # `NotImplementedError`). Writing `Mapped[str]` or `Mapped[Any]` would claim a
+    # guarantee the column type does not make, so a type checker would be
+    # verifying against a fiction — worse than no annotation. The reader gets the
+    # real description from `app/services/trip_service.py`, which is the only
+    # place that parses these (WKT via `_wkt`).
+    #
+    # Every *other* `Mapped[object]` in this module was the same habit applied to
+    # a `Numeric` column, where `python_type` is genuinely `Decimal`; those are
+    # `Mapped[Decimal]` now.
     pickup_location: Mapped[object] = mapped_column(
         Geography(geometry_type="POINT", srid=4326, spatial_index=False)
     )
@@ -273,15 +338,15 @@ class Order(Base):
         Geography(geometry_type="POINT", srid=4326, spatial_index=False)
     )
     dropoff_address: Mapped[str] = mapped_column(Text)
-    distance_km: Mapped[object] = mapped_column(Numeric(7, 3))
+    distance_km: Mapped[Decimal] = mapped_column(Numeric(7, 3))
     taxi_type: Mapped[str] = mapped_column(String(10))
     # Fare estimate snapshot (Cap. 374D disclaimer fields included in fare_json)
     fare_json: Mapped[dict] = mapped_column(JSONB)
     tariff_version: Mapped[str] = mapped_column(String(60))
-    estimated_total_hkd: Mapped[object] = mapped_column(Numeric(10, 2))
-    discount_percent: Mapped[object] = mapped_column(Numeric(5, 2), default=0)
+    estimated_total_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0)
     # Broadcast config
-    broadcast_radius_km: Mapped[object] = mapped_column(Numeric(4, 1), default=3.0)
+    broadcast_radius_km: Mapped[Decimal] = mapped_column(Numeric(4, 1), default=3.0)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     driver_arrived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -306,10 +371,15 @@ class LedgerEntry(Base):
         UUID(as_uuid=True), ForeignKey("driver_profiles.id", ondelete="RESTRICT"), index=True
     )
     entry_type: Mapped[LedgerEntryType] = mapped_column(
-        SAEnum(LedgerEntryType, name="ledger_entry_type", native_enum=False)
+        SAEnum(
+            LedgerEntryType,
+            name="ck_ledger_entries_entry_type",
+            native_enum=False,
+            create_constraint=True,
+        )
     )
-    amount_hkd: Mapped[object] = mapped_column(Numeric(10, 2))  # signed: +credit / -debit
-    balance_after_hkd: Mapped[object] = mapped_column(Numeric(10, 2))
+    amount_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2))  # signed: +credit / -debit
+    balance_after_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     order_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), index=True)
     reference: Mapped[str | None] = mapped_column(String(120))  # external ref / admin note id
     note: Mapped[str | None] = mapped_column(Text)
@@ -378,9 +448,14 @@ class RefundRequest(Base):
     driver_profile_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("driver_profiles.id", ondelete="CASCADE"), index=True
     )
-    amount_hkd: Mapped[object] = mapped_column(Numeric(10, 2))
+    amount_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     status: Mapped[RefundStatus] = mapped_column(
-        SAEnum(RefundStatus, name="refund_status", native_enum=False),
+        SAEnum(
+            RefundStatus,
+            name="ck_refund_requests_status",
+            native_enum=False,
+            create_constraint=True,
+        ),
         default=RefundStatus.PENDING,
         index=True,
     )

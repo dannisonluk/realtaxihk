@@ -106,12 +106,19 @@ class Fleet(Base):
     contact_phone: Mapped[str | None] = mapped_column(String(20))
     contact_name: Mapped[str | None] = mapped_column(String(80))
     status: Mapped[FleetStatus] = mapped_column(
-        SAEnum(FleetStatus, name="fleet_status", native_enum=False),
+        SAEnum(
+            FleetStatus,
+            name="ck_fleets_status",
+            native_enum=False,
+            create_constraint=True,
+        ),
         default=FleetStatus.ACTIVE,
         index=True,
     )
     # Volume discount on the weekly service fee, 0-100.
-    weekly_fee_discount_percent: Mapped[object] = mapped_column(Numeric(5, 2), default=Decimal("0"))
+    weekly_fee_discount_percent: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), default=Decimal("0")
+    )
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -141,11 +148,21 @@ class FleetMembership(Base):
         UUID(as_uuid=True), ForeignKey("driver_profiles.id", ondelete="CASCADE"), index=True
     )
     member_role: Mapped[FleetMemberRole] = mapped_column(
-        SAEnum(FleetMemberRole, name="fleet_member_role", native_enum=False),
+        SAEnum(
+            FleetMemberRole,
+            name="ck_fleet_memberships_member_role",
+            native_enum=False,
+            create_constraint=True,
+        ),
         default=FleetMemberRole.MEMBER,
     )
     status: Mapped[FleetMemberStatus] = mapped_column(
-        SAEnum(FleetMemberStatus, name="fleet_member_status", native_enum=False),
+        SAEnum(
+            FleetMemberStatus,
+            name="ck_fleet_memberships_status",
+            native_enum=False,
+            create_constraint=True,
+        ),
         default=FleetMemberStatus.ACTIVE,
         index=True,
     )
@@ -188,14 +205,14 @@ class FleetSettlementRun(Base):
         UUID(as_uuid=True), ForeignKey("fleets.id", ondelete="CASCADE"), index=True
     )
     period: Mapped[str] = mapped_column(String(12))  # ISO week, e.g. 2026-W40
-    fee_hkd: Mapped[object] = mapped_column(Numeric(10, 2))  # per member, after discount
-    discount_percent: Mapped[object] = mapped_column(Numeric(5, 2))
+    fee_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2))  # per member, after discount
+    discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2))
     member_count: Mapped[int] = mapped_column(BigInteger)
     charged: Mapped[int] = mapped_column(BigInteger, default=0)
     skipped: Mapped[int] = mapped_column(BigInteger, default=0)
     failed: Mapped[int] = mapped_column(BigInteger, default=0)
     tampered: Mapped[int] = mapped_column(BigInteger, default=0)
-    collected_hkd: Mapped[object] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    collected_hkd: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )

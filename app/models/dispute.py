@@ -39,6 +39,9 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy import (
+    Enum as SAEnum,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -210,20 +213,72 @@ class OrderDispute(Base):
         UUID(as_uuid=True), ForeignKey("orders.id", ondelete="RESTRICT"), index=True
     )
 
-    raised_by_kind: Mapped[str] = mapped_column(String(16))
+    raised_by_kind: Mapped[str] = mapped_column(
+        SAEnum(
+            DisputePartyKind,
+            name="ck_order_disputes_raised_by_kind",
+            native_enum=False,
+            create_constraint=True,
+            length=16,
+        )
+    )
     # NULL when the system opens the case (nobody raised it) or the account is
     # gone. Not an FK: the raiser may be a `users` row or an `admin_accounts`
     # row depending on `raised_by_kind`, and one column cannot reference both.
     raised_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
-    source: Mapped[str] = mapped_column(String(32), index=True)
-    against_kind: Mapped[str | None] = mapped_column(String(16))
+    source: Mapped[str] = mapped_column(
+        SAEnum(
+            DisputeSource,
+            name="ck_order_disputes_source",
+            native_enum=False,
+            create_constraint=True,
+            length=32,
+        ),
+        index=True,
+    )
+    against_kind: Mapped[str | None] = mapped_column(
+        SAEnum(
+            DisputePartyKind,
+            name="ck_order_disputes_against_kind",
+            native_enum=False,
+            create_constraint=True,
+            length=16,
+        )
+    )
     against_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
-    category: Mapped[str] = mapped_column(String(16), index=True)
-    severity: Mapped[str] = mapped_column(String(16), default=DisputeSeverity.NORMAL.value)
+    category: Mapped[str] = mapped_column(
+        SAEnum(
+            DisputeCategory,
+            name="ck_order_disputes_category",
+            native_enum=False,
+            create_constraint=True,
+            length=16,
+        ),
+        index=True,
+    )
+    severity: Mapped[str] = mapped_column(
+        SAEnum(
+            DisputeSeverity,
+            name="ck_order_disputes_severity",
+            native_enum=False,
+            create_constraint=True,
+            length=16,
+        ),
+        default=DisputeSeverity.NORMAL.value,
+    )
     status: Mapped[str] = mapped_column(
-        String(16), default=DisputeStatus.OPEN.value, server_default="OPEN", index=True
+        SAEnum(
+            DisputeStatus,
+            name="ck_order_disputes_status",
+            native_enum=False,
+            create_constraint=True,
+            length=16,
+        ),
+        default=DisputeStatus.OPEN.value,
+        server_default="OPEN",
+        index=True,
     )
 
     assigned_admin_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -237,7 +292,15 @@ class OrderDispute(Base):
     # --- Resolution. All nullable, because "undecided" is the initial state. ---
     # No default and no `server_default`: a money decision that arrives by
     # omission is the exact bug this column exists to prevent.
-    resolution: Mapped[str | None] = mapped_column(String(24))
+    resolution: Mapped[str | None] = mapped_column(
+        SAEnum(
+            DisputeResolution,
+            name="ck_order_disputes_resolution",
+            native_enum=False,
+            create_constraint=True,
+            length=24,
+        )
+    )
     resolution_note: Mapped[str | None] = mapped_column(Text)
     resolved_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("admin_accounts.id", ondelete="SET NULL")
@@ -314,7 +377,15 @@ class DisputeMessage(Base):
     dispute_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("order_disputes.id", ondelete="CASCADE"), index=True
     )
-    author_kind: Mapped[str] = mapped_column(String(16))
+    author_kind: Mapped[str] = mapped_column(
+        SAEnum(
+            DisputePartyKind,
+            name="ck_dispute_messages_author_kind",
+            native_enum=False,
+            create_constraint=True,
+            length=16,
+        )
+    )
     # NULL for `system` messages (an automated note on the timeline).
     author_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     # Denormalised: the author may be deleted or renamed, and the thread must

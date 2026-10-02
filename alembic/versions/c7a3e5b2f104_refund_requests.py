@@ -37,7 +37,7 @@ def upgrade() -> None:
                 "PENDING",
                 "APPROVED",
                 "REJECTED",
-                name="refund_status",
+                name="ck_refund_requests_status",
                 native_enum=False,
             ),
             nullable=False,
