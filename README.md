@@ -7,7 +7,7 @@ Money math is exact (`Decimal`, never float); every fare response carries biling
 Cap. 374D disclaimers; every estimate embeds a `tariff_version` so historical orders
 stay auditable.
 
-**Status: production-hardened.** 887 backend tests green (+ 93 mobile, 54 contract
+**Status: production-hardened.** 894 backend tests green (+ 93 mobile, 54 contract
 fixtures, browser UI verifier PASS). Start with
 [`docs/WORK_SUMMARY.md`](docs/WORK_SUMMARY.md) for the whole picture — what's built,
 what's verified, and what still needs credentials or a deployment target.
@@ -175,7 +175,7 @@ unconfigured), Sentry/Prometheus (optional).
 .venv/Scripts/python -m pytest -q        # needs db+redis containers up
 ```
 
-- 887 tests over 32 files: fare unit tests, per-module API tests, WS streaming,
+- 894 tests over 34 files: fare unit tests, per-module API tests, WS streaming,
   fleet management / roster / settlement, backup retention and restore-drill
   guards, and `test_hardening.py` (14 regression tests for every fixed finding).
 - Per-test isolated Postgres databases (template clone) — no cross-test state.

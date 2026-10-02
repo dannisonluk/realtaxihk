@@ -1,11 +1,11 @@
 # realtaxihk — 工作總覽
 
-- **生成日期**：2026-09-30（**2026-10-01 更新**：併入 location check、analytics、console deep-link 修正；測試數由 272 更正為 616。**本輪再更新**：修好 SEV-1 admin session、統一 money 精度入口、套用 `ruff format` 並加 CI gate、補上 TOTP 綁定二維碼的渲染與測試；測試數 616 → **656**（**本輪 667**：新增 5 個 HTTP error-code + 6 個 state-machine 不變式測試）。**最後一輪**：修好深圳灣口岸邊界缺陷（`_HK_MAIN` 后海灣段 2 → 7 頂點），測試數 667 → **687**（新增 18 個口岸邊界參數化案例 + 2 個回歸測試）。**本輪再更新**：`app/models/__init__.py`（886 行）拆成 5 個 bounded-context 模組 + `__init__` re-export，測試維持 **687** 不變 —— 見 §2.9。**本輪再更新**：新增 `app/api/schemas/` 套件並為**全部 69 個 operation** 補上 `response_model=`（此前 69 個中只有 1 個），令 `/openapi.json` 首次描述真實響應形狀；測試維持 **687** 不變 —— 見 §2.10。**最新一輪（§2.11）**：RBAC 四級角色 + 審計覆蓋金錢／狀態改動、帳戶管理、訂單監控、結算預覽／確認 token／CSV 匯出、爭議實體、主體搜尋、頭像上傳，以及六個對應的後台畫面 —— 測試 **687 → 872**（+185），console **29 → 31 vitest**（+2），API **64/69 → 81 paths / 88 operations**）。**最新一輪（§2.13）**：結構整理 —— `app/api/` 命名統一為 `admin_x`、`/api/v1/driver` → `/api/v1/drivers`、`scripts/` 拆為 `{ops,verify,dev}`、由 `create_app()` 抽出 lifespan 輔助函數；測試維持 **872** 不變，並修好一個腐爛的驗證腳本（`prod_boot_drill` 6/7 → 7/7）。**最新一輪（§2.14）**：新增後台實時車輛位置端點 `GET /api/v1/admin/live/drivers`（輪詢式，非推送），測試 **872 → 887**（+15：12 個端點測試 + 3 個 `.env.example` 漂移守衛）；API **81/88 → 82 paths / 89 operations**；並修好測試套件會對外連線的問題（`SENTRY_DSN` 未強制清空））
+- **生成日期**：2026-09-30（**2026-10-01 更新**：併入 location check、analytics、console deep-link 修正；測試數由 272 更正為 616。**本輪再更新**：修好 SEV-1 admin session、統一 money 精度入口、套用 `ruff format` 並加 CI gate、補上 TOTP 綁定二維碼的渲染與測試；測試數 616 → **656**（**本輪 667**：新增 5 個 HTTP error-code + 6 個 state-machine 不變式測試）。**最後一輪**：修好深圳灣口岸邊界缺陷（`_HK_MAIN` 后海灣段 2 → 7 頂點），測試數 667 → **687**（新增 18 個口岸邊界參數化案例 + 2 個回歸測試）。**本輪再更新**：`app/models/__init__.py`（886 行）拆成 5 個 bounded-context 模組 + `__init__` re-export，測試維持 **687** 不變 —— 見 §2.9。**本輪再更新**：新增 `app/api/schemas/` 套件並為**全部 69 個 operation** 補上 `response_model=`（此前 69 個中只有 1 個），令 `/openapi.json` 首次描述真實響應形狀；測試維持 **687** 不變 —— 見 §2.10。**最新一輪（§2.11）**：RBAC 四級角色 + 審計覆蓋金錢／狀態改動、帳戶管理、訂單監控、結算預覽／確認 token／CSV 匯出、爭議實體、主體搜尋、頭像上傳，以及六個對應的後台畫面 —— 測試 **687 → 872**（+185），console **29 → 31 vitest**（+2），API **64/69 → 81 paths / 88 operations**）。**最新一輪（§2.13）**：結構整理 —— `app/api/` 命名統一為 `admin_x`、`/api/v1/driver` → `/api/v1/drivers`、`scripts/` 拆為 `{ops,verify,dev}`、由 `create_app()` 抽出 lifespan 輔助函數；測試維持 **872** 不變，並修好一個腐爛的驗證腳本（`prod_boot_drill` 6/7 → 7/7）。**最新一輪（§2.14）**：新增後台實時車輛位置端點 `GET /api/v1/admin/live/drivers`（輪詢式，非推送），測試 **872 → 887**（+15：12 個端點測試 + 3 個 `.env.example` 漂移守衛）；API **81/88 → 82 paths / 89 operations**；並修好測試套件會對外連線的問題（`SENTRY_DSN` 未強制清空）。**最新一輪（§2.15 / §2.16）**：新增後台實時地圖頁 `#/live`（§2.15，console 57 → 68 vitest）；新增正式部署 overlay `docker-compose.prod.yml`，把連線池三個數字設定化並補上算式守衛（§2.16）—— 測試 **887 → 894**）
 - **HEAD**：`main` 上最新 commit —— **刻意不寫死 hash**（寫死過三次，每次之後
   的 commit 都令它變錯；要查：`git log --oneline -1`）；
   `origin/main..HEAD` = **有未推 commit**（查：`git rev-list --count origin/main..HEAD`，見 §5）；
   working tree **clean**。
-- **現時狀態**：`pytest` **887 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean** · console `tsc` clean + **68 vitest passed（9 files）** · `npm run build` 主包 466.65 kB（gzip 146.05 kB）＋地圖分包 155.64 kB（gzip 45.57 kB，按需載入）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · `audit_layout` **52 renders clean（4 locale/theme 組合 × 13 條路由）** · API **82 paths / 89 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
+- **現時狀態**：`pytest` **894 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean** · console `tsc` clean + **68 vitest passed（9 files）** · `npm run build` 主包 466.65 kB（gzip 146.05 kB）＋地圖分包 155.64 kB（gzip 45.57 kB，按需載入）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · `audit_layout` **52 renders clean（4 locale/theme 組合 × 13 條路由）** · API **82 paths / 89 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
 - **✅ 已解決：管理員 session 15 分鐘硬死** —— 已改為 `HttpOnly` refresh cookie（`SameSite=Strict`，path `/api/v1/admin/auth`）＋ CSRF double-submit。詳見 `SECURITY.md`
 
 > **這份文件的用途**：一份可以單獨看完的總覽 —— 做過什麼、現在是什麼狀態、
@@ -19,7 +19,7 @@
 
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **82 paths / 89 operations** · 887 tests |
+| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **82 paths / 89 operations** · 894 tests |
 | Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**21 個畫面**，三角色） | ✅ 93 tests |
 | Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/js/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **68 vitest** · UI verifier PASS |
 
@@ -580,13 +580,74 @@ console **57 vitest（8 files）→ 68（9 files）** · `tsc` clean · `npm run
 
 ---
 
+### 2.16 正式部署 overlay + 連線池設定化（2026-10-02）
+
+`deploy/README.md` 一直把 `docker-compose.prod.yml` 列為未完成，理由是「要先確認
+VPS 與主機名」。這一輪把它補上，並一併處理 `REALTIME_POSITION_COST.md` §3.5 標記為
+**正確性問題**（而非優化）的那一項。
+
+**連線池的三個數字是同一個決定。** SQLAlchemy 的池是 **per-process** 建立的，所以
+api 對 Postgres 的實際需求是 `(pool + overflow) × 行程數`。原本 `app/core/db.py`
+把 `10 + 20` 寫死，而 §3.5 指出四個行程即 120 條 —— 對 `max_connections=100` 會爆，
+且**只在正式環境的並發下才會出現**。三個值現已改由環境變數驅動
+（`app/core/config.py` 的 `db_pool_size` / `db_max_overflow` /
+`db_statement_cache_size`），並在 overlay 內明確寫成 `(10 + 20) × 1 = 30 ≤ 100`。
+
+`DB_STATEMENT_CACHE_SIZE` 是為 PgBouncer 準備的：asyncpg 預設每條連線快取 100 條
+prepared statement，而 transaction pooling 下同一筆交易的 PREPARE 與 EXECUTE 可能
+落在**不同的伺服器連線**上，後者會以
+`prepared statement "__asyncpg_stmt_N__" does not exist` 失敗 —— 看起來像資料庫故障。
+它是 asyncpg 的 **connect 參數**，所以必須走 `connect_args`；當成 engine kwarg
+不是被忽略，而是**直接 raise**（`Invalid argument(s) ... sent to create_engine()`）。
+
+**測試套件看不到這個 bug，原因本身值得記錄**：`tests/conftest.py` 自建 `NullPool`
+engine 打 per-test 資料庫，**從不呼叫 `app.core.db.get_engine()`** —— 應用程式自己的
+池設定從來沒有被任何測試建構過。新增 `tests/test_db_pool_config.py`（3 tests），
+以 spy 攔 `create_async_engine` 斷言實際傳入的 kwargs。
+
+**`API_WORKERS` 預設為 1，這是正確性而非保守。** `ConnectionRegistry` 與速率限制
+計數器都存在行程記憶體內，N 個行程會把 `WS_MAX_CONNECTIONS_TOTAL` 與各項速率上限
+**各別執行 N 次**，而且不會有任何錯誤訊息。要加寬是三個步驟的組合，寫在
+`deploy/README.md`。
+
+**`docker-compose.prod.yml` 是 overlay，不是獨立檔。** 基礎檔承載全部安全加固
+（SEC-06 的 loopback 綁定、SEC-19 的密碼必填、SEC-31 的 `--no-proxy-headers`），
+獨立檔等於複製一份 —— 而下一次修安全問題時被漏掉的永遠是第二份。新增的服務是
+nginx（掛 `deploy/nginx/realtaxihk.conf`）與 certbot（每 12 小時
+`renew --webroot`）；nginx 容器內另有每 6 小時 `nginx -s reload` 的迴圈，因為兩個
+容器之間沒有訊號通道，而 nginx 只在啟動或 reload 時讀取憑證。憑證必須在第一次
+`up` **之前**存在，否則 nginx 會無限重啟 —— 首次簽發用 `--standalone`，步驟寫在
+`deploy/README.md`。
+
+**PgBouncer 刻意沒有附上 compose 檔。** 本環境起不到 Docker，設定無法驗證，而設定
+錯的表現是**連線失敗**而非啟動錯誤 —— 那正是本專案反覆記錄的「看起來對、其實無聲
+失效」。內容與四個驗證檢查點寫在 `deploy/README.md`。**連線池的正確性問題已由設定化
+解決**，PgBouncer 現在是擴容手段，不再是上線阻礙。
+
+**守衛**：`tests/test_prod_compose_pool_arithmetic.py`（4 tests）直接讀 compose 檔，
+斷言算式成立、`--workers` 確實取自 `${API_WORKERS}`（否則算式守的是一個容器根本沒
+在用的數字）、以及 `Settings` 的預設值對單行程安全。**已用突變測試證明**：把
+`DB_MAX_OVERFLOW` 改成 90、以及把 `--workers` 寫死成 4，兩者都會讓對應測試變紅。
+`tests/test_env_example.py` 亦擴大為同時掃描 overlay（`API_WORKERS` /
+`PG_MAX_CONNECTIONS` 是 overlay 才引入的變數），並修好它自己的一個真缺陷：原本會把
+**註解裡說明語法**的 `${VAR:-default}` 當成真的變數。
+
+順帶修好一個會靜默漂移的地方：`scripts/verify/bench_location_pipeline.py` 原本把
+`pool_size=10 + max_overflow=20` 寫死在輸出字串裡，改為讀 `Settings` —— 否則部署改了
+池大小之後，這支基準腳本仍會拿一個過期的上限去對比實測負載。
+
+**驗證**：`pytest` **887 → 894**（`--junit-xml` 讀：894/0/0/0）· `ruff check` clean ·
+`ruff format --check` clean（137 files）· `npm run build` / `tsc` / `vitest` 未受影響。
+
+---
+
 ## 3. 驗證標準：「全部實跑」
 
 不接受「讀源碼覺得無問題」。每次改動都跑齊：
 
 ```bash
 uv run ruff check . && uv run ruff format --check .   # 或 ./.venv/Scripts/python.exe -m ruff
-uv run pytest -q                                       # 887 passed（用 --junit-xml 讀，見下）
+uv run pytest -q                                       # 894 passed（用 --junit-xml 讀，見下）
 uv run python scripts/verify/audit_response_models.py         # 68 块夹具 vs response_model，0 丢失
 cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run --no-file-parallelism --pool=forks
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
@@ -817,13 +878,15 @@ CI gate（`.github/workflows/ci.yml`）：
 | **`docs/IN_TRIP_REDESIGN.md`** | in-trip + 預約重設計：新狀態機、到達雙重驗證、違約即時扣款 + 冷靜期、保證金閘門、schema、API、前端、$5 平台費、22 個**終點地標**（純下客）預約與司機分類 filter | 設計提案，7 個 DECISION **全部已拍板**；深圳灣邊界缺陷待拍板 |
 | **`docs/LANDMARK_COORDINATES.md`** | 19 個即用地標的落客座標 + Google Maps 連結，供人手逐個覆核；含深圳灣港方口岸區的完整幾何分析與修法記錄 | 覆核清單（工具文件） |
 | **`docs/REALTIME_POSITION_COST.md`** | 實時位置每 tick 成本實測 + 擴展天花板 + 5 項優化 | 已實測 |
+| **`deploy/README.md`** | 正式部署（選項 A）：nginx 設定、憑證首次簽發與續期、三個必須對齊的代理設定、**連線池算式**、PgBouncer 擴容路徑 | 跟部署更新 |
+| **`docker-compose.prod.yml`** | 正式環境 **overlay**（`-f docker-compose.yml -f 本檔`）：nginx + certbot，並把連線池三個數字明示 | 跟部署更新 |
 | `docs/LINTING.md` | ruff 規則集與理由 | 少變 |
 | `docs/PROJECT_UNDERSTANDING.md` | 專案架構理解（交付物規模） | ✅ 2026-10-01 已全面重寫 |
 | `.workbuddy-ai/memory/YYYY-MM-DD.md` | 逐日流水、含沙盒陷阱 | **append-only，不整理** |
 
 > **✅ 已修正**：`docs/PROJECT_UNDERSTANDING.md` 曾停在 `4333f2a`（寫 HEAD =
 > `446b7ee`、221 tests、54 Dart files、38 endpoints）。**2026-10-01 已全面重寫**，
-> 現值：**887 tests**、**82 paths / 89 operations**、**68 vitest**，
+> 現值：**894 tests**、**82 paths / 89 operations**、**68 vitest**，
 > 並新增 RBAC 設計、`/auth/me` 雙形狀、`StarletteHTTPException`
 > cookie 陷阱等章節。（**HEAD 刻意不寫死** —— 之前寫死過三次，每次之後的 commit
 > 都令它變錯。）
@@ -853,7 +916,7 @@ CI gate（`.github/workflows/ci.yml`）：
 ## 8. 一頁看完
 
 ```
-✅ 後端 82 paths / 89 ops / 887 tests / ruff lint + format clean — 生產就緒
+✅ 後端 82 paths / 89 ops / 894 tests / ruff lint + format clean — 生產就緒
 ✅ mobile 21 畫面 / 93 tests / 0 diagnostics      — 三角色完整
 ✅ admin-web React / 68 vitest / typecheck + build clean / UI verifier PASS
 ✅ 後台治理：四級 RBAC（rank 比較、live row 為權威）+ 審計覆蓋金錢／狀態改動

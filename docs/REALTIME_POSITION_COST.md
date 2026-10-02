@@ -41,14 +41,18 @@ CPU 是熱點，實際上它比一次資料庫往返便宜 **1,000 倍**。
 「所需 DB 連線」= 每秒 tick 數 × 每次 tick 佔用連線的時間（3.52 ms）。
 即：任何一刻，平均有這麼多連線正被 tick 佔用。
 
-### 三個設定的上限（`app/core/db.py`）
+### 連線上限的預設值
 
 ```
-DB 連線池   : pool_size=10 + max_overflow=20  = 30 條
-Redis 連線池 : redis-py 預設 max_connections  = 100 條
-WS 每使用者  : ws_max_connections_per_user    = 5
-WS 每行程    : ws_max_connections_total       = 2000
+DB 連線池   : DB_POOL_SIZE(10) + DB_MAX_OVERFLOW(20)  = 30 條（每行程）
+Redis 連線池 : redis-py 預設 max_connections          = 100 條
+WS 每使用者  : ws_max_connections_per_user            = 5
+WS 每行程    : ws_max_connections_total               = 2000
 ```
+
+DB 的兩個數字已改為由環境變數驅動（`app/core/config.py` 的 `db_pool_size` /
+`db_max_overflow`），上表列的是預設值。**這兩個值必須與行程數一起決定**，
+理由見 §3.5。
 
 ### 瓶頸在哪
 
@@ -129,9 +133,22 @@ flush 時每個訂單只發一次。另外可考慮用 `PUBLISH` 的批次形式
 
 ### 3.5 連線池與行程數（部署層）
 
-- 現在 `pool_size=10, max_overflow=20` 是 per-process 的。4 個行程 × 30 = 120 條，
-  Postgres 預設 `max_connections=100` **會爆**。這一項必須與部署一起調，
-  否則本地測得過、上線就掛。使用 PgBouncer（transaction pooling）是標準做法。
+- 連線池是 **per-process** 的：`(DB_POOL_SIZE + DB_MAX_OVERFLOW) × 行程數`
+  才是對 Postgres 提出的總需求。以原本硬編碼的 `10 + 20` 配 4 個行程即 120 條，
+  而 Postgres 預設 `max_connections=100` —— **會爆**。
+  **這個正確性問題已處理**：三個數字改為由環境變數驅動
+  （`app/core/config.py`），並在 `docker-compose.prod.yml` 內明確寫成
+  `(10 + 20) × 1 = 30 ≤ 100`，由 `tests/test_prod_compose_pool_arithmetic.py`
+  守住。它解決的是**正確性**（不會超出上限），不是**擴容量**。
+- 要解除「行程數 × 池大小」這個硬上限——即在單台機器上容納更多行程——
+  仍需在資料庫前放 PgBouncer（transaction pooling）。屆時算式要改對
+  **PgBouncer 的池大小**，不再是 api 的池大小。
+- **走 PgBouncer 時必須同時把 `DB_STATEMENT_CACHE_SIZE` 設為 `0`。**
+  asyncpg 預設會為每條連線快取 100 條 prepared statement，而 transaction
+  pooling 下同一條交易的前後兩個語句可能落在**不同的伺服器連線**上，
+  後者會以 `prepared statement "__asyncpg_stmt_N__" does not exist` 失敗。
+  設 0 即停用該快取，這是讓 PgBouncer transaction mode 在各版本都安全的做法。
+  直連 Postgres 時維持 100 才是對的（這是效能優化）。
 - `ConnectionRegistry` 是行程內計數器，多行程下總量會超。若需要全域上限，
   應改用 Redis 計數（但會引入每連線一次 Redis 往返，需權衡）。
 
@@ -145,10 +162,11 @@ flush 時每個訂單只發一次。另外可考慮用 `PUBLISH` 的批次形式
 | 2 | 移除每 tick 的狀態 SELECT（改為每 10 秒） | −17% DB | 低，撤銷延遲 10 秒 |
 | 3 | 空閒司機降頻（10 秒、不寫 PostGIS） | 大幅降低平均負載 | 中，需改派單邏輯 |
 | 4 | 伺服器端 tick 合併（背景 flush） | −4x DB | 中，需新背景任務 |
-| 5 | PgBouncer + 池大小重算（部署前必做） | 解除硬上限 | 部署複雜度 |
+| 5 | PgBouncer + 池大小重算（**擴容時**才需要） | 解除硬上限 | 部署複雜度；連帶要設 `DB_STATEMENT_CACHE_SIZE=0` |
 
-**第 5 項不是優化，是上線前必須處理的正確性問題**（多行程會超出
-Postgres 連線上限）。
+**第 5 項與前四項性質不同**：它是**擴容**手段，不是上線前的阻礙。
+原本「多行程會超出 Postgres 連線上限」這個**正確性**問題，已由連線池設定化
+解決（見 §3.5）；PgBouncer 要處理的是剩下的**規模**上限。
 
 ---
 

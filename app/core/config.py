@@ -73,6 +73,30 @@ class Settings(BaseSettings):
     postgres_password: str = "change-me-dev"
     postgres_db: str = "realtaxihk"
 
+    # ---- connection pool -------------------------------------------------
+    # Sized **per process**, so the number that decides whether Postgres'
+    # `max_connections` is exceeded is `(db_pool_size + db_max_overflow)` times
+    # the worker count — not either value on its own. Kept here rather than
+    # hard-coded in `db.py` because the deploy is what chooses how many workers
+    # run, and the two settings have to be chosen together.
+    #
+    # `docs/REALTIME_POSITION_COST.md` §3.5 flags this as a correctness problem
+    # rather than an optimisation: 4 workers at the previous hard-coded
+    # 10 + 20 would ask for 120 connections against a default limit of 100, so
+    # the failure would appear only under production concurrency.
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+
+    # asyncpg prepares statements and caches up to 100 per connection. That is
+    # an optimisation in front of a single Postgres, and a **bug** in front of a
+    # transaction-mode connection pooler: the PREPARE and the EXECUTE can land on
+    # different server connections, and the second one fails with
+    # `prepared statement "__asyncpg_stmt_N__" does not exist`. Setting this to 0
+    # disables the cache, which is what makes PgBouncer's transaction pooling
+    # safe on every version; leaving it at asyncpg's own default (100) is correct
+    # when the app talks to Postgres directly.
+    db_statement_cache_size: int = 100
+
     redis_url: str = "redis://127.0.0.1:6379/0"
 
     # Prefix for every rate-limit key: `rl:{redis_key_namespace}{key}:{window}`.

@@ -179,12 +179,26 @@ def report(cpu: dict[str, float], db_ms: float | None, redis_us: float | None) -
         redis_conns = ticks * (redis_us / 1e6) if redis_us else 0
         print(f"  {n:>8}  {ticks:>8}  {cores:>10.2f}  {db_conns:>9.1f}  {redis_conns:>6.1f}")
 
+    from app.core.config import get_settings
+
+    settings = get_settings()
+
     print()
     print("Compare against the configured limits:")
-    print("  DB pool      : pool_size=10 + max_overflow=20 = 30 connections")
+    # Read from settings rather than restating the numbers. The pool is now
+    # configurable (DB_POOL_SIZE / DB_MAX_OVERFLOW), and a hard-coded copy here
+    # would keep printing 30 after a deploy had moved to something else — i.e.
+    # the benchmark would be comparing a live load against a stale ceiling,
+    # which is worse than not printing it at all.
+    print(
+        f"  DB pool      : DB_POOL_SIZE={settings.db_pool_size} + "
+        f"DB_MAX_OVERFLOW={settings.db_max_overflow} = "
+        f"{settings.db_pool_size + settings.db_max_overflow} connections "
+        "(per PROCESS)"
+    )
     print("  Redis pool   : redis-py default max_connections=100")
-    print("  WS per-user  : ws_max_connections_per_user=5")
-    print("  WS per-proc  : ws_max_connections_total=2000")
+    print(f"  WS per-user  : ws_max_connections_per_user={settings.ws_max_connections_per_user}")
+    print(f"  WS per-proc  : ws_max_connections_total={settings.ws_max_connections_total}")
 
 
 def main() -> None:

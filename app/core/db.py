@@ -43,8 +43,12 @@ def get_engine():
             settings.database_url,
             echo=False,
             pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
+            pool_size=settings.db_pool_size,
+            max_overflow=settings.db_max_overflow,
+            # `statement_cache_size` is an asyncpg connect argument, so it has to
+            # travel through `connect_args` rather than as an engine option.
+            # Behind PgBouncer this is set to 0 — see the setting's docstring.
+            connect_args={"statement_cache_size": settings.db_statement_cache_size},
         )
     return _engine
 
