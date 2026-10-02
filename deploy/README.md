@@ -53,16 +53,26 @@ nginx 與 certbot 是兩個容器，**之間沒有訊號通道**，而 nginx 只
 ### 把主機名換掉
 
 `nginx/realtaxihk.conf` 內目前是佔位符 `api.realtaxihk.com`。
-**注意**：repo 內目前有兩種拼法——文檔寫 `realtaxihk.com`，
-`mobile/lib/core/config/app_config.dart` 的註釋寫 `realtaxi.hk`。
-兩者都還不是決定，請擇一並保持一致。`PUBLIC_BASE_URL` 必須是同一台主機的
+**注意**：repo 內目前有**三種**拼法——文檔寫 `realtaxihk.com`，
+`mobile/lib/core/config/app_config.dart` 的註釋寫 `realtaxi.hk`，
+console 的 server block 寫 `console.realtaxihk.com`。
+三者都還不是決定，請擇一並保持一致。`PUBLIC_BASE_URL` 必須是同一台主機的
 `https://` 來源，否則驗證信會把使用者帶到別的地方。
+
+`ssl_certificate` 的路徑把主機名寫死在裡面（`/etc/letsencrypt/live/<host>/…`），
+所以**改漏一處**的後果不是警告，是 nginx 找不到 cert 而**啟動失敗**
+（`docker-compose.prod.yml` 的 api 註釋說明它會 restart-loop）。若要一次解掉
+「三種拼法 + cert 路徑寫死」兩個問題：把 conf 移到
+`deploy/nginx/templates/realtaxihk.conf.template`，nginx 官方 image 會對它做
+`envsubst`，用 `${PUBLIC_HOSTNAME}` 取代全部四處。**此改動需要一台真的 nginx
+才驗證得了**（本 repo 的部署設定一律無法在本機跑），所以在此只記錄做法，
+不預先改動。
 
 ## 三個必須對齊的設定（否則會靜默失效）
 
 ### 1. `TRUSTED_PROXY_COUNT=1`
 
-`app/api/auth.py::_client_ip` 的 SEC-07 邏輯**從 X-Forwarded-For 的右邊**取第
+`app/core/client_ip.py::client_ip` 的 SEC-07 邏輯**從 X-Forwarded-For 的右邊**取第
 `trusted_proxy_count` 個 hop。nginx 的 `$proxy_add_x_forwarded_for` 會把真實對端
 **附加在最右邊**，所以單一 nginx 對應的值就是 **1**。
 

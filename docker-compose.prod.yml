@@ -23,8 +23,18 @@ services:
       #        per-IP rate limit into a single shared bucket;
       #   2 -> with no second proxy in the chain, the app reads the entry the
       #        client supplied, so the limits are forgeable.
-      # See app/api/auth.py::_client_ip and deploy/README.md.
+      # See app/core/client_ip.py::client_ip and deploy/README.md.
       TRUSTED_PROXY_COUNT: "1"
+
+      # Contrast the base file, which defaults this to the production-looking
+      # `["https://realtaxihk.com"]`. That default is a hostname, and a hostname
+      # is a guess: this repo has three spellings of it in circulation and no
+      # single decision (see the nginx hostname note in the base file). A wrong
+      # origin does not break anything loudly — the browser blocks the request
+      # and the server log stays empty — so the overlay demands a real value
+      # rather than inheriting a plausible one. `:?` makes an unset value a hard
+      # error at `up`, next to the other credentials this file already requires.
+      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS in .env — e.g. '["https://admin.example.com"]'}
 
       # ---- connection pool -------------------------------------------------
       # These three numbers are ONE decision, not three. What has to stay under
@@ -55,7 +65,11 @@ services:
       API_WORKERS: "${API_WORKERS:-1}"
       # 100 is asyncpg's own default and is correct when the app talks to
       # Postgres directly. It is NOT correct behind PgBouncer in transaction
-      # mode — see deploy/pgbouncer/README.md.
+      # mode — see the PgBouncer section of `deploy/README.md`, which is where
+      # the checkpoints live. (It deliberately points there and not at a
+      # `deploy/pgbouncer/` path: that compose file is not written yet, and a
+      # comment that names a file which does not exist sends the reader looking
+      # for one that never did.)
       DB_STATEMENT_CACHE_SIZE: "100"
 
       # Passed through from the host environment so a real deploy cannot
