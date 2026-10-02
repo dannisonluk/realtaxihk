@@ -63,6 +63,97 @@ async def _job_loop(interval_s: int, coro_factory, name: str):
         await asyncio.sleep(interval_s)
 
 
+def _start_background_jobs(app: FastAPI, settings) -> list[asyncio.Task]:
+    """Start the long-running maintenance loops and return their tasks.
+
+    Extracted from ``create_app``'s lifespan so the factory stays readable and
+    the job set can be reasoned about — and tested — on its own.
+
+    Every task is named. Those names are exactly what
+    ``tests/test_hardening.py::TestLifespanBackgroundJobs`` asserts on, so a job
+    that quietly stops being started becomes a test failure instead of a silent
+    regression (which is how ghost-order sweeping could previously be disabled
+    without any test noticing). Renaming a job here without updating that test
+    is therefore a deliberate act, never an accident.
+    """
+    tasks: list[asyncio.Task] = []
+    if not settings.jobs_enabled:
+        return tasks
+    tasks.append(
+        asyncio.create_task(
+            _job_loop(
+                settings.geo_sweep_interval_s,
+                lambda: app.state.maintenance.sweep_ghost_orders(settings.max_broadcast_minutes),
+                "geo_sweep",
+            ),
+            name="geo_sweep",
+        )
+    )
+    tasks.append(
+        asyncio.create_task(
+            _job_loop(
+                settings.purge_interval_s,
+                lambda: app.state.maintenance.purge_expired_rows(
+                    settings.retention_days_otp,
+                    settings.retention_days_refresh,
+                ),
+                "pdpo_purge",
+            ),
+            name="pdpo_purge",
+        )
+    )
+    if settings.weekly_settlement_enabled:
+        # Fires once at boot, then every 7 days. The per-ISO-week ledger
+        # reference makes any extra run a no-op, so restarting mid-week cannot
+        # double-charge a driver.
+        tasks.append(
+            asyncio.create_task(
+                _job_loop(
+                    settings.weekly_settlement_interval_s,
+                    lambda: app.state.settlement.run_weekly(settings.weekly_fee_hkd),
+                    "weekly_settlement",
+                ),
+                name="weekly_settlement",
+            )
+        )
+    return tasks
+
+
+async def _stop_background_jobs(tasks: list[asyncio.Task]) -> None:
+    """Cancel every job and wait for it to unwind, so nothing is orphaned."""
+    for t in tasks:
+        t.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def _shutdown_resources(app: FastAPI) -> None:
+    """Release the Redis clients and the DB engine on shutdown (P0-6).
+
+    Without this, uvicorn's SIGTERM leaves the connections to be reaped by
+    process death, which logs an asyncio ``connection_lost()`` ERROR and can
+    hold a server-side connection until TCP keepalive notices.
+    """
+    with contextlib.suppress(Exception):
+        from app.core.db import close_redis
+
+        await close_redis()
+    # Deduped by identity: `get_redis()` caches per event loop, so the rate
+    # limiter, the maintenance service, the WS hub and the auth path now share
+    # ONE client; closing the same object twice would raise.
+    closed: set[int] = set()
+    for holder in ("rate_limiter", "maintenance", "trip_hub", "auth_redis"):
+        obj = getattr(app.state, holder, None)
+        if obj is None or id(obj) in closed:
+            continue
+        closed.add(id(obj))
+        with contextlib.suppress(Exception):
+            await obj.aclose()
+    with contextlib.suppress(Exception):
+        from app.core.db import dispose_engine
+
+        await dispose_engine()
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
 
@@ -78,85 +169,21 @@ def create_app() -> FastAPI:
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
         """Startup + shutdown in one place (the modern replacement for the
-        deprecated `@app.on_event`, which this module's docstring already
+        deprecated ``@app.on_event``, which this module's docstring already
         promised).
 
-        Background jobs (P0-5 geo sweeper, P1-6 PDPO purge) are started here and
-        cancelled on shutdown, and the Redis client / DB engine are released so
-        uvicorn's SIGTERM does not leave connections to be reaped by process
-        death (P0-6).
+        The two halves are deliberately thin: the job set lives in
+        ``_start_background_jobs`` and the teardown in ``_shutdown_resources``,
+        so this stays a readable orchestration of the application lifecycle
+        rather than a place where 80 lines of maintenance wiring hide.
         """
-        tasks: list[asyncio.Task] = []
-        if settings.jobs_enabled:
-            # Tasks are named so they are identifiable in asyncio dumps and so
-            # tests can assert *which* jobs started rather than how many.
-            tasks.append(
-                asyncio.create_task(
-                    _job_loop(
-                        settings.geo_sweep_interval_s,
-                        lambda: app.state.maintenance.sweep_ghost_orders(
-                            settings.max_broadcast_minutes
-                        ),
-                        "geo_sweep",
-                    ),
-                    name="geo_sweep",
-                )
-            )
-            tasks.append(
-                asyncio.create_task(
-                    _job_loop(
-                        settings.purge_interval_s,
-                        lambda: app.state.maintenance.purge_expired_rows(
-                            settings.retention_days_otp,
-                            settings.retention_days_refresh,
-                        ),
-                        "pdpo_purge",
-                    ),
-                    name="pdpo_purge",
-                )
-            )
-            if settings.weekly_settlement_enabled:
-                # Fires once at boot, then every 7 days. The per-ISO-week ledger
-                # reference makes any extra run a no-op, so restarting mid-week
-                # cannot double-charge a driver.
-                tasks.append(
-                    asyncio.create_task(
-                        _job_loop(
-                            settings.weekly_settlement_interval_s,
-                            lambda: app.state.settlement.run_weekly(settings.weekly_fee_hkd),
-                            "weekly_settlement",
-                        ),
-                        name="weekly_settlement",
-                    )
-                )
+        tasks = _start_background_jobs(app, settings)
         app.state.jobs = tasks
         try:
             yield
         finally:
-            for t in tasks:
-                t.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-            # Graceful shutdown (P0-6): close Redis, dispose the DB engine.
-            with contextlib.suppress(Exception):
-                from app.core.db import close_redis
-
-                await close_redis()
-            # Close the long-lived Redis clients (rate limiter + maintenance + WS hub).
-            # Otherwise the loop dying logs an asyncio connection_lost() ERROR.
-            # Deduped by identity: `get_redis()` caches per loop, so these holders
-            # now share one client.
-            closed: set[int] = set()
-            for holder in ("rate_limiter", "maintenance", "trip_hub", "auth_redis"):
-                obj = getattr(app.state, holder, None)
-                if obj is None or id(obj) in closed:
-                    continue
-                closed.add(id(obj))
-                with contextlib.suppress(Exception):
-                    await obj.aclose()
-            with contextlib.suppress(Exception):
-                from app.core.db import dispose_engine
-
-                await dispose_engine()
+            await _stop_background_jobs(tasks)
+            await _shutdown_resources(app)
 
     app = FastAPI(
         title="realtaxihk.com API",
