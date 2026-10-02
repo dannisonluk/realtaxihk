@@ -46,6 +46,14 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-not-for-prod-0f3a9c7e1
 # runs with the dev rail on, which is NOT the configuration production runs.
 # An explicit environment variable outranks `.env`, hence the assignment.
 os.environ["ALLOW_DEV_OTP"] = "false"
+# SENTRY_DSN is forced OFF for the same reason, and for two more. A developer's
+# `.env` now carries a real DSN, and `create_app()` initialises the SDK whenever
+# one is present — so the suite would start its transport and try to reach
+# sentry.io on every error path. A test run must not make outbound calls: it
+# makes the suite slower and its result depend on a third party's availability,
+# and it would push synthetic failures into the real error stream, which is the
+# one place a genuine production regression then has to be spotted among them.
+os.environ["SENTRY_DSN"] = ""
 #
 # Rate-limit keys are namespaced per PROCESS so two concurrent runs cannot
 # delete each other's counters. See `_clear_rate_limits` and
