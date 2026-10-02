@@ -170,17 +170,43 @@ class TestScratchGuard:
 class TestShellPaths:
     """The upload command is run by `sh`, so backslashes must not survive."""
 
-    def test_windows_paths_become_forward_slashes(self):
+    def test_the_native_separator_never_survives(self):
         # Measured failure: `str(Path)` on Windows is `C:\\Users\\...`, and
         # Git-for-Windows' `sh` strips the backslashes, producing
         # `C:UsersuserDesktop...` — the copy silently targeted nothing.
+        #
+        # Assert on a path *built with* the native separator rather than on a
+        # hard-coded Windows one: `Path("C:/Users/user/x.dump")` is only
+        # absolute on Windows, so on a POSIX runner it would be resolved under
+        # the CWD and this test would fail for a reason that has nothing to do
+        # with the defect it exists to catch. See the sibling test below.
+        native = Path("a") / "b" / "x.dump"
+        out = _shell_path(native)
+        assert "\\" not in out
+        assert out == native.resolve().as_posix()
+
+    def test_windows_drive_paths_keep_their_drive_letter(self):
+        # `C:/Users/...` is absolute on Windows but *relative* on POSIX, so CI
+        # resolves it under the workspace. Assert only what holds on both: the
+        # drive letter and every separator survive. Do not assert
+        # `startswith("C:/")` — that is the Windows-only reading, and it is the
+        # very mistake this class exists to catch.
         out = _shell_path(Path("C:/Users/user/x.dump"))
         assert "\\" not in out
-        assert out == "C:/Users/user/x.dump"
+        assert out.endswith("C:/Users/user/x.dump")
+        assert out.count("/") >= 3
 
     def test_relative_paths_are_resolved(self):
+        # The archive is handed to a *remote* copy, so a bare `foo.dump` is no
+        # use — no directory component means the remote has nothing to resolve
+        # it against. Assert that a directory appeared, not that it starts with
+        # `/`: on Windows the resolved spelling is `C:/...`, so a leading-slash
+        # assertion is a POSIX-only claim (the sibling above catches the same
+        # class of mistake).
         out = _shell_path(Path("some.dump"))
-        assert Path(out).is_absolute()
+        assert out.endswith("/some.dump")
+        assert out != "some.dump"
+        assert str(Path.cwd().as_posix()).split("/")[0] in out
 
     def test_render_substitutes_both_placeholders(self, tmp_path):
         archive = tmp_path / "realtaxihk_20260930T031700Z.dump"
