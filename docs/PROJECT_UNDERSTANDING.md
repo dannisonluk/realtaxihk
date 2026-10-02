@@ -20,7 +20,7 @@
 
 | 交付物 | 位置 | 規模 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | **81 paths / 88 operations** · **872 tests** | ✅ 生產就緒 |
+| 後端 API | `app/` | **82 paths / 89 operations** · **887 tests** | ✅ 生產就緒 |
 | Flutter App | `mobile/` | 58 files, 11,558 LOC | ✅ 三角色完整 |
 | Web 管理後台 | `admin-web/web/`（React + Vite）＋ `admin-web/js/`（legacy） | src **12,328 LOC**（ts/tsx，不含測試）· **57 vitest** | ✅ 全部路由通過 |
 
@@ -34,7 +34,7 @@
 - FastAPI (async) + SQLAlchemy 2.0 async + asyncpg + PostgreSQL 16/PostGIS + Redis 7 + Alembic
 - 金錢一律 `Decimal` 或**字串**（`money_str` 2dp / `meter_str` 1dp `ROUND_HALF_UP`），永不 float；每張單凍結 `tariff_version` 快照
 - 錯誤信封 `{code, message, details}`（非 FastAPI 預設 `{"detail": ...}`）
-- **`/openapi.json` 已完整**：81 paths，**全部 88 個 operation 都有 `response_model=`**
+- **`/openapi.json` 已完整**：82 paths，**全部 89 個 operation 都有 `response_model=`**
   （之前只有 1 個）。`response_model=` 是**過濾器**不是註解 —— FastAPI 會靜默丟棄
   模型未聲明的鍵，所以模型必須**由捕獲的 fixture 反推**，不能靠讀 handler。
   驗證：`scripts/verify/audit_response_models.py`（應印 `fixture blocks checked: 68` + `OK`）。
@@ -154,11 +154,11 @@ router/     routing_rules.dart（純函數，可獨立測試）· app_router.dar
 
 | 項目 | 結果 |
 |---|---|
-| `pytest tests/ -q --junit-xml=...` | **872 passed / 0 failed / 0 error / 0 skipped** |
+| `pytest tests/ -q --junit-xml=...` | **887 passed / 0 failed / 0 error / 0 skipped** |
 | `alembic heads` | `a1c4e8b7f209 (head)` |
 | `alembic check` | 有**既有 baseline drift**（5 組 `uq_*`→`ix_*`、4 個 `VARCHAR`→`Enum`）；看**有無新增**，非「必須 FAIL」 |
-| `scripts/verify/audit_response_models.py` | **68 fixture blocks + 88 operations，OK** |
-| OpenAPI | **81 paths / 88 operations**，全部有 `response_model=` |
+| `scripts/verify/audit_response_models.py` | **68 fixture blocks + 89 operations，OK** |
+| OpenAPI | **82 paths / 89 operations**，全部有 `response_model=` |
 | `ruff check` / `format --check` | clean / clean（全樹） |
 | console `tsc` / `vitest` / `build` | clean / **57 passed（8 files）** / 463.18 kB（gzip 142.84 kB） |
 | Dart contract verifier | 54 decoded, 0 failures（`dart --packages=… tool/verify_contract.dart`） |

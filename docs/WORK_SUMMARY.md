@@ -1,11 +1,11 @@
 # realtaxihk — 工作總覽
 
-- **生成日期**：2026-09-30（**2026-10-01 更新**：併入 location check、analytics、console deep-link 修正；測試數由 272 更正為 616。**本輪再更新**：修好 SEV-1 admin session、統一 money 精度入口、套用 `ruff format` 並加 CI gate、補上 TOTP 綁定二維碼的渲染與測試；測試數 616 → **656**（**本輪 667**：新增 5 個 HTTP error-code + 6 個 state-machine 不變式測試）。**最後一輪**：修好深圳灣口岸邊界缺陷（`_HK_MAIN` 后海灣段 2 → 7 頂點），測試數 667 → **687**（新增 18 個口岸邊界參數化案例 + 2 個回歸測試）。**本輪再更新**：`app/models/__init__.py`（886 行）拆成 5 個 bounded-context 模組 + `__init__` re-export，測試維持 **687** 不變 —— 見 §2.9。**本輪再更新**：新增 `app/api/schemas/` 套件並為**全部 69 個 operation** 補上 `response_model=`（此前 69 個中只有 1 個），令 `/openapi.json` 首次描述真實響應形狀；測試維持 **687** 不變 —— 見 §2.10。**最新一輪（§2.11）**：RBAC 四級角色 + 審計覆蓋金錢／狀態改動、帳戶管理、訂單監控、結算預覽／確認 token／CSV 匯出、爭議實體、主體搜尋、頭像上傳，以及六個對應的後台畫面 —— 測試 **687 → 872**（+185），console **29 → 31 vitest**（+2），API **64/69 → 81 paths / 88 operations**）。**最新一輪（§2.13）**：結構整理 —— `app/api/` 命名統一為 `admin_x`、`/api/v1/driver` → `/api/v1/drivers`、`scripts/` 拆為 `{ops,verify,dev}`、由 `create_app()` 抽出 lifespan 輔助函數；測試維持 **872** 不變，並修好一個腐爛的驗證腳本（`prod_boot_drill` 6/7 → 7/7））
+- **生成日期**：2026-09-30（**2026-10-01 更新**：併入 location check、analytics、console deep-link 修正；測試數由 272 更正為 616。**本輪再更新**：修好 SEV-1 admin session、統一 money 精度入口、套用 `ruff format` 並加 CI gate、補上 TOTP 綁定二維碼的渲染與測試；測試數 616 → **656**（**本輪 667**：新增 5 個 HTTP error-code + 6 個 state-machine 不變式測試）。**最後一輪**：修好深圳灣口岸邊界缺陷（`_HK_MAIN` 后海灣段 2 → 7 頂點），測試數 667 → **687**（新增 18 個口岸邊界參數化案例 + 2 個回歸測試）。**本輪再更新**：`app/models/__init__.py`（886 行）拆成 5 個 bounded-context 模組 + `__init__` re-export，測試維持 **687** 不變 —— 見 §2.9。**本輪再更新**：新增 `app/api/schemas/` 套件並為**全部 69 個 operation** 補上 `response_model=`（此前 69 個中只有 1 個），令 `/openapi.json` 首次描述真實響應形狀；測試維持 **687** 不變 —— 見 §2.10。**最新一輪（§2.11）**：RBAC 四級角色 + 審計覆蓋金錢／狀態改動、帳戶管理、訂單監控、結算預覽／確認 token／CSV 匯出、爭議實體、主體搜尋、頭像上傳，以及六個對應的後台畫面 —— 測試 **687 → 872**（+185），console **29 → 31 vitest**（+2），API **64/69 → 81 paths / 88 operations**）。**最新一輪（§2.13）**：結構整理 —— `app/api/` 命名統一為 `admin_x`、`/api/v1/driver` → `/api/v1/drivers`、`scripts/` 拆為 `{ops,verify,dev}`、由 `create_app()` 抽出 lifespan 輔助函數；測試維持 **872** 不變，並修好一個腐爛的驗證腳本（`prod_boot_drill` 6/7 → 7/7）。**最新一輪（§2.14）**：新增後台實時車輛位置端點 `GET /api/v1/admin/live/drivers`（輪詢式，非推送），測試 **872 → 887**（+15：12 個端點測試 + 3 個 `.env.example` 漂移守衛）；API **81/88 → 82 paths / 89 operations**；並修好測試套件會對外連線的問題（`SENTRY_DSN` 未強制清空））
 - **HEAD**：`main` 上最新 commit —— **刻意不寫死 hash**（寫死過三次，每次之後
   的 commit 都令它變錯；要查：`git log --oneline -1`）；
   `origin/main..HEAD` = **有未推 commit**（查：`git rev-list --count origin/main..HEAD`，見 §5）；
   working tree **clean**。
-- **現時狀態**：`pytest` **872 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean** · console `tsc` clean + **57 vitest passed（8 files）** · `npm run build` 463.18 kB（gzip 142.84 kB）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · `audit_layout` **48 renders clean（4 locale/theme 組合）** · API **81 paths / 88 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
+- **現時狀態**：`pytest` **887 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean** · console `tsc` clean + **57 vitest passed（8 files）** · `npm run build` 463.18 kB（gzip 142.84 kB）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · `audit_layout` **48 renders clean（4 locale/theme 組合）** · API **82 paths / 89 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
 - **✅ 已解決：管理員 session 15 分鐘硬死** —— 已改為 `HttpOnly` refresh cookie（`SameSite=Strict`，path `/api/v1/admin/auth`）＋ CSRF double-submit。詳見 `SECURITY.md`
 
 > **這份文件的用途**：一份可以單獨看完的總覽 —— 做過什麼、現在是什麼狀態、
@@ -19,7 +19,7 @@
 
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **81 paths / 88 operations** · 872 tests |
+| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **82 paths / 89 operations** · 887 tests |
 | Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**21 個畫面**，三角色） | ✅ 93 tests |
 | Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/js/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **57 vitest** · UI verifier PASS |
 
@@ -483,13 +483,59 @@ ADMIN_PASSWORD='...' .venv/Scripts/python.exe scripts/ops/enrol_admin_totp.py \
 現為 **7/7**。並已用 `git show HEAD:` 的舊版做 A/B 對照，確認此為**既有**問題、
 而非本次重構引入。
 
+### 2.14 後台實時車輛位置端點 + 測試套件離線化（2026-10-02）
+
+**① `GET /api/v1/admin/live/drivers`（新端點）**
+後台一直無法回答「現在車在哪」。資料早在 `driver_profiles.current_location`，
+但要拿到只有兩條路：開 psql，或直接讀 websocket 原始流。兩者都不是後台該做的事。
+回應是**每個有定位的司機一行**，並附上他正在跑的那張單（若有）。
+
+設計取捨（每一項都是刻意選的）：
+
+- **輪詢，不是推送。** 再開一條 websocket 就要另外處理 auth、重連、背壓，而這是
+  一張監控視圖，容忍幾秒延遲。`generated_at` 是伺服器時鐘（判斷整張快照新不新），
+  `last_location_at` 是逐車的（判斷某一台車的點舊不舊）—— 兩者回答不同問題，都回。
+- **路徑是 `/live/drivers`，不是 `/drivers/live`。** `/drivers/{id}` 宣告在上面，
+  後者會把 `id` 綁成字串 `"live"`，再以 UUID 解析失敗 —— 一個在 OpenAPI 文件裡
+  看起來完全正常、實際回 422 的路由。
+- **用 `LEFT JOIN LATERAL ... LIMIT 1`，不是普通 join。** 狀態機不允許一個司機同時
+  有兩張進行中的單，所以今天兩者等價；但真出現資料完整性問題時，普通 join 會把它
+  畫成「同一點上兩台一樣的車」，而不是任何營運人員看得出來的異常。
+- **`current_location IS NOT NULL` 就是 `lat`/`lng` 在 `AdminLiveDriverOut` 裡
+  非 optional 的原因。** 沒有定位的司機是「不在回應裡」，不是「在，但座標是 null」
+  —— null 會讓某些渲染器把 marker 畫在 (0, 0)。
+- **刻意不逐次審計。** 理由同主體搜尋：一個每幾秒被輪詢一次的視圖，會把審計日誌
+  真正要保留的金錢／狀態事件淹沒。
+- **不回 `hk_id_last4` 或任何證件欄位**，只回車牌 —— 營運人員靠車牌認車。
+
+`ST_AsText` 輸出 `POINT(lng lat)`，**經度在前**，與本專案其他所有層的順序相反。
+這個轉置有直接斷言，並用突變測試確認：把兩個欄位對調，**只有**那個測試會紅。
+
+`limit` 會多取一行，所以 `truncated` 是**真的**（`len(rows) > limit`），不是用
+`len(rows) == limit` 猜的。
+
+**② 測試套件不再對外連線**
+`tests/conftest.py` 原本用 `os.environ[...] = ...` 強制覆寫 `ALLOW_DEV_OTP` 與
+`REDIS_KEY_NAMESPACE`，因為 pydantic 會讀 `.env`。`SENTRY_DSN` 不在那份清單裡 ——
+而用戶的 `.env` 現在帶真 DSN，`create_app()` 只要有 DSN 就初始化 SDK。結果是測試
+套件會啟動 Sentry transport、在每個錯誤路徑上嘗試連 sentry.io（實測：一次 7 分 42 秒
+的 run，夾著 `urllib3` "Tunnel connection failed: 503" 重試噪音），並且會把**合成的
+測試失敗**推進真實錯誤流 —— 而那正是真正生產迴歸必須被看見的地方。已強制清空，
+A/B 驗證：無覆寫 `active = True`，有覆寫 `dsn = None / active = False`。
+
+**驗證**：`pytest` **872 → 887**（`--junit-xml` 讀：887/0/0/0）·
+OpenAPI **81/88 → 82 paths / 89 operations** · `audit_response_models.py`
+**68 fixture blocks + 89 operations，OK**。
+
+---
+
 ## 3. 驗證標準：「全部實跑」
 
 不接受「讀源碼覺得無問題」。每次改動都跑齊：
 
 ```bash
 uv run ruff check . && uv run ruff format --check .   # 或 ./.venv/Scripts/python.exe -m ruff
-uv run pytest -q                                       # 872 passed（用 --junit-xml 讀，見下）
+uv run pytest -q                                       # 887 passed（用 --junit-xml 讀，見下）
 uv run python scripts/verify/audit_response_models.py         # 68 块夹具 vs response_model，0 丢失
 cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run --no-file-parallelism --pool=forks
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
@@ -515,13 +561,13 @@ NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@pl
 
 | 項目 | 阻塞原因 |
 |---|---|
-| **P1-1 WS token 走 `?token=`** | `app/api/ws.py:73` 仍是 query param。現設計**有文件說明是刻意**（瀏覽器 WS 無 header 通道），已有 `StripTokenQueryFilter` 兜底。要真正解決需定 TLS 反代（nginx/Caddy）。 |
+| **P1-1 WS token 走 `?token=`** | `app/api/ws.py:73` 仍是 query param。現設計**有文件說明是刻意**（瀏覽器 WS 無 header 通道），已有 `StripTokenQueryFilter` 兜底。要真正解決需定 TLS 反代（nginx/Caddy）。**2026-10-02：反代已定為 nginx**（`deploy/nginx/realtaxihk.conf`），其自訂 `log_format` 用 `$uri` 而非 `$request_uri`，查詢字串（連 token）不會落地 —— 殘餘洩漏已封。**仍待辦**：選定主機名（repo 內有 `realtaxihk.com` 與 `realtaxi.hk` 兩種拼法，兩者都未定）。 |
 | **P1-4 備份 — off-host destination 未選擇** | ~~無 pg_dump cron~~ **2026-09-30 更新：script 已完成並實跑 PASS**（`scripts/ops/db_backup.py`，27 tests，還原演練 49 tables / 17,627 rows 全對）。只剩**選擇 destination**（見 §5）。原本判為「需要 credentials」是不準確 —— 只是未選擇去哪裡。 |
 | **WhatsApp / FCM / Google Maps 未接** | config 欄位存在、env 空。需要三家 provider 的憑證。 |
 | **P2-2 遺留：部分退款** | 現時只做全額退還。 |
 | **P2-2 遺留：實際打款渠道** | 只寫 ledger，轉帳仍線下人手。需要真實支付渠道。 |
 | **P2-3 `distance_km` 由 client 自報** | 乘客可亂報。374D 下估價僅供參考、風險可控，但廣播排序會被 gaming。需 `GOOGLE_MAPS_API_KEY`。 |
-| **P2-4 Sentry／錯誤聚合** | ~~只差 Sentry~~ **2026-09-30 更正：Sentry 已經接好**（`app/main.py:63-70`，`sentry_dsn` 有值就 init，無 `sentry-sdk` 就 warn 而不會炸）。真正短缺的只是一個 DSN。 |
+| **P2-4 Sentry／錯誤聚合** | ~~只差 Sentry~~ **2026-09-30 更正：Sentry 已經接好**（`app/main.py:63-70`，`sentry_dsn` 有值就 init，無 `sentry-sdk` 就 warn 而不會炸）。**2026-10-02：已結案** —— DSN 已放入 `.env`，代碼另補上 `release`（綁 `_API_VERSION`）與 `max_request_body_size="never"`（PDPO：不送 request body）。**本項不再是待辦。** |
 
 ### B. 已知產品層取捨（非 bug，記錄在案）
 
@@ -560,7 +606,7 @@ NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@pl
 
 ---
 
-## 5. Push 狀態：❌ 仍然推送不到（token 未獲授權此 repo）— 已由用戶豁免
+## 5. Push 狀態：❌ 本工具仍然推送不到（token 未獲授權此 repo）— 已由用戶豁免
 
 **已 commit，但推送不到。** 2026-10-01 實測：
 
@@ -576,9 +622,17 @@ NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@pl
 `Contents: Read and write`。
 
 > **✅ 2026-10-01 用戶指示：「你不需要 push，只需要 commit」。** 最新一輪的
-> 所有工作**只 commit、不 push**。`origin/main..HEAD` 有未推 commit（查：
-> `git rev-list --count origin/main..HEAD`）；
-> 之前累積的 commit 亦一併未推。要真正同步，仍需上面的 token 授權。
+> 所有工作**只 commit、不 push**。
+>
+> **⚠️ 更正（2026-10-02）：本節曾寫「之前累積的 commit 亦一併未推」，這已不正確。**
+> `git ls-remote origin refs/heads/main` 實測遠端 HEAD 是 `5b68590`，與本機同名
+> commit 一致 —— 即 §2.11–§2.13 那一批**已經在遠端**。但**不是這支工具推上去的**：
+> 同一支 token 以 `git push --dry-run`（`-c credential.helper=` + token 放 URL）
+> 重測，仍然回 **403** `Write access to repository not granted`。
+> 所以正確的讀法是「token 仍然推不到；遠端之所以有進度，是經其他憑證推的」。
+>
+> **判「有無未推 commit」永遠用 `git rev-list --count origin/main..HEAD`，
+> 不要沿用本節的結論。** 要真正由這支工具同步，仍需上面的 token 授權。
 
 > **⚠️ 更正（2026-10-01 稍後）：本節原本寫「working tree clean」，當時是錯的。**
 > `git rev-list --count origin/main..HEAD` 只證明**已 commit 的東西都推了**，
@@ -718,8 +772,8 @@ CI gate（`.github/workflows/ci.yml`）：
 
 > **✅ 已修正**：`docs/PROJECT_UNDERSTANDING.md` 曾停在 `4333f2a`（寫 HEAD =
 > `446b7ee`、221 tests、54 Dart files、38 endpoints）。**2026-10-01 已全面重寫**，
-> 現值：**872 tests**、**81 paths / 88 operations**、**57 vitest**、
-> **140 ruff files**，並新增 RBAC 設計、`/auth/me` 雙形狀、`StarletteHTTPException`
+> 現值：**887 tests**、**82 paths / 89 operations**、**57 vitest**，
+> 並新增 RBAC 設計、`/auth/me` 雙形狀、`StarletteHTTPException`
 > cookie 陷阱等章節。（**HEAD 刻意不寫死** —— 之前寫死過三次，每次之後的 commit
 > 都令它變錯。）
 
@@ -748,7 +802,7 @@ CI gate（`.github/workflows/ci.yml`）：
 ## 8. 一頁看完
 
 ```
-✅ 後端 81 paths / 88 ops / 872 tests / ruff lint + format clean — 生產就緒
+✅ 後端 82 paths / 89 ops / 887 tests / ruff lint + format clean — 生產就緒
 ✅ mobile 21 畫面 / 93 tests / 0 diagnostics      — 三角色完整
 ✅ admin-web React / 57 vitest / typecheck + build clean / UI verifier PASS
 ✅ 後台治理：四級 RBAC（rank 比較、live row 為權威）+ 審計覆蓋金錢／狀態改動
@@ -772,7 +826,7 @@ CI gate（`.github/workflows/ci.yml`）：
 
 ✅ `app/models` 拆包：886 行 → 5 個 bounded-context 模組 + `__init__` re-export
    零呼叫點改動；DDL / relationship / alembic drift 逐項比對全等
-✅ 全部 88 個 operation 都有 `response_model=`（此前 88 個中只有 1 個）
+✅ 全部 89 個 operation 都有 `response_model=`（此前 69 個中只有 1 個）
 
 ✅ SEV-1 已修：admin session 改為 HttpOnly refresh cookie（SameSite=Strict）
    + CSRF double-submit；token refresh 路徑已通

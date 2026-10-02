@@ -4,9 +4,9 @@
 
 > **📌 這是一份有日期的快照。** 底下所有數字描述的是**審查當下**（2026-10-01
 > 早段，`667 tests` / `64 paths` / `69 operations`）的狀態，**不是** repo 現況。
-> 現況見 `docs/WORK_SUMMARY.md`（**872 tests / 81 paths / 88 operations /
+> 現況見 `docs/WORK_SUMMARY.md`（**887 tests / 82 paths / 89 operations /
 > 31 vitest**）。`response_model=` 一節（下方 §H-4 的部分）在該次審查後又擴展到
-> 全部 88 個 operation。
+> 全部 89 個 operation。
 >
 > **範圍**：後端 `app/`（59 個 Python 檔、13,158 行）、Console `admin-web/web/src/`
 > （29 個 TS/TSX 檔）。
