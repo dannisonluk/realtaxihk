@@ -8,7 +8,11 @@
  *      and Primer is the most legible thing ever designed for exactly that job.
  *      Neutral greys carry the layout; exactly one chromatic colour (taxi red)
  *      is spent, on the brand and the active nav item. Everything else that has
- *      colour has it for a *reason*: red means a gain in HK, green means a loss.
+ *      colour has it for a *reason*: red is the brand, green means "working as
+ *      intended", amber means "a human has to look". The ledger's own direction
+ *      is carried by the chip tone in `labels.ts#ENTRY_TONE` -- a top-up is
+ *      green, a penalty is red -- which is the *account* convention, not the
+ *      Hong Kong *stock* one.
  *   2. The *structure* (type scale, 4pt spacing grid, 44px hit area) is the iOS
  *      Dynamic Type scale at the `Large` step, which is why the class names read
  *      `t-title1` / `t-body` rather than `text-lg`.
@@ -37,11 +41,17 @@
   --brand: #d2232a; /* licensed urban-taxi red — the one chromatic accent */
   --brand-ink: #ffffff;
 
-  /* HK convention, and it does not flip with the theme: red is a *gain*. */
-  --gain: #c62828;
+  /* The brand red again, but for *text*. Kept as its own token because the two
+     need different values in the dark palette: `--brand` has to stay dark
+     enough for white to sit on it (`.btn--primary`, the nav badge), while
+     brand-coloured *text* has to be light enough to read on a dark surface.
+     One token cannot do both, and pretending it could is what left the dark
+     active nav item at 3.08:1. */
+  --brand-text: #d2232a;
+
   --loss: #2e7d32;
-  --warn: #9a6700; /* Primer attention.fg */
-  --danger: #cf222e; /* Primer danger.fg */
+  --warn: #8f5f00; /* Primer attention.fg, darkened: #9a6700 inside a chip's own tint is 4.51:1 */
+  --danger: #a40e26; /* Primer danger.fg, darkened: #cf222e sat 1.02:1 from --brand, i.e. the same red */
   --focus: #0969da; /* Primer accent.emphasis */
 
   /* Layout neutrals that are neither surface nor border but are used widely
@@ -54,6 +64,10 @@
      because in dark mode the *inverse* is true: the active segment must be
      lighter than the track, and no existing surface is. */
   --seg-active: #ffffff;
+
+  /* The edge of the selected segment. This is the state indicator, so it has to
+     clear 3:1 against the `--surface-2` track -- see the rule that uses it. */
+  --seg-edge: #6e7681;
 
   /* ---- spacing: a 4pt grid, named so a call site reads as intent ---- */
   --space-1: 4px;
@@ -88,13 +102,18 @@
  * `canvas.inset` #010409, `border.default` #30363d, `fg.default` #c9d1d9,
  * `fg.muted` #8b949e. Declared once and applied by both the explicit
  * `[data-theme="dark"]` and the `system`-plus-OS-dark media query so the two
- * cannot diverge. */
-[data-theme="dark"],
-:root[data-theme="system"] {
-  color-scheme: dark;
-}
-
+ * cannot diverge.
+ *
+ * `color-scheme` follows the *same* two conditions as the tokens, and that is
+ * not cosmetic: it is what tells the browser to draw the chrome it owns -- the
+ * scrollbar, the `<select>` popup, `<input type="date">`'s picker, the checkbox
+ * glyph -- in the matching appearance. Declaring it on `[data-theme="system"]`
+ * unconditionally (as this did) meant a light desktop on the default `system`
+ * preference got dark scrollbars and a dark select popup on a white page.
+ * `tool/check_theme_tokens.py` compares only `--*` properties and so cannot see
+ * this at all, which is why `tool/check_contrast.py` checks it explicitly. */
 [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0d1117;
   --surface: #161b22;
   --surface-2: #21262d;
@@ -103,7 +122,9 @@
   --text-dim: #8b949e;
   --brand: #d2232a;
   --brand-ink: #ffffff;
-  --gain: #f85149; /* a *gain* is still red — just Primer's danger.fg */
+  /* Primer's dark red for text. `--brand` itself is not lightened, because
+     white on it is what makes the primary button legible (5.23:1). */
+  --brand-text: #ff7b72;
   --loss: #3fb950; /* Primer success.fg */
   --warn: #d29922; /* Primer attention.fg */
   --danger: #f85149;
@@ -111,8 +132,11 @@
   --hover: #1c2128;
   --scrim: rgb(1 4 9 / 70%);
   /* Lighter than the `--surface-2` track, so the selected segment reads as
-     raised rather than as a hole. */
-  --seg-active: #30363d;
+     raised rather than as a hole. It cannot carry the state on its own -- the
+     whole grey ramp tops out near 2.3:1 before the segment's own text starts
+     failing -- so `--seg-edge` carries it. */
+  --seg-active: #3d444d;
+  --seg-edge: #6e7681;
   --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 18px rgb(0 0 0 / 24%);
   --shadow-lg: 0 8px 24px rgb(1 4 9 / 60%);
 }
@@ -121,6 +145,7 @@
  * *after* the light block so its custom properties win at equal specificity. */
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"] {
+    color-scheme: dark;
     --bg: #0d1117;
     --surface: #161b22;
     --surface-2: #21262d;
@@ -129,16 +154,45 @@
     --text-dim: #8b949e;
     --brand: #d2232a;
     --brand-ink: #ffffff;
-    --gain: #f85149;
+    --brand-text: #ff7b72;
     --loss: #3fb950;
     --warn: #d29922;
     --danger: #f85149;
     --focus: #2f81f7;
     --hover: #1c2128;
     --scrim: rgb(1 4 9 / 70%);
-    --seg-active: #30363d;
+    --seg-active: #3d444d;
+    --seg-edge: #6e7681;
     --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 18px rgb(0 0 0 / 24%);
     --shadow-lg: 0 8px 24px rgb(1 4 9 / 60%);
+  }
+}
+
+/* Increase Contrast. Several tokens are deliberately only just above the 4.5:1
+ * floor (the muted grey, the chip tints, the amber), so the system setting has
+ * to be able to push them clear rather than merely be acknowledged. Both dark
+ * paths get the same block, for the same reason the tokens do. */
+@media (prefers-contrast: more) {
+  :root {
+    --text-dim: #3d444d;
+    --border: #8c959f;
+    --warn: #7d5100;
+    --danger: #8c0d20;
+    --brand-text: #a8161c;
+    --seg-edge: #424a53;
+  }
+  [data-theme="dark"] {
+    --text-dim: #c9d1d9;
+    --border: #6e7681;
+    --seg-edge: #8b949e;
+  }
+}
+
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --text-dim: #c9d1d9;
+    --border: #6e7681;
+    --seg-edge: #8b949e;
   }
 }
 
@@ -209,12 +263,16 @@ body {
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .num { font-variant-numeric: tabular-nums; }
 
-/* Semantic text. `gain`/`loss` follow the HK convention: a *gain* is red, a
-   *loss* is green. Do not read them as profit/loss semantics in the Western
-   sense — on this console red is the good number. */
+/* Semantic text.
+ *
+ * There used to be a `.gain` / `.loss` pair here, documented at length as "the
+ * HK convention: a gain is red". Neither class was ever applied to anything --
+ * zero references in the whole of `src/` -- and the convention it described is
+ * the *stock* one, while the console's actual ledger colours come from
+ * `labels.ts#ENTRY_TONE`, where a top-up is `ok` (green) and a penalty is
+ * `danger` (red). A comment describing a mechanism that does not exist is worse
+ * than no comment, so both the classes and the token behind them are gone. */
 .danger { color: var(--danger); }
-.gain { color: var(--gain); }
-.loss { color: var(--loss); }
 .warn { color: var(--warn); }
 
 /* ----------------------------------------------------------------- focus --- */
@@ -313,7 +371,9 @@ body {
 
 .navlink[aria-current="page"] {
   background: color-mix(in srgb, var(--brand) 12%, transparent);
-  color: var(--brand);
+  /* `--brand-text`, not `--brand`: at 15px/600 this needs 4.5:1 and the
+     background red only reaches 3.08:1 on a dark sidebar. */
+  color: var(--brand-text);
   font-weight: 600;
 }
 
@@ -373,11 +433,6 @@ body {
   padding: 0;
   min-inline-size: 0;
 }
-
-/* The row label ("Theme" / "語言") is the only text; the segments carry icons
-   or two-letter codes. Sliding it out of the flex flow on very narrow sidebars
-   keeps the control usable rather than letting it be squeezed to nothing. */
-.pref__label { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
 
 .segmented {
   display: inline-flex;
@@ -447,7 +502,12 @@ body {
 .segmented__btn[aria-pressed="true"] {
   background: var(--seg-active);
   color: var(--text);
-  border: 1px solid var(--border);
+  /* The edge is the state indicator, and it has to clear 3:1 against the track
+     (WCAG 1.4.11). The fill alone cannot: the light track is #f6f8fa, so a white
+     fill is 1.06:1, and on the dark track the grey ramp tops out near 2.3:1
+     before the segment's own text starts failing. A mid grey clears it in both
+     themes -- 4.32:1 light, 3.31:1 dark -- from one token. */
+  border: 1px solid var(--seg-edge);
   box-shadow: 0 1px 2px rgb(16 18 22 / 12%);
 }
 
@@ -558,6 +618,20 @@ body {
 .stat__value { font-size: 28px; font-weight: 700; letter-spacing: -0.015em; margin-top: var(--space-1); }
 .stat__hint { font-size: 12px; color: var(--text-dim); margin-top: var(--space-1); }
 
+/* A stat card that is a link. Three of the four dashboard cards navigate, so
+   the affordance has to be visible: without it a card that is clickable and a
+   card that is not look identical, and nothing happens on hover. */
+.stat--link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.stat--link:hover {
+  border-color: var(--brand-text);
+  background: var(--hover);
+}
+.stat--link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
 /* ---------------------------------------------------------------- button --- */
 
 .btn {
@@ -610,10 +684,13 @@ body {
    because that is where the eye already is once you have finished typing. */
 .field__hint { font-size: 12px; color: var(--text-dim); }
 
-input[type="text"],
-input[type="tel"],
-input[type="number"],
-input[type="search"],
+/* Every text-entry control, expressed as an exclusion rather than a list. The
+   list this replaces named five input types and silently omitted
+   `<input type="date">` and `type="email"`, so the analytics date filters drew
+   as bare native controls beside fully styled `<select>`s in the same row. A
+   new type now inherits the field treatment by default instead of being
+   forgotten. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
 select,
 textarea {
   min-height: var(--target);
@@ -710,7 +787,11 @@ table.data tbody tr:hover { background: var(--hover); }
   font-size: 13px;
   font-weight: 600;
   border: 1px solid currentColor;
-  background: color-mix(in srgb, currentColor 12%, transparent);
+  /* 6%, not 12%. The fill is the text colour mixed into the surface, so a
+     heavier tint pulls the background *towards* the text and eats the contrast
+     the chip depends on -- at 12% four of the five tones landed at 4.17-4.40:1.
+     The border carries the colour; the fill only has to suggest it. */
+  background: color-mix(in srgb, currentColor 6%, transparent);
   white-space: nowrap;
 }
 
@@ -718,7 +799,19 @@ table.data tbody tr:hover { background: var(--hover); }
 .chip--ok { color: var(--loss); }
 .chip--warn { color: var(--warn); }
 .chip--danger { color: var(--danger); }
-.chip--brand { color: var(--brand); }
+.chip--brand { color: var(--brand-text); }
+
+/* A `.chip` used as a *button* -- the live map's auto-refresh and
+   include-offline toggles. A chip's own padding makes it about 26px tall, which
+   is under this console's own 44px `--target` and under the 28px desktop
+   default, so an interactive one gets the same floor as `.btn--sm`. The font
+   family has to be restored too: `.chip` never set one, and a `<button>` does
+   not inherit the page's. */
+.chip--action {
+  min-height: 34px;
+  cursor: pointer;
+  font-family: inherit;
+}
 
 /* -------------------------------------------------------------- message ---- */
 
@@ -947,9 +1040,14 @@ table.data tbody tr:hover { background: var(--hover); }
   fill-opacity: 0.85;
 }
 
+/* Waiting is *neutral*, not blue. `--focus` was doing double duty here -- the
+   keyboard focus ring and "an available car" -- which is the one thing a
+   one-chromatic-colour console cannot afford. The map keeps red for "on a
+   trip" and grey for everything else, and waiting vs stale is carried by
+   opacity plus the row's own "Position stale" label. */
 .livemap__canvas .livemap__pin--idle {
-  stroke: var(--focus);
-  fill: var(--focus);
+  stroke: var(--text-dim);
+  fill: var(--text-dim);
   fill-opacity: 0.85;
 }
 
@@ -987,19 +1085,25 @@ table.data tbody tr:hover { background: var(--hover); }
   border: 2px solid currentcolor;
 }
 
+/* Each swatch repeats the *opacity* of the marker it stands for. It did not,
+   and the stale key was the worst of the three: a solid grey dot in the legend
+   against a 35%-opacity one on the map. */
 .livemap__swatch.livemap__pin--running {
   background: var(--brand);
   border-color: var(--brand);
+  opacity: 0.85;
 }
 
 .livemap__swatch.livemap__pin--idle {
-  background: var(--focus);
-  border-color: var(--focus);
+  background: var(--text-dim);
+  border-color: var(--text-dim);
+  opacity: 0.85;
 }
 
 .livemap__swatch.livemap__pin--stale {
   background: var(--text-dim);
   border-color: var(--text-dim);
+  opacity: 0.35;
 }
 
 /* A sortable column header. The button fills the cell so the whole header is
@@ -1016,7 +1120,7 @@ table.data tbody tr:hover { background: var(--hover); }
   justify-content: inherit;
 }
 
-.th-sort:hover { color: var(--brand); }
+.th-sort:hover { color: var(--brand-text); }
 .th-sort:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 .th-sort__mark {
