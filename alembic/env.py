@@ -26,13 +26,23 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
-def include_object(obj, name, type_, reflected, compare_to):
-    """Never let autogenerate touch tables it doesn't know from our metadata.
+# Object kinds autogenerate must never DROP. Filtering only `table` misses the
+# indexes the extensions create *on their own tables* (tiger's spatial indexes,
+# for one) — a reflected index with no counterpart in our metadata is read as
+# "drop me", and `compare_type=True` below is what makes that reachable. This
+# project already carries accepted drift, so the signal that matters is "did a
+# NEW entry appear"; a wider filter keeps that signal clean.
+_IGNORED_TYPES = ("table", "index")
 
-    PostGIS/tiger/topology extensions register their own tables; without this
-    filter alembic emits DROPs for them (fatal on any postgis database).
+
+def include_object(obj, name, type_, reflected, compare_to):
+    """Never let autogenerate touch objects it doesn't know from our metadata.
+
+    PostGIS/tiger/topology extensions register their own tables *and* indexes;
+    without this filter alembic emits DROPs for them (fatal on any postgis
+    database).
     """
-    return not (type_ == "table" and reflected and compare_to is None)
+    return not (type_ in _IGNORED_TYPES and reflected and compare_to is None)
 
 
 def run_migrations_offline() -> None:
@@ -68,6 +78,24 @@ def do_run_migrations(connection: Connection) -> None:
     )
 
     with context.begin_transaction():
+        # PostGIS must exist before the FIRST migration, not after.
+        # `9307e944a592` declares `geography(POINT, 4326)` columns on
+        # `driver_profiles` and `orders`, and Postgres resolves that type name at
+        # CREATE TABLE time — so `alembic upgrade head` against a database
+        # without the extension dies with `type "geography" does not exist`.
+        #
+        # Nothing caught this because the only documented deploy is the
+        # `postgis/postgis` image, whose entrypoint creates the extension for
+        # you, and the test suite skips migrations entirely (it builds the schema
+        # with `Base.metadata.create_all` after its own `CREATE EXTENSION`, see
+        # tests/conftest.py). The failure is specific to a managed/plain
+        # Postgres — the one path nobody had run.
+        #
+        # Inside `begin_transaction()` on purpose: emitting DDL on the connection
+        # *before* this block leaves Postgres' transactional DDL in a state where
+        # the migration block commits nothing, and every version reports as
+        # applied against an empty schema.
+        connection.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS postgis")
         context.run_migrations()
 
 

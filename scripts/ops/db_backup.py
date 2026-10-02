@@ -377,7 +377,6 @@ class Transport:
             err = (proc.stderr or b"").decode("utf-8", "replace")
             raise BackupError(f"{tool} failed ({proc.returncode}): {_tail(err)}")
         return proc
-        return proc
 
 
 def _tail(text: str, limit: int = 2000) -> str:

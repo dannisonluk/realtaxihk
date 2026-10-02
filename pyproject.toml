@@ -3,6 +3,11 @@ name = "realtaxihk-backend"
 version = "0.1.0"
 description = "realtaxihk.com - HK taxi matching platform backend (FastAPI + PostGIS + Redis)"
 requires-python = ">=3.11"
+# The `>=` floors below are for readability and for `uv lock` to have something
+# to solve. They are NOT the deployed versions: `uv.lock` is the authority, and
+# every install path (Dockerfile, CI, README) must pass `--frozen` so all three
+# resolve identically. A floor bump without a re-lock changes nothing anywhere
+# until the next `uv sync --frozen` fails or silently re-locks.
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
