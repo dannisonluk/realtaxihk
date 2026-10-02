@@ -49,6 +49,12 @@
   --hover: #f3f4f6;
   --scrim: rgb(27 31 36 / 50%);
 
+  /* The selected segment of a segmented control. White on the `--surface-2`
+     track, which is the "raised" reading the design wants. It is its own token
+     because in dark mode the *inverse* is true: the active segment must be
+     lighter than the track, and no existing surface is. */
+  --seg-active: #ffffff;
+
   /* ---- spacing: a 4pt grid, named so a call site reads as intent ---- */
   --space-1: 4px;
   --space-2: 8px;
@@ -69,6 +75,12 @@
   --shadow: 0 1px 2px rgb(16 18 22 / 6%), 0 6px 18px rgb(16 18 22 / 4%);
   --shadow-lg: 0 8px 24px rgb(140 149 159 / 20%);
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* A stack for the geometric glyphs in the preference switches (◐ ☀ ☽ 中 EN).
+     Kept apart from `--mono` because these are *symbols*, and the mono stack's
+     members render them at noticeably different weights and baselines. */
+  --system-symbol-font: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2",
+    system-ui, sans-serif;
 }
 
 /* ---- Primer dark ------------------------------------------------------ *
@@ -98,6 +110,9 @@
   --focus: #2f81f7; /* Primer accent.emphasis on dark */
   --hover: #1c2128;
   --scrim: rgb(1 4 9 / 70%);
+  /* Lighter than the `--surface-2` track, so the selected segment reads as
+     raised rather than as a hole. */
+  --seg-active: #30363d;
   --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 18px rgb(0 0 0 / 24%);
   --shadow-lg: 0 8px 24px rgb(1 4 9 / 60%);
 }
@@ -121,6 +136,7 @@
     --focus: #2f81f7;
     --hover: #1c2128;
     --scrim: rgb(1 4 9 / 70%);
+    --seg-active: #30363d;
     --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 18px rgb(0 0 0 / 24%);
     --shadow-lg: 0 8px 24px rgb(1 4 9 / 60%);
   }
@@ -341,8 +357,21 @@ body {
 .pref {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* Right-aligned, so the theme row and the language row share a right edge
+     even though their controls are different widths (three segments vs two).
+     Left-aligned they came out ragged, which read as misalignment rather than
+     as two separate controls. */
+  justify-content: flex-end;
   gap: var(--space-2);
+  /* A `<fieldset>` carries a UA border, padding and a `min-inline-size` that
+     `display: flex` does not remove. Left alone, the two preference rows drew
+     their own boxes inside the sidebar for no reason — the box-in-box artifact
+     visible in review. It is here purely to group the segments for assistive
+     technology, so the chrome comes off entirely. */
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
 }
 
 /* The row label ("Theme" / "語言") is the only text; the segments carry icons
@@ -357,6 +386,12 @@ body {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
+  /* Full width, so the two- and three-segment rows end flush with each other.
+     `flex: 1` on the segments then divides the row evenly, which also means a
+     segment is the same width whether the row holds two controls or three —
+     the property the "switching language must not move the control" rule
+     depends on. */
+  width: 100%;
 }
 
 .segmented__btn {
@@ -370,23 +405,56 @@ body {
   height: 26px;
   padding: 0 var(--space-2);
   display: inline-flex;
+  /* `flex: 1` rather than a fixed width: the segments share the row evenly, so
+     the two-segment language switch and the three-segment theme switch both
+     end flush at the sidebar's edge and neither changes size with its label. */
+  flex: 1;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-pill);
-  font-size: 12px;
+  /* 13px, not 12: the theme glyphs (◐ ☀ ☽) are drawn small within their em box
+     in every fallback stack, so at 12px they came out as near-illegible specks
+     at the foot of the sidebar. The two-letter `中`/`EN` codes are unaffected —
+     they are real text and scale normally. */
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-dim);
   cursor: pointer;
   line-height: 1;
+  /* The theme segments are glyphs (◐ ☀ ☽), and the three do not share a
+     baseline: `☀` and `☽` sit lower than `◐` in most fallback stacks, so the
+     row came out visibly uneven. `leading-trim` is not available, so the glyph
+     is centred in a fixed box instead — which also stops a font substitution
+     from changing the control's height. */
+  font-family: var(--system-symbol-font);
 }
 
 .segmented__btn:hover { color: var(--text); }
 
+/* The selected segment.
+ *
+ * This has to read as *raised* in both themes, and getting it wrong is easy:
+ * the first attempt used `--surface` on a `--surface-2` track, which in the
+ * dark palette is `#161b22` on `#21262d` — the selection came out *darker* than
+ * the track, so the pressed segment looked like a hole punched in the control
+ * and all three segments appeared identical in a screenshot.
+ *
+ * The fix is a dedicated token rather than a borrowed surface: `--seg-active`
+ * is white in light mode and a clearly lighter grey (`#30363d`) in dark, so the
+ * segment always reads as the lit one. The border adds the edge that a
+ * box-shadow alone cannot give on a dark background, and the shadow stays for
+ * the light theme where it does work. */
 .segmented__btn[aria-pressed="true"] {
-  background: var(--surface);
+  background: var(--seg-active);
   color: var(--text);
+  border: 1px solid var(--border);
   box-shadow: 0 1px 2px rgb(16 18 22 / 12%);
 }
+
+/* `all: unset` above strips the border, so the *unselected* segments must not
+   reserve it either — otherwise selecting one shifts every segment by a pixel
+   and the whole control twitches on click. */
+.segmented__btn:not([aria-pressed="true"]) { border: 1px solid transparent; }
 
 .segmented__btn:focus-visible {
   outline: 2px solid var(--focus);

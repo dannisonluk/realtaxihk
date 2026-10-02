@@ -30,6 +30,8 @@ admin-web/
   js/                 legacy console — hash router, api, dom helpers, views/
   tool/
     verify_ui.mjs           browser-driven verifier (Playwright), React build only
+    verify_qr.mjs           TOTP enrolment QR rendering check (no DB needed)
+    audit_layout.mjs        bilingual layout auditor: {zh-Hant,en} x {light,dark}
     reset_signin_budget.py  clears the dev OTP budget (legacy build only)
 ```
 
@@ -224,6 +226,54 @@ The nav click selects its target **by label**, not by index. The index form used
 click the wrong link the moment a route was inserted above it, and the failure read
 as "the nav is broken" rather than "the verifier is stale" — which is how the
 licence-review and analytics links went unnoticed.
+
+### Auditing the layout in both languages
+
+`verify_ui.mjs` proves the screens *work*. It does not prove they still fit once
+they are translated, and that is a separate failure mode: the console was designed
+in Traditional Chinese, where a nav label is two to five characters. English labels
+run two to three times longer — `Weekly settlement` against `每週結算` — against a
+fixed 248px sidebar. Nothing *errors* when that goes wrong. A label wraps to a
+second line, the row grows, and the list that fitted now scrolls.
+
+`audit_layout.mjs` measures geometry instead of eyeballing screenshots, over the
+full matrix the UI supports: **{zh-Hant, en} x {light, dark}**, at three viewport
+widths. Per render it checks document-level horizontal overflow, text clipped by an
+ancestor (with deliberate single-line ellipsis allow-listed by selector), elements
+that leave the viewport **without** a scrolling ancestor to contain them, and nav
+rows taller than the 44px target — i.e. a wrapped label.
+
+The API is stubbed at the network layer, so it needs no database — only a static
+server on the built console:
+
+```bash
+cd admin-web/web && npm run build
+cd admin-web/web/dist && python -m http.server 8099 --bind 127.0.0.1 &
+
+NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@playwright/cli/node_modules" \
+  node admin-web/tool/audit_layout.mjs --base http://127.0.0.1:8099 --out .tmp/layout
+```
+
+Two details in that harness are load-bearing and easy to get wrong, both of which
+produce a *quiet* false pass — a run that reports "clean" while having measured
+twelve screenshots of the sign-in form:
+
+1. **The API base must be pinned with `?api=same-origin`.** Without it
+   `resolveBaseUrl()` falls through to `//<host>:8000`, an origin the static server
+   does not serve. The page then renders the login form with no console error, so
+   it reads as "that route is broken" rather than "the harness pointed the app at a
+   dead port".
+2. **Storage must be seeded with `addInitScript`, not `page.evaluate` after a
+   load.** `sessionStorage` is per-document: seeding it and then navigating
+   discards it. `addInitScript` runs before any module does.
+
+It also runs at three widths (`--width 380 / 1024 / 1440`). The narrow one is what
+justifies the "scrolling ancestor" exemption above: a `table.data` on a 380px
+screen is genuinely wider than the viewport, and that is correct — `.table-wrap` is
+`overflow-x: auto`, so the table scrolls inside its own box and the page never
+overflows. Flagging that as an escape would report the one thing that is working.
+
+Screenshots land in `--out` for a human to skim; the numbers are the test.
 
 ### Re-running it: the OTP budget (legacy build only)
 
