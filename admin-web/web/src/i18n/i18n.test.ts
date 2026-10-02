@@ -156,6 +156,7 @@ describe('locale resolution', () => {
     expect(document.documentElement.lang).toBe('zh-Hant');
   });
 
+
   it('maps each i18next locale to a distinct Intl tag', () => {
     // `zh-Hant` alone is not a usable `Intl` tag — it names a script, not a
     // region, and `Intl` needs the region to pick a date order. The mapping is

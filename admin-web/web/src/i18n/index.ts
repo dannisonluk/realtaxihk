@@ -101,13 +101,32 @@ void i18n.use(initReactI18next).init({
   returnNull: false,
 });
 
-i18n.on('languageChanged', (next) => {
-  // Keep `<html lang>` honest — it drives hyphenation, the CJK-vs-Latin font
-  // fallback, and the `:lang()` rules in styles.css.
+/**
+ * Write the active locale onto `<html lang>`.
+ *
+ * This drives hyphenation, the CJK-vs-Latin font fallback, and the `:lang()`
+ * rules in `styles.css` — including `:lang(en) .t-section`, which sets Latin
+ * letter-spacing. If the attribute is stale, all of those are wrong while the
+ * visible text is right, which is exactly the kind of defect a screenshot does
+ * not show and a language-switch smoke test does not catch.
+ */
+function syncHtmlLang(locale: string) {
   if (typeof document !== 'undefined') {
-    document.documentElement.lang = next;
+    document.documentElement.lang = locale;
   }
-});
+}
+
+i18n.on('languageChanged', syncHtmlLang);
+
+// And once for the *initial* locale.
+//
+// `languageChanged` fires on a change, not on `init`. With a stored preference
+// of `en`, `init({ lng: 'en' })` sets the language silently, the listener above
+// never runs, and `<html lang>` stays at the `zh-Hant` the HTML file was
+// authored with — so the console rendered correct English while telling every
+// downstream consumer it was Chinese. Registering the listener is not enough;
+// the starting value has to be applied too.
+syncHtmlLang(i18n.resolvedLanguage ?? DEFAULT_LOCALE);
 
 export interface I18nController {
   /** Translate. Accepts interpolation values as the second argument. */

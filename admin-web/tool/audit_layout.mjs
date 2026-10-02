@@ -502,6 +502,22 @@ for (const combo of COMBOS) {
     if (report.heading === '') {
       failures.push(`${label}: no heading rendered (page body empty?)`);
     }
+    // The locale must reach `<html lang>`, which is what `:lang(en)` in
+    // styles.css and the font fallback key off. This is a real defect that
+    // shipped: the attribute is written from i18next's `languageChanged`, which
+    // does not fire for the locale an app *starts* in — so an English console
+    // rendered correct English while telling CSS it was Chinese. A screenshot
+    // cannot show that, and neither can any check that only looks at text.
+    if (report.htmlLang !== combo.locale) {
+      failures.push(
+        `${label}: <html lang> is "${report.htmlLang}", expected "${combo.locale}"`,
+      );
+    }
+    if (report.theme !== combo.theme) {
+      failures.push(
+        `${label}: <html data-theme> is "${report.theme}", expected "${combo.theme}"`,
+      );
+    }
   }
 
   // Console errors are per-combination, collected across every route above.
