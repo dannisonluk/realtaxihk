@@ -820,6 +820,56 @@ guard：遷移前先查有無超範圍列，有就 raise 具名 `RuntimeError` �
 > 它們。當時回報「921 綠」而 XML 裡 7 條新測試一條都沒有，但總數看起來正常。
 > 判斷依據必須是 **grep XML 內的測試名**，不是總數。
 
+### 2.20 收尾：10 個分批 commit + 清掉 P2-F-6/7/8、P2-11（2026-10-12）
+
+**（a）分批 commit。** 之前 57 個 working-tree 改動**一個 commit 都沒有**。
+`git rev-list --count origin/main..HEAD` 當時回 **0** —— 這**不代表「都推了」**，
+而是代表 HEAD 等於 origin/main，即工作區全部未 commit。兩個檢查回答兩條不同的
+問題，不能互相代替（見 §5 更正）：
+
+| 指令 | 回答 |
+|---|---|
+| `git rev-list --count origin/main..HEAD` | 有沒有**未推的 commit** |
+| `git status --short` | 有沒有**未 commit 的改動** |
+
+已按邏輯分成 **10 個 commit**（`c75e8b9` → `549ae7e`），每個獨立可審：
+
+```
+c75e8b9 fix(security): one client_ip(), not five copies of the SEC-07 fix
+96e979b fix(config): fail closed on two prod settings that silently do nothing
+04cf881 fix(settlement): a lost fee could be reported as a clean skip
+e1bcf92 fix(models): 20 enum columns had no CHECK constraint (P0-M-2)
+4d37253 fix(admin-web): four console defects the review found
+7165858 fix(mobile): settlement confirm token, stale balance, id-drift note
+9b0c29a fix(alembic): migrations could not run on a Postgres without PostGIS
+f3aff72 feat(deploy): TLS terminator, and the pool arithmetic made explicit
+2bf256e docs: the 2026-10-12 review, and 14 stale test counts
+6ed1ca8 refactor(scripts): the repo root is computed once, not fifteen times (P2-11)
+549ae7e fix(mobile): the three product-judgement items from the review (P2-F-6/7/8)
+```
+
+**（b）P2-11 —— repo root 只算一次。** 15 份 `parent.parent.parent` 的副本
+（散在 14 個檔案、3 種寫法）收斂成 `scripts/_root.py`。**chicken-and-egg 仍然
+存在**（`_root` 要 `scripts/` 先上 `sys.path` 才 import 得到），但它現在只活在
+**一個地方**而不是十五個。`scripts/__init__.py` 不存在 → 加這個模組**不改變
+pytest 收集**。新增 `tests/test_scripts_root.py`（26 tests）守兩件事：任何腳本
+重新自算 depth（3 種拼法都抓）就 fail；任何被另一個腳本按名字引用的腳本不存在
+也 fail。
+
+**（c）P2-F-6/7/8 —— 原本寫「留給產品判斷」，後來決定一併做。**
+車牌格式**提示**（不是驗證器 —— 香港 Custom Registration Marks 是任意字串，
+硬擋會拒真車牌）、`state.extra` 型別收窄後退回 `LoginScreen`、
+`AdminKycScreen` dispose 順序加註釋。
+
+**（d）順手抓到 2 個 CI 看不見的既有 bug。** 兩個安全 harness
+（`security_verify.py` / `security_probe.py`）自 §2.13 目錄重整後就**開不了機** ——
+路徑仍指 `scripts/create_admin.py`，實際已移到 `scripts/ops/`。**兩者都不在 CI
+裡跑**，所以沒人發現。
+
+> **教訓**：只有 boot 整支 app（`prod_boot_drill.py`）或 spawn 子進程的 harness，
+> 才會被「新增一個必填 prod 設定」搞死，而它們**不在 CI**。新增必填設定後要手動
+> 跑一次。這次就靠它的 `_PROD_OK` 單一 dict 設計**大聲失敗**（而不是靜靜少測）。
+
 ---
 
 ## 3. 驗證標準：「全部實跑」
@@ -1133,7 +1183,9 @@ CI gate（`.github/workflows/ci.yml`）：
 ✅ TOTP 綁定二維碼：本地 SVG 渲染，經獨立解碼器驗證解出正確 otpauth URI（明暗兩主題）
 ✅ challenge token 結構隔離、scope 提權不可行（實測）
 ✅ 秘密審計：.env 從未進 git，無硬編碼金鑰
-❌ push 未做 — 用戶指示「只需 commit」；origin/main 落後本地多個 commit
+⚠️ push 未做 — 用戶指示「只需 commit」。**2026-10-02 收尾：全部改動已按邏輯分
+   10 個 commit（`origin/main..HEAD` = 10），working tree clean。push 仍受
+   token 權限阻塞（見 §5）。**
 
 ✅ `app/models` 拆包：886 行 → 5 個 bounded-context 模組 + `__init__` re-export
    零呼叫點改動；DDL / relationship / alembic drift 逐項比對全等

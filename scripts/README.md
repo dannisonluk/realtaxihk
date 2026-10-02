@@ -63,14 +63,29 @@ Every script is run directly, from the repo root or from anywhere:
 .venv/Scripts/python scripts/verify/audit_response_models.py
 ```
 
-Each script locates the repo root from its own `__file__`, so the nesting depth
-is encoded in that one expression:
+The repo root comes from `scripts/_root.py`, which sits next to this file:
 
-- `Path(__file__).resolve().parent.parent.parent` — `scripts/<group>/x.py` → repo root
-- `os.path.dirname(...)` × 3 — the `os.path` equivalent, kept as a `str` for
-  `env["PYTHONPATH"]`
+```python
+import sys
+from pathlib import Path
 
-**If you add a group, every script in it needs that depth fixed.** That is the
-one coupling in this directory; it is deliberately visible rather than hidden
-behind a helper, because a helper would need `scripts/` on `sys.path` before it
-could be imported — the same chicken-and-egg it would be solving.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from _root import REPO_ROOT  # noqa: E402
+```
+
+The two lines are load-bearing in that order. `_root.py` resolves its own
+location once, so **nesting depth is no longer encoded in every script** — move
+a script between groups and nothing needs editing. The `sys.path.insert` still
+has to come first, because `_root` is not importable until `scripts/` is on the
+path; that is the chicken-and-egg, and it now lives in one place instead of
+fifteen.
+
+`scripts/_root.py` is a module, not a package (`scripts/__init__.py` is absent),
+so adding it does not change pytest collection. `tests/test_scripts_root.py`
+guards both halves: it fails if any script re-derives a depth (three
+`parent`/`parents[2]`/nested-`dirname` spellings are checked) or if a script
+referenced by name in another script does not exist.
+
+If a script only needs `REPO_ROOT` to feed that `sys.path.insert`, it does not
+need the import at all — use the two-line bootstrap above and drop the `from
+_root import REPO_ROOT`.

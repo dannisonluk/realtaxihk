@@ -1028,6 +1028,9 @@ not `pip install .`」的理由。但**本地開發的 venv 也是 `uv sync`**�
 
 ### P2-11. `scripts/README.md` 的「if you add a group, fix the depth」是隱性耦合
 
+> **已修（2026-10-02）**：`scripts/_root.py` 已落地，14 個腳本改用兩行 bootstrap。
+> 本節保留為當時的分析。
+
 **位置**：`scripts/README.md:73-76`
 
 README 自己承認：
@@ -1319,6 +1322,8 @@ onRetry={() => setQuery((q) => q)}
 
 ### P2-F-6. `DriverRegisterRequest` 的車牌只在客戶端驗「長度 ≥ 4」
 
+> **已修（2026-10-02）**：加了格式**提示**（非驗證器），見文末「已修（前端）」表。
+
 **位置**：`mobile/lib/models/driver.dart`（`DriverRegisterRequest`）。
 
 **問題**：`taxiDriverPlateNo` / `vehicleRegMark` 客戶端只檢查 `length >= 4`，
@@ -1334,6 +1339,8 @@ onRetry={() => setQuery((q) => q)}
 
 ### P2-F-7. `OtpScreen` 的 `state.extra` 空字串靜默通過
 
+> **已修（2026-10-02）**：非 `String`／空字串改回 `LoginScreen`，見文末表。
+
 **位置**：`mobile/lib/features/auth/otp_screen.dart`
 ```dart
 OtpScreen(phoneE164: extra is String ? extra : '')
@@ -1347,6 +1354,9 @@ OtpScreen(phoneE164: extra is String ? extra : '')
 OTP 畫面沒有電話號碼是沒有意義的狀態，不該存在。
 
 ### P2-F-8. `AdminKycScreen._grant` 在方法內建 `TextEditingController`
+
+> **已修（2026-10-02）**：補上生命週期註釋，見文末表。原判斷保留 —— 不改成
+> `State` 欄位是刻意的。
 
 **位置**：`mobile/lib/features/admin/admin_kyc_screen.dart` 的 `_grant`。
 
@@ -1468,9 +1478,17 @@ OTP 畫面沒有電話號碼是沒有意義的狀態，不該存在。
 | **P2-F-3** | `AnalyticsPage.summaryFilters` 上方加註釋，說明它每次 render 都是新物件且**不可**加進 deps | `admin-web/web/src/pages/AnalyticsPage.tsx` |
 | **P2-F-4** | `_RefundSection._request()` 補 `ref.invalidate(ledgerProvider)` —— 退款會 hold 住餘額，不刷新等於讓使用者看舊餘額 | `mobile/lib/features/driver/driver_earnings_screen.dart` |
 
-**未做（刻意）**：P2-F-6/7/8 是行為／UI 決策，不屬「重構」，留給產品判斷；
-P2-5（nginx envsubst）、P2-11（`scripts/_root.py`）需要真的 nginx / 較大改動，
-記錄做法但不預先動（理由見各條）。
+**其餘前端項亦已補做**（原本標記為「留給產品判斷」，後來決定一併處理）：
+
+| 編號 | 改動 | 檔案 |
+|---|---|---|
+| **P2-F-6** | 車牌輸入加即時格式提示（`^[A-Z]{1,2}\s?\d{1,4}$`）。**提示而非驗證器** —— 香港 Custom Registration Marks 是任意字串，硬擋會拒真車牌。訊息說明「一般」格式 | `mobile/lib/features/driver/driver_onboarding_screen.dart` |
+| **P2-F-7** | `state.extra` 改為型別檢查：非 `String` 或空字串 → `return const LoginScreen()`。直接回傳而非 `context.go()`，避免在 build 期間導航 | `mobile/lib/router/app_router.dart` |
+| **P2-F-8** | `_grant` 的 `TextEditingController` 生命週期加註釋，說明 dispose 順序是 load-bearing | `mobile/lib/features/admin/admin_kyc_screen.dart` |
+| **P2-11** | 新增 `scripts/_root.py`；14 個腳本改用兩行 bootstrap。三種 depth 寫法（`parent.parent.parent` / `parents[2]` / 嵌套 `dirname`）全部移除。新增 `tests/test_scripts_root.py`（26 tests）守住不回流 | `scripts/_root.py`（新）、14 個腳本、`scripts/README.md` |
+
+**仍未做（原因不變）**：P2-5（nginx envsubst）需要一台真的 nginx 才能驗，
+設定錯了是**啟動失敗**而非啟動錯誤，無法在本機證明，故只記錄做法。
 
 ## 完整 gate 驗證（改動後、單一權威跑）
 
