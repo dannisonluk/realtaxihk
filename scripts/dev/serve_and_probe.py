@@ -8,7 +8,9 @@ from pathlib import Path
 import httpx
 import uvicorn
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from _root import REPO_ROOT as PROJECT_ROOT
+
 tmp = PROJECT_ROOT / ".tmp"
 tmp.mkdir(exist_ok=True)
 # handle stays open on purpose: the child process inherits it as stdout

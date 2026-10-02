@@ -15,7 +15,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from _root import REPO_ROOT as ROOT
 
 STRONG_SECRET = "Zx9q7Lm2Wp4Rt6Yk8Bn3Vc5Hj1Sd0Fg6"  # noqa: S105 — drill fixture, not a credential
 COMMITTED_DEV_SECRET = "dev-only-secret-change-in-prod-0123456789abcdef-0123456789abcdef"  # noqa: S105 — the value we must prove is rejected
@@ -24,6 +25,11 @@ COMMITTED_DEV_SECRET = "dev-only-secret-change-in-prod-0123456789abcdef-01234567
 # SMTP_HOST/SMTP_FROM/PUBLIC_BASE_URL are in here for the same reason as the
 # secrets: if one were inherited from the ambient environment, a "refuse" case
 # could pass for the wrong reason (or a boot case could be masked).
+#
+# TRUSTED_PROXY_COUNT and CORS_ORIGINS joined on 2026-10-12 when the prod
+# validators for them landed. They have to be listed *and* present in `_PROD_OK`,
+# because two of the new cases work by *removing* a key from it -- and a key
+# inherited from the ambient environment would make "unset" case pass vacuously.
 MANAGED = (
     "APP_ENV",
     "ALLOW_DEV_OTP",
@@ -32,7 +38,27 @@ MANAGED = (
     "SMTP_HOST",
     "SMTP_FROM",
     "PUBLIC_BASE_URL",
+    "TRUSTED_PROXY_COUNT",
+    "CORS_ORIGINS",
 )
+
+# The complete set a prod deploy needs to boot. Kept as one dict so the
+# negative cases below can be expressed as "this, but with X removed/changed",
+# which is what keeps them honest: when a new required setting is added, the
+# happy path fails loudly instead of the drill quietly testing less.
+#
+# TRUSTED_PROXY_COUNT=1 is what the documented deploy uses (nginx in front).
+# CORS_ORIGINS must be https:// -- a wildcard or a plain-http entry is refused.
+_PROD_OK = {
+    "APP_ENV": "prod",
+    "JWT_SECRET_KEY": STRONG_SECRET,
+    "POSTGRES_PASSWORD": "real",
+    "SMTP_HOST": "smtp.example.com",
+    "SMTP_FROM": "no-reply@example.com",
+    "PUBLIC_BASE_URL": "https://api.realtaxihk.com",
+    "TRUSTED_PROXY_COUNT": "1",
+    "CORS_ORIGINS": '["https://console.realtaxihk.com"]',
+}
 
 CASES = [
     (
@@ -77,20 +103,43 @@ CASES = [
         "entropy",
     ),
     (
+        # SEC-07: 0 means X-Forwarded-For is ignored entirely, so behind nginx
+        # every caller shares one rate-limit bucket. Refusing is the fix; this
+        # case is what proves the refusal survives a refactor.
+        "prod + TRUSTED_PROXY_COUNT=0 (behind nginx)",
+        {**_PROD_OK, "TRUSTED_PROXY_COUNT": "0"},
+        False,
+        "TRUSTED_PROXY_COUNT",
+    ),
+    (
+        "prod + CORS_ORIGINS unset",
+        {k: v for k, v in _PROD_OK.items() if k != "CORS_ORIGINS"},
+        False,
+        "CORS_ORIGINS",
+    ),
+    (
+        # A wildcard origin with credentials is the combination browsers reject
+        # anyway; a deploy that "worked" in a browser test would be one where
+        # CORS was silently broken for the real console.
+        "prod + CORS_ORIGINS=*",
+        {**_PROD_OK, "CORS_ORIGINS": '["*"]'},
+        False,
+        "wildcard",
+    ),
+    (
+        "prod + plain-http CORS origin",
+        {**_PROD_OK, "CORS_ORIGINS": '["http://console.realtaxihk.com"]'},
+        False,
+        "https://",
+    ),
+    (
         # "Proper secrets" means *everything* the prod validator demands — not
         # just the three it demanded when this drill was written. The P-2 SMTP /
         # PUBLIC_BASE_URL checks were added later and this case silently rotted:
         # nothing runs the drill in CI (`.github/workflows/ci.yml` is ruff +
         # pytest only), so it sat at 6/7 without anyone seeing it.
         "prod with proper secrets",
-        {
-            "APP_ENV": "prod",
-            "JWT_SECRET_KEY": STRONG_SECRET,
-            "POSTGRES_PASSWORD": "real",
-            "SMTP_HOST": "smtp.example.com",
-            "SMTP_FROM": "no-reply@example.com",
-            "PUBLIC_BASE_URL": "https://api.realtaxihk.com",
-        },
+        _PROD_OK,
         True,
         "BOOTED",
     ),

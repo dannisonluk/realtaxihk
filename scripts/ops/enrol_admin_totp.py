@@ -46,13 +46,12 @@ import os
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import httpx  # noqa: E402
+import httpx
 
-from app.core.totp import totp_at  # noqa: E402
-from app.main import create_app  # noqa: E402
+from app.core.totp import totp_at
+from app.main import create_app
 
 
 async def enrol(username: str, password: str, super_admin: bool) -> int:

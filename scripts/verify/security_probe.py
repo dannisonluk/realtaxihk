@@ -16,12 +16,11 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import asyncpg
+from _root import REPO_ROOT as ROOT
 
-import asyncpg  # noqa: E402
-
-from app.core.config import get_settings  # noqa: E402
+from app.core.config import get_settings
 
 BASE = "http://127.0.0.1:8000"
 # Child-server logs go to a fresh tempdir: the repo root is not a scratch space,
@@ -66,7 +65,7 @@ BASE_ENV = {
 
 def _admin_cli(*args):
     return subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "create_admin.py"), *args],
+        [sys.executable, str(ROOT / "scripts" / "ops" / "create_admin.py"), *args],
         capture_output=True,
         check=False,
         text=True,

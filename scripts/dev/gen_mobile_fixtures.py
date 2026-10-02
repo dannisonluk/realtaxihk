@@ -43,7 +43,9 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from _root import REPO_ROOT as ROOT
+
 OUT = ROOT / "mobile" / "test" / "fixtures"
 PORT = 8123
 BASE = f"http://127.0.0.1:{PORT}"
@@ -62,8 +64,6 @@ OTP_PHONE = "+85290000005"
 # so unlike the fixture phones this row cannot simply be left behind — a second
 # run would 409 on create. `reset_dev_state` deletes it by licence number.
 FLEET_LICENSE = "FLEET-STAR-001"
-
-sys.path.insert(0, str(ROOT))
 
 
 def req(

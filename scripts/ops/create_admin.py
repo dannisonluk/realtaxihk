@@ -39,14 +39,13 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import select
 
-from app.core.config import get_settings  # noqa: E402
-from app.core.db import dispose_engine, get_session_factory  # noqa: E402
-from app.models import User, UserRole  # noqa: E402
+from app.core.config import get_settings
+from app.core.db import dispose_engine, get_session_factory
+from app.models import User, UserRole
 
 _PHONE_RE = re.compile(r"^\+852\d{8}$")
 

@@ -86,9 +86,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-
-ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from _root import REPO_ROOT as ROOT
 
 # `pg_dump` is custom-format (-Fc): compressed, and restorable table-by-table.
 # Plain SQL would be readable but neither compressible nor selectively

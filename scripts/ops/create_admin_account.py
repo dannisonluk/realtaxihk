@@ -43,18 +43,17 @@ import sys
 import uuid
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import select
 
-from app.core.config import get_settings  # noqa: E402
-from app.core.db import dispose_engine, get_session_factory  # noqa: E402
-from app.core.passwords import (  # noqa: E402
+from app.core.config import get_settings
+from app.core.db import dispose_engine, get_session_factory
+from app.core.passwords import (
     PasswordPolicyError,
     hash_password,
 )
-from app.models import AdminAccount  # noqa: E402
+from app.models import AdminAccount
 
 _USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,31}$")
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

@@ -13,7 +13,10 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from _root import REPO_ROOT
+
+ROOT = str(REPO_ROOT)
 PY = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
 
 # `playwright` is NOT a top-level package on this machine. It ships *nested*

@@ -39,7 +39,10 @@ import time
 import urllib.error
 import urllib.request
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from _root import REPO_ROOT
+
+ROOT = str(REPO_ROOT)
 PY = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
 
 
