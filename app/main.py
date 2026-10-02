@@ -50,6 +50,12 @@ from app.core.middleware import (
 
 logger = logging.getLogger("realtaxihk.main")
 
+# The API's own version. Declared once because it is published in two places
+# that must agree: the OpenAPI document (`FastAPI(version=...)`) and the Sentry
+# `release`, which is what lets an error be attributed to a deploy instead of
+# to "somewhere in main".
+_API_VERSION = "0.2.0"
+
 
 async def _job_loop(interval_s: int, coro_factory, name: str):
     """Run coro_factory() every interval_s; never let one failure kill the loop."""
@@ -161,7 +167,41 @@ def create_app() -> FastAPI:
         try:
             import sentry_sdk
 
-            sentry_sdk.init(dsn=settings.sentry_dsn, environment=settings.app_env)
+            # Error monitoring only. Tracing, profiling and the Logs product
+            # each need an explicit option here before they send anything, so
+            # leaving them off is honest rather than an omission — an empty
+            # tracing view is noise, and the quotas are per-product anyway.
+            #
+            # What actually reaches Sentry without further wiring is worth
+            # knowing, because it is not obvious from this call:
+            #
+            #   * Unhandled 500s. `app/core/exceptions.py` installs a catch-all
+            #     `@app.exception_handler(Exception)` that swallows the
+            #     traceback and answers 500, so the exception never propagates
+            #     for the ASGI integration to see. That handler logs at ERROR,
+            #     and the SDK's default LoggingIntegration turns ERROR records
+            #     into events — so the traceback arrives *through logging*.
+            #   * Background job failures. `_job_loop` catches and
+            #     `logger.exception`s them for the same reason: a loop that
+            #     dies quietly is how ghost-order sweeping once went missing.
+            #
+            # Remove either of those log calls and the errors stop being
+            # reported, with nothing else to indicate the loss.
+            sentry_sdk.init(
+                dsn=settings.sentry_dsn,
+                environment=settings.app_env,
+                release=f"realtaxihk-api@{_API_VERSION}",
+                # PDPO. This service handles HK phone numbers and licence
+                # photos, and Sentry is a third party in another jurisdiction.
+                # The traceback and the log line are what make an error
+                # actionable; the request body is not, and it is the one part
+                # that carries personal data — an OTP request body is a phone
+                # number. The SDK default is `medium`, which would ship it.
+                max_request_body_size="never",
+                # Also the default, but stated so that a future change to it is
+                # a visible decision rather than a silent one.
+                send_default_pii=False,
+            )
             logger.info("sentry initialized")
         except ImportError:
             logger.warning("SENTRY_DSN set but sentry-sdk not installed — skipped")
@@ -187,7 +227,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="realtaxihk.com API",
-        version="0.2.0",
+        version=_API_VERSION,
         lifespan=lifespan,
         description=(
             "Hong Kong taxi matching platform — information intermediary "

@@ -172,7 +172,7 @@
 | `GOOGLE_MAPS_API_KEY` | 路線 / 距離（**未接線**） | 無影響 |
 | `WHATSAPP_BUSINESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | OTP 發送 | 無法發 OTP |
 | `FCM_CREDENTIALS_JSON` | 推送 | 無推送 |
-| `SENTRY_DSN` | 錯誤追蹤 | 無上報 |
+| `SENTRY_DSN` | 錯誤追蹤（`release` 綁 `_API_VERSION`；請求內文一律不送出 —— PDPO） | 無上報 |
 | `PROMETHEUS_ENABLED` | 掛載 `/metrics`（需同時設 `METRICS_TOKEN`） | 無 metrics |
 | `R2_ENDPOINT_URL` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` | 頭像、的士證照片 | **無法上傳執照照片** |
 | `R2_PUBLIC_BASE_URL` | 公開讀取網域 | 改由 API 簽名重導 |
