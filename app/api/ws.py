@@ -40,10 +40,9 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.db import get_session, get_session_factory
+from app.core.db import get_session_factory
 from app.core.deps import principal_from_token
 from app.core.hk_bounds import is_in_hong_kong
 from app.core.token_revocation import is_token_revoked
@@ -62,7 +61,6 @@ WS_CAPACITY = 4408
 async def trip_socket(
     ws: WebSocket,
     order_id: str,
-    session: AsyncSession = Depends(get_session),
     factory=Depends(get_session_factory),
 ):
     settings = get_settings()
@@ -87,26 +85,49 @@ async def trip_socket(
             await ws.close(code=WS_UNAUTHENTICATED)
             return
 
-    # --- resolve party (request-scoped session, one read) ---
+    # --- resolve party, in a session of our OWN, released before the upgrade ---
+    #
+    # This deliberately does NOT take the request-scoped `Depends(get_session)`.
+    # For a WebSocket that dependency is torn down when the handler returns —
+    # which is when the socket closes, potentially hours later. The session, and
+    # the pooled connection behind it, would therefore be held for the life of
+    # every socket. The pool is `db_pool_size + db_max_overflow` = 30 per
+    # process, while `ws_max_connections_total` is 2000: the 31st live trip
+    # exhausts it, and from then on *every* request in the process stalls on
+    # `pool_timeout` before failing. The per-tick work below already used
+    # `factory()` for exactly this reason; the handshake was the leftover.
+    #
+    # The test suite could not see it: `tests/conftest.py` overrides both
+    # `get_session` and `get_session_factory` with a NullPool engine, which has
+    # no ceiling to hit. `tests/test_ws_module.py::test_handshake_releases_its_
+    # connection` asserts it against the real pool instead.
     try:
         oid = uuid.UUID(order_id)
     except ValueError:
         await ws.close(code=WS_UNKNOWN_ORDER)
         return
-    order = await session.get(Order, oid)
-    if order is None:
-        await ws.close(code=WS_UNKNOWN_ORDER)
-        return
-    order_id_str = str(order.id)
-    is_passenger = order.passenger_id == user.id
-    profile = (
-        (await session.execute(select(DriverProfile).where(DriverProfile.user_id == user.id)))
-        .scalars()
-        .first()
-    )
-    profile_id = profile.id if profile is not None else None
-    driver_id_on_order = order.driver_id
-    await session.rollback()  # release the implicit read transaction
+
+    async with factory() as session:
+        order = await session.get(Order, oid)
+        if order is None:
+            await ws.close(code=WS_UNKNOWN_ORDER)
+            return
+        # Read every value out as a plain scalar while the session is still
+        # open. The ORM instances must not be touched after it closes.
+        order_id_str = str(order.id)
+        is_passenger = order.passenger_id == user.id
+        driver_id_on_order = order.driver_id
+        profile = (
+            (await session.execute(select(DriverProfile).where(DriverProfile.user_id == user.id)))
+            .scalars()
+            .first()
+        )
+        profile_id = profile.id if profile is not None else None
+        # P0-3: a deactivated account must not keep a live socket. One PK read;
+        # a suspended driver re-checks per tick (DRIVER_NOT_ACTIVE).
+        db_user = await session.get(User, user.id)
+        user_is_active = db_user is not None and db_user.is_active
+
     is_driver = (
         profile_id is not None
         and driver_id_on_order is not None
@@ -115,11 +136,7 @@ async def trip_socket(
     if not (is_passenger or is_driver):
         await ws.close(code=WS_FORBIDDEN)
         return
-
-    # P0-3: a deactivated account must not keep a live socket. One PK read;
-    # a suspended driver re-checks per tick (DRIVER_NOT_ACTIVE).
-    db_user = await session.get(User, user.id)
-    if db_user is None or not db_user.is_active:
+    if not user_is_active:
         await ws.close(code=WS_FORBIDDEN)
         return
     party_kind = "driver" if is_driver else "passenger"

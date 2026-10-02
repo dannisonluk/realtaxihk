@@ -112,14 +112,50 @@ class CancelIn(BaseModel):
     reason: str = Field(default="", max_length=500)
 
 
-async def _get_order(session: AsyncSession, order_id: str) -> Order:
+async def _get_order(session: AsyncSession, order_id: str, *, for_update: bool = False) -> Order:
+    """Load one order, optionally taking a row lock on it.
+
+    `for_update` belongs on every route that will *change* the row. Without the
+    lock, two concurrent requests both read the pre-transition status, both pass
+    `assert_order_transition`, and both apply their side effect — the read and
+    the write are not one atomic step. `POST /{order_id}/cancel` is where that
+    costs money: the no-show penalty is appended from the stale read, so a
+    double-tapped cancel charges the driver twice and writes two ledger rows.
+
+    Two details worth stating plainly:
+
+    * `populate_existing` — the locking SELECT is emitted either way, but an
+      instance already sitting in this session's identity map would *not* be
+      overwritten by it, so the guard could still evaluate against a pre-lock
+      read. It costs nothing and removes that whole class of surprise.
+    * the lock is taken *before* any other row, so this path's lock order is
+      `orders -> driver_profiles`. `LedgerService.append` takes the deposit row
+      and never touches `orders`, so the reverse order does not exist and no
+      deadlock cycle is introduced.
+    """
     from uuid import UUID
 
     try:
         oid = UUID(order_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail="order not found") from exc
-    order = await session.get(Order, oid)
+
+    if for_update:
+        order = (
+            (
+                await session.execute(
+                    select(Order)
+                    .where(Order.id == oid)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+            )
+            .scalars()
+            .first()
+        )
+    else:
+        order = await session.get(Order, oid)
+
     if order is None:
         raise HTTPException(status_code=404, detail="order not found")
     return order
@@ -307,7 +343,7 @@ async def order_arrive(
     user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
-    order = await _get_order(session, order_id)
+    order = await _get_order(session, order_id, for_update=True)
     await _assigned_driver_guard(session, order, user)
     await OrderService(session).transition(order, OrderStatus.DRIVER_ARRIVED)
     return order_out(order)
@@ -319,7 +355,7 @@ async def order_start(
     user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
-    order = await _get_order(session, order_id)
+    order = await _get_order(session, order_id, for_update=True)
     await _assigned_driver_guard(session, order, user)
     await OrderService(session).transition(order, OrderStatus.IN_TRIP)
     return order_out(order)
@@ -331,7 +367,7 @@ async def order_complete(
     user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
-    order = await _get_order(session, order_id)
+    order = await _get_order(session, order_id, for_update=True)
     await _assigned_driver_guard(session, order, user)
     await OrderService(session).transition(order, OrderStatus.COMPLETED)
     return order_out(order)
@@ -345,7 +381,10 @@ async def order_cancel(
     user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
-    order = await _get_order(session, order_id)
+    # Locked, because the penalty below is decided from this read and the
+    # transition is written after it: two concurrent cancels would otherwise
+    # both see ACCEPTED and both charge. See `_get_order`.
+    order = await _get_order(session, order_id, for_update=True)
     profile = await _driver_profile_of(session, user.id)
     is_passenger = order.passenger_id == user.id
     is_assigned_driver = profile is not None and order.driver_id == profile.id

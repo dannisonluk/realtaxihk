@@ -239,3 +239,114 @@ class TestWsStreaming:
             headers={"Authorization": f"Bearer {other}"},
         )
         assert r.status_code == 403
+
+
+class TestWsConnectionLifetime:
+    """The handshake must not hold a pooled DB connection for the socket's life.
+
+    This is the one defect the rest of the suite structurally cannot see:
+    `tests/conftest.py` overrides `get_session` **and** `get_session_factory`
+    with a `NullPool` engine, and NullPool has no ceiling to exhaust. Production
+    runs `db_pool_size + db_max_overflow` = 30 connections per process against a
+    `ws_max_connections_total` of 2000 — so the 31st concurrent live trip
+    exhausts the pool, and from then on every *other* request in that process
+    stalls on `pool_timeout` before failing. The live-trip socket is the core
+    feature, so this is not a corner.
+    """
+
+    def test_the_route_declares_no_request_scoped_session(self):
+        """The structural half.
+
+        `Depends(get_session)` on a WebSocket is torn down when the handler
+        returns — at socket close, not at the end of the handshake. Any session
+        taken that way is held for the whole conversation, so this route must not
+        declare one; it opens a session per unit of work from `factory()`.
+
+        Introspected through `app.api.ws.router.routes`, not `app.routes`:
+        `include_router` is not flattened in this FastAPI version, so the app's
+        own route list does not contain the WebSocket route at all.
+        """
+        from app.api.ws import router
+        from app.core.db import get_session
+
+        (route,) = [r for r in router.routes if getattr(r, "path", "") == "/ws/trip/{order_id}"]
+        declared = {dep.call for dep in route.dependant.dependencies}
+
+        assert get_session not in declared, (
+            "the WebSocket route takes Depends(get_session). For a WS that "
+            "dependency lives until the socket closes, so the pooled connection "
+            "behind it is held for hours. Use Depends(get_session_factory) and "
+            "open a session per unit of work instead."
+        )
+        assert any(getattr(call, "__name__", "") == "get_session_factory" for call in declared), (
+            "the route must still take its factory from the DI graph, or tests cannot override it"
+        )
+
+    def test_the_handshake_releases_its_connection(self, client):
+        """The behavioural half, measured on the Postgres server.
+
+        Counted in `pg_stat_activity` rather than through SQLAlchemy's pool
+        because the suite's factory is NullPool, which has no `checkedout()` to
+        read and no ceiling to hit. The measurement is a delta against a baseline
+        taken just before the socket opens, so the probe's own connection — and
+        anything still winding down from the setup requests — cancels.
+        """
+        import asyncio
+
+        from sqlalchemy import text
+        from sqlalchemy.ext.asyncio import create_async_engine
+        from sqlalchemy.pool import NullPool
+
+        def _backends() -> int:
+            """Backends this test database currently has, including this probe's
+            own — which is present in every measurement and therefore cancels."""
+
+            async def _count():
+                engine = create_async_engine(client.db_url, poolclass=NullPool)
+                try:
+                    async with engine.connect() as conn:
+                        return (
+                            await conn.execute(
+                                text(
+                                    "select count(*) from pg_stat_activity "
+                                    "where datname = current_database()"
+                                )
+                            )
+                        ).scalar_one()
+                finally:
+                    await engine.dispose()
+
+            return asyncio.get_event_loop_policy().new_event_loop().run_until_complete(_count())
+
+        pax = _mk_user_token(client, "+85260000061")
+        oid = _mk_broadcasting_order(client, pax)
+
+        # Baseline taken with the setup requests settled.
+        #
+        # Comparing against a *before* reading, not an *after* one, is load
+        # bearing. With the defect the leaked connection is still sitting
+        # `idle in transaction` long after the socket closes — the dependency
+        # teardown is not prompt in this harness — so an after-reading is
+        # inflated by the very thing under test and the two sides cancel out.
+        # Measured, not assumed: that version of this test passed against the
+        # defect.
+        time.sleep(0.3)
+        baseline = _backends()
+
+        with client.websocket_connect(_ws_url(client, f"/ws/trip/{oid}", pax)) as ws:
+            # Send a tick and take the refusal. This proves the reader loop is
+            # running, so the measurement is taken on a socket that really
+            # completed its handshake rather than one that never opened.
+            ws.send_text(json.dumps({"lat": 22.285, "lng": 114.155}))
+            reply = json.loads(ws.receive_text())
+            assert reply["type"] == "error"
+            assert reply["code"] == "READ_ONLY"
+
+            inside = _backends()
+            assert inside <= baseline, (
+                f"the open WebSocket holds {inside - baseline} more database "
+                f"connection(s) than before it connected ({inside} vs {baseline}). "
+                "The handshake is keeping its session alive for the life of the "
+                "socket; with a 30-connection pool and a 2000-socket cap, the "
+                "31st live trip would starve every other request in the process."
+            )

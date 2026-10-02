@@ -243,7 +243,7 @@ class FleetSettlementRun {
     if (gross == null) {
       return null;
     }
-    return Money.parse((gross.asDouble - feeHkd.asDouble).toString());
+    return gross.minus(feeHkd);
   }
 }
 

@@ -186,6 +186,51 @@ void _moneyTests() {
     test('accepts a raw number too', () {
       expectClose(Money.parse(12.5).asDouble, 12.5);
     });
+
+    test('subtracts in cents, not in binary floating point', () {
+      // The defect this guards: `500.00 - 499.70` is 0.30000000000001137 as a
+      // double, and `canonical` faithfully preserved it, so the driver's deposit
+      // card rendered `HK$0.30000000000001137`. Confirmed by running the old
+      // expression before changing it, not by reasoning about floats.
+      expect(Money.parse('500.00').minus(Money.parse('499.70')).canonical, '0.30');
+      expect(Money.parse('500.00').minus(Money.parse('499.70')).display, '0.3');
+      expect(Money.parse('500.00').minus(Money.parse('487.30')).canonical, '12.70');
+      expect(Money.parse('200.00').minus(Money.parse('199.99')).canonical, '0.01');
+      // A 1 dp meter figure scales correctly: 147.1 is 14710 cents, not 147.1
+      // rounded through a double.
+      expect(Money.parse('147.1').minus(Money.parse('100.0')).canonical, '47.10');
+    });
+
+    test('subtracting past zero goes negative, and the caller clamps', () {
+      expect(Money.parse('100.00').minus(Money.parse('250.00')).canonical, '-150.00');
+      expectTrue(Money.parse('100.00').minus(Money.parse('250.00')).isNegative);
+    });
+
+    test('renders a cent count back to the server 2 dp shape', () {
+      expect(Money.fromCents(30).canonical, '0.30');
+      expect(Money.fromCents(5).canonical, '0.05');
+      expect(Money.fromCents(0).canonical, '0.00');
+      expect(Money.fromCents(-50).canonical, '-0.50');
+      expect(Money.fromCents(12345).canonical, '123.45');
+    });
+
+    test('a driver who has overpaid has no shortfall', () {
+      const DriverDeposit overpaid = DriverDeposit(
+        balanceHkd: Money('600.00'),
+        heldHkd: Money('0.00'),
+        requiredHkd: Money('500.00'),
+        isFulfilled: true,
+      );
+      expect(overpaid.shortfall.display, '0');
+
+      const DriverDeposit shortByThirtyCents = DriverDeposit(
+        balanceHkd: Money('499.70'),
+        heldHkd: Money('0.00'),
+        requiredHkd: Money('500.00'),
+        isFulfilled: false,
+      );
+      expect(shortByThirtyCents.shortfall.hkd, r'HK$0.3');
+    });
   });
 }
 
@@ -934,7 +979,11 @@ void _fleetTests() {
       expect(run.grossFeeHkd!.canonical, '200');
       expect(run.feeHkd.canonical, '150.00');
       expect(run.createdAt, null);
-      expect(run.discountSaving!.canonical, '50.0');
+      // Derived through `Money.minus`, so it lands in the same 2 dp shape as the
+      // stored money it is computed from. It used to read '50.0', which was the
+      // double subtraction's own string form rather than the money convention —
+      // the same path that produced `HK$0.30000000000001137` for a 30-cent gap.
+      expect(run.discountSaving!.canonical, '50.00');
       expectFalse(run.hasAnomaly);
     });
 

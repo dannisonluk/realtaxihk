@@ -37,6 +37,46 @@ class Money implements Comparable<Money> {
 
   bool get isNegative => asDouble < 0;
 
+  /// `this - other`, computed in **integer cents**.
+  ///
+  /// Never subtract [asDouble]s. `500.00 - 499.70` is `0.30000000000001137` in
+  /// binary floating point, and because [canonical] faithfully preserves
+  /// whatever string it is handed, that artefact is exactly what the user
+  /// reads: the deposit card printed `HK$0.30000000000001137`, and the fleet
+  /// saving line `HK$12.699999999999989`.
+  ///
+  /// Both operands arrive from the server at 2 dp (stored money) or 1 dp (meter
+  /// figures), so scaling to cents is exact — and an exact subtraction is the
+  /// whole reason [canonical] is a string in the first place.
+  Money minus(Money other) => Money.fromCents(_cents(canonical) - _cents(other.canonical));
+
+  /// The canonical 2 dp form for a cent count: `30` -> `"0.30"`, `-50` -> `"-0.50"`.
+  ///
+  /// Producing the server's own 2 dp shape (rather than a trimmed one) keeps
+  /// [display]'s trailing-zero rule the single place that decides how much of
+  /// the precision to show.
+  factory Money.fromCents(int cents) {
+    final int magnitude = cents.abs();
+    final String sign = cents < 0 ? '-' : '';
+    return Money('$sign${magnitude ~/ 100}.${(magnitude % 100).toString().padLeft(2, '0')}');
+  }
+
+  /// Cents, parsed from the string rather than through a double.
+  ///
+  /// A fractional part shorter than 2 digits is padded (`"147.1"` is 10 cents);
+  /// a longer one is cut. The cut is a guard against a malformed payload, not a
+  /// rounding step — the server never sends money with more than 2 dp.
+  static int _cents(String canonical) {
+    final bool negative = canonical.startsWith('-');
+    final String body = negative ? canonical.substring(1) : canonical;
+    final List<String> parts = body.split('.');
+    final int whole = int.tryParse(parts[0]) ?? 0;
+    final String fraction = parts.length > 1 ? parts[1] : '';
+    final int cents = int.tryParse(fraction.padRight(2, '0').substring(0, 2)) ?? 0;
+    final int total = whole * 100 + cents;
+    return negative ? -total : total;
+  }
+
   /// Signed display with the HK$ prefix: `HK$184.50`, `+HK$500.00`.
   String get hkd => 'HK\$$display';
 

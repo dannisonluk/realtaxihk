@@ -28,9 +28,15 @@ class DriverDeposit {
   final Money requiredHkd;
   final bool isFulfilled;
 
-  Money get shortfall => Money.parse(
-    (requiredHkd.asDouble - balanceHkd.asDouble).clamp(0, double.infinity).toString(),
-  );
+  /// How much more the driver still has to pay in. Never negative: a driver who
+  /// has overpaid owes nothing, so the gap clamps at zero.
+  ///
+  /// Subtracted through [Money.minus] rather than on [Money.asDouble]s — the
+  /// float form printed `HK$0.30000000000001137` for a 30-cent gap.
+  Money get shortfall {
+    final Money gap = requiredHkd.minus(balanceHkd);
+    return gap.isNegative ? const Money('0.00') : gap;
+  }
 }
 
 /// `GET /api/v1/drivers/me` (with `deposit`) and the 201 body of

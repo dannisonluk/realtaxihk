@@ -202,6 +202,74 @@ class TestAtomicGrab:
             assert o is True or o is False, f"unexpected outcome: {o!r}"
 
 
+class TestConcurrentCancel:
+    def test_two_cancels_charge_one_penalty(self, client, passenger_token):
+        """The no-show penalty is decided from a read, so that read must be locked.
+
+        `order_cancel` reads the order, asserts the transition, appends the
+        penalty, and only then writes the new status. Two concurrent cancels from
+        the assigned driver both saw `ACCEPTED`, both passed the guard, and both
+        appended HK$50 — two ledger rows for one cancellation.
+        `_get_order(for_update=True)` makes the read and the guard atomic: the
+        second request blocks on the row lock, re-reads `CANCELLED`, and is
+        refused before it reaches the ledger.
+
+        Driven through the real handler rather than a re-implementation of its
+        logic, so the test cannot drift away from the route it protects.
+        """
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+        from sqlalchemy.pool import NullPool
+
+        from app.api.orders import CancelIn, order_cancel
+        from app.core.deps import principal_from_token
+
+        oid = _create_order(client, passenger_token)["id"]
+        drv = _mk_active_driver(client, "+85291500031")
+        h = {"Authorization": f"Bearer {drv['token']}"}
+        assert client.post(f"/api/v1/orders/{oid}/grab", headers=h).status_code == 200
+
+        principal = principal_from_token(drv["token"])
+
+        class _Request:
+            """`order_cancel` only reaches for `request` on the BROADCASTING
+            branch, to drop the Redis geo entry. This order is ACCEPTED, so it is
+            never touched — and if that ever changes, the AttributeError is a
+            loud failure rather than a silent pass."""
+
+        async def hammer():
+            engine = create_async_engine(client.db_url, poolclass=NullPool)
+            factory = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+
+            async def cancel_once():
+                async with factory() as s:
+                    try:
+                        await order_cancel(
+                            oid, CancelIn(reason="double tap"), _Request(), principal, s
+                        )
+                    except Exception as exc:  # the refusal is the point
+                        await s.rollback()
+                        return type(exc).__name__
+                    await s.commit()
+                    return "cancelled"
+
+            try:
+                return await asyncio.gather(cancel_once(), cancel_once(), return_exceptions=True)
+            finally:
+                await engine.dispose()
+
+        outcomes = sorted(str(o) for o in asyncio.run(hammer()))
+        assert outcomes == ["BusinessRuleError", "cancelled"], outcomes
+
+        ledger = client.get("/api/v1/drivers/me/ledger", headers=h).json()["items"]
+        penalties = [i for i in ledger if i["entry_type"] == "PENALTY_DEDUCTION"]
+        assert len(penalties) == 1, (
+            f"one cancellation produced {len(penalties)} penalties: {penalties}. "
+            "The penalty is appended from a read of `orders.status`, so that read "
+            "has to be taken with FOR UPDATE."
+        )
+        assert penalties[0]["amount_hkd"] == "-50.00"
+
+
 class TestStateMachineInvariants:
     """Structural properties of `ORDER_TRANSITIONS`, not of any one endpoint.
 
