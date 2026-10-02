@@ -32,6 +32,64 @@
 
 ---
 
+## 修復狀態（2026-10-02 同日）
+
+本節由修復者補寫，**不屬於原審查**。上面各節維持原樣不動 —— 這是日期快照的原則，
+回寫會讓「審查當時看到什麼」這件事消失。
+
+**四項 High、八項 Medium、五項 Low 之中，程式碼側的部分已全部修好**，另加三項在修復
+過程中新發現的同類缺陷。兩個 commit：`827f439`（token 與對比）、`90b9d2e`（元件與文案）。
+
+| 編號 | 狀態 | 備註 |
+|---|---|---|
+| H-1 `color-scheme` | ✅ `827f439` | 改為跟隨與 token 相同的兩個條件；守衛逐條檢查 |
+| H-2 欄位選擇器 | ✅ `827f439` | 列舉改排除法，新 type 預設繼承樣式 |
+| H-3 深色品牌文字 2.91:1 | ✅ `827f439` | 新增 `--brand-text`（淺 `#d2232a` / 深 `#ff7b72`） |
+| H-4 淺色 chip 4.17–4.40:1 | ✅ `827f439` | 底色 12% → 6%；`--warn` / `--danger` 亦調深 |
+| M-1 分段控制 1.06:1 | ✅ `827f439` | 新增 `--seg-edge`（淺 4.32:1 / 深 3.31:1） |
+| M-2 三個紅 | ✅ `827f439` | `--danger` → `#a40e26`；`--gain` 已刪 |
+| M-3 `.gain` / `.loss` 死碼 | ✅ `827f439` | 兩個 class 與 `--gain` 一併刪除 |
+| M-4 24 小時無障礙替代 | ✅ `90b9d2e` | 圖表下加 `<details>` ＋ 24 列 `<table class="data">` |
+| M-5 chip 當按鈕 | ✅ `90b9d2e` | **另找到 12 處**（`OrdersPage` 十個只有 21px） |
+| M-6 統計卡無可點跡象 | ✅ `90b9d2e` | `.stat--link`；hover / focus 往內傳給 `.stat` |
+| M-7 圖表文字隨 `viewBox` 縮放 | ✅ `90b9d2e` | `.chart` 改為橫向捲動，svg 以 `viewBox` 寬度為下限 |
+| M-8 硬編碼中文標點 | ✅ `90b9d2e` | 4 處 ＋ **2 處全形括號**（`KycPage` 那處是真 bug） |
+| L-1 六處行內 `fontSize: 12` | ✅ `90b9d2e` | 改為 `t-caption1` |
+| L-2 `.pref__label` | ✅ `827f439` | 規則與註解一併刪除 |
+| L-3 `prefers-contrast` | ✅ `827f439` | 新增 `@media (prefers-contrast: more)` |
+| L-4 圖例 opacity | ✅ `827f439` | 三種狀態補上與地圖標記相同的 opacity |
+| L-5 其他小項 | ✅ | `notAnAdminDialog()`、`common.createdAt` **與** `createdDate`、`dashboard.sub`、`--focus` 雙重職責 |
+
+### 修復時新發現（不在原審查內）
+
+1. **`KycPage` 的括號是真 bug**（M-8 相鄰）：它在車牌之後就閉括號，把車型留在括號
+   外面，渲染成 `車牌 AB1234）市區的士` —— 一個沒有對應左括號的右括號。
+   `DriverDetailPage` 的同一個句子是正確的，所以這是複製時的漏改，不是設計。
+2. **12 個互動 chip 低於 28px**（M-5 同類）：`OrdersPage` 十個狀態篩選只有 **21px**、
+   `DisputesPage` 五個、`AuditPage` 與 `FleetsPage` 各一。原本的審查只看到地圖頁。
+3. **`.th-sort` 沒有填滿儲存格**：它的註解自稱「the button fills the cell so the whole
+   header is clickable」，實際高度 18px 而儲存格 34px —— 橫向填滿了，縱向沒有，
+   所以真正可點的排序區域只有文字方塊。
+
+### 守衛
+
+| 守衛 | 位置 | 抓什麼 |
+|---|---|---|
+| `tool/check_contrast.py` | `admin-web/web/` | 五類對比 ＋ 三條主題路徑的 `color-scheme`；由 `tests/test_console_contrast.py` 執行，並以突變測試證明它會失敗 |
+| `audit_layout.mjs` 檢查 6 | `admin-web/tool/` | SVG 文字被 `viewBox` 縮到小於原本字級 |
+| `audit_layout.mjs` 檢查 7 | `admin-web/tool/` | 互動控件小於 28px |
+
+`audit_layout.mjs` 同時修好兩個既有缺口：`#/live` 從來不在 `ROUTES` 裡（所以本文原本
+引用的「52 renders clean」實際只有 48 次，而唯一渲染第三方控件的頁面正好是唯一沒被量
+的頁面），以及 `.sr-only` 被誤判為「被裁切的文字」。
+
+**驗證**：`audit_layout` 52 renders clean @1440px 與 @500px · `pytest` 909/0/0/0
+（`--junit-xml` 讀）· `vitest` 69 passed（9 files）· `ruff check` ＋ `format --check`
+clean · console `tsc` clean · `check_contrast.py` 與 `check_theme_tokens.py` 皆 OK。
+非測試原始碼行數由 12,999 增至 13,109。
+
+---
+
 ## 嚴重（Critical）
 
 無。

@@ -1,11 +1,11 @@
 # realtaxihk — 工作總覽
 
-- **生成日期**：2026-09-30（**2026-10-01 更新**：併入 location check、analytics、console deep-link 修正；測試數由 272 更正為 616。**本輪再更新**：修好 SEV-1 admin session、統一 money 精度入口、套用 `ruff format` 並加 CI gate、補上 TOTP 綁定二維碼的渲染與測試；測試數 616 → **656**（**本輪 667**：新增 5 個 HTTP error-code + 6 個 state-machine 不變式測試）。**最後一輪**：修好深圳灣口岸邊界缺陷（`_HK_MAIN` 后海灣段 2 → 7 頂點），測試數 667 → **687**（新增 18 個口岸邊界參數化案例 + 2 個回歸測試）。**本輪再更新**：`app/models/__init__.py`（886 行）拆成 5 個 bounded-context 模組 + `__init__` re-export，測試維持 **687** 不變 —— 見 §2.9。**本輪再更新**：新增 `app/api/schemas/` 套件並為**全部 69 個 operation** 補上 `response_model=`（此前 69 個中只有 1 個），令 `/openapi.json` 首次描述真實響應形狀；測試維持 **687** 不變 —— 見 §2.10。**最新一輪（§2.11）**：RBAC 四級角色 + 審計覆蓋金錢／狀態改動、帳戶管理、訂單監控、結算預覽／確認 token／CSV 匯出、爭議實體、主體搜尋、頭像上傳，以及六個對應的後台畫面 —— 測試 **687 → 872**（+185），console **29 → 31 vitest**（+2），API **64/69 → 81 paths / 88 operations**）。**最新一輪（§2.13）**：結構整理 —— `app/api/` 命名統一為 `admin_x`、`/api/v1/driver` → `/api/v1/drivers`、`scripts/` 拆為 `{ops,verify,dev}`、由 `create_app()` 抽出 lifespan 輔助函數；測試維持 **872** 不變，並修好一個腐爛的驗證腳本（`prod_boot_drill` 6/7 → 7/7）。**最新一輪（§2.14）**：新增後台實時車輛位置端點 `GET /api/v1/admin/live/drivers`（輪詢式，非推送），測試 **872 → 887**（+15：12 個端點測試 + 3 個 `.env.example` 漂移守衛）；API **81/88 → 82 paths / 89 operations**；並修好測試套件會對外連線的問題（`SENTRY_DSN` 未強制清空）。**最新一輪（§2.15 / §2.16）**：新增後台實時地圖頁 `#/live`（§2.15，console 57 → 68 vitest）；新增正式部署 overlay `docker-compose.prod.yml`，把連線池三個數字設定化並補上算式守衛（§2.16）—— 測試 **887 → 894**）
+- **生成日期**：2026-09-30（**2026-10-01 更新**：併入 location check、analytics、console deep-link 修正；測試數由 272 更正為 616。**本輪再更新**：修好 SEV-1 admin session、統一 money 精度入口、套用 `ruff format` 並加 CI gate、補上 TOTP 綁定二維碼的渲染與測試；測試數 616 → **656**（**本輪 667**：新增 5 個 HTTP error-code + 6 個 state-machine 不變式測試）。**最後一輪**：修好深圳灣口岸邊界缺陷（`_HK_MAIN` 后海灣段 2 → 7 頂點），測試數 667 → **687**（新增 18 個口岸邊界參數化案例 + 2 個回歸測試）。**本輪再更新**：`app/models/__init__.py`（886 行）拆成 5 個 bounded-context 模組 + `__init__` re-export，測試維持 **687** 不變 —— 見 §2.9。**本輪再更新**：新增 `app/api/schemas/` 套件並為**全部 69 個 operation** 補上 `response_model=`（此前 69 個中只有 1 個），令 `/openapi.json` 首次描述真實響應形狀；測試維持 **687** 不變 —— 見 §2.10。**最新一輪（§2.11）**：RBAC 四級角色 + 審計覆蓋金錢／狀態改動、帳戶管理、訂單監控、結算預覽／確認 token／CSV 匯出、爭議實體、主體搜尋、頭像上傳，以及六個對應的後台畫面 —— 測試 **687 → 872**（+185），console **29 → 31 vitest**（+2），API **64/69 → 81 paths / 88 operations**）。**最新一輪（§2.13）**：結構整理 —— `app/api/` 命名統一為 `admin_x`、`/api/v1/driver` → `/api/v1/drivers`、`scripts/` 拆為 `{ops,verify,dev}`、由 `create_app()` 抽出 lifespan 輔助函數；測試維持 **872** 不變，並修好一個腐爛的驗證腳本（`prod_boot_drill` 6/7 → 7/7）。**最新一輪（§2.14）**：新增後台實時車輛位置端點 `GET /api/v1/admin/live/drivers`（輪詢式，非推送），測試 **872 → 887**（+15：12 個端點測試 + 3 個 `.env.example` 漂移守衛）；API **81/88 → 82 paths / 89 operations**；並修好測試套件會對外連線的問題（`SENTRY_DSN` 未強制清空）。**最新一輪（§2.15 / §2.16）**：新增後台實時地圖頁 `#/live`（§2.15，console 57 → 68 vitest）；新增正式部署 overlay `docker-compose.prod.yml`，把連線池三個數字設定化並補上算式守衛（§2.16）—— 測試 **887 → 894**）。**最新一輪（§2.17 / §2.18）**：全代碼與 UI 設計審查（Apple HIG，`docs/UI_DESIGN_REVIEW_2026-10-02.md`）—— 4 High + 8 Medium + 5 Low，程式碼側的發現全部修好，並補上三個守衛（`tool/check_contrast.py` 的 WCAG 對比、`audit_layout.mjs` 新增的 SVG 文字縮放與 28px 互動目標尺寸檢查）；測試 **897 → 909**（+12 對比守衛測試），console **68 → 69 vitest**）
 - **HEAD**：`main` 上最新 commit —— **刻意不寫死 hash**（寫死過三次，每次之後
   的 commit 都令它變錯；要查：`git log --oneline -1`）；
   `origin/main..HEAD` = **有未推 commit**（查：`git rev-list --count origin/main..HEAD`，見 §5）；
   working tree **clean**。
-- **現時狀態**：`pytest` **894 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean** · console `tsc` clean + **68 vitest passed（9 files）** · `npm run build` 主包 466.65 kB（gzip 146.05 kB）＋地圖分包 155.64 kB（gzip 45.57 kB，按需載入）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · `audit_layout` **52 renders clean（4 locale/theme 組合 × 13 條路由）** · API **82 paths / 89 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
+- **現時狀態**：`pytest` **909 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean** · console `tsc` clean + **69 vitest passed（9 files）** · `npm run build` 主包 468.49 kB（gzip 146.50 kB）＋地圖分包 155.70 kB（gzip 45.58 kB，按需載入）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · `audit_layout` **52 renders clean（4 locale/theme 組合 × 13 條路由，1440px 與 500px 各跑一次）** · `tool/check_contrast.py` **OK** · API **82 paths / 89 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
 - **✅ 已解決：管理員 session 15 分鐘硬死** —— 已改為 `HttpOnly` refresh cookie（`SameSite=Strict`，path `/api/v1/admin/auth`）＋ CSRF double-submit。詳見 `SECURITY.md`
 
 > **這份文件的用途**：一份可以單獨看完的總覽 —— 做過什麼、現在是什麼狀態、
@@ -19,9 +19,9 @@
 
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **82 paths / 89 operations** · 897 tests |
+| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **82 paths / 89 operations** · 909 tests |
 | Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**21 個畫面**，三角色） | ✅ 97 tests |
-| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/js/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **68 vitest** · UI verifier PASS |
+| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/js/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **69 vitest** · UI verifier PASS |
 
 一個 repo、三件完整交付物。定位：**Cap. 374D 合規的士資訊中介**（非的士營運商）。
 
@@ -690,13 +690,112 @@ nginx（掛 `deploy/nginx/realtaxihk.conf`）與 certbot（每 12 小時
 
 ---
 
+### 2.18 UI 設計審查的修復：4 High + 8 Medium + 5 Low（2026-10-02）
+
+`docs/UI_DESIGN_REVIEW_2026-10-02.md` 是一份**日期快照**，不回寫。本節記錄它的
+程式碼側發現如何被修好，以及修的時候又找到什麼。兩次 commit：`827f439`（token 與
+對比）＋ `90b9d2e`（元件與文案）。
+
+#### 對比與主題（`827f439`）
+
+四項 High 全部源於「沒有任何守衛在量」，所以修法分兩半：改值，然後加守衛。
+
+- **H-1 `color-scheme`**：原本無條件掛在 `:root[data-theme="system"]` 上，而
+  `@media (prefers-color-scheme: dark)` 只覆寫自訂屬性。改為跟隨與 token 相同的
+  兩個條件（`:root` 宣告 `light`、`[data-theme="dark"]` 區塊內宣告 `dark`、
+  media query 內的 `[data-theme="system"]` 宣告 `dark`）。
+- **H-3 品牌紅兼兩職**：`--brand` 同時要當「白字的底」與「深色底上的文字」是做不到
+  的 —— 白字在 `--brand` 上是 5.23:1（主要按鈕靠它），同一個紅當文字在
+  `--surface-2` 上只有 2.91:1。拆出 `--brand-text`（淺色 `#d2232a`、深色
+  `#ff7b72`），側欄選中項／`.chip--brand`／排序表頭 hover 都改用它。
+- **H-4 chip 底色**：`color-mix(in srgb, currentColor N%, transparent)` 是把文字色
+  **混進**底色，N 越大底色越靠向文字、對比越低。12% → 6%，最差由 4.17:1 升到
+  4.73:1；`--warn`/`--danger` 亦調為 `#8f5f00`/`#a40e26`（後者原本與 `--brand`
+  只差 1.02:1，等於同一個紅兩個名字）。
+- **H-2 欄位選擇器**：原本列舉 5 個 `input[type=...]`，漏了 `date` 與 `email`。
+  改成排除法，新的 type 預設繼承欄位樣式。
+- **M-1 分段控制**：選中狀態不能靠填色（淺色軌道上的白色填色只有 1.06:1；深色軌道上
+  整個灰階在文字開始不合格前最高約 2.3:1），改由新的 `--seg-edge` 承載
+  （淺 4.32:1、深 3.31:1）。
+- 另：刪 `.gain`/`.loss` 與 `--gain`（M-3 —— 兩個 class 在 `src/` 出現 0 次，而註解
+  描述的是**股價**慣例，實際帳務色來自 `labels.ts#ENTRY_TONE`，儲值是綠色）；
+  加 `prefers-contrast: more`（L-3）；地圖圖例色塊補上與標記相同的 opacity（L-4）；
+  刪死規則 `.pref__label`（L-2）；`--focus` 不再兼任「等待中」的車輛色（L-5）。
+
+**新增守衛 `admin-web/web/tool/check_contrast.py`**：讀 `src/styles.css`（不需
+build），檢查五件事 —— 每個文字 token 對每個 surface、每個 chip tone 對**它自己
+混出來的**底色、非文字指示 3:1、`--brand-ink` 對 `--brand`，以及三個主題路徑的
+`color-scheme`。`tests/test_console_contrast.py` 跑它，並以**突變測試證明它不是
+空轉**：把四項 High 各自還原一次，斷言它會失敗。
+
+守衛自己也被抓到兩個 bug，都是「一個不會失敗的守衛比沒有守衛更糟」：①它只匹配
+`--*` 自訂屬性，所以 `color-scheme` 的斷言**無論 CSS 怎麼寫都會失敗**；②它沒有先
+移除註解，而 `:root` 區塊的註解寫著 `* Values are GitHub Primer's light scale: ...`，
+當中的冒號令它被讀成一條宣告，並把後面的 `--brand-text` 與 `--danger` 一起吃掉。
+兩者現在都有回歸測試。
+
+#### 元件與文案（`90b9d2e`）
+
+- **M-4**：兩個圖表都是 `role="img"` —— 長條圖的提示框掛在不可聚焦的 `<rect>` 的
+  `onMouseEnter` 上，熱力圖的 `title` 則因為 `role="img"` 的子節點是 presentational
+  而不進無障礙樹；下方的明細表是**另一個資料集**（day/week/month 分桶）。所以在圖表
+  下加一個 `<details>`，承載 24 小時的表格（時段／日均／訂單／有營運日數）。
+- **M-5，而且不只在地圖頁**：`.chip` 是**標籤**樣式（約 26px）。審查只在
+  `LiveMapPage` 找到 2 處當按鈕用；實際量度所有互動控件後又找到 12 處 ——
+  `OrdersPage` 十個狀態篩選只有 **21px**、`DisputesPage` 五個、`AuditPage` 與
+  `FleetsPage` 各一。全部加上 `.chip--action`（34px），純顯示的 chip 不動。
+- **M-6**：儀表板三張可點卡片原本用行內 `style` 去掉底線，而 `.stat` 完全沒有
+  `:hover`，所以可點與不可點長得一模一樣。`.stat--link` 掛在 `<Link>`（grid item）
+  上，而 hover 與 focus ring **必須往內傳給 `.stat`** —— 只改外層等於沒改。
+- **M-7**：`viewBox` + `width: 100%` 會連**文字**一起縮放 —— 10 單位的軸標籤在
+  1080px 卡片上是 10px，在 436px 卡片上只有 **6.1px**。`.chart` 改為橫向捲動容器、
+  svg 以自身 `viewBox` 寬度為下限，於是圖表不再縮，改為橫向捲動。
+- **M-8**：`、` 與 `。` 是**語言**而非裝飾 —— 英文介面原本會輸出
+  `Google Authenticator、Microsoft Authenticator`。改為 `common.listSeparator` /
+  `common.sentenceEnd`。另外兩處審查沒提到的全形括號裡，`KycPage` 是**真 bug**：
+  它在車牌之後就閉括號，把車型留在外面，渲染成 `車牌 AB1234）市區的士`。
+- 六處行內 `fontSize: 12` 改為 `t-caption1`（L-1）；刪 `notAnAdminDialog()` 與
+  **兩個**（不只一個）未被引用的 `common.createdAt`/`createdDate`（L-5）；
+  `dashboard.sub` 不再寫 "Live"（該頁是一次性讀取、沒有輪詢）。
+
+#### 佈局稽核器補上它本來就該量的東西
+
+`admin-web/tool/audit_layout.mjs` 有兩個缺口讓以上全部通過，還有一個讓它自己的
+招牌數字不成立：
+
+- **`#/live` 從來不在 `ROUTES` 裡** —— 所以「52 renders clean」實際只有 48 次，而
+  唯一渲染第三方控件的頁面正好是唯一沒被量的頁面。已加入；它帶出的兩項 Leaflet
+  發現以理由豁免（Leaflet 刻意把 pane 畫得比容器大再裁切，那正是拖曳的實作方式；
+  真正要守的「頁面本身不橫向溢出」仍然在檢查，而且仍然成立）。
+- **`.sr-only` 被判為「被裁切的文字」** —— 它**定義上**就是 1px + `overflow: hidden`，
+  所以每一個視覺隱藏標題都觸發這條檢查，等於在舉報唯一一個為了螢幕閱讀器而存在的
+  樣式。已加入白名單。
+- **新增檢查 6：SVG 文字被縮到小於原本字級。** `getComputedStyle` 看不到 `viewBox`
+  的縮放，所以改為由渲染寬度反推縮放係數再手動套用。把 `min-width` 還原之後，它
+  **複現出審查的原始數字**：10px → 6px（×0.6），每次渲染 18 個標籤。
+- **新增檢查 7：互動控件小於 28px。** 原有的目標尺寸檢查只抓「變大」的控件，沒有
+  任何東西抓「變小」的。這一條找出了上面那 12 個 chip —— 以及 `.th-sort`：它的註解
+  自稱「填滿整個儲存格」，實際只有 18px 高，而儲存格是 34px。
+
+**驗證**：`audit_layout` **52 renders clean @1440px 與 @500px**（後者正是審查量到
+6.1px 的那個寬度）· `pytest` **897 → 909**（`--junit-xml` 讀：909/0/0/0）·
+`ruff check` + `format --check` clean · console `tsc` clean · `vitest` **69 passed
+（9 files）** · `tool/check_contrast.py` 與 `tool/check_theme_tokens.py` 皆 OK。
+
+> **測試斷言被改窄，不是改弱**：`AnalyticsPage.test.tsx` 有兩條原本對整頁
+> `querySelectorAll('tbody tr')` 斷言，在加入 24 行的無障礙表格後會拿到 26 行，
+> 而其中一行合法地渲染 `HK$0.00`（該測試原本斷言整頁不得出現這個字串）。改為只取
+> **明細表**的列（以 `closest('details')` 過濾），斷言的內容一條都沒少。
+
+---
+
 ## 3. 驗證標準：「全部實跑」
 
 不接受「讀源碼覺得無問題」。每次改動都跑齊：
 
 ```bash
 uv run ruff check . && uv run ruff format --check .   # 或 ./.venv/Scripts/python.exe -m ruff
-uv run pytest -q                                       # 897 passed（用 --junit-xml 讀，見下）
+uv run pytest -q                                       # 909 passed（用 --junit-xml 讀，見下）
 uv run python scripts/verify/audit_response_models.py         # 68 块夹具 vs response_model，0 丢失
 cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run --no-file-parallelism --pool=forks
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
@@ -935,7 +1034,7 @@ CI gate（`.github/workflows/ci.yml`）：
 
 > **✅ 已修正**：`docs/PROJECT_UNDERSTANDING.md` 曾停在 `4333f2a`（寫 HEAD =
 > `446b7ee`、221 tests、54 Dart files、38 endpoints）。**2026-10-01 已全面重寫**，
-> 現值：**894 tests**、**82 paths / 89 operations**、**68 vitest**，
+> 現值：**909 tests**、**82 paths / 89 operations**、**69 vitest**，
 > 並新增 RBAC 設計、`/auth/me` 雙形狀、`StarletteHTTPException`
 > cookie 陷阱等章節。（**HEAD 刻意不寫死** —— 之前寫死過三次，每次之後的 commit
 > 都令它變錯。）
@@ -965,9 +1064,9 @@ CI gate（`.github/workflows/ci.yml`）：
 ## 8. 一頁看完
 
 ```
-✅ 後端 82 paths / 89 ops / 894 tests / ruff lint + format clean — 生產就緒
+✅ 後端 82 paths / 89 ops / 909 tests / ruff lint + format clean — 生產就緒
 ✅ mobile 21 畫面 / 93 tests / 0 diagnostics      — 三角色完整
-✅ admin-web React / 68 vitest / typecheck + build clean / UI verifier PASS
+✅ admin-web React / 69 vitest / typecheck + build clean / UI verifier PASS
 ✅ 後台治理：四級 RBAC（rank 比較、live row 為權威）+ 審計覆蓋金錢／狀態改動
 ✅ 後台新增：帳戶管理 / 訂單監控 / 結算預覽+confirm token+CSV / 爭議 / 主體搜尋 / 頭像上傳
 ✅ 後台實時地圖 `#/live`：Leaflet + OpenStreetMap（免金鑰、不計費）、15 秒輪詢、
