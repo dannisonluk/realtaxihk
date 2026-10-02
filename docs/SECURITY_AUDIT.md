@@ -1,4 +1,30 @@
-# realtaxihk.com 網絡安全審計報告
+# realtaxihk.com 網絡安全審計報告 / Security Audit
+
+> **EN — Summary.** A full security audit of the platform, performed as
+> **static review + live attack against a running uvicorn + Postgres + Redis**,
+> not as code reading alone. 31 findings (SEC-01…31) were raised and **all 31 are
+> fixed**; every one carries a test or a measured reproduction. Findings are
+> grouped by severity in §0 and each has its own section below with the evidence.
+>
+> **Five Critical/High findings worth knowing up front**, because they are the
+> class of bug that turns a demo into a breach:
+>
+> | ID | In one line |
+> |---|---|
+> | SEC-01~03 | With `APP_ENV` unset, the OTP was a fixed `123456` **returned in the response body** → log in as any phone number |
+> | SEC-04~05 | `APP_ENV=production` (typo/case/variant) skipped every prod check and booted with the repo-committed JWT secret → ADMIN tokens forgeable offline |
+> | SEC-06 | Redis had **no password** and was published on `0.0.0.0:16379` → rewrite rate-limit keys, tamper with the dispatch GEO index, inject fake positions into the passenger's live map, hold the grab lock so an order can never be taken |
+> | SEC-13 | The ledger `reference` namespace was shared and unverified → pre-plant `weekly:{driver}:{period}` and the weekly fee is **silently never collected**; plant `refund:{id}` and a refund is "approved" with no payout |
+> | SEC-31 | Found only *after* fixing SEC-07: uvicorn's `ProxyHeadersMiddleware` is on by default and rewrites `scope["client"]` from the client's own `X-Forwarded-For` — **below the application layer**, undoing SEC-07 entirely |
+>
+> **Method note.** Every ✅ in the tables means *reproduced against a real
+> process*, not *inferred from reading*. That distinction found SEC-31, which no
+> amount of code reading would have produced.
+>
+> **中文摘要**：本報告是**靜態審閱 + 對真實運行的服務實測攻擊**的結果，不是只讀代碼。
+> 31 項發現全部修復，每一項都有對應測試或實測重現。凡標「實測」者皆為真實進程跑出來的
+> 結論。SEC-31 是「修完 SEC-07 之後才發現」的一項——uvicorn 的 proxy middleware 在
+> **應用層之下**把修復整個還原，說明了只讀代碼審計的極限。
 
 **審計日期**：2026-09-29
 **審計範圍**：`app/`（FastAPI 後端）、`docker-compose.yml`、`Dockerfile`、依賴、Redis/Postgres 暴露面
@@ -10,7 +36,12 @@
 
 ---
 
-## 0. 風險總表
+## 0. 風險總表 / Risk register
+
+> **EN.** One row per finding: severity, what it was, and how it was established
+> (`proven live` vs `confirmed by reading`). The last column is the honesty
+> signal — a "confirmed by reading" row is a smaller claim than a "proven" one,
+> and the two should never be quoted as equivalent.
 
 | ID | 嚴重度 | 問題 | 實測 |
 |---|---|---|---|
@@ -43,11 +74,31 @@
 
 ---
 
-## 0.1 修復狀態（2026-09-29 第二輪）
+## 0.1 修復狀態（2026-09-29 第二輪）/ Fix status
 
-30 項全部修復。驗證方式：`scripts/verify/prod_boot_drill.py`（7 個真實開機情境）、
-`tests/test_security_hardening.py`（27 個回歸測試）、`scripts/verify/security_verify.py`
-（對真實運行的 server 重跑攻擊）。**下表每一項都有對應測試或實測。**
+> **EN.** All 30 findings from the first round are fixed. Verification is three
+> independent mechanisms: `prod_boot_drill.py` (**11** real boot scenarios),
+> `test_security_hardening.py` (**47** regression tests, measured), and
+> `security_verify.py` (re-runs the attacks against a live server).
+> **Every row below maps to a test or a live reproduction.**
+>
+> Both counts above have grown since this table was written — the drill went
+> 7→11 as prod settings were added, and the regression file 27→47. They are
+> corrected here rather than left as the audit-day readings, because the
+> sentence claims they are the *current* verification.
+>
+> **Two deliberate deviations from the original recommendations** are recorded
+> below, each with its reason — worth reading, because in both cases following
+> the advice literally would have been *worse*:
+> 1. SEC-13: the composite `UNIQUE(reference, entry_type)` was **not** applied —
+>    the existing `UNIQUE(reference)` is strictly stronger for this schema.
+> 2. SEC-18: revocation uses a per-user epoch and **fails open** when Redis is
+>    down — a Redis blip should not become a platform-wide login outage, and the
+>    short token lifetime is the backstop.
+>
+> **中文**：第一輪 30 項全部修復，驗證有三套獨立機制。下表每一項都有對應測試或實測。
+> 有**兩處刻意偏離原建議**，理由是照做反而會更差（見下）。上表兩個數字後來都增長了
+> （開機情境 7→11、回歸測試 27→47），此處已更新為現值。
 
 | ID | 狀態 | 修復位置 |
 |---|---|---|
@@ -316,6 +367,13 @@ scripts/ops/create_admin.py --list        no ADMIN rows（probe 用完後自行 
 
 ## 1. Critical — 可直接完全接管平台
 
+> **EN — Critical.** These let an unauthenticated attacker take over accounts or
+> forge admin credentials. All four are fixed; each section below carries the
+> root cause, the live reproduction, and the fix.
+>
+> **中文**：以下四項讓未認證的攻擊者可以直接接管帳號或偽造管理員憑證。
+> 全部已修，每節附根因、實測重現與修法。
+
 ### SEC-01~03：`APP_ENV` 的 fail-safe 方向反了 → 任意帳號登入
 
 **根因**：`app/core/config.py:16` `app_env: str = "dev"`（預設 dev），而 `otp_service.py:75` 與 `88`：
@@ -438,6 +496,16 @@ ledger: [('DEPOSIT_TOPUP','500.0'), ('DEPOSIT_TOPUP','2.0')]   # 無 REFUND entr
 
 ## 2. High
 
+> **EN — High.** These defeat a security control without fully taking over an
+> account: IP rate limits bypassed (SEC-07), a platform-wide login DoS from 500
+> requests (SEC-08), deactivated accounts retaining access for up to 120 minutes
+> (SEC-12), memory/bandwidth exhaustion via unbounded bodies (SEC-09~11), and an
+> unauthenticated WebSocket accepting before it authenticates (SEC-14).
+>
+> **中文**：以下各項繞過某一層安全控制，但未直接接管帳號——IP 限流失效、
+> 500 個請求即可令全平台無法登入、已停用帳號仍保有存取、無上限 body 造成資源耗盡、
+> WebSocket 先 `accept()` 後認證。
+
 ### SEC-07：`X-Forwarded-For` 偽造繞過所有 IP 限流
 
 **根因**：`auth.py:48-53`
@@ -554,6 +622,18 @@ redis maxclients = 10000
 
 ## 3. Medium
 
+> **EN — Medium.** Missing rate limits on expensive endpoints (SEC-15), an
+> unthrottled per-tick DB write (SEC-16), no refresh-token reuse detection
+> (SEC-17), an access token valid for 120 minutes after logout (SEC-18),
+> compose publishing db/redis on `0.0.0.0` (SEC-19), no `.dockerignore` so the
+> build context shipped `.env` (SEC-20), a non-reproducible Dockerfile (SEC-21),
+> an unauthenticated `/metrics` (SEC-22), and `/health` leaking the env (SEC-23).
+>
+> **中文**：高成本端點缺限流、每 tick 一次無節流 DB 寫入、refresh token 無 reuse
+> detection、登出後 access token 仍有效 120 分鐘、compose 把 db/redis 發佈到對外、
+> 無 `.dockerignore` 令 build context 帶上 `.env`、Dockerfile 不可重現、
+> `/metrics` 無認證、`/health` 洩漏環境。
+
 - **SEC-15 無 rate limit 的端點**：`/api/v1/fare/estimate`（無認證、無限流，實測 200）、`/api/v1/driver/location`（實測無 limiter）。後者每個請求 = 1 次 PostGIS UPDATE + 1 次 Redis GEOADD，可被無限刷。
 - **SEC-16 WS tick 無節流**：`ws.py:117-129` 每個 tick 開新 session、UPDATE + commit、再 publish。單一司機可高速推送，造成 DB 寫入放大。應加 per-connection token bucket（例如 1 tick/秒）。
 - **SEC-17 無 refresh reuse detection**：`refresh_service.rotate()` 對已撤銷的 token 只回 `None`（401），**不撤銷整個 token family**、不告警。若 refresh token 被盜，攻擊者輪換後正當用戶只會莫名被登出，而攻擊者的新 token 繼續有效。建議：偵測到已撤銷 token 被重放 → 撤銷該用戶所有 refresh token 並記錄安全事件。
@@ -568,6 +648,16 @@ redis maxclients = 10000
 
 ## 4. Low
 
+> **EN — Low.** Defence-in-depth and hygiene: no security headers (SEC-24), an
+> unbounded Redis key that is written but never read (SEC-25), cursor-based
+> existence oracles (SEC-26), a driver UUID leaking to passengers (SEC-27),
+> non-constant-time OTP comparison (SEC-28), and a device token fragment
+> reaching the logs (SEC-29). None is exploitable alone; all are fixed.
+>
+> **中文**：縱深防禦與衛生問題——無安全 headers、只寫不讀且無上限的 Redis key、
+> cursor 造成的存在性 oracle、司機 UUID 洩漏給乘客、OTP 非常數時間比對、
+> device token 片段進 log。單獨都不可利用，但全部已修。
+
 - **SEC-24 無安全 headers**：實測 `Strict-Transport-Security`、`X-Content-Type-Options`、`X-Frame-Options`、`Content-Security-Policy`、`Referrer-Policy` 全部 **ABSENT**。加 TLS 後 HSTS 尤其重要。
 - **SEC-25 `geo:drivers:online` 只寫不讀、永不清理**：`geo_service.py` 寫入，`GEO_DRIVERS_KEY` **全項目零讀取**，`maintenance.sweep_ghost_orders()` 只清 `geo:orders:active`。實測該 key 已累積 37 筆（我的探測留下的）。司機 app 崩潰未下線者永久殘留 → Redis 無上限增長。建議刪除該索引，或加 TTL/清理。
 - **SEC-26 `before_id` 跨租戶 oracle**：`orders.py:173` `anchor = await session.get(Order, before_id)` 對**任意** order id 都查，可用來探測某 id 是否存在及其 `created_at`。
@@ -578,7 +668,17 @@ redis maxclients = 10000
 
 ---
 
-## 5. 做得好、不要動的部分
+## 5. 做得好、不要動的部分 / What is correct — leave it alone
+
+> **EN.** Explicitly recording what an audit found **correct**, so a later
+> reader does not "fix" it in the wrong direction. Notably: no SQL injection
+> (the one raw-SQL site uses bound parameters; everything else goes through the
+> ORM), money is `Decimal` throughout, the grab path is single-assignment at the
+> database level, and the ledger is append-only with row locks.
+>
+> **中文**：刻意記下**沒有問題**的部分，避免日後有人往錯的方向「修」。
+> 重點：無 SQL injection、金額全程 `Decimal`、搶單在資料庫層保證唯一指派、
+> 帳本 append-only 且用行鎖。
 
 避免修錯方向，以下經審閱確認**沒有**問題：
 
@@ -596,7 +696,14 @@ redis maxclients = 10000
 
 ---
 
-## 6. 建議修復次序
+## 6. 建議修復次序 / Recommended fix order
+
+> **EN.** Ordered by what actually gets the platform taken over first, not by
+> severity label. "Immediate" means every item in it leads to full compromise;
+> the rest can be scheduled.
+>
+> **中文**：按「實際上哪一項會先令平台被接管」排序，不是按嚴重度標籤。
+> 「立即」那組每一項都會導致平台被完全接管。
 
 **立即（上線前必須，全部會導致平台被接管）**
 1. SEC-01~05：`app_env` 白名單 + fail-closed；移除 hardcode JWT secret 並**輪換**；`dev_code` 回吐**整條移除**（見 §0.4）。
@@ -617,7 +724,16 @@ redis maxclients = 10000
 
 ---
 
-## 7. 附錄：如何重現
+## 7. 附錄：如何重現 / Appendix — reproducing
+
+> **EN.** Every finding here is reproducible. `security_probe.py` boots its own
+> server and *attacks* it; `security_verify.py` re-runs the same attacks to
+> confirm the fixes hold. Neither is run by CI — they need a live server, and
+> they create throwaway users and orders.
+>
+> **中文**：每一項發現都可重現。`security_probe.py` 自己開一台 server 攻擊它；
+> `security_verify.py` 重跑同一組攻擊確認修復有效。兩者都不在 CI 內——它們需要
+> 真實運行的 server，而且會建立用完即棄的用戶與訂單。
 
 ```bash
 # 全部（A 認證 / B 限流 / C DoS / D 授權）

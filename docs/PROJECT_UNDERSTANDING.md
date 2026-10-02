@@ -1,4 +1,18 @@
-# realtaxihk — 專案架構理解摘要
+# realtaxihk — 專案架構理解摘要 / Project Understanding
+
+> **EN — Summary.** A one-document orientation: the scope, a scale table for the
+> three deliverables, the domain model, and — most usefully — a list of
+> **non-obvious traps** that have already cost time here (e.g. `orders.driver_id`
+> references `driver_profiles.id`, **not** `users.id`; `app.routes` cannot
+> enumerate `response_model` because this FastAPI version keeps included routers
+> wrapped, so use `app.openapi()` instead).
+>
+> Numbers in this document were **measured by running things**, not carried over
+> from an earlier revision.
+>
+> **中文摘要**：一頁式的專案導讀——範圍、三件交付物的規模表、領域模型，
+> 以及最有價值的一節：**已經踩過的非顯而易見陷阱**（例如 `orders.driver_id`
+> 指向 `driver_profiles.id` 而非 `users.id`）。本文所有數字皆為**實跑得出**。
 
 - **日期**：2026-10-01（**本版全面重寫**。上一版停在 `4333f2a`，之後落後 30+
   個 commit；本文所有數字皆為**實跑得出**，非沿用舊值）。

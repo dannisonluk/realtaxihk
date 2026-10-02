@@ -1,6 +1,31 @@
-# realtaxihk — 工作總覽
+# realtaxihk — 工作總覽 / Work Summary
 
-- **生成日期**：2026-09-30（**2026-10-01 更新**：併入 location check、analytics、console deep-link 修正；測試數由 272 更正為 616。**本輪再更新**：修好 SEV-1 admin session、統一 money 精度入口、套用 `ruff format` 並加 CI gate、補上 TOTP 綁定二維碼的渲染與測試；測試數 616 → **656**（**本輪 667**：新增 5 個 HTTP error-code + 6 個 state-machine 不變式測試）。**最後一輪**：修好深圳灣口岸邊界缺陷（`_HK_MAIN` 后海灣段 2 → 7 頂點），測試數 667 → **687**（新增 18 個口岸邊界參數化案例 + 2 個回歸測試）。**本輪再更新**：`app/models/__init__.py`（886 行）拆成 5 個 bounded-context 模組 + `__init__` re-export，測試維持 **687** 不變 —— 見 §2.9。**本輪再更新**：新增 `app/api/schemas/` 套件並為**全部 69 個 operation** 補上 `response_model=`（此前 69 個中只有 1 個），令 `/openapi.json` 首次描述真實響應形狀；測試維持 **687** 不變 —— 見 §2.10。**最新一輪（§2.11）**：RBAC 四級角色 + 審計覆蓋金錢／狀態改動、帳戶管理、訂單監控、結算預覽／確認 token／CSV 匯出、爭議實體、主體搜尋、頭像上傳，以及六個對應的後台畫面 —— 測試 **687 → 872**（+185），console **29 → 31 vitest**（+2），API **64/69 → 81 paths / 88 operations**）。**最新一輪（§2.13）**：結構整理 —— `app/api/` 命名統一為 `admin_x`、`/api/v1/driver` → `/api/v1/drivers`、`scripts/` 拆為 `{ops,verify,dev}`、由 `create_app()` 抽出 lifespan 輔助函數；測試維持 **872** 不變，並修好一個腐爛的驗證腳本（`prod_boot_drill` 6/7 → 7/7）。**最新一輪（§2.14）**：新增後台實時車輛位置端點 `GET /api/v1/admin/live/drivers`（輪詢式，非推送），測試 **872 → 887**（+15：12 個端點測試 + 3 個 `.env.example` 漂移守衛）；API **81/88 → 82 paths / 89 operations**；並修好測試套件會對外連線的問題（`SENTRY_DSN` 未強制清空）。**最新一輪（§2.15 / §2.16）**：新增後台實時地圖頁 `#/live`（§2.15，console 57 → 68 vitest）；新增正式部署 overlay `docker-compose.prod.yml`，把連線池三個數字設定化並補上算式守衛（§2.16）—— 測試 **887 → 894**）。**最新一輪（§2.17 / §2.18）**：全代碼與 UI 設計審查（Apple HIG，`docs/UI_DESIGN_REVIEW_2026-10-02.md`）—— 4 High + 8 Medium + 5 Low，程式碼側的發現全部修好，並補上三個守衛（`tool/check_contrast.py` 的 WCAG 對比、`audit_layout.mjs` 新增的 SVG 文字縮放與 28px 互動目標尺寸檢查）；測試 **897 → 909**（+12 對比守衛測試），console **68 → 69 vitest**）。**最新一輪（§2.19）**：全倉再掃描 —— P0-M-2 為 20 個 enum 欄位補上 DB 層 CHECK 約束（`SAEnum(create_constraint=True)`，統一 `ck_*` 命名，新 migration `2e276a320b35` 附 pre-flight guard），並校正 4 份文檔共 13 處過期的測試數（909 → **928**）
+> **EN — Summary.** The single index for this project: what is built, what has
+> been verified by actually running it, and — the part most other documents
+> omit — **what is still not done and why**. Every round of work is a numbered
+> section (§2.1 … §2.21), each recording the problem, the fix, and the evidence.
+>
+> **Read §4 first if you are picking this up cold.** It splits the outstanding
+> work into two categories that need different handling:
+> - **§4A — blocked on credentials or a deployment target.** Not a code problem;
+>   someone has to choose a hostname, buy provider keys, or supply a keystore.
+> - **§4B/C/D — deliberate product trade-offs and completed cleanups.** Things
+>   that look unfinished but are decided, recorded so they are not "fixed" later.
+>
+> **Two warnings that apply to the whole document** (both learned the hard way):
+> - The HEAD hash is **deliberately not written down**. It was pinned three times
+>   and went stale each time. Use `git log --oneline -1`.
+> - Whether work is pushed is **not** answered by the section that discusses it.
+>   Use `git rev-list --count origin/main..HEAD` — and note that **0 means HEAD
+>   equals origin/main**, i.e. everything is uncommitted, *not* "all pushed".
+>
+> **中文摘要**：這是本專案的總索引——已建了什麼、已實跑驗證了什麼，以及
+> **還有什麼未做、為什麼**（後者是多數文檔會略過的部分）。每一輪工作是一個編號章節。
+> **若你剛接手，先讀 §4**：它把未完成項分成兩類——**§4A 卡在憑證／部署目標**
+> （不是程式問題，要有人選主機名、買 provider key、提供 keystore），
+> 以及 **§4B/C/D 刻意的產品取捨與已完成的清理**（看似未完成，其實已決定）。
+
+- **生成日期**：2026-09-30（**2026-10-01 更新**：併入 location check、analytics、console deep-link 修正；測試數由 272 更正為 616。**本輪再更新**：修好 SEV-1 admin session、統一 money 精度入口、套用 `ruff format` 並加 CI gate、補上 TOTP 綁定二維碼的渲染與測試；測試數 616 → **656**（**本輪 667**：新增 5 個 HTTP error-code + 6 個 state-machine 不變式測試）。**最後一輪**：修好深圳灣口岸邊界缺陷（`_HK_MAIN` 后海灣段 2 → 7 頂點），測試數 667 → **687**（新增 18 個口岸邊界參數化案例 + 2 個回歸測試）。**本輪再更新**：`app/models/__init__.py`（886 行）拆成 5 個 bounded-context 模組 + `__init__` re-export，測試維持 **687** 不變 —— 見 §2.9。**本輪再更新**：新增 `app/api/schemas/` 套件並為**全部 69 個 operation** 補上 `response_model=`（此前 69 個中只有 1 個），令 `/openapi.json` 首次描述真實響應形狀；測試維持 **687** 不變 —— 見 §2.10。**最新一輪（§2.11）**：RBAC 四級角色 + 審計覆蓋金錢／狀態改動、帳戶管理、訂單監控、結算預覽／確認 token／CSV 匯出、爭議實體、主體搜尋、頭像上傳，以及六個對應的後台畫面 —— 測試 **687 → 872**（+185），console **29 → 31 vitest**（+2），API **64/69 → 81 paths / 88 operations**）。**最新一輪（§2.13）**：結構整理 —— `app/api/` 命名統一為 `admin_x`、`/api/v1/driver` → `/api/v1/drivers`、`scripts/` 拆為 `{ops,verify,dev}`、由 `create_app()` 抽出 lifespan 輔助函數；測試維持 **872** 不變，並修好一個腐爛的驗證腳本（`prod_boot_drill` 6/7 → 7/7）。**最新一輪（§2.14）**：新增後台實時車輛位置端點 `GET /api/v1/admin/live/drivers`（輪詢式，非推送），測試 **872 → 887**（+15：12 個端點測試 + 3 個 `.env.example` 漂移守衛）；API **81/88 → 82 paths / 89 operations**；並修好測試套件會對外連線的問題（`SENTRY_DSN` 未強制清空）。**最新一輪（§2.15 / §2.16）**：新增後台實時地圖頁 `#/live`（§2.15，console 57 → 68 vitest）；新增正式部署 overlay `docker-compose.prod.yml`，把連線池三個數字設定化並補上算式守衛（§2.16）—— 測試 **887 → 894**）。**最新一輪（§2.17 / §2.18）**：全代碼與 UI 設計審查（Apple HIG，`docs/UI_DESIGN_REVIEW_2026-10-02.md`）—— 4 High + 8 Medium + 5 Low，程式碼側的發現全部修好，並補上三個守衛（`tool/check_contrast.py` 的 WCAG 對比、`audit_layout.mjs` 新增的 SVG 文字縮放與 28px 互動目標尺寸檢查）；測試 **897 → 909**（+12 對比守衛測試），console **68 → 69 vitest**）。**最新一輪（§2.19）**：全倉再掃描 —— P0-M-2 為 20 個 enum 欄位補上 DB 層 CHECK 約束（`SAEnum(create_constraint=True)`，統一 `ck_*` 命名，新 migration `2e276a320b35` 附 pre-flight guard），並校正 4 份文檔共 13 處過期的測試數（909 → **928**）。**本輪（§2.20 / §2.21）**：57 個改動分 **12 個批次 commit** 落地（此前一個 commit 都沒有）；清掉 P2-F-6/7/8 與 P2-11；修好一個只在 Windows 成立的路徑測試（CI 因此紅燈）；測試 **928 → 955**。
 - **HEAD**：`main` 上最新 commit —— **刻意不寫死 hash**（寫死過三次，每次之後
   的 commit 都令它變錯；要查：`git log --oneline -1`）；
   `origin/main..HEAD` = **有未推 commit**（查：`git rev-list --count origin/main..HEAD`，見 §5）；

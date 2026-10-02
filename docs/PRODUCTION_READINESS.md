@@ -1,5 +1,23 @@
 # realtaxihk Backend — MVP → Production Readiness Audit
 
+> **EN — Summary.** The audit that moved this codebase from MVP to
+> production-hardened: **4 bugs, 7 P0, 10 P1 and 10 P2 findings, all closed**.
+> Each entry carries its evidence and its fix. This is a **dated snapshot of a
+> past state** — it records what was wrong *then*, and much of the referenced
+> code has since been rewritten.
+>
+> **Why line numbers below are stale, and deliberately not renumbered.** The
+> file paths still resolve; the `file:line` references do not. Renumbering them
+> would make old findings *look* like descriptions of the current code, when
+> they describe code that no longer exists in that form. Leaving them stale is
+> the honest option — see `docs/WORK_SUMMARY.md` §4D for the same reasoning
+> applied elsewhere.
+>
+> **中文摘要**：本文件是把這個 codebase 由 MVP 推到 production-hardened 的審計記錄——
+> **4 bugs + 7 P0 + 10 P1 + 10 P2，全部已結案**。這是**帶日期的過去狀態快照**：
+> 它記錄的是「當時」有什麼問題，而其中很多代碼其後已被改寫。
+> 行號刻意**不重新編號**——重新編號會令舊發現假裝在描述現況（同 `WORK_SUMMARY.md` §4D）。
+
 > **⚠️ 行號引用已失效（2026-10-01 註記）**：本文所有結論附 `file:line` 證據，
 > 但 `app/models/` 已由單一 `__init__.py` 拆成 5 個 bounded-context 模組
 > （`user.py` / `admin.py` / `fleet.py` / `licence.py` / `_base.py`），

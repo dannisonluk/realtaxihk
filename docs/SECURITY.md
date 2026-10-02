@@ -1,4 +1,27 @@
-# 安全模型與加固指南（Security Guide）
+# 安全模型與加固指南 / Security Model & Hardening Guide
+
+> **EN — Summary.** The consolidated security picture, in three parts:
+> **verified controls** (the ones actually exercised, not merely intended),
+> **fixed findings** (mapped to severity, cross-referenced to
+> [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md)), and a **hardening roadmap**.
+> Anything marked 實測 / *measured* was produced by a real process, an RFC test
+> vector, or a randomised sample — never by reading the code and reasoning about
+> it.
+>
+> **The three controls worth understanding before changing anything:**
+> - **TOTP is verified against the RFC test vectors**, both RFC 6238 and 4226.
+>   An off-by-one in the time step or the truncation is silent — the code still
+>   produces 6 digits, just the wrong ones.
+> - **Config is fail-closed.** `APP_ENV` has no default; an unset value is a
+>   startup error rather than a dev-mode server that echoes a fixed OTP.
+> - **Secrets never reached git.** `.env` is untracked, and there are no
+>   hard-coded keys — but the reason this section exists is that *the platform
+>   booted with a repo-committed JWT secret* until SEC-04/05 were fixed.
+>
+> **中文摘要**：本文分三部分——**已實測驗證的安全控制**、**已修復的發現**
+> （附嚴重度，對應 `SECURITY_AUDIT.md`）、**加固路線圖**。
+> 凡標「實測」者，都是用真實進程／RFC 向量／隨機取樣跑出來的結論，
+> 不是讀 code 的推測。
 
 - **日期**：2026-10-01
 - **狀態**：基於一次完整的安全審計（實跑驗證，非閱讀推斷）
