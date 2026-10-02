@@ -5,7 +5,7 @@
   的 commit 都令它變錯；要查：`git log --oneline -1`）；
   `origin/main..HEAD` = **有未推 commit**（查：`git rev-list --count origin/main..HEAD`，見 §5）；
   working tree **clean**。
-- **現時狀態**：`pytest` **887 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean** · console `tsc` clean + **57 vitest passed（8 files）** · `npm run build` 463.18 kB（gzip 142.84 kB）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · `audit_layout` **48 renders clean（4 locale/theme 組合）** · API **82 paths / 89 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
+- **現時狀態**：`pytest` **887 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean** · console `tsc` clean + **68 vitest passed（9 files）** · `npm run build` 主包 466.65 kB（gzip 146.05 kB）＋地圖分包 155.64 kB（gzip 45.57 kB，按需載入）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · `audit_layout` **52 renders clean（4 locale/theme 組合 × 13 條路由）** · API **82 paths / 89 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
 - **✅ 已解決：管理員 session 15 分鐘硬死** —— 已改為 `HttpOnly` refresh cookie（`SameSite=Strict`，path `/api/v1/admin/auth`）＋ CSRF double-submit。詳見 `SECURITY.md`
 
 > **這份文件的用途**：一份可以單獨看完的總覽 —— 做過什麼、現在是什麼狀態、
@@ -21,7 +21,7 @@
 |---|---|---|---|
 | 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **82 paths / 89 operations** · 887 tests |
 | Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**21 個畫面**，三角色） | ✅ 93 tests |
-| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/js/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **57 vitest** · UI verifier PASS |
+| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/js/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **68 vitest** · UI verifier PASS |
 
 一個 repo、三件完整交付物。定位：**Cap. 374D 合規的士資訊中介**（非的士營運商）。
 
@@ -529,6 +529,57 @@ OpenAPI **81/88 → 82 paths / 89 operations** · `audit_response_models.py`
 
 ---
 
+### 2.15 後台實時地圖頁（`#/live`）（2026-10-02）
+
+§2.14 建好了端點，這一輪把它接到畫面上 —— 否則端點只是死代碼。
+後台原本讀得到行程狀態，卻看不到車在哪：客服接到「司機在哪」時，手上只有一張狀態表。
+
+`#/live` 每 15 秒輪詢 `GET /admin/live/drivers`，用 **Leaflet + OpenStreetMap**
+把每台車畫在地圖上。選 Leaflet 而不是 Google Maps JavaScript API，是因為
+**網頁地圖渲染正是 Google 收費的那一項**（手機 SDK 免費），而這個後台會是那支
+金鑰唯一的消費者 —— 這是少數「免費選項同時也是正確選項」的地方。不需要金鑰、
+不需要帳單帳戶。
+
+**這條路由是 code-split 的。** Leaflet 約 46 kB（gzip），會把原本單一的 console
+bundle 由 463 kB 推到 621 kB —— 為了看退款頁而多下載 34%。現已拆成獨立 chunk，
+第一次打開地圖才抓取，主包回到 467 kB。`createHashRouter` 是 data router，
+所以 chunk 在**路由渲染之前**解析完成，不會先閃一下 fallback。
+
+幾個刻意的選擇：
+
+- **標記顏色寫在 CSS，不是寫在 Leaflet 的 options。** 標記只拿到 `className`、
+  不拿顏色，所以主題切換時瀏覽器直接重繪，完全不經 JavaScript。傳給 Leaflet 的
+  顏色會變成 SVG presentation attribute，而樣式表規則本來就會蓋過它。
+- **用 `circleMarker` 而不是 `marker`。** `L.marker` 的預設圖示是相對於樣式表
+  在執行期解析的 PNG；經 bundler 之後那個路徑在產物裡不存在，每個標記都會變成
+  破圖 —— 而且**只在 production build 出現**。
+- **兩個時鐘分開。** 頁首是 `generated_at`（快照），每列是 `last_location_at`
+  （逐車）。位置舊過三個輪詢週期的車會畫成去飽和並標示「位置已過期」；少了這個
+  區分，十分鐘前停止回報的車和剛剛移動過的車長得一模一樣。
+- **列表依「過期程度」由舊到新排序。** 由新到舊是反射動作，在這裡是錯的：
+  它會把停止移動的車埋在每一台正常行駛的車下面。
+
+表格不是裝飾 —— 地圖無法被螢幕閱讀器讀取、也無法排序，所以表格是它的無障礙等價物。
+
+**這一輪的測試抓到一個真缺陷。** `main.tsx` 開了 `StrictMode`（即出貨路徑），
+React 會把每個 effect 掛載、卸載、再掛載。我原本的「請求進行中」旗標用 ref，
+於是第一次掛載的請求把旗標立起來、第二次掛載的立即請求因為旗標還在而直接返回，
+而第一個請求隨後解析進一個**已取消**的閉包、永遠不會把 `loading` 設回 false ——
+頁面會**永遠停在 Loading…**。改成把旗標限定在 effect 實例內即可；被取代的請求
+由 `cancelled` 丟棄，而不是靠擋住它的替代者。
+
+**驗證**：新增 10 個頁面測試。最有價值的一個是座標順序 —— 伺服器以具名欄位送
+`lat`/`lng`，Leaflet 收位置性的 `[lat, lng]`，對調之後型別完全正確、而每個標記
+都會落到南中國海。已用突變測試確認：把兩個參數對調，**只有**該測試（及一個以
+緯度為 key 的下游測試）會紅。
+另外，code-split 路由是唯一「接錯線就什麼都不畫」的路由，所以
+`App.boot.test.tsx` 新增一個載入 `#/live` 並斷言標題的案例；突變測試確認：
+把 `lazy` 改成解析到 `() => null`，會以 `expected null to be 'Live map'` 失敗。
+
+console **57 vitest（8 files）→ 68（9 files）** · `tsc` clean · `npm run build` clean。
+
+---
+
 ## 3. 驗證標準：「全部實跑」
 
 不接受「讀源碼覺得無問題」。每次改動都跑齊：
@@ -772,7 +823,7 @@ CI gate（`.github/workflows/ci.yml`）：
 
 > **✅ 已修正**：`docs/PROJECT_UNDERSTANDING.md` 曾停在 `4333f2a`（寫 HEAD =
 > `446b7ee`、221 tests、54 Dart files、38 endpoints）。**2026-10-01 已全面重寫**，
-> 現值：**887 tests**、**82 paths / 89 operations**、**57 vitest**，
+> 現值：**887 tests**、**82 paths / 89 operations**、**68 vitest**，
 > 並新增 RBAC 設計、`/auth/me` 雙形狀、`StarletteHTTPException`
 > cookie 陷阱等章節。（**HEAD 刻意不寫死** —— 之前寫死過三次，每次之後的 commit
 > 都令它變錯。）
@@ -804,9 +855,11 @@ CI gate（`.github/workflows/ci.yml`）：
 ```
 ✅ 後端 82 paths / 89 ops / 887 tests / ruff lint + format clean — 生產就緒
 ✅ mobile 21 畫面 / 93 tests / 0 diagnostics      — 三角色完整
-✅ admin-web React / 57 vitest / typecheck + build clean / UI verifier PASS
+✅ admin-web React / 68 vitest / typecheck + build clean / UI verifier PASS
 ✅ 後台治理：四級 RBAC（rank 比較、live row 為權威）+ 審計覆蓋金錢／狀態改動
 ✅ 後台新增：帳戶管理 / 訂單監控 / 結算預覽+confirm token+CSV / 爭議 / 主體搜尋 / 頭像上傳
+✅ 後台實時地圖 `#/live`：Leaflet + OpenStreetMap（免金鑰、不計費）、15 秒輪詢、
+   位置過期分級；路由 code-split，主包維持 467 kB（地圖分包按需載入）
 ✅ 修好一個真 bug：AppContext 讀 `user.role` 當 rank（實為 principal kind）
    → 有效登入下導覽 0 項、每頁「沒有存取權限」；rank 在 `admin_role`
 ✅ location check：8 個 polygon 取代 bbox（舊 bbox 含深圳）

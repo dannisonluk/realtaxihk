@@ -22,7 +22,7 @@
 |---|---|---|---|
 | 後端 API | `app/` | **82 paths / 89 operations** · **887 tests** | ✅ 生產就緒 |
 | Flutter App | `mobile/` | 58 files, 11,558 LOC | ✅ 三角色完整 |
-| Web 管理後台 | `admin-web/web/`（React + Vite）＋ `admin-web/js/`（legacy） | src **12,328 LOC**（ts/tsx，不含測試）· **57 vitest** | ✅ 全部路由通過 |
+| Web 管理後台 | `admin-web/web/`（React + Vite）＋ `admin-web/js/`（legacy） | src **12,999 LOC**（ts/tsx，不含測試）· **68 vitest** | ✅ 全部路由通過 |
 
 **重要**：題目要求的「任務 1」與「任務 2」**已經存在且已完成**。以下計畫是「識別餘下可延伸的缺口」，而非從零開發。
 
@@ -160,11 +160,11 @@ router/     routing_rules.dart（純函數，可獨立測試）· app_router.dar
 | `scripts/verify/audit_response_models.py` | **68 fixture blocks + 89 operations，OK** |
 | OpenAPI | **82 paths / 89 operations**，全部有 `response_model=` |
 | `ruff check` / `format --check` | clean / clean（全樹） |
-| console `tsc` / `vitest` / `build` | clean / **57 passed（8 files）** / 463.18 kB（gzip 142.84 kB） |
+| console `tsc` / `vitest` / `build` | clean / **68 passed（9 files）** / 主包 466.65 kB（gzip 146.05 kB）＋地圖分包 155.64 kB（gzip 45.57 kB，按需載入） |
 | Dart contract verifier | 54 decoded, 0 failures（`dart --packages=… tool/verify_contract.dart`） |
 | Dart unit tests | 93 passed, 0 failed（`dart --packages=… tool/run_tests.dart`） |
 | Dart 靜態檢查 | 58 files, 0 diagnostics（`python mobile/tool/dart_check.py`） |
-| `admin-web/tool/audit_layout.mjs` | **48 renders clean**（{zh-Hant,en} × {light,dark} × 3 寬度） |
+| `admin-web/tool/audit_layout.mjs` | **52 renders clean**（13 條路由 × {zh-Hant,en} × {light,dark}） |
 
 > **更正（2026-10-02）**：本文件曾寫「本沙盒跑不到 Dart」。**這是錯的** ——
 > `dart <script>` 可以跑，只有 `dart analyze` / `flutter *` 這種**要 spawn 子程序**
