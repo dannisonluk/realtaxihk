@@ -69,8 +69,21 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
           GoRoute(
             path: 'otp',
             builder: (BuildContext context, GoRouterState state) {
+              // `state.extra` is null when `/login/otp` is reached directly (a
+              // deep link, a hot reload onto the location) rather than by
+              // pushing from the login screen.
+              //
+              // An OTP screen with no phone number is a state with no meaning:
+              // it renders "code sent to " with nothing after it, and "resend"
+              // posts an invalid number, so the user sees a server error whose
+              // real cause is the route they arrived by. Send them back to
+              // login instead of rendering the half-screen.
               final Object? extra = state.extra;
-              return OtpScreen(phoneE164: extra is String ? extra : '');
+              final String phone = extra is String ? extra : '';
+              if (phone.isEmpty) {
+                return const LoginScreen();
+              }
+              return OtpScreen(phoneE164: phone);
             },
           ),
         ],

@@ -60,6 +60,14 @@ class _AdminKycScreenState extends ConsumerState<AdminKycScreen> {
   }
 
   Future<void> _grant(AdminDriverRow driver) async {
+    // Disposed only after `showDialog` returns, because the dialog's TextField
+    // still holds this controller until then -- disposing inside the builder, or
+    // before the await, is an immediate use-after-dispose.
+    //
+    // The fragile part is the *ordering*, not the timing: it is correct today
+    // only because nothing after the await touches `amount`. Adding e.g. an echo
+    // of what was typed would silently break it. If that becomes necessary, move
+    // the field into a small StatefulWidget that owns its own controller.
     final TextEditingController amount = TextEditingController();
     final String? result = await showDialog<String>(
       context: context,

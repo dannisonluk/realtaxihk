@@ -58,6 +58,18 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
       showInfo(context, '請填寫的士證號及車輛登記號碼');
       return;
     }
+    // Shape check on the vehicle registration mark, and deliberately **not** a
+    // hard validator. HK marks are two letters plus one to four digits
+    // (`AB1234`), but the letters are not all-latin in the wild -- a Custom
+    // Registration Mark is arbitrary, and the letters `I` and `O` never appear,
+    // so any pattern strict enough to be useful is also wrong for somebody.
+    // A wrong-but-well-shaped value still reaches the review queue, which is
+    // where it would have ended up anyway; the point here is to catch the typo
+    // before it costs the user a rejection, not to be the authority on plates.
+    if (!RegExp(r'^[A-Z]{1,2}\s?\d{1,4}$').hasMatch(mark.toUpperCase())) {
+      showInfo(context, '車輛登記號碼一般為 1-2 個英文字母加 1-4 位數字（例如 AB1234），請確認無誤');
+      return;
+    }
 
     setState(() => _busy = true);
     try {
