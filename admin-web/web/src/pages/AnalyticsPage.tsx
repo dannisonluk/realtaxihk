@@ -104,6 +104,11 @@ export function AnalyticsPage() {
   // so typing a partial date does not fire a request per keystroke — the
   // controls only commit on blur or change, and the range inputs additionally
   // have a minimum width before they are considered complete.
+  // A NEW object on every render, on purpose and safely: `useLoad` below keys
+  // off the primitives, not this object, so identity churn cannot re-fire it.
+  // Do NOT add `summaryFilters` to that dep array — it would loop forever. The
+  // primitives in the array and the keys in this object must stay in sync; the
+  // filter values are the contract, the object is only how they are passed.
   const summaryFilters = { from, to, granularity, taxiType, sortBy, sortDir };
 
   const summary = useLoad<AnalyticsSummary>(

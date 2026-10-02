@@ -56,6 +56,17 @@ export function SearchPage() {
    * its own fetch and cancelling mid-flight would look like a network failure.
    */
   const seq = useRef(0);
+  /**
+   * Bumped by the error state's retry button.
+   *
+   * The retry used to be `setQuery((q) => q)`, which relies on React committing
+   * an identical value and re-running the effect anyway — it does not, because
+   * React bails out when the state is `Object.is`-equal. It only appeared to
+   * work because `setLoading` in the same tick forced a render; a future
+   * "cleanup" of this line would silently break retry with no test failing.
+   * A dedicated counter makes the intent explicit and survives refactoring.
+   */
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -86,7 +97,9 @@ export function SearchPage() {
     }, DEBOUNCE_MS);
 
     return () => window.clearTimeout(timer);
-  }, [client, query]);
+    // `retryNonce` is a dep on purpose: it exists only to force this effect to
+    // re-run when the error state's retry is pressed, with `query` unchanged.
+  }, [client, query, retryNonce]);
 
   return (
     <>
@@ -118,7 +131,7 @@ export function SearchPage() {
 
       <div style={{ marginTop: 16 }}>
         {loading ? <LoadingState label={t('search.searching')} /> : null}
-        {error ? <ErrorState error={error} onRetry={() => setQuery((q) => q)} /> : null}
+        {error ? <ErrorState error={error} onRetry={() => setRetryNonce((n) => n + 1)} /> : null}
       </div>
 
       {/*

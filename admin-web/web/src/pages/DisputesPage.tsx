@@ -305,7 +305,10 @@ function StatsStrip({ stats }: { stats: DisputeStats }) {
 }
 
 function DisputeDetailView({ disputeId }: { disputeId: string }) {
-  const { client, notify, hasRole, user } = useApp();
+  // `user` is deliberately not read here. The page used to pass `user.role` to
+  // the resolve dialog, which is the **principal kind** (always `'ADMIN'`) and
+  // therefore ranked nobody as FINANCE — see the note on `canMoveMoney` below.
+  const { client, notify, hasRole } = useApp();
   const navigate = useNavigate();
   const { t, formatLocale } = useI18n();
   const labels = useLabels();
@@ -388,7 +391,21 @@ function DisputeDetailView({ disputeId }: { disputeId: string }) {
       confirmLabel: t('disputes.resolveConfirm'),
       // A money-moving resolution is the irreversible one, so it is the
       // destructive-styled button.
-      body: <ResolveBody onChange={(patch) => Object.assign(form, patch)} role={user?.role ?? null} />,
+      body: (
+        <ResolveBody
+          onChange={(patch) => Object.assign(form, patch)}
+          // `hasRole` reads `admin_role` (the RBAC rank). Passing `user.role`
+          // here passed the **principal kind** — always the literal `'ADMIN'` —
+          // which matches neither `'FINANCE'` nor `'SUPER_ADMIN'`, so every
+          // money-moving option was permanently disabled even for a
+          // SUPER_ADMIN. The gate three lines above (`hasRole('FINANCE')`) was
+          // already correct; this is the same question and must use the same
+          // answer. The server narrows per request (`admin.py` `resolve_dispute`
+          // → `live_admin_role` → `at_least(FINANCE)`), so a forged value here
+          // yields a 403 rather than a charge.
+          canMoveMoney={hasRole('FINANCE')}
+        />
+      ),
       onSubmit: async () => {
         if (!form.note.trim()) {
           throw new Error(t('disputes.errResolveReason'));
@@ -711,15 +728,24 @@ function OpenCaseBody({
 
 function ResolveBody({
   onChange,
-  role,
+  canMoveMoney,
 }: {
   onChange: (patch: { resolution?: string; note?: string; close?: boolean }) => void;
-  role: string | null;
+  /**
+   * Whether the operator's RBAC rank reaches FINANCE.
+   *
+   * A **boolean, not the role string**. The caller must hand over the answer to
+   * the question `hasRole('FINANCE')` rather than a role name to be compared
+   * here, because the server's rule is `at_least(FINANCE)` — a rank comparison.
+   * Any `role === 'FINANCE' || role === 'SUPER_ADMIN'` written at this level
+   * re-encodes the rank ladder, and a sixth admin role would silently fall
+   * outside it.
+   */
+  canMoveMoney: boolean;
 }) {
   const { t } = useI18n();
   const labels = useLabels();
   const moneyResolutions = new Set(['CHARGE_PASSENGER', 'CHARGE_DRIVER', 'REFUND_PLATFORM_FEE', 'WAIVED_PLATFORM_FEE']);
-  const canMoveMoney = role === 'FINANCE' || role === 'SUPER_ADMIN';
 
   return (
     <div className="stack">

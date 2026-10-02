@@ -19,7 +19,7 @@ import { ErrorState, LoadingState } from '../components/states';
 import { useApp } from '../app/AppContext';
 import { useFormDialog } from '../app/useDialogs';
 import { useLoad } from '../app/useLoad';
-import { formatTime, useLabels } from '../lib/labels';
+import { formatTime, shortId, useLabels } from '../lib/labels';
 import { useI18n } from '../i18n';
 import { PageHead } from '../app/Shell';
 
@@ -29,11 +29,6 @@ const FILTERS: { value: RefundStatus | null; labelKey: string }[] = [
   { value: 'APPROVED', labelKey: 'refunds.filterApproved' },
   { value: 'REJECTED', labelKey: 'refunds.filterRejected' },
 ];
-
-/** A UUID's first segment — enough to correlate a row with a ledger entry. */
-function shortId(id: string): string {
-  return id.slice(0, 8);
-}
 
 export function RefundsPage() {
   const { client, notify, refreshBadges } = useApp();
