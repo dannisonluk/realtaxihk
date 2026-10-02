@@ -83,7 +83,7 @@
 引用的「52 renders clean」實際只有 48 次，而唯一渲染第三方控件的頁面正好是唯一沒被量
 的頁面），以及 `.sr-only` 被誤判為「被裁切的文字」。
 
-**驗證**：`audit_layout` 52 renders clean @1440px 與 @500px · `pytest` 909/0/0/0
+**驗證**：`audit_layout` 52 renders clean @1440px 與 @500px · `pytest` 928/0/0/0
 （`--junit-xml` 讀）· `vitest` 69 passed（9 files）· `ruff check` ＋ `format --check`
 clean · console `tsc` clean · `check_contrast.py` 與 `check_theme_tokens.py` 皆 OK。
 非測試原始碼行數由 12,999 增至 13,109。

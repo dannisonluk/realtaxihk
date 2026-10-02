@@ -7,7 +7,7 @@ Money math is exact (`Decimal`, never float); every fare response carries biling
 Cap. 374D disclaimers; every estimate embeds a `tariff_version` so historical orders
 stay auditable.
 
-**Status: production-hardened.** 909 backend tests green (+ 93 mobile, 54 contract
+**Status: production-hardened.** 928 backend tests green (+ 93 mobile, 54 contract
 fixtures, browser UI verifier PASS). Start with
 [`docs/WORK_SUMMARY.md`](docs/WORK_SUMMARY.md) for the whole picture — what's built,
 what's verified, and what still needs credentials or a deployment target.
@@ -22,7 +22,11 @@ Full audit + fix log: [`docs/PRODUCTION_READINESS.md`](docs/PRODUCTION_READINESS
 docker compose up -d db redis
 
 # 2. app (uv manages venv + deps; --all-extras pulls dev tools: pytest, ruff)
-uv sync --all-extras
+#    --frozen is deliberate: the lockfile, not the pyproject floors, is the
+#    authority. Without it a local `uv sync` can resolve versions the Dockerfile
+#    and CI (`uv sync --frozen`) will never install, so you would be testing
+#    something that does not ship.
+uv sync --frozen --all-extras
 cp .env.example .env          # adjust if needed; see Configuration below
 
 # 3. schema
@@ -31,7 +35,7 @@ cp .env.example .env          # adjust if needed; see Configuration below
 # 4. run + verify
 .venv/Scripts/python scripts/dev/serve_and_probe.py   # detached uvicorn + health wait
 .venv/Scripts/python scripts/verify/verify_api.py        # one-shot API smoke
-.venv/Scripts/python -m pytest -q                 # 120 tests
+.venv/Scripts/python -m pytest -q                 # 928 tests
 uv run ruff check . && uv run ruff format --check .
 ```
 
@@ -175,7 +179,7 @@ unconfigured), Sentry/Prometheus (optional).
 .venv/Scripts/python -m pytest -q        # needs db+redis containers up
 ```
 
-- 909 tests over 35 files: fare unit tests, per-module API tests, WS streaming,
+- 928 tests over 38 files: fare unit tests, per-module API tests, WS streaming,
   fleet management / roster / settlement, backup retention and restore-drill
   guards, console contrast guards, and `test_hardening.py` (14 regression tests
   for every fixed finding).

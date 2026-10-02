@@ -54,7 +54,7 @@
 | SEC-01~03 | ✅ | `core/config.py`（`app_env` 必填 + 白名單）、`otp_service.py`（**`dev_code` 回吐已完全移除**；`ALLOW_DEV_OTP` 只剩「令驗證碼固定」一個作用，而且 prod 無法開啟 — 見 §0.4） |
 | SEC-04~05 | ✅ | `core/config.py`（移除 hardcode secret；必填 + 熵檢查；`iss/aud` 待辦見下） |
 | SEC-06 | ✅ | `docker-compose.yml`（`127.0.0.1` + `requirepass`）、`grab_service.py`（DB 條件式 UPDATE 仲裁） |
-| SEC-07 | ✅ | `api/auth.py::_client_ip`（取最右可信跳數）、`api/fare.py`、`TRUSTED_PROXY_COUNT` |
+| SEC-07 | ✅ | `core/client_ip.py::client_ip`（取最右可信跳數；原 5 份 `_client_ip` 已收攏）、`TRUSTED_PROXY_COUNT` |
 | SEC-08 | ✅ | `api/auth.py`（soft cap → 降級；hard cap → 503）、per-phone 限流 |
 | SEC-09~11 | ✅ | `api/orders.py`、`api/fare.py`（`before` validator + `max_length`）、`core/middleware.py`、`order_service.py`（去重） |
 | SEC-12 | ✅ | `drivers.py`／`tracking.py`／`trips.py` 改用 `require_active_user` + 反射式回歸測試 |
