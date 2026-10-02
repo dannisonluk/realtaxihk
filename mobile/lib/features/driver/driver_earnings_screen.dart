@@ -153,6 +153,13 @@ class _RefundSectionState extends ConsumerState<_RefundSection> {
     setState(() => _busy = true);
     try {
       await ref.read(driverRepositoryProvider).requestRefund();
+      // A refund request is not just a status change: it *holds* the driver's
+      // whole balance and writes an internal ledger entry, so both the balance
+      // card and the ledger list are stale the moment it succeeds. Leaving
+      // `ledgerProvider` cached showed the pre-request balance until a manual
+      // pull-to-refresh — "did my money get taken" is the one question the
+      // driver is looking at this screen to answer.
+      ref.invalidate(ledgerProvider);
       ref.invalidate(myRefundProvider);
       ref.invalidate(driverProfileProvider);
       if (mounted) {

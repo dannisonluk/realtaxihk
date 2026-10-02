@@ -161,6 +161,11 @@ class FleetMember {
   /// A short handle for the roster list. The profile id is a UUID and there is
   /// no name on the wire, so the tail is the only thing that distinguishes two
   /// rows at a glance — good enough to point at a row in a support call.
+  ///
+  /// Deliberately the *tail* 8 characters, while the console's `shortId`
+  /// (`admin-web/web/src/lib/labels.ts`) takes the *first* block of the UUID.
+  /// The two are therefore not comparable — do not use one to look up a row
+  /// shown by the other. Both exist because they serve different readers.
   String get shortId => driverProfileId.length <= 8
       ? driverProfileId
       : '…${driverProfileId.substring(driverProfileId.length - 8)}';

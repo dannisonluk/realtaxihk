@@ -2,7 +2,7 @@
   "fleet_id": "3be62a05-a69b-4aad-9ef2-cc1dba991201",
   "fleet_name": "星群的士",
   "period": "2026-W45",
-  "gross_fee_hkd": "200",
+  "gross_fee_hkd": "200.00",
   "discount_percent": "25.00",
   "fee_hkd": "150.00",
   "member_count": 1,

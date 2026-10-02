@@ -1,6 +1,6 @@
 {
   "period": "2026-W46",
-  "fee_hkd": "200",
+  "fee_hkd": "200.00",
   "eligible_drivers": 7,
   "fleet_managed": 1,
   "charged": 0,

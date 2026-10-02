@@ -148,3 +148,87 @@ class SettlementRun {
 
   bool get hasAnomaly => failed > 0 || tampered > 0;
 }
+
+/// Result of `POST /api/v1/admin/settlement/preview` — the dry run, and the only
+/// source of a `confirm_token`.
+///
+/// The platform-wide weekly run charges every eligible driver at once and is
+/// idempotent per ISO week, so the first accidental press is **not** undoable:
+/// the money is gone and the reference is spent. The server therefore requires a
+/// token that only this endpoint can mint (bound to the preview's `period` and
+/// `fee_hkd`, so a token from one week cannot be spent on another's).
+///
+/// [wouldGoNegative] is a **sub-count** of [wouldCharge], not a fifth bucket —
+/// those drivers are charged and simply go into arrears. Arrears are legal by
+/// design, so this is the number an operator most needs before acting: it is the
+/// part that is a decision rather than arithmetic.
+///
+/// The counts and ids are what the wire carries; there are deliberately no
+/// driver names, because a preview is a screenful and inlining identities would
+/// make the safest page the largest PII export in the app.
+class SettlementPreview {
+  const SettlementPreview({
+    required this.period,
+    required this.feeHkd,
+    required this.eligibleDrivers,
+    required this.fleetManaged,
+    required this.wouldCharge,
+    required this.alreadyCharged,
+    required this.tampered,
+    required this.skippedNoDepositAccount,
+    required this.wouldGoNegative,
+    required this.shortfallTotalHkd,
+    required this.totalChargeHkd,
+    required this.confirmToken,
+    required this.confirmExpiresInSeconds,
+  });
+
+  factory SettlementPreview.fromJson(Map<String, dynamic> json) => SettlementPreview(
+    period: asString(json['period'], 'preview.period'),
+    feeHkd: Money.parse(json['fee_hkd']),
+    eligibleDrivers: asInt(json['eligible_drivers'], 'preview.eligible_drivers'),
+    fleetManaged: asInt(json['fleet_managed'], 'preview.fleet_managed'),
+    wouldCharge: asInt(json['would_charge'], 'preview.would_charge'),
+    alreadyCharged: asInt(json['already_charged'], 'preview.already_charged'),
+    tampered: asInt(json['tampered'], 'preview.tampered'),
+    skippedNoDepositAccount: asInt(
+      json['skipped_no_deposit_account'],
+      'preview.skipped_no_deposit_account',
+    ),
+    wouldGoNegative: asInt(json['would_go_negative'], 'preview.would_go_negative'),
+    shortfallTotalHkd: Money.parse(json['shortfall_total_hkd']),
+    totalChargeHkd: Money.parse(json['total_charge_hkd']),
+    confirmToken: asString(json['confirm_token'], 'preview.confirm_token'),
+    confirmExpiresInSeconds: asInt(
+      json['confirm_expires_in_seconds'],
+      'preview.confirm_expires_in_seconds',
+    ),
+  );
+
+  final String period;
+  final Money feeHkd;
+  final int eligibleDrivers;
+  final int fleetManaged;
+  final int wouldCharge;
+  final int alreadyCharged;
+  final int tampered;
+  final int skippedNoDepositAccount;
+  final int wouldGoNegative;
+  final Money shortfallTotalHkd;
+  final Money totalChargeHkd;
+
+  /// The signed token the run requires. **Do not render it** — it is a bearer
+  /// credential for a money-moving call. Pass it straight to
+  /// [AdminRepository.runWeeklySettlement].
+  final String confirmToken;
+
+  /// How long [confirmToken] stays valid, so the UI can warn before the operator
+  /// is surprised by an expiry at the moment they were ready to act.
+  final int confirmExpiresInSeconds;
+
+  /// Nothing will happen if this is true — the run is a no-op by construction,
+  /// and the server does not require a token for it.
+  bool get isNoOp => wouldCharge == 0;
+
+  bool get hasAnomaly => tampered > 0;
+}

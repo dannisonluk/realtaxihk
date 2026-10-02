@@ -69,15 +69,39 @@ class AdminRepository {
     return DepositGrantResult.fromJson(json);
   }
 
+  /// `POST /admin/settlement/preview` — dry-run the weekly run. **Writes
+  /// nothing**, charges nobody.
+  ///
+  /// Returns a [SettlementPreview] carrying a `confirm_token`, and that token is
+  /// the whole point: [runWeeklySettlement] refuses a period that would charge
+  /// anyone unless it is presented. See the docstring on the model.
+  ///
+  /// FINANCE, same as the run — a preview one role can obtain and another can
+  /// act on is a workflow nobody can complete.
+  Future<SettlementPreview> previewWeeklySettlement({String? period}) async {
+    final Map<String, dynamic> json = await _api.post(
+      '/api/v1/admin/settlement/preview',
+      data: <String, dynamic>{'period': period},
+    );
+    return SettlementPreview.fromJson(json);
+  }
+
   /// `POST /admin/settlement/weekly/run` — the manual lever for the weekly
   /// service fee.
   ///
   /// Idempotent per ISO week, so re-running a period charges nobody twice. Pass
   /// [period] (`YYYY-Www`) to re-run a specific week after a failed batch.
-  Future<SettlementRun> runWeeklySettlement({String? period}) async {
+  ///
+  /// [confirmToken] must come from [previewWeeklySettlement] for the **same**
+  /// period. It is required in practice: the server refuses a run that would
+  /// charge anyone without one (`CONFIRM_TOKEN_REQUIRED`). It is genuinely
+  /// optional for a period that is already fully settled, where the run is a
+  /// no-op by construction — demanding a preview to prove nothing will happen
+  /// would train operators to click through the gate rather than read it.
+  Future<SettlementRun> runWeeklySettlement({String? period, String? confirmToken}) async {
     final Map<String, dynamic> json = await _api.post(
       '/api/v1/admin/settlement/weekly/run',
-      query: <String, dynamic>{'period': ?period},
+      query: <String, dynamic>{'period': ?period, 'confirm_token': ?confirmToken},
     );
     return SettlementRun.fromJson(json);
   }
