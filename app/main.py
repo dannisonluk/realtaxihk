@@ -25,8 +25,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api.admin import router as admin_router
+from app.api.admin_analytics import router as admin_analytics_router
 from app.api.admin_auth import router as admin_auth_router
-from app.api.analytics_admin import router as analytics_admin_router
+from app.api.admin_licence import router as admin_licence_router
 from app.api.auth import router as auth_router
 from app.api.drivers import router as drivers_router
 from app.api.fare import router as fare_router
@@ -34,7 +35,6 @@ from app.api.fleets import admin_router as admin_fleets_router
 from app.api.fleets import router as fleets_router
 from app.api.identity import router as identity_router
 from app.api.licence import router as licence_router
-from app.api.licence_admin import router as licence_admin_router
 from app.api.orders import router as orders_router
 from app.api.service_area import router as service_area_router
 from app.api.tracking import router as tracking_router
@@ -178,11 +178,11 @@ def create_app() -> FastAPI:
     # P-3: likewise before `admin_router`, so `/api/v1/admin/licence/*` reaches
     # the licence-review handlers. The licence queue and the generic driver
     # queue are different views of the same domain and must not be conflated.
-    app.include_router(licence_admin_router)
+    app.include_router(admin_licence_router)
     # P-5 analytics: likewise before `admin_router`, so
     # `/api/v1/admin/analytics/*` is matched here. It shares the `/admin`
     # prefix with the platform router and would otherwise be swallowed by it.
-    app.include_router(analytics_admin_router)
+    app.include_router(admin_analytics_router)
     app.include_router(admin_router)
     app.include_router(licence_router)
     app.include_router(fleets_router)

@@ -17,7 +17,7 @@ the handlers, and the fixture set is the acceptance test: adding a
 check. See `mobile/test/fixtures/manifest.json` for the route → fixture map.
 
 Coverage: **all 69 operations now declare a real `response_model=`** (it was 1
-of 69 before this package). `scripts/audit_response_models.py` proves that no
+of 69 before this package). `scripts/verify/audit_response_models.py` proves that no
 fixture key is dropped by its model — run it after touching anything here. It
 is deliberately separate from `mobile/tool/verify_contract.dart`: that one
 validates the *Dart decoders* against the bytes, this one validates the
@@ -92,6 +92,13 @@ from app.api.schemas.admin_auth import (
     EnrolmentOut,
     TotpEnrolOut,
 )
+from app.api.schemas.admin_licence import (
+    LicenceDecisionOut,
+    LicenceQueueOut,
+    LicenceQueueRowOut,
+    LicenceReviewDetailOut,
+    ReviewDocumentOut,
+)
 from app.api.schemas.driver import (
     DepositOut,
     DriverProfileOut,
@@ -136,13 +143,6 @@ from app.api.schemas.licence import (
     LicenceListOut,
     LicenceSubmissionOut,
     PresignedUploadOut,
-)
-from app.api.schemas.licence_admin import (
-    LicenceDecisionOut,
-    LicenceQueueOut,
-    LicenceQueueRowOut,
-    LicenceReviewDetailOut,
-    ReviewDocumentOut,
 )
 from app.api.schemas.order import (
     LedgerEntryOut,

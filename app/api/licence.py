@@ -11,7 +11,7 @@ Every route requires `require_active_user`. Deliberately **not**
 not been approved yet, and gating the licence route behind the *verified* gate
 that the licence itself feeds would make the flow unable to start.
 
-The admin decision endpoints live in `licence_admin`, behind `require_admin`.
+The admin decision endpoints live in `admin_licence`, behind `require_admin`.
 Keeping them in a separate router is what makes the authorisation boundary
 visible in one place instead of a `Depends` difference buried in one handler.
 
