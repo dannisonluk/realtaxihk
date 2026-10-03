@@ -377,9 +377,10 @@ three ways the LSP driver silently reports "0 diagnostics" while being wrong.
 | | Entry | Build | Status |
 |---|---|---|---|
 | **React (current)** | `web/` | Vite + React 18 + TypeScript → `web/dist` | supported |
-| **Legacy** | `index.html`, `js/`, `styles.css` | none — hand-written ES modules | kept as reference |
+| **Legacy** | `legacy/` (`index.html`, `js/`, `styles.css`) | none — hand-written ES modules | kept as reference |
 
-`serve.py --dist` serves the React build; without the flag, the legacy one.
+`serve.py --dist` serves the React build; without the flag, the legacy one
+(`legacy/`).
 
 The legacy bundle is kept because it still works **and it is the reference the
 rewrite was verified against** — remove it only once nothing depends on it.

@@ -117,12 +117,19 @@
 `checked >= 15` 的下限守衛也成立。這一項必須驗，因為 R4 把路由樹的嵌套由
 **1 層變成 2 層**，而該走訪器是整個測試套件唯一依賴路由樹形狀的地方。
 
-### R5 — `admin-web/` 混著兩代 console
+### R5 — `admin-web/` 混著兩代 console ✅ 已處理
 
-`admin-web/` 頂層同時有：legacy 三件（`index.html` · `js/` · `styles.css`）、
+`admin-web/` 頂層原本同時有：legacy 三件（`index.html` · `js/` · `styles.css`）、
 React build（`web/`）、驗證腳本（`tool/`）、`serve.py`、`README.md`。
-建議 legacy 三件搬入 `admin-web/legacy/`，並更新 `serve.py` 的兩個服務路徑。
-注意 `verify_ui.mjs` **明文拒絕** legacy build，所以搬動不會影響 UI 驗證。
+
+**已把 legacy 三件搬入 `admin-web/legacy/`**，`admin-web/` 頂層現在只餘
+`README.md` · `serve.py` · `legacy/` · `tool/` · `web/`。
+
+- `serve.py` 的 `SERVE_ROOT` 預設改為 `ROOT / "legacy"`（`--dist` 仍然指向
+  `web/dist` 不變）。已直接載入模組驗證三個檔案都在新位置。
+- `verify_ui.mjs` 的拒絕訊息由 `admin-web/js` 改為 `admin-web/legacy`。
+  它的偵測邏輯不受影響 —— 它讀的是**已服務的 HTML**（legacy 仍然載入
+  `/js/app.js`，Vite build 載入 `/assets/`），不是磁碟路徑。
 
 ### R6 — `app/services/` 27 個平鋪模組 ✅ 已處理
 

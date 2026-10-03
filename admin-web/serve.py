@@ -55,13 +55,15 @@ ROOT = Path(__file__).resolve().parent
 # Which directory is actually served.
 #
 # Two builds live side by side: the legacy hand-rolled ES-module bundle at
-# `admin-web/` (`js/`, `styles.css`) and the Vite + React rewrite at
-# `admin-web/web/dist`. They are kept separate so the legacy console keeps
-# working until the port is verified; `--dist` selects the rewrite.
+# `admin-web/legacy/` (`index.html`, `js/`, `styles.css`) and the Vite +
+# React rewrite at `admin-web/web/dist`. They are kept separate so the
+# legacy console keeps working until the port is verified; `--dist` selects
+# the rewrite. The legacy files sit in their own directory so that the
+# admin-web root is not a mix of two generations.
 #
 # Set by `main()` from the flag, and read by the handler, because
 # `SimpleHTTPRequestHandler` is constructed by the server rather than by us.
-SERVE_ROOT: Path = ROOT
+SERVE_ROOT: Path = ROOT / "legacy"
 
 # Paths forwarded to the API rather than served from disk. Prefix-matched.
 PROXY_PREFIXES = ("/api/", "/health")

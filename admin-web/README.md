@@ -10,7 +10,7 @@ between them; without the flag the legacy one is served.
 | | entry | build |
 |---|---|---|
 | **React (current)** | `web/` | Vite + React 18 + TypeScript — `npm run build` → `web/dist` |
-| **Legacy** | `index.html`, `js/`, `styles.css` | none — hand-written ES modules |
+| **Legacy** | `legacy/` (`index.html`, `js/`, `styles.css`) | none — hand-written ES modules |
 
 The React rewrite is the supported console. The legacy bundle is kept because it
 still works and it is the reference the rewrite was verified against; remove it
@@ -24,10 +24,11 @@ module and the browser does the rest.
 ```
 admin-web/
   web/                React + Vite + TypeScript (see "The React build" below)
-  index.html          legacy shell; loads js/app.js as a module
-  styles.css          legacy stylesheet
+  legacy/             the pre-React console, kept as the rewrite's reference
+    index.html          legacy shell; loads js/app.js as a module
+    styles.css          legacy stylesheet
+    js/                 legacy console — hash router, api, dom helpers, views/
   serve.py            static server (MIME allow-list, no-store, path containment)
-  js/                 legacy console — hash router, api, dom helpers, views/
   tool/
     verify_ui.mjs           browser-driven verifier (Playwright), React build only
     verify_qr.mjs           TOTP enrolment QR rendering check (no DB needed)
@@ -416,7 +417,7 @@ server's, since a TOTP code is only valid for one 30-second step either way.
 `textContent`; the React build has no `dangerouslySetInnerHTML` anywhere. Driver
 refund notes, fleet contact names and licence numbers are all attacker-controlled
 strings and this console renders them, so there is deliberately no `html` escape
-hatch in `js/dom.js` and no raw-HTML escape hatch in `web/src/`. If a view needs
+hatch in `legacy/js/dom.js` and no raw-HTML escape hatch in `web/src/`. If a view needs
 markup, it composes elements.
 
 **`append()` flattens nested arrays.** This is load-bearing, not a convenience. A
@@ -446,7 +447,7 @@ the state-changing routes. That needs a backend endpoint that issues the cookie 
 a CSRF token, so it is a deliberate follow-up rather than something the client can
 fake. Until then the access token is short-lived, the server rotates the refresh
 token on every use, and a replayed refresh token revokes the whole family — so a
-leak is detectable. See `js/session.js`.
+leak is detectable. See `legacy/js/session.js`.
 
 ## Not yet built
 

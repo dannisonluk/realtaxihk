@@ -346,7 +346,7 @@ async function main() {
     const isLegacy = /src=["'][^"']*\/js\//.test(html) && !/\/assets\//.test(html);
     if (isLegacy) {
       console.error(
-        `refusing to run: ${BASE} is serving the LEGACY console (admin-web/js).\n` +
+        `refusing to run: ${BASE} is serving the LEGACY console (admin-web/legacy).\n` +
           'This verifier only drives the React build.\n' +
           `Restart the server with --dist, e.g.\n` +
           `  python admin-web/serve.py --port 8081 --dist\n` +
