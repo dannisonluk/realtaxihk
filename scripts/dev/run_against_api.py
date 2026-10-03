@@ -117,7 +117,15 @@ try:
 
     print("--- api log tail ---", flush=True)
     api.terminate()
-    print(api.stdout.read()[-5000:], flush=True)
+    # `Popen.stdout` is `IO[str] | None` to the checker — it cannot see that this
+    # script always passes `stdout=PIPE`. Binding a local is what makes the
+    # narrowing stick; an attribute read back later is not narrowed. An explicit
+    # raise rather than an `assert`, because ruff's S101 bans asserts outside the
+    # files that carry a documented exemption.
+    api_out = api.stdout
+    if api_out is None:
+        raise RuntimeError("the api child is spawned with stdout=PIPE")
+    print(api_out.read()[-5000:], flush=True)
     sys.exit(v.returncode)
 finally:
     with contextlib.suppress(Exception):

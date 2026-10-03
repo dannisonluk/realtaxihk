@@ -15,6 +15,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import asyncpg
@@ -110,7 +111,14 @@ def record(tag, title, proven, detail):
     FINDINGS.append((tag, title, proven, detail))
 
 
-def req(method, path, body=None, token=None, headers=None, raw=None):
+def req(method, path, body=None, token=None, headers=None, raw=None) -> tuple[int, Any, float, int]:
+    """One HTTP call: `(status, decoded_body, elapsed_seconds, body_bytes)`.
+
+    The body is deliberately `Any` — it is whatever `json.loads` produced, and
+    the failure path substitutes a `{"_raw": ...}` dict. Leaving the return type
+    inferred let a checker take the *fallback* dict's value type for the whole
+    function, so `body["user"]["id"]` read as indexing `bytes`.
+    """
     r = urllib.request.Request(BASE + path, method=method)
     r.add_header("Content-Type", "application/json")
     if token:

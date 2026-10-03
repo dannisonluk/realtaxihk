@@ -164,7 +164,11 @@ try:
         env,
     )
     if not wait_port("127.0.0.1", 8000, 120, "api"):
-        print(api.stdout.read()[-4000:], flush=True)
+        # See the note in run_against_api.py: bind a local, then guard.
+        api_out = api.stdout
+        if api_out is None:
+            raise RuntimeError("the api child is spawned with stdout=PIPE")
+        print(api_out.read()[-4000:], flush=True)
         sys.exit(1)
 
     # `--dist` is not optional here. Without it `serve.py` serves the *legacy*
@@ -221,7 +225,11 @@ try:
 
     print("--- api log tail ---", flush=True)
     kill_tree(api)
-    print(api.stdout.read()[-6000:], flush=True)
+    # See the note in run_against_api.py: bind a local, then guard.
+    api_out = api.stdout
+    if api_out is None:
+        raise RuntimeError("the api child is spawned with stdout=PIPE")
+    print(api_out.read()[-6000:], flush=True)
 
     # The console's proxy log already streamed live (it inherits this stdout), so
     # there is nothing left to drain — just stop it.

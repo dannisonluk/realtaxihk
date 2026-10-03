@@ -961,8 +961,14 @@ def main(argv: list[str] | None = None) -> int:
     # names; a UnicodeEncodeError at 03:17 would abort a backup for a cosmetic
     # reason.
     for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8", errors="replace")
+        # `TextIO` does not declare `reconfigure`, so `hasattr` alone is not
+        # enough: a type checker still rejects the attribute access. Verified —
+        # pyright does *not* narrow on `hasattr`. `getattr` keeps the same runtime
+        # probe (a test double without `reconfigure` still takes the skip path)
+        # and hands back something the checker accepts.
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
 
     args = build_parser().parse_args(argv)
     try:
