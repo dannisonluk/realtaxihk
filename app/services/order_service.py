@@ -11,13 +11,13 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.money import meter_str, money_str
+from app.core.money import MoneyInput, meter_str, money_str
 from app.models import Order, OrderStatus
 from app.services.fare_calculator import TaxiType, Tunnel, calculate_fare
 from app.services.state_machine import assert_order_transition
 
 
-def _meter_str(v: Decimal) -> str:
+def _meter_str(v: MoneyInput) -> str:
     """Fare figures inside the order snapshot — the meter's 1-dp rule."""
     return meter_str(v)
 

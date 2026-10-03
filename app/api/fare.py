@@ -17,7 +17,7 @@ from app.api.schemas import FareEstimateOut
 from app.core.client_ip import client_ip
 from app.core.config import get_settings
 from app.core.exceptions import BusinessRuleError
-from app.core.money import meter_str
+from app.core.money import MoneyInput, meter_str
 from app.services.fare_calculator import TaxiType, Tunnel, calculate_fare
 
 router = APIRouter(prefix="/api/v1/fare", tags=["fare"])
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api/v1/fare", tags=["fare"])
 _MAX_TUNNELS = 8  # the Tunnel enum has exactly 8 members
 
 
-def _meter_str(v: Decimal) -> str:
+def _meter_str(v: MoneyInput) -> str:
     """Fare figures, at the meter's own 1-dp tick.
 
     Delegates to `app.core.money.meter_str`, which owns the rounding rule. Kept

@@ -40,7 +40,7 @@ from app.api.schemas import (
 from app.core.config import get_settings
 from app.core.db import get_session, get_session_factory
 from app.core.deps import Principal, require_active_user, require_admin
-from app.core.money import money_str
+from app.core.money import MoneyInput, money_str
 from app.models import (
     DriverProfile,
     Fleet,
@@ -55,7 +55,7 @@ router = APIRouter(prefix="/api/v1/fleets", tags=["fleets"])
 admin_router = APIRouter(prefix="/api/v1/admin/fleets", tags=["admin"])
 
 
-def _money(value) -> str:
+def _money(value: MoneyInput) -> str:
     """Fleet money renders to the cent, half-up.
 
     Routed through `money_str()` rather than a local `quantize` call. The local

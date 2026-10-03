@@ -39,8 +39,19 @@ from decimal import ROUND_HALF_UP, Decimal
 _CENT = Decimal("0.01")
 _TICK = Decimal("0.1")
 
+# Every formatter below accepts the same input union, and this alias is the one
+# place that says so. The parameters used to be annotated `Decimal` only, which
+# was simply wrong: the bodies have always been `Decimal(v)`, and `money_str`'s
+# docstring has always said it accepts a string or an int. It surfaced as a real
+# editor error wherever an int setting was rendered -- `Settings.weekly_fee_hkd`
+# is an `int` (`200`), and `money_str(200)` is the *intended* way to get
+# `"200.00"` (see the call site's comment in `app/api/admin.py`). A narrow
+# annotation on a widening body does not make the call unsafe; it only makes the
+# type checker disagree with the code.
+MoneyInput = Decimal | int | str
 
-def money_str(v: Decimal) -> str:
+
+def money_str(v: MoneyInput) -> str:
     """Canonical 2-dp wire form for a **stored** money value.
 
     Accepts anything `Decimal()` accepts (a `Decimal` from the DB, a string, an
@@ -50,7 +61,7 @@ def money_str(v: Decimal) -> str:
     return str(Decimal(v).quantize(_CENT, rounding=ROUND_HALF_UP))
 
 
-def meter_str(v: Decimal) -> str:
+def meter_str(v: MoneyInput) -> str:
     """Canonical 1-dp wire form for a **meter** figure (fare, toll, surcharge).
 
     Not a lower-precision `money_str`: the two answer different questions. Use
@@ -60,7 +71,7 @@ def meter_str(v: Decimal) -> str:
     return str(Decimal(v).quantize(_TICK, rounding=ROUND_HALF_UP))
 
 
-def quantize_money(v: Decimal) -> Decimal:
+def quantize_money(v: MoneyInput) -> Decimal:
     """Round a money value to cents, half-up, and **keep it a `Decimal`**.
 
     `money_str` is for values going on the wire. This is for values that must
@@ -76,7 +87,7 @@ def quantize_money(v: Decimal) -> Decimal:
     return Decimal(v).quantize(_CENT, rounding=ROUND_HALF_UP)
 
 
-def ratio_str(v: Decimal | int | str) -> str:
+def ratio_str(v: MoneyInput) -> str:
     """Canonical 2-dp wire form for a **derived** figure, half-up.
 
     For values that are computed rather than stored: means, rates, distances,

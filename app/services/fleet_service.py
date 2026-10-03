@@ -30,7 +30,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.exceptions import BusinessRuleError, DuplicateReferenceError
-from app.core.money import money_str, quantize_money
+from app.core.money import MoneyInput, money_str, quantize_money
 from app.models import (
     DriverDeposit,
     DriverProfile,
@@ -53,7 +53,7 @@ from app.services.settlement_service import period_key
 logger = logging.getLogger("realtaxihk.fleet")
 
 
-def discounted_fee(fee_hkd: Decimal, discount_percent: Decimal) -> Decimal:
+def discounted_fee(fee_hkd: MoneyInput, discount_percent: MoneyInput) -> Decimal:
     """The per-member fee after the fleet's volume discount.
 
     Rounded to a cent rather than truncated: truncation across a few hundred

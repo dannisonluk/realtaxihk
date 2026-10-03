@@ -42,6 +42,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BusinessRuleError, DuplicateReferenceError
+from app.core.money import MoneyInput
 from app.models import DriverDeposit, DriverProfile, LedgerEntry, LedgerEntryType
 
 
@@ -100,7 +101,7 @@ class LedgerService:
         self,
         driver_profile_id,
         entry_type: LedgerEntryType,
-        amount_hkd: Decimal,
+        amount_hkd: MoneyInput,
         note: str | None = None,
         order_id=None,
         created_by=None,
