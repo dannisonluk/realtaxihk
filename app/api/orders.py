@@ -34,7 +34,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas import OrderOut, OrderPageOut
@@ -276,7 +276,16 @@ async def my_orders(
         if anchor is None:
             # Not the caller's order (or nonexistent) — indistinguishable by design.
             raise HTTPException(status_code=404, detail="cursor not found")
-        q = q.where((Order.created_at, Order.id) < (anchor[0], anchor[1]))
+        # A composite cursor needs a composite comparison. `tuple_()` emits the
+        # row-wise `(created_at, id) < (:ts, :id)`. Written as a plain Python
+        # tuple comparison it silently degraded to `created_at < :ts`: Python's
+        # tuple `<` tests element equality first, and `bool(Order.created_at ==
+        # ts)` is `False` for a SQLAlchemy column rather than an error, so the
+        # `id` tie-breaker never reached the query. Any order sharing the
+        # anchor's `created_at` then became unreachable -- and `created_at` is
+        # `server_default=func.now()`, which is the *transaction* timestamp, so
+        # rows written together share it exactly.
+        q = q.where(tuple_(Order.created_at, Order.id) < tuple_(anchor[0], anchor[1]))
 
     rows = (await session.execute(q)).scalars().all()
     return {"items": [order_out(o) for o in rows]}
@@ -395,9 +404,12 @@ async def order_cancel(
     if order.status == OrderStatus.BROADCASTING:
         await GeoService(request.app.state.redis_factory()).remove_order(str(order.id))
 
-    if is_assigned_driver and order.status in (
-        OrderStatus.ACCEPTED,
-        OrderStatus.DRIVER_ARRIVED,
+    # `profile is not None` is implied by `is_assigned_driver` and is here only
+    # so the checker can narrow `profile` at the `profile.id` below.
+    if (
+        is_assigned_driver
+        and profile is not None
+        and order.status in (OrderStatus.ACCEPTED, OrderStatus.DRIVER_ARRIVED)
     ):
         from app.core.config import get_settings
 

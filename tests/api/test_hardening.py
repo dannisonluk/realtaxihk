@@ -341,6 +341,54 @@ class TestP2OrderHistoryAndDetail:
         ids = [o["id"] for o in r2.json()["items"]]
         assert first["id"] in ids or second["id"] in ids
 
+    def test_history_keyset_survives_a_shared_timestamp(self, client):
+        """The cursor is a *composite* key, and the tie-breaker must reach SQL.
+
+        The list is ordered `created_at DESC, id DESC`, so `before_id` has to
+        compare on both columns. It did not. The predicate was written as a
+        Python tuple comparison —
+
+            (Order.created_at, Order.id) < (anchor[0], anchor[1])
+
+        — and Python's tuple `<` compares element-wise, testing equality first.
+        `bool(Order.created_at == ts)` is `False` for a SQLAlchemy column (it does
+        not raise), so the comparison falls straight through to
+        `created_at < ts` and the `id` tie-breaker never reaches the query. The
+        anchor's `Order.id` was selected and then dropped.
+
+        That is invisible until two orders share a `created_at`, which is not
+        hypothetical: `created_at` is `server_default=func.now()` and Postgres's
+        `now()` is the *transaction* timestamp, so every row written in one
+        transaction carries the identical value. This test forces the collision
+        instead of hoping for one. Before the fix, page two comes back empty and
+        the older order is unreachable — pagination silently loses a row.
+        """
+        phone = f"+85257{uuid.uuid4().int % 1000000:06d}"
+        token = _mk_user_token(client, phone)
+        h = {"Authorization": f"Bearer {token}"}
+        first = client.post("/api/v1/orders", headers=h, json=_ORDER).json()
+        second = client.post("/api/v1/orders", headers=h, json=_ORDER).json()
+
+        # Force both onto one timestamp: exactly what `func.now()` produces when
+        # two rows are written inside a single transaction.
+        client.exec_sql(
+            "UPDATE orders SET created_at = timestamptz '2026-01-01 00:00:00+08' "
+            "WHERE id IN (:a, :b)",
+            {"a": first["id"], "b": second["id"]},
+        )
+
+        page1 = client.get("/api/v1/orders?limit=1", headers=h).json()["items"]
+        assert len(page1) == 1, "expected the newest order on the first page"
+        page2 = client.get(f"/api/v1/orders?limit=10&before_id={page1[0]['id']}", headers=h).json()[
+            "items"
+        ]
+
+        seen = {page1[0]["id"], *(o["id"] for o in page2)}
+        assert seen == {first["id"], second["id"]}, (
+            "keyset pagination dropped an order that shares the cursor's timestamp: "
+            f"page 1 gave {page1[0]['id']}, page 2 gave {[o['id'] for o in page2]}"
+        )
+
     def test_detail_forbidden_for_stranger(self, client):
         owner = _mk_user_token(client, f"+85259{uuid.uuid4().int % 1000000:06d}")
         oid = client.post(
