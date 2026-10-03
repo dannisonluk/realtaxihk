@@ -6,9 +6,11 @@ on:
   pull_request:
 
 jobs:
+  # Backend. The job id stays `test` on purpose — renaming it would break any
+  # branch-protection rule that names it as a required check.
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -34,6 +36,30 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+    # Job-level rather than step-level so the drill and the audit below inherit
+    # them too. The drill scrubs every key it manages from the ambient
+    # environment before each case (see MANAGED in
+    # scripts/verify/prod_boot_drill.py), so an inherited value cannot make a
+    # "refuse" case pass for the wrong reason.
+    env:
+      APP_ENV: dev
+      # 127.0.0.1 rather than localhost: localhost also resolves to ::1, and
+      # the service containers are published on IPv4 only. On a Linux runner
+      # the ::1 attempt is refused instantly, but pinning the family removes
+      # the ambiguity (and matches the app's own default).
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: realtaxi
+      POSTGRES_PASSWORD: realtaxi-ci
+      POSTGRES_DB: realtaxihk
+      REDIS_URL: redis://127.0.0.1:6379/0
+      # Must satisfy the entropy check (>= 32 chars, >= 8 distinct characters).
+      JWT_SECRET_KEY: ci-only-secret-not-for-prod-4f8a2c9e1b7d3065aa4e
+      # ALLOW_DEV_OTP is deliberately absent. It used to be set to "true" here,
+      # with a comment claiming the tests needed it — but tests/conftest.py
+      # assigns it unconditionally to "false" before any app module is
+      # imported, so the value never took effect and the comment was wrong.
+
     steps:
       - uses: actions/checkout@v4
 
@@ -51,21 +77,89 @@ jobs:
         run: uv run ruff format --check .
 
       - name: Run full test suite
-        env:
-          APP_ENV: dev
-          # The dev OTP (fixed 123456, echoed in the response) is behind an explicit
-          # switch now — tests need it, production must never set it.
-          ALLOW_DEV_OTP: "true"
-          # 127.0.0.1 rather than localhost: localhost also resolves to ::1, and
-          # the service containers are published on IPv4 only. On a Linux runner
-          # the ::1 attempt is refused instantly, but pinning the family removes
-          # the ambiguity (and matches the app's own default).
-          POSTGRES_HOST: 127.0.0.1
-          POSTGRES_PORT: "5432"
-          POSTGRES_USER: realtaxi
-          POSTGRES_PASSWORD: realtaxi-ci
-          POSTGRES_DB: realtaxihk
-          REDIS_URL: redis://127.0.0.1:6379/0
-          # Must satisfy the entropy check (>= 32 chars, >= 8 distinct characters).
-          JWT_SECRET_KEY: ci-only-secret-not-for-prod-4f8a2c9e1b7d3065aa4e
         run: uv run pytest -q
+
+      # Not covered by pytest. This is the only thing that boots the app under
+      # APP_ENV=prod, and it had already rotted once from being absent here:
+      # two required prod settings were added later and nothing failed, so it
+      # sat at 6/7 without anyone seeing it.
+      - name: Prod boot fail-fast drill
+        run: uv run python scripts/verify/prod_boot_drill.py
+
+      # Also not covered by pytest. It compares every captured response fixture
+      # against the declared response_model — and `response_model=` is a filter,
+      # not an annotation: FastAPI silently drops any key it does not declare.
+      - name: Response-model contract audit
+        run: uv run python scripts/verify/audit_response_models.py
+
+  mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          # Pinned to the SDK the lockfile was resolved against (pubspec.lock
+          # declares dart >=3.12.0 / flutter >=3.44.0). Using `stable` instead
+          # would let a Flutter release break this job with no code change.
+          flutter-version: "3.44.0"
+          channel: stable
+          cache: true
+
+      - name: Resolve packages
+        run: flutter pub get
+
+      # The mobile README tells you to drive the analyzer through
+      # tool/dart_check.py instead. That is a workaround for the Windows dev
+      # sandbox, where the Dart VM cannot spawn pipe-using subprocesses
+      # (ERROR_PIPE_BUSY 231) — it is the same engine and the same
+      # analysis_options.yaml. On a Linux runner the standard analyzer works,
+      # so use it.
+      - name: Analyze
+        run: flutter analyze
+
+      # `dart <file>` goes through dartdev, which runs the native-assets build
+      # hook and dies on the sandbox. Passing --packages explicitly runs the VM
+      # straight on the script, which works on both platforms.
+      - name: Assertions
+        run: dart --packages=.dart_tool/package_config.json tool/run_tests.dart
+
+      - name: Wire-contract fixtures
+        run: dart --packages=.dart_tool/package_config.json tool/verify_contract.dart
+
+  admin-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: admin-web/web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: admin-web/web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # --no-file-parallelism --pool=forks mirrors the documented local command.
+      # The flags exist for the dev sandbox's fs shim; they are harmless here,
+      # and using the identical invocation keeps CI and local results
+      # comparable.
+      - name: Unit tests
+        run: npx vitest run --no-file-parallelism --pool=forks
+
+      - name: Build
+        run: npm run build

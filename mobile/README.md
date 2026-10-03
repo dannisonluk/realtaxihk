@@ -45,6 +45,11 @@ with the same `analysis_options.yaml`. Its docstring records the three
 non-obvious things about driving it — each of which silently produces "0
 diagnostics" rather than an error. Read it before debugging it.
 
+None of the above applies to CI. The `mobile` job in `.github/workflows/ci.yml`
+runs on a Linux runner, where the pipe bug does not exist, so it uses the
+standard `flutter analyze` rather than the LSP driver. The two agree on the
+verdict — same engine, same options file.
+
 `android/` was materialised from the Flutter SDK's own templates
 (`packages/flutter_tools/templates/app/`) rather than by `flutter create`, for
 the same reason. It is a normal Android project; nothing about it is special.
@@ -82,7 +87,7 @@ Two things to settle before a release build means anything:
 
 What *can* be verified here is the Dart source, and all of it passes: the four
 commands above (`tool/dart_check.py` reports 58 files / 0 diagnostics),
-`tool/run_tests.dart` (93 assertions) and `tool/verify_contract.dart`
+`tool/run_tests.dart` (97 assertions) and `tool/verify_contract.dart`
 (54 fixtures, 0 failures).
 
 ## The contract is verified, not assumed
@@ -90,7 +95,7 @@ commands above (`tool/dart_check.py` reports 58 files / 0 diagnostics),
 `/openapi.json` **used to** type almost nothing: 28 paths, with all but one
 response schema published as `{}`, because every response was a hand-built dict
 in `app/api/*`. That has since been fixed — the API now declares a
-`response_model=` on all 88 operations and the spec carries 127 schemas (see
+`response_model=` on all 89 operations and the spec carries 129 schemas (see
 `docs/WORK_SUMMARY.md` §2.10) — but the Dart models below were written when the
 spec was empty, so they are an *assumption* about the wire format. An assumption
 checked only by reading the Python is not checked at all.
@@ -227,7 +232,7 @@ then log in with any `+852` number and the code `123456`.
 dart --packages=.dart_tool/package_config.json tool/run_tests.dart
 ```
 
-93 assertions over the code with no Flutter dependency: money and date
+97 assertions over the code with no Flutter dependency: money and date
 formatting, the wire decoders, the enums, the error envelope, websocket frames,
 pagination, the models (including the fleet shapes), and the router redirect
 rules.
