@@ -211,9 +211,7 @@ class _Step extends StatelessWidget {
                 ),
               ),
               if (!last)
-                Expanded(
-                  child: Container(width: 2, color: accent.withValues(alpha: 0.35)),
-                ),
+                Expanded(child: Container(width: 2, color: accent.withValues(alpha: 0.35))),
             ],
           ),
           const SizedBox(width: AppTheme.space3),
@@ -298,21 +296,14 @@ class _FareBreakdown extends StatelessWidget {
             // One line per surcharge. `code` is the stable identifier; the
             // localised name is display-only.
             for (final FareSurcharge s in fare.surcharges)
-              DetailRow(
-                label: s.nameZh,
-                valueWidget: MoneyText(s.amount),
-              ),
+              DetailRow(label: s.nameZh, valueWidget: MoneyText(s.amount)),
 
-            if (!fare.tip.isZero)
-              DetailRow(label: '貼士', valueWidget: MoneyText(fare.tip)),
+            if (!fare.tip.isZero) DetailRow(label: '貼士', valueWidget: MoneyText(fare.tip)),
 
             const Divider(height: 24),
             DetailRow(
               label: '總額',
-              valueWidget: MoneyText(
-                fare.totalFare,
-                style: theme.textTheme.titleLarge,
-              ),
+              valueWidget: MoneyText(fare.totalFare, style: theme.textTheme.titleLarge),
             ),
 
             const SizedBox(height: AppTheme.space4),

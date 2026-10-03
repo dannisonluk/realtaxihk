@@ -31,9 +31,7 @@ class _AdminRefundsScreenState extends ConsumerState<AdminRefundsScreen> {
     final bool confirmed = await confirmDestructive(
       context,
       title: approve ? '批准退款？' : '拒絕退款？',
-      message: approve
-          ? '會即時付出 ${refund.amountHkd.hkd}，司機帳戶將終止，無法復原。'
-          : '會解除按金凍結，司機帳戶回復啟用。',
+      message: approve ? '會即時付出 ${refund.amountHkd.hkd}，司機帳戶將終止，無法復原。' : '會解除按金凍結，司機帳戶回復啟用。',
       confirmLabel: approve ? '確認批准' : '確認拒絕',
       cancelLabel: '取消',
     );

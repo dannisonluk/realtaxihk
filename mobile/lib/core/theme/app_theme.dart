@@ -268,12 +268,7 @@ abstract final class AppTheme {
     );
   }
 
-  static TextStyle _textStyle(
-    double size,
-    FontWeight weight,
-    Color color, {
-    double? height,
-  }) {
+  static TextStyle _textStyle(double size, FontWeight weight, Color color, {double? height}) {
     return TextStyle(
       fontSize: size,
       fontWeight: weight,

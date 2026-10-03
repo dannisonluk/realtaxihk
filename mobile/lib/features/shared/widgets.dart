@@ -152,11 +152,7 @@ class ErrorView extends StatelessWidget {
           children: <Widget>[
             Icon(Icons.error_outline, size: 44, color: theme.colorScheme.error),
             const SizedBox(height: AppTheme.space4),
-            Text(
-              error.userMessage,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyLarge,
-            ),
+            Text(error.userMessage, textAlign: TextAlign.center, style: theme.textTheme.bodyLarge),
             if (hint.isNotEmpty) ...<Widget>[
               const SizedBox(height: AppTheme.space2),
               Text(hint, textAlign: TextAlign.center, style: theme.textTheme.bodySmall),
@@ -237,9 +233,7 @@ class GroupedSection extends StatelessWidget {
           padding: const EdgeInsets.only(left: AppTheme.space4, bottom: AppTheme.space2),
           child: Text(
             title,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ),
         Card(
@@ -384,10 +378,7 @@ class DetailRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          SizedBox(
-            width: 132,
-            child: Text(label, style: theme.textTheme.bodyMedium),
-          ),
+          SizedBox(width: 132, child: Text(label, style: theme.textTheme.bodyMedium)),
           Expanded(
             child:
                 valueWidget ??

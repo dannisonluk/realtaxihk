@@ -100,11 +100,7 @@ class OrderHistoryController extends AsyncNotifier<OrderHistoryState> {
     );
 
     try {
-      final OrderPage page = await _repo.history(
-        role: _role,
-        limit: _pageSize,
-        beforeId: cursor,
-      );
+      final OrderPage page = await _repo.history(role: _role, limit: _pageSize, beforeId: cursor);
 
       // A page that returns nothing is the end, even if it looked full before:
       // treating it as "keep the cursor" would loop forever.
@@ -146,11 +142,8 @@ class OrderHistoryController extends AsyncNotifier<OrderHistoryState> {
     await future;
   }
 
-  static OrderHistoryState _exhausted(OrderHistoryState current) => OrderHistoryState(
-    items: current.items,
-    loadingMore: false,
-    exhausted: true,
-  );
+  static OrderHistoryState _exhausted(OrderHistoryState current) =>
+      OrderHistoryState(items: current.items, loadingMore: false, exhausted: true);
 }
 
 /// Keyed by role, matching `orderHistoryProvider`'s argument so the two can

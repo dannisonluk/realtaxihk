@@ -144,11 +144,7 @@ class _MapUnavailable extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(
-              Icons.map_outlined,
-              size: 44,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            Icon(Icons.map_outlined, size: 44, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: AppTheme.space3),
             Text('未設定 Google Maps 金鑰', style: theme.textTheme.titleSmall),
             const SizedBox(height: AppTheme.space2),

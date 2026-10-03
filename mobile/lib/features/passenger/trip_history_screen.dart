@@ -63,9 +63,7 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final AsyncValue<OrderHistoryState> history = ref.watch(
-      orderHistoryControllerProvider(_role),
-    );
+    final AsyncValue<OrderHistoryState> history = ref.watch(orderHistoryControllerProvider(_role));
 
     return Scaffold(
       appBar: AppBar(
@@ -92,8 +90,7 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
             );
           }
           return RefreshIndicator(
-            onRefresh: () =>
-                ref.read(orderHistoryControllerProvider(_role).notifier).refresh(),
+            onRefresh: () => ref.read(orderHistoryControllerProvider(_role).notifier).refresh(),
             child: ListView.separated(
               controller: _scroll,
               padding: const EdgeInsets.all(AppTheme.space4),

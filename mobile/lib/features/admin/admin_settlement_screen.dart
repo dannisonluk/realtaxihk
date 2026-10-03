@@ -78,8 +78,9 @@ class _AdminSettlementScreenState extends ConsumerState<AdminSettlementScreen> {
       _result = null;
     });
     try {
-      final SettlementPreview preview =
-          await ref.read(adminRepositoryProvider).previewWeeklySettlement(period: period);
+      final SettlementPreview preview = await ref
+          .read(adminRepositoryProvider)
+          .previewWeeklySettlement(period: period);
       if (mounted) {
         setState(() => _previewResult = preview);
       }

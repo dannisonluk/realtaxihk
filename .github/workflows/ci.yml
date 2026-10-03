@@ -163,6 +163,18 @@ jobs:
       - name: Resolve packages
         run: flutter pub get
 
+      # The mobile README states the standard as `dart format --line-length 100`,
+      # and until now nothing enforced it. It had already drifted: the Dart 3.12
+      # formatter joins lines the older one split, so eight files were
+      # non-conforming while `flutter analyze` stayed green (it checks the code,
+      # not its layout). `--set-exit-if-changed` is what makes this a gate rather
+      # than a report.
+      #
+      # The `--line-length 100` flag is not optional: the tool defaults to 80,
+      # and the repo is written at 100, so omitting it would flag every file.
+      - name: Format check
+        run: dart format --line-length 100 --output=none --set-exit-if-changed lib tool
+
       # The mobile README tells you to drive the analyzer through
       # tool/dart_check.py instead. That is a workaround for the Windows dev
       # sandbox, where the Dart VM cannot spawn pipe-using subprocesses
