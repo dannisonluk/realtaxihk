@@ -36,7 +36,9 @@
   Dart **97 passed** · contract **54 fixtures decoded, 0 failure** ·
   `dart_check` 58 files, 0 diagnostics · `audit_layout` **52 renders clean** ·
   `tool/check_contrast.py` OK · API **82 paths / 89 operations，全部已声明
-  response model** · fixture↔schema 审计 **68/68 块无数据丢失**。
+  response model** · fixture↔schema 审计 **68/68 块无数据丢失** ·
+  pyright（1.1.408）`app/` + `scripts/` + `tests/` **0 errors** —— `tests/` 原有
+  140 條，2026-10-03 清零（見 §7）。
 
 > **本文件的用途**：一份可以單獨看完的總覽。其他 `docs/*` 是**主題深入報告**；
 > `.workbuddy-ai/memory/*.md` 是**逐日流水**（append-only，不整理）。
@@ -70,7 +72,11 @@ commit）。**該文件是歷史記錄，刻意不更新** —— 裡面的測�
 
 ```bash
 uv run ruff check . && uv run ruff format --check .
-uv run mypy                                            # types; no DB needed
+uv run mypy                                            # types; no DB needed（只掃 app/）
+# pyright 不是 gate（mypy 才是，而 mypy 的 files 刻意只有 app/）。要交叉檢查
+# tests/ 或 scripts/ 時，需要臨時 pyrightconfig.json：
+#   {"venvPath":".","venv":".venv","pythonVersion":"3.12"}   ← 用完即刪，不要入 repo
+npx --yes pyright@1.1.408 app/ scripts/ tests/         # 現為 0 errors
 uv run pytest -q                                       # 961 passed（用 --junit-xml 讀，見下）
 uv run python scripts/verify/audit_response_models.py  # 68 块夹具 vs response_model，0 丢失
 cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run --no-file-parallelism --pool=forks
@@ -96,7 +102,7 @@ cd mobile && dart --packages=.dart_tool/package_config.json tool/verify_contract
 
 | 項目 | 阻塞原因 |
 |---|---|
-| **P1-1 WS token 走 `?token=`** | `app/api/ws.py` 仍是 query param。設計上**刻意如此**（瀏覽器 WS 無 header 通道），已有 `StripTokenQueryFilter` 兜底。反代已定為 nginx（`deploy/nginx/realtaxihk.conf`），其 `log_format` 用 `$uri` 而非 `$request_uri`，查詢字串（連 token）不會落地 —— **殘餘洩漏已封**。**仍待辦**：選定主機名（repo 內有**三種**拼法並存：文檔 `realtaxihk.com`、`app/api/ws.py` 註解 `realtaxi.hk`、nginx 註解區塊 `console.realtaxihk.com`）。nginx 檔內同時寫入憑證路徑，改錯會令 nginx **啟動失敗**而非警告。 |
+| **P1-1 WS token 走 `?token=`** | `app/api/ws.py` 仍是 query param。設計上**刻意如此**（瀏覽器 WS 無 header 通道），已有 `StripTokenQueryFilter` 兜底。反代已定為 nginx（`deploy/nginx/hkfastdc.conf`），其 `log_format` 用 `$uri` 而非 `$request_uri`，查詢字串（連 token）不會落地 —— **殘餘洩漏已封**。**仍待辦**：選定主機名（repo 內有**三種**拼法並存：文檔 `hkfastdc.com`、`app/api/ws.py` 註解 `hkfastdc.com`、nginx 註解區塊 `console.hkfastdc.com`）。nginx 檔內同時寫入憑證路徑，改錯會令 nginx **啟動失敗**而非警告。 |
 | **P1-4 備份 — off-host destination 未選擇** | script 已完成並實跑 PASS（`scripts/ops/db_backup.py`，27 tests，還原演練 49 tables / 17,627 rows 全對）。只剩**選擇 destination**。 |
 | **WhatsApp / FCM / Google Maps 未接** | config 欄位存在、env 空。需要三家 provider 的憑證。 |
 | **P2-2 遺留：部分退款** | 現時只做全額退還。 |
@@ -171,6 +177,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 | `docs/ADMIN_CONSOLE_DESIGN.md` | 後台九大模組設計 + 四級 RBAC | ✅ 大部分已實作 |
 | `docs/IN_TRIP_REDESIGN.md` | in-trip + 預約重設計：狀態機、schema、API、$5 平台費 | 設計提案，7 個 DECISION 全部已拍板 |
 | `docs/DEPLOYMENT_REQUIREMENTS.md` · `docs/DEPLOY_TARGET_DECISION.md` | 部署需求清單 / 選型取捨 | 選定後少變 |
+| **`docs/QA_TEST_ENVIRONMENT.md`** | **測試環境交接**：四個必改的環境變數、OTP 怎麼拿（**不會**出現在回應裡）、管理員怎麼建、三個客戶端各連哪個位址、10 條實際卡過的陷阱 | 跟設定更新 |
 | `docs/LANDMARK_COORDINATES.md` | 地標落客座標 + 深圳灣口岸幾何分析 | 覆核清單 |
 | `docs/REALTIME_POSITION_COST.md` | 實時位置每 tick 成本實測 + 5 項優化 | 已實測 |
 | `docs/ADMIN_AUTH.md` · `docs/DEVELOPMENT.md` §4 | 管理員認證模型 / ruff 規則集 | 少變 |
@@ -188,7 +195,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 |---|---|---|
 | `curl` 打 `127.0.0.1` 回 `502 upstream connect failed` | 沙盒 proxy 攔截，**即使該 port 根本沒有東西在聽** | 用 Python `urllib` + `ProxyHandler({})`；`NO_PROXY` 對 curl 不可靠 |
 | **Dart 完全無法開啟 child process**（`where` / `git` / `adb` 全部一樣）→ `flutter --version`、`dart analyze`、`dart run` 全失敗 | Dart 在 Windows 用**具名管道**接 child 的 stdio，沙盒令 `CreatePipe`/`CreateFile` 回 `ERROR_PIPE_BUSY (231)`。**停用沙盒也不行**，是 host 限制；Python 用匿名管道所以正常 | `dart --packages=.dart_tool/package_config.json <script>`（繞過 dartdev）；靜態檢查用 `python mobile/tool/dart_check.py mobile` |
-| **`flutter build apk`（CLI）跑唔到，但 APK 建得到** | `flutter` 第一件事是跑 `git log` → spawn `git.exe` → 231，**根本未到 Gradle**。**但 Gradle 本身不受影響** | 繞過 CLI 直接跑 `cd mobile/android && ./gradlew :app:assembleDebug` —— **2026-10-03 實測 BUILD SUCCESSFUL**，出 163 MB `app-debug.apk`（`hk.realtaxi.mobile`、minSdk 24 / targetSdk 36）。Flutter Gradle plugin 自己讀 `local.properties` 的 `flutter.sdk` 去驅動 `flutter assemble`，所以跳過的只是 CLI 的版本新鮮度檢查。CI 是 Linux，**沒有**這個問題 |
+| **`flutter build apk`（CLI）跑唔到，但 APK 建得到** | `flutter` 第一件事是跑 `git log` → spawn `git.exe` → 231，**根本未到 Gradle**。**但 Gradle 本身不受影響** | 繞過 CLI 直接跑 `cd mobile/android && ./gradlew :app:assembleDebug` —— **2026-10-03 實測 BUILD SUCCESSFUL**，出 163 MB `app-debug.apk`（`com.hkfastdc.mobile`、minSdk 24 / targetSdk 36）。Flutter Gradle plugin 自己讀 `local.properties` 的 `flutter.sdk` 去驅動 `flutter assemble`，所以跳過的只是 CLI 的版本新鮮度檢查。CI 是 Linux，**沒有**這個問題 |
 | **Gradle script 編譯 footer 的「N errors」會把警告一齊計入** | `ScriptCompilationException` 列出全部診斷（含 warning）再報總數 → 2 個真錯 + 1 個 `android { }` deprecation 會印成「3 errors」 | 睇每行有無 `e:` 前綴，同最終 `BUILD SUCCESSFUL`／exit code，唔好讀 footer 個數 |
 | Background server 無聲死 | Bash tool call 內 `cmd &` 隨 shell 退出被收割 | 用 `run_in_background=true` + `TaskStop` |
 | 用 `conftest.ADMIN_ID` mint token 打 live server → 401 | 它是每個 test session 隨機 `uuid4()` | 讀真 DB：`docker exec realtaxi-db psql -U realtaxi -d realtaxihk -c "SELECT id FROM users WHERE role='ADMIN';"` |
@@ -196,6 +203,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 | 本機完全沒有 `pg_dump` / `psql` / `createdb` | 只有 `realtaxi-db` container 裡面有 | `scripts/ops/db_backup.py --via auto` 自動 fallback 至 `docker exec` |
 | `subprocess.run(cmd, shell=True)` 回 0 但 command 是失敗的 | Windows 用 `cmd.exe`，`;` 不是分隔符 | 明確 `subprocess.run(["sh","-c",cmd])` |
 | 傳 Windows 路徑入 `sh -c` 會被吞掉反斜線 | `C:\Users\x` → `C:Usersx` | `.as_posix()` 傳正斜線 |
+| 對檔案做 byte 級取代時，明明存在的字串卻「找不到」 | **worktree 是混合換行**：`.gitattributes` 寫 `* text=auto eol=lf`、index 全是 LF，但部分檔案實際仍是 CRLF（由 Windows 工具寫入）。git 在 add 時正規化，所以 `git status` **完全看不出來** | 取代前先偵測該檔的換行再轉換；`git ls-files --eol` 的 `w/crlf` 就是這些檔 |
 
 ---
 

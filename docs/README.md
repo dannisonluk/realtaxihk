@@ -1,11 +1,11 @@
 # `docs/` — 文檔索引
 
-> **EN — Docs index.** Twelve living documents plus an `archive/` of dated
+> **EN — Docs index.** Thirteen living documents plus an `archive/` of dated
 > snapshots. Start with `ARCHITECTURE.md` if you want to understand the system,
 > `DEVELOPMENT.md` if you are about to change it, and `WORK_SUMMARY.md` if you
 > need to know what is still outstanding.
 >
-> **中文摘要**：12 份現行文檔 + 一個放歷史快照的 `archive/`。要**理解系統**讀
+> **中文摘要**：13 份現行文檔 + 一個放歷史快照的 `archive/`。要**理解系統**讀
 > `ARCHITECTURE.md`；要**動手改**讀 `DEVELOPMENT.md`；要知道**還欠什麼**讀
 > `WORK_SUMMARY.md`。
 
@@ -19,6 +19,7 @@
 | **要改後端／前端代碼** | [`DEVELOPMENT.md`](DEVELOPMENT.md)（規範 + 怪癖 + 方法論）→ [`ARCHITECTURE.md`](ARCHITECTURE.md) §10 不變式清單 |
 | **要上線／運維** | [`DEPLOYMENT_REQUIREMENTS.md`](DEPLOYMENT_REQUIREMENTS.md) → [`DEPLOY_TARGET_DECISION.md`](DEPLOY_TARGET_DECISION.md) → [`../deploy/README.md`](../deploy/README.md) |
 | **做安全審視** | [`SECURITY.md`](SECURITY.md) → [`archive/SECURITY_AUDIT.md`](archive/SECURITY_AUDIT.md) |
+| **做 QA／測試** | [`QA_TEST_ENVIRONMENT.md`](QA_TEST_ENVIRONMENT.md) |
 | **接手未完成的產品工作** | [`WORK_SUMMARY.md`](WORK_SUMMARY.md) §4 → [`IN_TRIP_REDESIGN.md`](IN_TRIP_REDESIGN.md) |
 
 ---
@@ -36,6 +37,7 @@
 | [`IN_TRIP_REDESIGN.md`](IN_TRIP_REDESIGN.md) | 未實作的 in-trip + 預約重設計：新狀態機、到達雙重驗證、違約扣款、schema、API、前端流程、$5 平台費（7 個 DECISION 已拍板） | 提案 |
 | [`DEPLOYMENT_REQUIREMENTS.md`](DEPLOYMENT_REQUIREMENTS.md) | 部署的硬約束、執行環境、**完整環境變數清單**、步驟、上線前 gap list | 清單 |
 | [`DEPLOY_TARGET_DECISION.md`](DEPLOY_TARGET_DECISION.md) | 部署選型 A/B/C 的取捨與成本，以及選定後的執行順序 | 決策 |
+| [`QA_TEST_ENVIRONMENT.md`](QA_TEST_ENVIRONMENT.md) | 測試環境交接：**四個必改的環境變數**、OTP 怎麼拿（**不會**出現在回應裡）、管理員怎麼建、三個客戶端各連哪個位址、10 條實際卡過的陷阱 | 清單 |
 | [`LANDMARK_COORDINATES.md`](LANDMARK_COORDINATES.md) | 19 個地標落客座標（供人手覆核）＋深圳灣口岸港方口岸區的完整幾何分析與法律依據 | 參考資料 |
 | [`REALTIME_POSITION_COST.md`](REALTIME_POSITION_COST.md) | 一個 GPS tick 的成本實測、不同並發下的開銷、擴展天花板、5 項按投報率排序的優化 | 分析 |
 | [`STRUCTURE_REVIEW.md`](STRUCTURE_REVIEW.md) | 目錄佈局的評估：已很好的部分、8 項按價值／風險排序的建議、以及比目錄更重要的那個結構盲點 | 評估 |
