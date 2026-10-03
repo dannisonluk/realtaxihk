@@ -19,6 +19,9 @@
 
 ```
 app/api/           HTTP 層——只做 I/O、驗證、錯誤映射。業務規則不寫在這裡。
+app/api/admin/     管理後台路由，一個資源一個模組（drivers / settlement / refunds /
+                   audit / accounts / orders / disputes / search / live；
+                   `_roles.py` 放角色閘門，`_shared.py` 放跨資源的 helper）
 app/api/schemas/   Pydantic 響應模型（見 §3.1 的警告）
 app/services/      領域邏輯——所有業務不變式住在這裡
 app/models/        SQLAlchemy 2.0 declarative，按 bounded context 拆包

@@ -943,7 +943,7 @@ P1 / P2 已確認：**行程生命週期事件從未被 publish**，
 | 11 | **`landmarks` 表（終點）+ 19 個種子 + `GET /landmarks`** | 新 `app/api/landmarks.py` + migration | 座標已驗證（含深圳灣口岸）；**落客位置待人手覆核**（DECISION-7） |
 | 12 | **預約單建立邏輯 + 背景廣播 job** | `app/api/orders.py` + `app/services/prebook_service.py` | 2h–3d 窗口，見 §3.6.4 |
 | 13 | **司機預約偏好** | `app/api/drivers.py` + `driver_booking_preferences` | 見 §3.6.5 |
-| 14 | admin dispute 端點（assign / resolve） | `app/api/admin.py` 或新 `dispute_admin.py` | + `AdminAuditLog` + RBAC |
+| 14 | admin dispute 端點（assign / resolve） | `app/api/admin/disputes.py`（原 `app/api/admin.py`，已拆包） | + `AdminAuditLog` + RBAC |
 | 15 | `order_events` 寫入 helper | 新 `app/services/order_event_service.py` | |
 | 16 | 通知整合 | `app/services/trip_hub` | **依賴 P2** |
 | 17 | 乘客 / 司機 / admin 前端 | `mobile/...` + `admin-web/web/src/pages/` | |

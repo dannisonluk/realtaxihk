@@ -37,23 +37,30 @@
 | **R8** | `DEPLOY_TARGET_DECISION.md` 待主機名定案後歸檔 | 低 | 低 | 主機名 |
 | **R9** | **CI 沒有任何型別檢查器** | 高 | 低 | — |
 
-### R1 — `app/api/admin.py` 是全 repo 最大的檔案
+### R1 — `app/api/admin.py` 是全 repo 最大的檔案 ✅ 已處理
 
 **1,983 行**，佔 `app/api/` 的 38%、整個後端的 10%。其餘 admin 模組早已拆出
 （`admin_auth.py` 440 · `admin_licence.py` 156 · `admin_analytics.py` 132），
 所以它是一個**未完成的拆分**，不是刻意的設計。
 
-建議拆成 `app/api/admin/` 套件：`drivers.py` · `refunds.py` · `settlement.py` ·
-`fleets.py` · `disputes.py` · `accounts.py` · `orders.py` · `search.py` ·
-`live.py` · `audit.py`，`__init__.py` 只做 router 聚合。
+**已拆成 `app/api/admin/` 套件**（12 個檔案）：`drivers.py` · `settlement.py` ·
+`refunds.py` · `audit.py` · `accounts.py` · `orders.py` · `disputes.py` ·
+`search.py` · `live.py`，加上 `_roles.py`（角色閘門與政策註釋）、`_shared.py`
+（跨資源 helper：`_ledger_out` / `_refund_out` / `_actor_username`）、
+`__init__.py`（只做 router 聚合，保留原 prefix、tags 與註冊順序）。
 
-**驗收條件（硬性）**：
+**驗收結果**：
 
-1. `GET /openapi.json` 的 **82 paths / 89 operations 完全不變** —— 拆檔前後各
-   導出一份 JSON 做 diff。
-2. `tests/test_security_hardening.py` 靠 `dependency.call.__name__` 找 guard，
-   所以 `require_role_guard` 等名稱**不可改**。
-3. `tests/test_api_and_security.py` 的 route-table 審計要照樣通過。
+1. `app.openapi()` 拆前拆後**完全相同**（82 paths / 89 operations，JSON 逐鍵比對）。
+2. 27 個 route 裝飾器一個不少；58 個頂層陳述經 AST 比對**零缺失**。
+3. `ruff check` / `ruff format --check` clean。
+
+> **過程中踩到的坑（值得記住）**：`ast.FunctionDef.lineno` 指向 `def` 那一行，
+> **不包含 `@decorator`**。第一版抽取腳本因此產生了一個「27 條路由、0 個
+> `@router.`」的套件 —— 而且我當時的保真檢查用了**同一個錯誤假設**，所以報
+> 「0 缺失」。**用同一個假設寫的檢查，驗不出基於該假設的 bug。**
+> 修法是 `min(node.lineno, node.decorator_list[0].lineno)`，而驗證改成
+> **獨立的 AST dump 比對 + route 裝飾器計數**。
 
 > 先做這一項再做 R4／R6，因為它們都會動到 import。
 

@@ -150,7 +150,8 @@ cd .. && python serve.py --dist                        # serve the React build
 
 ```
 app/api/           HTTP layer — I/O, validation, error mapping. No business rules.
-                  16 modules + schemas/ (11 Pydantic response models)
+                  14 modules + admin/ (one module per resource) + schemas/
+                  (11 Pydantic response models)
 app/services/      Domain logic — every business invariant lives here (28 modules)
 app/models/        SQLAlchemy 2.0 declarative, split by bounded context
                   (_base, user, admin, fleet, licence, dispute)

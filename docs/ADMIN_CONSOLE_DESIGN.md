@@ -10,7 +10,9 @@
 > 頭像上傳、六個後台畫面（`admin-web/web/src/pages/`）；未實作：工單系統、部分批量
 > 操作。總覽見 `docs/WORK_SUMMARY.md` §2.11。**行號引用已失效**：`app/models/` 已由
 > 單一 `__init__.py`（886 行）拆成 5 個 bounded-context 模組，
-> `app/models/__init__.py:<line>` 不再準確；檔案層級路徑（`app/api/admin.py` 等）仍有效。
+> `app/models/__init__.py:<line>` 不再準確；檔案層級路徑（`app/api/admin.py` 等）仍有效 ——
+> 惟 `app/api/admin.py` 已於 2026-10-03 拆成 `app/api/admin/` 套件，見
+> `docs/STRUCTURE_REVIEW.md` R1。
 
 ---
 
@@ -33,9 +35,9 @@
 
 | 缺口 | 當時問題 | 現狀（已實作） |
 |---|---|---|
-| A 稽核覆蓋 | 只有登入類 event（`EV_LOGIN`、`EV_LOGIN_FAILED`、`EV_LOCKED`、`EV_TOTP_VERIFY`、`EV_TOTP_FAILED`、`EV_TOTP_ENROLLED`、`EV_RECOVERY_USED`、`EV_RECOVERY_REGENERATED`）；KYC／保證金 grant／adjust／退款／結算／車隊等動作零稽核。 | `app/api/admin.py` 有 **17 個 `record_audit` 調用點**、13 個事件（見 §7）；動錢與動狀態動作皆留稽核列（`payload` 欄見 migration `a1c4e8b7f209`）；搜尋刻意不逐次審計。 |
+| A 稽核覆蓋 | 只有登入類 event（`EV_LOGIN`、`EV_LOGIN_FAILED`、`EV_LOCKED`、`EV_TOTP_VERIFY`、`EV_TOTP_FAILED`、`EV_TOTP_ENROLLED`、`EV_RECOVERY_USED`、`EV_RECOVERY_REGENERATED`）；KYC／保證金 grant／adjust／退款／結算／車隊等動作零稽核。 | `app/api/admin/`（原 `admin.py`，已拆包）有 **17 個 `record_audit` 調用點**、13 個事件（見 §7）；動錢與動狀態動作皆留稽核列（`payload` 欄見 migration `a1c4e8b7f209`）；搜尋刻意不逐次審計。 |
 | B 無 RBAC | `AdminAccount`（`app/models/admin.py:108`）無 role；`require_admin`（`app/core/deps.py:324`）為二元判斷；`_admin_out`（`app/api/admin_auth.py:414`）不回角色；`Shell.tsx` 的 `NAV` 無 role 條件。 | `AdminAccount.role`（`app/models/admin.py:108`）儲存等級；四級 `AdminRole`（`SUPPORT < OPERATIONS < FINANCE < SUPER_ADMIN`）以 **rank 比較**作 gate（`require_role`，`app/core/deps.py:324`），每 request 重讀 live row，不信 token 的 `admin_role` claim。 |
-| C 無爭議載體 | 全庫無 support ticket / dispute / complaint 表；投訴無 SLA、指派、狀態流。 | `OrderDispute` + `DisputeMessage`（`app/models/dispute.py`）已建表；`app/api/admin.py` 有 11 處爭議處理，含 SLA、指派、狀態流與裁決。 |
+| C 無爭議載體 | 全庫無 support ticket / dispute / complaint 表；投訴無 SLA、指派、狀態流。 | `OrderDispute` + `DisputeMessage`（`app/models/dispute.py`）已建表；`app/api/admin/`（原 `admin.py`）有 11 處爭議處理，含 SLA、指派、狀態流與裁決。 |
 
 `AdminAuditLog`（`app/models/admin.py:281`）：append-only、`admin_id` 可為 NULL、
 記 IP / user-agent、`created_at` 有索引、應用層無 UPDATE/DELETE 路徑。
