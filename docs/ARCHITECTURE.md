@@ -1,8 +1,9 @@
 # 架構與業務邏輯導讀
 
-> **這份文檔的定位**：`docs/` 下已經有 9,000 行文檔，但全部是**審查報告**與
-> **工作日誌**的性質——它們回答「之前發現了什麼問題、怎樣修的」。
-> 這一節回答的是另一個問題：**系統今天是怎樣運作的，為什麼這樣設計**。
+> **這份文檔的定位**：`docs/` 下的其他文檔分成兩類 —— **現行指引**（規範、安全、
+> 部署、索引）與**歷史快照**（審查報告、逐行審閱、工作日誌，已歸檔到
+> `docs/archive/`）。它們回答「要遵守什麼」與「之前發現了什麼問題、怎樣修的」。
+> 這一節回答的是第三個問題：**系統今天是怎樣運作的，為什麼這樣設計**。
 >
 > 讀者假設：你懂 Python / FastAPI / PostgreSQL，但第一次接觸這個 repo。
 > 讀完你應該能夠：講出「一程車由叫車到收費」的完整流程、知道錢在哪裡被改動、
@@ -592,11 +593,14 @@ CI 是 ubuntu，沙盒是 Windows。`Path("C:/x").is_absolute()` 兩邊答案相
 | 想了解 | 讀 |
 |---|---|
 | 全部未做項與阻塞 | [`WORK_SUMMARY.md`](WORK_SUMMARY.md) §4 |
-| 審計與修復記錄（4 bug / 7 P0 / 10 P1 / 10 P2） | [`PRODUCTION_READINESS.md`](PRODUCTION_READINESS.md) |
-| 安全發現 SEC-01..31 | [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) |
-| 最新一輪審查（1546 行） | [`CODE_REVIEW_2026-10-12.md`](CODE_REVIEW_2026-10-12.md) |
+| 要動手改代碼的規範、怪癖、lint gate | [`DEVELOPMENT.md`](DEVELOPMENT.md) |
+| 文檔全貌 | [`README.md`](README.md)（本目錄索引） |
 | 管理後台設計 | [`ADMIN_CONSOLE_DESIGN.md`](ADMIN_CONSOLE_DESIGN.md) |
+| 未實作的 in-trip 重設計 | [`IN_TRIP_REDESIGN.md`](IN_TRIP_REDESIGN.md) |
 | 地理圍欄座標與法律依據 | [`LANDMARK_COORDINATES.md`](LANDMARK_COORDINATES.md) |
 | 部署需求與目標決策 | [`DEPLOYMENT_REQUIREMENTS.md`](DEPLOYMENT_REQUIREMENTS.md) · [`DEPLOY_TARGET_DECISION.md`](DEPLOY_TARGET_DECISION.md) |
+| 審計與修復記錄（歷史快照） | [`archive/PRODUCTION_READINESS.md`](archive/PRODUCTION_READINESS.md) |
+| 安全發現 SEC-01..31（歷史快照） | [`archive/SECURITY_AUDIT.md`](archive/SECURITY_AUDIT.md) |
+| 逐行審閱與 UI 審查（歷史快照） | [`archive/`](archive/README.md) |
 | 腳本工具群 | [`../scripts/README.md`](../scripts/README.md) |
 | Mobile 客戶端 | [`../mobile/README.md`](../mobile/README.md) |

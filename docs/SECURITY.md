@@ -3,7 +3,7 @@
 > **EN — Summary.** The consolidated security picture, in three parts:
 > **verified controls** (the ones actually exercised, not merely intended),
 > **fixed findings** (mapped to severity, cross-referenced to
-> [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md)), and a **hardening roadmap**.
+> [`archive/SECURITY_AUDIT.md`](archive/SECURITY_AUDIT.md)), and a **hardening roadmap**.
 > Anything marked 實測 / *measured* was produced by a real process, an RFC test
 > vector, or a randomised sample — never by reading the code and reasoning about
 > it.
@@ -19,7 +19,7 @@
 >   booted with a repo-committed JWT secret* until SEC-04/05 were fixed.
 >
 > **中文摘要**：本文分三部分——**已實測驗證的安全控制**、**已修復的發現**
-> （附嚴重度，對應 `SECURITY_AUDIT.md`）、**加固路線圖**。
+> （附嚴重度，對應 `archive/SECURITY_AUDIT.md`）、**加固路線圖**。
 > 凡標「實測」者，都是用真實進程／RFC 向量／隨機取樣跑出來的結論，
 > 不是讀 code 的推測。
 

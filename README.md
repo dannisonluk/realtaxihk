@@ -6,18 +6,18 @@ three roles, and a web admin console.
 
 > 香港的士配對平台，走**資訊中介**定位（非承運人）。一個 repo 內含三件完整交付物。
 
-**Status: production-hardened.** 955 backend tests · 97 mobile assertions · 54
+**Status: production-hardened.** 960 backend tests · 97 mobile assertions · 54
 contract fixtures · 69 console tests · browser UI verifier PASS.
 
 **New here? Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first** — a guided
 tour of how a trip flows from hail to settlement, where money is allowed to
-change, and which invariants are load-bearing.
+change, and which invariants are load-bearing. Then read
+[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before you change anything.
 Full picture: [`docs/WORK_SUMMARY.md`](docs/WORK_SUMMARY.md) — what's built,
-what's verified, what still needs credentials. Audit + fix log:
-[`docs/PRODUCTION_READINESS.md`](docs/PRODUCTION_READINESS.md)
-(4 bugs, 7 P0, 10 P1, 10 P2 — all closed).
-Security: [`docs/SECURITY.md`](docs/SECURITY.md) ·
-[`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md) (SEC-01..31).
+what's verified, what still needs credentials. Security:
+[`docs/SECURITY.md`](docs/SECURITY.md). Document index:
+[`docs/README.md`](docs/README.md) — dated audits and reviews now live in
+[`docs/archive/`](docs/archive/README.md).
 
 ---
 
@@ -57,8 +57,9 @@ carries the passenger.
 | 2 | **Mobile** | `mobile/` | 56 Dart files · 10,108 LOC | Flutter 3.44 · Riverpod · go_router · Dio · flutter_secure_storage |
 | 3 | **Admin console** | `admin-web/` | 46 TS/TSX files · 15,271 LOC | React 18 + Vite + TypeScript (current) · hand-written ES modules (legacy) |
 
-Plus the glue that keeps them honest: `scripts/` (21 tools), `tests/` (38 files),
-`docs/` (17 documents), `alembic/` (11 migrations), `deploy/`.
+Plus the glue that keeps them honest: `scripts/` (21 tools), `tests/` (39 files),
+`docs/` (12 living documents + `docs/archive/` for dated snapshots),
+`alembic/` (11 migrations), `deploy/`.
 
 ### 1.3 How they fit together
 
@@ -116,7 +117,7 @@ cp .env.example .env          # adjust if needed; see §8.2 Configuration
 # 4. run + verify
 .venv/Scripts/python scripts/dev/serve_and_probe.py   # detached uvicorn + health wait
 .venv/Scripts/python scripts/verify/verify_api.py     # one-shot API smoke
-.venv/Scripts/python -m pytest -q                     # 955 tests
+.venv/Scripts/python -m pytest -q                     # 960 tests
 uv run ruff check . && uv run ruff format --check .
 ```
 
@@ -502,7 +503,7 @@ npm run typecheck && npx vitest run && npm run build
 
 | Suite | Count | Covers |
 |---|---|---|
-| `tests/` (38 files) | **955** | fare unit · per-module API · WS streaming · fleets/roster/settlement · backup retention + restore drill · console contrast · hardening regressions |
+| `tests/` (39 files) | **960** | fare unit · per-module API · WS streaming · fleets/roster/settlement · backup retention + restore drill · console contrast · hardening regressions |
 | `mobile/tool/run_tests.dart` | **97** | Dart unit assertions |
 | `mobile/tool/verify_contract.dart` | **54 fixtures** | every wire shape, decoded by the real models |
 | `admin-web/web` (vitest) | **69** | page-level behaviour |
@@ -529,7 +530,8 @@ These answer questions, they do not just exercise code:
 ```
 
 The two security scripts boot their own uvicorn on `:8000` and only create
-throwaway users/orders. See [`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md)
+throwaway users/orders. See
+[`docs/archive/SECURITY_AUDIT.md`](docs/archive/SECURITY_AUDIT.md)
 for what each check maps to.
 
 ### 7.4 CI
@@ -647,7 +649,7 @@ mobile/           Flutter client (Android first) — see §4
 admin-web/        Web console, React + legacy — see §5
 
 alembic/          async migrations (postgis tables filtered via include_object)
-tests/            38 pytest files — the only place migrations are actually run
+tests/            39 pytest files — the only place migrations are actually run
 scripts/          tooling, grouped by what you are doing
   ops/              operate a real environment — db_backup, create_admin,
                     create_admin_account, enrol_admin_totp
@@ -659,7 +661,7 @@ scripts/          tooling, grouped by what you are doing
   _root.py          the repo root, computed once (not fifteen times)
 
 deploy/           nginx TLS terminator + README
-docs/             18 documents — start with ARCHITECTURE.md
+docs/             12 living documents + archive/ — start with docs/README.md
 docker-compose.yml
 docker-compose.prod.yml   overlay, not standalone
 Dockerfile        multi-stage; `uv sync --frozen`
@@ -667,21 +669,21 @@ Dockerfile        multi-stage; `uv sync --frozen`
 
 ### 9.1 Documentation map
 
+Start at [`docs/README.md`](docs/README.md) — the index, with "where do I read
+what" by role.
+
 | Document | Read it for |
 |---|---|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **Start here** — guided tour, business flow, invariants |
-| [`docs/WORK_SUMMARY.md`](docs/WORK_SUMMARY.md) | Everything done, everything outstanding |
-| [`docs/PROJECT_UNDERSTANDING.md`](docs/PROJECT_UNDERSTANDING.md) | Scope, scale table, known traps |
+| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Conventions, backend quirks, lint gate, methodology |
+| [`docs/WORK_SUMMARY.md`](docs/WORK_SUMMARY.md) | Current state, everything outstanding |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Security model + hardening guide |
-| [`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md) | SEC-01..31, severity + evidence |
-| [`docs/PRODUCTION_READINESS.md`](docs/PRODUCTION_READINESS.md) | The audit and fix log |
-| [`docs/CODE_REVIEW_2026-10-12.md`](docs/CODE_REVIEW_2026-10-12.md) | Latest full review |
-| [`docs/ADMIN_CONSOLE_DESIGN.md`](docs/ADMIN_CONSOLE_DESIGN.md) | Console design |
-| [`docs/IN_TRIP_REDESIGN.md`](docs/IN_TRIP_REDESIGN.md) | Planned P4 trip redesign |
+| [`docs/ADMIN_AUTH.md`](docs/ADMIN_AUTH.md) | Admin auth model, authenticator choice |
+| [`docs/ADMIN_CONSOLE_DESIGN.md`](docs/ADMIN_CONSOLE_DESIGN.md) | Console design + four-level RBAC |
+| [`docs/IN_TRIP_REDESIGN.md`](docs/IN_TRIP_REDESIGN.md) | Planned in-trip + pre-booking redesign |
 | [`docs/DEPLOYMENT_REQUIREMENTS.md`](docs/DEPLOYMENT_REQUIREMENTS.md) | What deploy needs |
 | [`docs/DEPLOY_TARGET_DECISION.md`](docs/DEPLOY_TARGET_DECISION.md) | Target decision + rationale |
 | [`docs/REALTIME_POSITION_COST.md`](docs/REALTIME_POSITION_COST.md) | Cost model for live position |
 | [`docs/LANDMARK_COORDINATES.md`](docs/LANDMARK_COORDINATES.md) | Boundary coordinates + legal basis |
-| [`docs/UI_DESIGN_REVIEW_2026-10-02.md`](docs/UI_DESIGN_REVIEW_2026-10-02.md) | UI review |
-| [`docs/LINTING.md`](docs/LINTING.md) | Lint gate + cleanup log |
+| [`docs/archive/`](docs/archive/README.md) | **Dated snapshots — not updated.** Audits, code reviews, UI review, work log |
 | [`scripts/README.md`](scripts/README.md) · [`mobile/README.md`](mobile/README.md) · [`admin-web/README.md`](admin-web/README.md) · [`deploy/README.md`](deploy/README.md) | Per-area detail |

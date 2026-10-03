@@ -24,3 +24,6 @@ admin-web/tool/.ui-check/
 # Vite drops a timestamped copy of the resolved config next to it on every
 # build. Machine-specific by construction — committing it is pure churn.
 admin-web/web/vite.config.ts.timestamp-*.mjs
+# Output of the VS Code "Code Counter" extension: per-machine line counts.
+# Regenerated on demand, different on every checkout.
+.VSCodeCounter/
