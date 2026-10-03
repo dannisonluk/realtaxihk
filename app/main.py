@@ -36,7 +36,7 @@ from app.api.fleets import router as fleets_router
 from app.api.identity import router as identity_router
 from app.api.licence import router as licence_router
 from app.api.orders import router as orders_router
-from app.api.service_area import router as service_area_router
+from app.api.service_area_route import router as service_area_router
 from app.api.tracking import router as tracking_router
 from app.api.trips import router as trips_router
 from app.api.ws import router as ws_router

@@ -111,12 +111,14 @@ React build（`web/`）、驗證腳本（`tool/`）、`serve.py`、`README.md`�
 都要改。這是本清單中改動面最廣的一項 —— 要做的話，先加一層
 `app/services/__init__.py` re-export 再搬，才享有同樣的零改動。
 
-### R7 — `service_area` 兩份同名
+### R7 — `service_area` 兩份同名 ✅ 已處理
 
 `app/api/service_area.py`（70 行，endpoint）與 `app/core/service_area.py`
 （59 行，強制執行的閘門）**是刻意不同的兩層**，docstring 也講清楚了 ——
-但同名會令 grep 與閱讀容易搞混。建議把 route 那份改名為
-`app/api/service_area_route.py`。低風險。
+但同名會令 grep 與閱讀容易搞混。
+
+**已改名為 `app/api/service_area_route.py`**（唯一外部引用是 `app/main.py`）。
+`app.openapi()` 前後完全一致。
 
 ### R9 — CI 沒有任何型別檢查器（本回合發現的實際代價）
 

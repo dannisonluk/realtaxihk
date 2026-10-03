@@ -119,7 +119,8 @@ RBAC 的設計理由（為什麼是四級、為什麼排名比較、為什麼必
 11. **`app.routes` 抽不到 `response_model`**：此 FastAPI 版本把 `include_router`
     包成 `_IncludedRouter` 不攤平 —— 行 `app.routes` 只見 21 條且全部 `MISSING`。
     **要用 `app.openapi()`**。
-12. **`app/api/service_area.py` 與 `app/core/service_area.py` 同名**，看路徑。
+12. **`app/api/service_area_route.py` 是 HTTP 端點，`app/core/service_area.py` 是
+    強制執行的閘門** —— 兩層不同，名字刻意區分（兩者曾經同名，grep 時極易搞混）。
     `tracking.py` 掛 `/api/v1/drivers`（複數）。
 
 ### 3.1 響應模型：`response_model=` 是過濾器，不是註解
