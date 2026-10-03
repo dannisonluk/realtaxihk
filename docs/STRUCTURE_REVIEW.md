@@ -25,17 +25,17 @@
 
 ## 2. 建議（按價值／風險排序）
 
-| # | 項目 | 價值 | 風險 | 依賴 |
+| # | 項目 | 價值 | 風險 | 狀態 |
 |---|---|---|---|---|
-| **R1** | 拆 `app/api/admin.py`（1,983 行） | 高 | 中 | — |
-| **R2** | `tests/` 由 39 個平鋪檔分組 | 高 | 低 | — |
-| **R3** | mobile 測試搬入 `test/`，用 `flutter test` | 中高 | 中 | — |
-| **R4** | 加 `app/api/router.py` 集中掛載 | 中 | 低 | R1 |
-| **R5** | `admin-web/` legacy 三件搬入 `legacy/` | 中 | 低中 | — |
-| **R6** | `app/services/` 27 個平鋪檔按 context 分組 | 中 | 中 | R1 |
-| **R7** | `service_area` 兩份同名 | 低中 | 低 | — |
-| **R8** | `DEPLOY_TARGET_DECISION.md` 待主機名定案後歸檔 | 低 | 低 | 主機名 |
-| **R9** | **CI 沒有任何型別檢查器** | 高 | 低 | — |
+| **R1** | 拆 `app/api/admin.py`（1,983 行） | 高 | 中 | ✅ 已完成 |
+| **R2** | `tests/` 由 39 個平鋪檔分組 | 高 | 低 | ✅ 已完成 |
+| **R3** | mobile 測試搬入 `test/`，用 `flutter test` | 中低 | 中 | ⛔ **未做** —— 見下方說明 |
+| **R4** | 加 `app/api/router.py` 集中掛載 | 中 | 低 | ✅ 已完成 |
+| **R5** | `admin-web/` legacy 三件搬入 `legacy/` | 中 | 低中 | ✅ 已完成 |
+| **R6** | `app/services/` 27 個平鋪檔按 context 分組 | 中 | 中 | ✅ 已完成 |
+| **R7** | `service_area` 兩份同名 | 低中 | 低 | ✅ 已完成 |
+| **R8** | `DEPLOY_TARGET_DECISION.md` 待主機名定案後歸檔 | 低 | 低 | ⏸ 待主機名 |
+| **R9** | CI 沒有任何型別檢查器 | 高 | 低 | ✅ 已完成（並抓出一個真 bug） |
 
 ### R1 — `app/api/admin.py` 是全 repo 最大的檔案 ✅ 已處理
 
@@ -90,18 +90,37 @@
 
 驗證：`pytest --junit-xml` 讀出仍是 **960 passed / 0 failed**；ruff clean。
 
-### R3 — mobile 的測試不在 `test/`
+### R3 — mobile 的測試不在 `test/` ⛔ 未做（刻意）
 
 `mobile/test/` 只有 `fixtures/`；97 條斷言住在手寫 harness
-`mobile/tool/run_tests.dart`。這是**沙盒限制造成的繞路**（本機跑不到
-`flutter test`），但 **CI 是 Linux，跑得到**。
+`mobile/tool/run_tests.dart`，靠 `dart --packages=… tool/run_tests.dart` 執行。
 
-搬成 `mobile/test/*_test.dart`（`package:flutter_test`）之後：CI 可以用
-`flutter test` 取代 `dart --packages=… tool/run_tests.dart`，
-`verify_contract.dart`（54 fixtures）同理。價值是**刪掉一套自製 harness**。
+**先更正我在 §2 給的價值評級。** 我原本寫「中高」，前提是「CI 跑不到這些斷言」——
+**這是錯的**。CI 的 `mobile` job 已經在跑 `dart --packages=… tool/run_tests.dart`
+與 `verify_contract.dart`，所以**沒有任何覆蓋缺口**。R3 真正的價值只有兩個：
+刪掉一套自製 harness（美觀）、以及讓日後可以寫 widget test。
 
-**風險**：要逐條移植 97 條斷言並確認數目不變；`dart_check.py` 仍要保留（本機
-唯一能做的靜態檢查）。
+**不做，因為在本機無法驗證。** 這一節原本的風險描述寫得對，但低估了程度：
+
+- `flutter test` 需要 Flutter tool，而它一啟動就跑 `git log` 取版本新鮮度 →
+  spawn `git.exe` → 實測**崩潰**（`ProcessException … OS error code: 231`，
+  即 `ERROR_PIPE_BUSY`）；`flutter --version` 同樣崩潰。
+- `dart analyze` 也在 `runDartdev` 失敗（同一根因）。
+- `package:test` **根本沒有安裝**（`pubspec.lock` 只有 `flutter_test` 與
+  `test_api`），而加它要跑 `pub get` —— 一樣跑不到。
+
+所以要嘛寫出**無法執行、無法解析**的檔案，要嘛違反本專案「全部實跑」的規則。
+**兩者都不接受**，所以這一項留給有可用 Flutter SDK 的機器。
+
+**移植時要守住的量**（本回合實測，作為驗收基線）：
+
+| 檔案 | 現況 |
+|---|---|
+| `mobile/tool/run_tests.dart` | **97 passed, 0 failed** |
+| `mobile/tool/verify_contract.dart` | **54 fixture(s) decoded, 0 failure(s)** |
+
+harness 自己的 docstring 已經寫明它是「遷移清單」；10 個 `_xTests()` 函式就是
+10 個目標檔案的骨架。`dart_check.py` 要保留 —— 它是本機唯一能做的靜態檢查。
 
 ### R4 — 路由掛載集中在 `main.py` ✅ 已處理
 
