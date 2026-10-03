@@ -187,8 +187,9 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 | 症狀 | 真因 | 解法 |
 |---|---|---|
 | `curl` 打 `127.0.0.1` 回 `502 upstream connect failed` | 沙盒 proxy 攔截，**即使該 port 根本沒有東西在聽** | 用 Python `urllib` + `ProxyHandler({})`；`NO_PROXY` 對 curl 不可靠 |
-| **Dart 完全無法開啟 child process**（`where` / `git` / `adb` 全部一樣）→ `flutter --version`、`flutter build apk`、`dart analyze`、`dart run` 全失敗 | Dart 在 Windows 用**具名管道**接 child 的 stdio，沙盒令 `CreatePipe`/`CreateFile` 回 `ERROR_PIPE_BUSY (231)`。**停用沙盒也不行**，是 host 限制；Python 用匿名管道所以正常 | `dart --packages=.dart_tool/package_config.json <script>`（繞過 dartdev）；靜態檢查用 `python mobile/tool/dart_check.py mobile` |
-| **`flutter build apk` 在此沙盒做不到** | `flutter` 第一件事是跑 `git log` → spawn `git.exe` → 231，**根本未到 Gradle** | 在 host / CI 跑 `cd mobile && flutter build apk --debug`。CI 是 Linux，**沒有**這個問題 |
+| **Dart 完全無法開啟 child process**（`where` / `git` / `adb` 全部一樣）→ `flutter --version`、`dart analyze`、`dart run` 全失敗 | Dart 在 Windows 用**具名管道**接 child 的 stdio，沙盒令 `CreatePipe`/`CreateFile` 回 `ERROR_PIPE_BUSY (231)`。**停用沙盒也不行**，是 host 限制；Python 用匿名管道所以正常 | `dart --packages=.dart_tool/package_config.json <script>`（繞過 dartdev）；靜態檢查用 `python mobile/tool/dart_check.py mobile` |
+| **`flutter build apk`（CLI）跑唔到，但 APK 建得到** | `flutter` 第一件事是跑 `git log` → spawn `git.exe` → 231，**根本未到 Gradle**。**但 Gradle 本身不受影響** | 繞過 CLI 直接跑 `cd mobile/android && ./gradlew :app:assembleDebug` —— **2026-10-03 實測 BUILD SUCCESSFUL**，出 163 MB `app-debug.apk`（`hk.realtaxi.mobile`、minSdk 24 / targetSdk 36）。Flutter Gradle plugin 自己讀 `local.properties` 的 `flutter.sdk` 去驅動 `flutter assemble`，所以跳過的只是 CLI 的版本新鮮度檢查。CI 是 Linux，**沒有**這個問題 |
+| **Gradle script 編譯 footer 的「N errors」會把警告一齊計入** | `ScriptCompilationException` 列出全部診斷（含 warning）再報總數 → 2 個真錯 + 1 個 `android { }` deprecation 會印成「3 errors」 | 睇每行有無 `e:` 前綴，同最終 `BUILD SUCCESSFUL`／exit code，唔好讀 footer 個數 |
 | Background server 無聲死 | Bash tool call 內 `cmd &` 隨 shell 退出被收割 | 用 `run_in_background=true` + `TaskStop` |
 | 用 `conftest.ADMIN_ID` mint token 打 live server → 401 | 它是每個 test session 隨機 `uuid4()` | 讀真 DB：`docker exec realtaxi-db psql -U realtaxi -d realtaxihk -c "SELECT id FROM users WHERE role='ADMIN';"` |
 | 要 login 但 OTP code 不在 response（SEC-02） | 刻意設計 | `ALLOW_DEV_OTP=true` + code `123456` |

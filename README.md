@@ -127,9 +127,11 @@ On Linux/macOS use `.venv/bin/python` instead of `.venv/Scripts/python`.
 
 ```bash
 cd mobile
-flutter pub get          # on a host/CI machine — see the note in §4.1
-flutter build apk --debug
+flutter pub get          # needs the Flutter CLI — on a host/CI machine, see §4.4
+cd android && ./gradlew :app:assembleDebug   # → build/app/outputs/flutter-apk/app-debug.apk
 ```
+
+> `./gradlew` works even in the sandbox; the `flutter` CLI does not. See §4.4.
 
 ### 2.3 Admin console
 
@@ -363,7 +365,11 @@ uses anonymous pipes, so it works). It is the same engine `dart analyze` would
 use, with the same `analysis_options.yaml`. `--packages=` bypasses `dartdev`,
 which is what trips the native-assets build hook.
 
-> Build the APK on a host or in CI: `cd mobile && flutter build apk --debug`.
+> **The APK does build in this environment — bypass the CLI and call Gradle:**
+> `cd mobile/android && ./gradlew :app:assembleDebug`. Only the `flutter` CLI
+> dies (its version check spawns `git`); the Flutter Gradle plugin reads
+> `flutter.sdk` from `local.properties` and runs the same build. On a host or in
+> CI, `cd mobile && flutter build apk --debug` works too.
 
 See [`mobile/README.md`](mobile/README.md) for the full detail, including the
 three ways the LSP driver silently reports "0 diagnostics" while being wrong.

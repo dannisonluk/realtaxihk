@@ -56,9 +56,9 @@ the same reason. It is a normal Android project; nothing about it is special.
 
 ## Building an APK
 
-**Cannot be done on this machine** — it is the same pipe bug, and it fails
-before Gradle is ever reached. `flutter build apk` starts by running
-`git log` to check version freshness, which is a subprocess:
+`flutter build apk` **cannot run on this machine** — the `flutter` CLI's first
+act is a version-freshness `git log`, which is a subprocess, so it dies on the
+pipe bug before Gradle is ever reached:
 
 ```
 ProcessPackageException: ProcessException: 所有的管道例項都在使用中。
@@ -66,12 +66,20 @@ ProcessPackageException: ProcessException: 所有的管道例項都在使用中�
       at _DefaultProcessUtils.runSync (package:flutter_tools/src/base/process.dart:484)
 ```
 
-Run it on the host or in CI instead:
+**Gradle itself is unaffected, so call it directly and the APK does build here.**
+Verified on 2026-10-03: a 163 MB `app-debug.apk`, package `hk.realtaxi.mobile`,
+`minSdk 24 / targetSdk 36`, with the geolocator and network permissions merged in
+and `com.google.android.geo.API_KEY` resolved to empty as expected.
 
 ```bash
-cd mobile
-flutter build apk --debug     # or --release, once signing is configured
+cd mobile/android
+./gradlew :app:assembleDebug    # → mobile/build/app/outputs/flutter-apk/app-debug.apk
 ```
+
+The Flutter Gradle plugin reads `flutter.sdk` from `local.properties` and drives
+`flutter assemble` itself, so this is the same build `flutter build apk --debug`
+would run — only the CLI's version check is skipped. On a host or in CI, either
+command works.
 
 Two things to settle before a release build means anything:
 
@@ -85,10 +93,32 @@ Two things to settle before a release build means anything:
   surfaces render their labelled placeholder (`AppConfig.mapsConfigured`) — but
   no map will draw.
 
-What *can* be verified here is the Dart source, and all of it passes: the four
-commands above (`tool/dart_check.py` reports 58 files / 0 diagnostics),
-`tool/run_tests.dart` (97 assertions) and `tool/verify_contract.dart`
-(54 fixtures, 0 failures).
+### One trap in `android/app/build.gradle.kts`
+
+`Properties` is **imported** rather than written as `java.util.Properties`. In a
+*project* script the `java` extension accessor (`JavaPluginExtension`,
+contributed by AGP) shadows the `java` package name, so the qualified form does
+not compile:
+
+```
+e: app/build.gradle.kts:23:31: Unresolved reference 'util'.
+e: app/build.gradle.kts:26:32: Cannot infer type for this parameter. Specify it explicitly.
+```
+
+The second message is a knock-on — `properties` never acquired a type. The
+identical expression in `settings.gradle.kts` is fine because a `Settings` script
+has no `java` accessor, which is why the Flutter template gets away with it
+there.
+
+**Do not read Gradle's script-compilation footer as a failure count.** It reports
+these two errors plus the `android { }` deprecation and prints "3 errors". Only
+two are errors: AGP 9 deprecates the old DSL, but Flutter's template pins
+`android.newDsl=false`, so the old `android { }` block is still the supported
+path and the notice is a warning. The footer counts warnings and errors together.
+
+The Dart source is verified too, and all of it passes: the four commands above
+(`tool/dart_check.py` reports 58 files / 0 diagnostics), `tool/run_tests.dart`
+(97 assertions) and `tool/verify_contract.dart` (54 fixtures, 0 failures).
 
 ## The contract is verified, not assumed
 

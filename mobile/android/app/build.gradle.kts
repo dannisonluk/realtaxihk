@@ -1,3 +1,15 @@
+// `Properties` must be imported, not written as `java.util.Properties`.
+//
+// In a *project* script, the `java` extension accessor (JavaPluginExtension,
+// contributed by AGP) shadows the `java` package name, so the qualified form
+// fails to compile with "Unresolved reference 'util'" — and then the following
+// line reports a misleading "Cannot infer type for this parameter".
+//
+// The identical expression in settings.gradle.kts is fine, because a Settings
+// script has no `java` accessor. That asymmetry is why the Flutter template gets
+// away with `java.util.Properties()` there but this script cannot.
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -20,7 +32,7 @@ plugins {
 //   flutter run --dart-define=GOOGLE_MAPS_API_KEY=AIza...
 val googleMapsApiKey: String =
     run {
-        val properties = java.util.Properties()
+        val properties = Properties()
         val file = rootProject.file("local.properties")
         if (file.exists()) {
             file.inputStream().use { properties.load(it) }

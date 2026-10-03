@@ -95,7 +95,7 @@
 | 項目 | 要求 |
 |---|---|
 | Dart SDK | **3.12.0**（實測） |
-| 狀態 | Flutter **無法在此機器執行**（`ERROR_PIPE_BUSY`）。測試走 `dart tool/run_tests.dart` |
+| 狀態 | `flutter` **CLI 無法在此機器執行**（`ERROR_PIPE_BUSY`）；**但 Gradle 不受影響** → APK 用 `cd mobile/android && ./gradlew :app:assembleDebug` 建得到。測試走 `dart tool/run_tests.dart` |
 | 部署 | 經 App Store / Play Store；**不屬後端部署範圍** |
 
 ---

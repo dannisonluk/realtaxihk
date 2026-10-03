@@ -259,6 +259,11 @@ CI 的 `types` job 跑 `uv run mypy`，gate 整個 `app/`。設定在 `pyproject
   stdio → `ERROR_PIPE_BUSY (231)`）。替代路徑：`mobile/tool/dart_check.py`（Python
   經 LSP 驅動 analyzer，同一引擎、同一 `analysis_options.yaml`）＋
   `dart --packages=…` 繞過 dartdev。**CI 是 Linux，沒有這個問題。**
+- **但這個限制的範圍比看上去窄：只有「Dart 自己 spawn child」才死，Gradle 不受影響。**
+  所以 APK 在本沙盒建得出來 —— `cd mobile/android && ./gradlew :app:assembleDebug`
+  （2026-10-03 實測 BUILD SUCCESSFUL）。Flutter Gradle plugin 自己讀
+  `local.properties` 的 `flutter.sdk` 驅動 `flutter assemble`，跳過的只是 `flutter`
+  CLI 的版本新鮮度檢查。詳見 [`../mobile/README.md`](../mobile/README.md)。
 - **背景 server 無法跨 tool call 存活** → 跑瀏覽器 verifier 要把「起 API + 起 console
   + 跑 verifier」放在同一個命令內。
 - 其餘沙盒陷阱（proxy 攔 502、`pg_dump` 只在 container 內、`sh -c` 吞反斜線…）
