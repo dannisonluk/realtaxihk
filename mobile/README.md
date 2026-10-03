@@ -1,6 +1,6 @@
-# RealTaxi HK — mobile client
+# hkfastdc — mobile client
 
-Flutter client for the RealTaxi HK backend (`../app`). One app, three roles,
+Flutter client for the hkfastdc backend (`../app`). One app, three roles,
 routed by the authenticated account.
 
 | Role | Shell | Entry point |
@@ -67,7 +67,7 @@ ProcessPackageException: ProcessException: 所有的管道例項都在使用中�
 ```
 
 **Gradle itself is unaffected, so call it directly and the APK does build here.**
-Verified on 2026-10-03: a 163 MB `app-debug.apk`, package `hk.realtaxi.mobile`,
+Verified on 2026-10-03: a 163 MB `app-debug.apk`, package `com.hkfastdc.mobile`,
 `minSdk 24 / targetSdk 36`, with the geolocator and network permissions merged in
 and `com.google.android.geo.API_KEY` resolved to empty as expected.
 

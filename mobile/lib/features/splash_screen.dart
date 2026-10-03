@@ -30,7 +30,7 @@ class SplashScreen extends ConsumerWidget {
           children: <Widget>[
             Icon(Icons.local_taxi_rounded, size: 64, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: AppTheme.space6 - 4),
-            Text('RealTaxi HK', style: Theme.of(context).textTheme.headlineSmall),
+            Text('hkfastdc', style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: AppTheme.space8 - 4),
             const SizedBox(
               width: 24,

@@ -93,7 +93,7 @@ class WhatsAppCloudProvider(WhatsAppProvider):
                 "messaging_product": "whatsapp",
                 "to": to,
                 "type": "text",
-                "text": {"body": f"Your realtaxihk.com verification code is {code}"},
+                "text": {"body": f"Your hkfastdc.com verification code is {code}"},
             }
         await self._send(phone_e164, payload)
 
@@ -149,7 +149,7 @@ class EmailProvider:
     async def send_verification_email(self, to: str, link: str) -> None:
         await self.send_email(
             to,
-            "Verify your RealTaxi HK email address",
+            "Verify your hkfastdc email address",
             f"Open this link to verify your email address:\n\n{link}\n\n"
             "If you did not create an account, ignore this message.",
         )

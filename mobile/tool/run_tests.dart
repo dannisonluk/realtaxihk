@@ -21,19 +21,19 @@ library;
 // output out of shipped app code, which this is not.
 // ignore_for_file: avoid_print
 
-import 'package:realtaxi_mobile/core/format/money.dart';
-import 'package:realtaxi_mobile/core/network/api_exception.dart';
-import 'package:realtaxi_mobile/core/network/wire.dart';
-import 'package:realtaxi_mobile/models/auth.dart';
-import 'package:realtaxi_mobile/models/admin.dart';
-import 'package:realtaxi_mobile/models/driver.dart';
-import 'package:realtaxi_mobile/models/enums.dart';
-import 'package:realtaxi_mobile/models/fleet.dart';
-import 'package:realtaxi_mobile/models/ledger.dart';
-import 'package:realtaxi_mobile/models/order.dart';
-import 'package:realtaxi_mobile/models/refund.dart';
-import 'package:realtaxi_mobile/models/trip.dart';
-import 'package:realtaxi_mobile/router/routing_rules.dart';
+import 'package:hkfastdc_mobile/core/format/money.dart';
+import 'package:hkfastdc_mobile/core/network/api_exception.dart';
+import 'package:hkfastdc_mobile/core/network/wire.dart';
+import 'package:hkfastdc_mobile/models/auth.dart';
+import 'package:hkfastdc_mobile/models/admin.dart';
+import 'package:hkfastdc_mobile/models/driver.dart';
+import 'package:hkfastdc_mobile/models/enums.dart';
+import 'package:hkfastdc_mobile/models/fleet.dart';
+import 'package:hkfastdc_mobile/models/ledger.dart';
+import 'package:hkfastdc_mobile/models/order.dart';
+import 'package:hkfastdc_mobile/models/refund.dart';
+import 'package:hkfastdc_mobile/models/trip.dart';
+import 'package:hkfastdc_mobile/router/routing_rules.dart';
 
 // ---------------------------------------------------------------------------
 // A very small test harness

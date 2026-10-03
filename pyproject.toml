@@ -1,7 +1,7 @@
 [project]
-name = "realtaxihk-backend"
+name = "hkfastdc-backend"
 version = "0.1.0"
-description = "realtaxihk.com - HK taxi matching platform backend (FastAPI + PostGIS + Redis)"
+description = "hkfastdc.com - HK taxi matching platform backend (FastAPI + PostGIS + Redis)"
 requires-python = ">=3.11"
 # The `>=` floors below are for readability and for `uv lock` to have something
 # to solve. They are NOT the deployed versions: `uv.lock` is the authority, and

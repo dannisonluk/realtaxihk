@@ -6,15 +6,15 @@ import 'package:go_router/go_router.dart';
 import 'core/theme/app_theme.dart';
 import 'router/app_router.dart';
 
-class RealTaxiApp extends ConsumerWidget {
-  const RealTaxiApp({super.key});
+class HkfastdcApp extends ConsumerWidget {
+  const HkfastdcApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final GoRouter router = ref.watch(routerProvider);
 
     return MaterialApp.router(
-      title: 'RealTaxi HK',
+      title: 'hkfastdc',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),

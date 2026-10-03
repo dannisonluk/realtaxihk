@@ -274,19 +274,19 @@ class TestReplayProtection:
 
 class TestProvisioningUri:
     def test_is_a_valid_otpauth_uri(self):
-        uri = provisioning_uri(generate_secret(), "admin@realtaxihk.com")
+        uri = provisioning_uri(generate_secret(), "admin@hkfastdc.com")
         assert uri.startswith("otpauth://totp/")
         assert "secret=" in uri
 
     def test_uses_the_issuer_prefix_in_the_label(self):
         # Key URI Format: label must be Issuer:Account, or apps show a generic
         # heading instead of the issuer name.
-        uri = provisioning_uri(generate_secret(), "ops@realtaxihk.com", issuer="RealTaxi HK")
-        assert "RealTaxi%20HK%3Aops%40realtaxihk.com" in uri
+        uri = provisioning_uri(generate_secret(), "ops@hkfastdc.com", issuer="hkfastdc")
+        assert "hkfastdc%3Aops%40hkfastdc.com" in uri
 
     def test_carries_issuer_digits_and_period(self):
         uri = provisioning_uri(generate_secret(), "a@b.c")
-        assert "issuer=RealTaxi+HK" in uri or "issuer=RealTaxi%20HK" in uri
+        assert "issuer=hkfastdc" in uri or "issuer=hkfastdc" in uri
         assert "digits=6" in uri
         assert "period=30" in uri
 

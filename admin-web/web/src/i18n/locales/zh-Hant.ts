@@ -41,7 +41,7 @@ export const zhHant = {
     accounts: '管理員帳戶',
   },
   brand: {
-    title: 'RealTaxi HK',
+    title: 'hkfastdc',
     sub: '管理後台',
   },
   prefs: {

@@ -64,7 +64,7 @@ class TestCreatingAnAccount:
             headers=headers,
             json={
                 "username": "queue-ops",
-                "email": "queue-ops@realtaxi.hk",
+                "email": "queue-ops@hkfastdc.com",
                 "password": "Harbour-Kite-9pLq",
                 "full_name": "Queue Operator",
                 "admin_role": "OPERATIONS",
@@ -91,7 +91,7 @@ class TestCreatingAnAccount:
             headers=client.admin_headers(),
             json={
                 "username": "fresh-admin",
-                "email": "fresh-admin@realtaxi.hk",
+                "email": "fresh-admin@hkfastdc.com",
                 "password": "Harbour-Kite-9pLq",
                 "admin_role": "SUPPORT",
             },
@@ -115,7 +115,7 @@ class TestCreatingAnAccount:
             headers=client.admin_headers(),
             json={
                 "username": "  Mixed-Case  ",
-                "email": "mixed@realtaxi.hk",
+                "email": "mixed@hkfastdc.com",
                 "password": "Harbour-Kite-9pLq",
                 "admin_role": "SUPPORT",
             },
@@ -129,7 +129,7 @@ class TestCreatingAnAccount:
         concurrent creates into both seeing "free"."""
         body = {
             "username": "dup-admin",
-            "email": "dup1@realtaxi.hk",
+            "email": "dup1@hkfastdc.com",
             "password": "Harbour-Kite-9pLq",
             "admin_role": "SUPPORT",
         }
@@ -139,7 +139,7 @@ class TestCreatingAnAccount:
             ).status_code
             == 201
         )
-        body["email"] = "dup2@realtaxi.hk"
+        body["email"] = "dup2@hkfastdc.com"
         second = client.post("/api/v1/admin/accounts", headers=client.admin_headers(), json=body)
         assert second.status_code == 400, second.text
         assert second.json()["code"] == "BUSINESS_RULE_VIOLATION"
@@ -150,7 +150,7 @@ class TestCreatingAnAccount:
             headers=client.admin_headers(),
             json={
                 "username": "weak-pw",
-                "email": "weak@realtaxi.hk",
+                "email": "weak@hkfastdc.com",
                 "password": "short",
                 "admin_role": "SUPPORT",
             },
@@ -164,7 +164,7 @@ class TestCreatingAnAccount:
             headers=client.admin_headers(),
             json={
                 "username": "audited-create",
-                "email": "audited-create@realtaxi.hk",
+                "email": "audited-create@hkfastdc.com",
                 "password": "Harbour-Kite-9pLq",
                 "admin_role": "FINANCE",
             },
@@ -212,7 +212,7 @@ class TestOnlySuperAdminMayManageAccounts:
             headers=client.admin_headers(role=role),
             json={
                 "username": "sneaky",
-                "email": "sneaky@realtaxi.hk",
+                "email": "sneaky@hkfastdc.com",
                 "password": "Harbour-Kite-9pLq",
                 "admin_role": "SUPER_ADMIN",
             },
@@ -478,7 +478,7 @@ class TestPasswordReset:
             {
                 "id": str(uuid.uuid4()),
                 "u": target_name,
-                "e": f"{target_name}@realtaxi.hk",
+                "e": f"{target_name}@hkfastdc.com",
                 "pw": _hash("Old-Harbour-Kite-1aB"),
             },
         )

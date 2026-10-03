@@ -27,7 +27,7 @@ services:
       TRUSTED_PROXY_COUNT: "1"
 
       # Contrast the base file, which defaults this to the production-looking
-      # `["https://realtaxihk.com"]`. That default is a hostname, and a hostname
+      # `["https://hkfastdc.com"]`. That default is a hostname, and a hostname
       # is a guess: this repo has three spellings of it in circulation and no
       # single decision (see the nginx hostname note in the base file). A wrong
       # origin does not break anything loudly — the browser blocks the request
@@ -109,7 +109,7 @@ services:
 
   nginx:
     # nginx >= 1.25.1 is required by the `http2 on;` directive in
-    # deploy/nginx/realtaxihk.conf. Pinned to a major.minor line rather than
+    # deploy/nginx/hkfastdc.conf. Pinned to a major.minor line rather than
     # `latest` so a deploy is reproducible; bump deliberately.
     image: nginx:1.27-alpine
     container_name: realtaxi-nginx
@@ -120,7 +120,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./deploy/nginx/realtaxihk.conf:/etc/nginx/conf.d/realtaxihk.conf:ro
+      - ./deploy/nginx/hkfastdc.conf:/etc/nginx/conf.d/hkfastdc.conf:ro
       - letsencrypt:/etc/letsencrypt
       - certbot-webroot:/var/www/certbot
       - nginx-logs:/var/log/nginx

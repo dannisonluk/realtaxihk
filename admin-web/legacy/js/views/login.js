@@ -179,7 +179,7 @@ export function LoginView({ client, onSignedIn }) {
       el('div', { class: 'brand', style: 'padding:0 0 18px' }, [
         el('div', { class: 'brand__mark', text: 'R' }),
         el('div', { class: 'brand__text' }, [
-          el('div', { class: 'brand__title', text: 'RealTaxi HK' }),
+          el('div', { class: 'brand__title', text: 'hkfastdc' }),
           el('div', { class: 'brand__sub', text: '管理後台' }),
         ]),
       ]),

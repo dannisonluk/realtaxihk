@@ -192,7 +192,7 @@ class Settings(BaseSettings):
     smtp_port: int = 587
     smtp_username: str = ""
     smtp_password: str = ""
-    smtp_from: str = ""  # e.g. "RealTaxi HK <no-reply@realtaxihk.com>"
+    smtp_from: str = ""  # e.g. "hkfastdc <no-reply@hkfastdc.com>"
     smtp_starttls: bool = True
     # How long a verification link stays usable. Long enough to survive an email
     # sitting in a queue, short enough that a leaked link is not permanent.

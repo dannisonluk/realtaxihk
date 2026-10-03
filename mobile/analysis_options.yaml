@@ -1,4 +1,4 @@
-# Static analysis for the RealTaxi HK client.
+# Static analysis for the hkfastdc client.
 #
 # `flutter analyze` cannot run on this machine (the Dart VM cannot spawn piped
 # subprocesses here — CreateFile failed 231 / ERROR_PIPE_BUSY), so the same

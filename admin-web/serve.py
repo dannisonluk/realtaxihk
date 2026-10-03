@@ -283,7 +283,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Serve the RealTaxi HK admin console.")
+    parser = argparse.ArgumentParser(description="Serve the hkfastdc admin console.")
     parser.add_argument("--port", type=int, default=3000)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument(

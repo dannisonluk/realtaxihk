@@ -1,5 +1,5 @@
-name: realtaxi_mobile
-description: "RealTaxi HK — passenger, driver and admin client."
+name: hkfastdc_mobile
+description: "hkfastdc — passenger, driver and admin client."
 publish_to: 'none'
 version: 0.1.0+1
 

@@ -84,7 +84,7 @@ class AccountScreen extends ConsumerWidget {
           const SizedBox(height: AppTheme.space6),
           Center(
             child: Text(
-              'RealTaxi HK  ·  車費為估算，實際以錶收費為準',
+              'hkfastdc  ·  車費為估算，實際以錶收費為準',
               style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ),

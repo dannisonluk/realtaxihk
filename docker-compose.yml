@@ -76,7 +76,7 @@ services:
       # SEC-07: how many trusted proxies sit in front of the app. Leave 0 when
       # the api is exposed directly; set 1 when nginx terminates TLS in front.
       TRUSTED_PROXY_COUNT: ${TRUSTED_PROXY_COUNT:-0}
-      CORS_ORIGINS: ${CORS_ORIGINS:-["https://realtaxihk.com"]}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["https://hkfastdc.com"]}
       METRICS_TOKEN: ${METRICS_TOKEN:-}
     # SEC-31 + SEC-19: bind to loopback by default. This file already assumes the
     # API sits behind a TLS terminator (no nginx service here, TLS is "the reverse

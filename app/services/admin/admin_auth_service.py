@@ -478,7 +478,7 @@ class AdminAuthService:
         )
         return EnrolmentOut(
             secret=secret,
-            otpauth_uri=provisioning_uri(secret, account.username, issuer="RealTaxi HK"),
+            otpauth_uri=provisioning_uri(secret, account.username, issuer="hkfastdc"),
             recovery_codes=codes,
         )
 
@@ -491,7 +491,7 @@ class AdminAuthService:
             return None
         return EnrolmentOut(
             secret=payload.secret,
-            otpauth_uri=provisioning_uri(payload.secret, account.username, issuer="RealTaxi HK"),
+            otpauth_uri=provisioning_uri(payload.secret, account.username, issuer="hkfastdc"),
             recovery_codes=payload.codes,
         )
 

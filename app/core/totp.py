@@ -175,7 +175,7 @@ def current_step(at: datetime | int | float | None = None) -> int:
 
 
 def provisioning_uri(
-    secret: str, account: str, issuer: str = "RealTaxi HK", *, digits: int = DIGITS
+    secret: str, account: str, issuer: str = "hkfastdc", *, digits: int = DIGITS
 ) -> str:
     """The `otpauth://` URI an authenticator app scans.
 

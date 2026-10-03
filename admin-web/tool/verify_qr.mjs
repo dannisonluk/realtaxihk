@@ -32,9 +32,9 @@ const BASE = process.argv.includes('--base')
 
 const SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
 const OTPAUTH =
-  'otpauth://totp/RealTaxi%20HK:ops-admin?secret=' +
+  'otpauth://totp/hkfastdc:ops-admin?secret=' +
   SECRET +
-  '&issuer=RealTaxi%20HK';
+  '&issuer=hkfastdc';
 
 const ENROLMENT = {
   next: 'enrolment_required',

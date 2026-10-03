@@ -8,7 +8,7 @@
 
 | 檔案 | 用途 |
 |---|---|
-| `nginx/realtaxihk.conf` | TLS 終結與反向代理。放進 nginx 的 `http {}` 區塊（即 `/etc/nginx/conf.d/`）。 |
+| `nginx/hkfastdc.conf` | TLS 終結與反向代理。放進 nginx 的 `http {}` 區塊（即 `/etc/nginx/conf.d/`）。 |
 | `../docker-compose.prod.yml` | 正式環境的 **overlay**。加入 nginx、certbot 續期，並把連線池的三個數字寫明。 |
 
 ## 正式部署怎麼跑
@@ -34,8 +34,8 @@ nginx 讀不到憑證會**直接啟動失敗並進入無限重啟**（`restart: 
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
   run --rm -p 80:80 certbot certonly --standalone \
   --preferred-challenges http \
-  -d api.realtaxihk.com \
-  --email ops@realtaxihk.com --agree-tos --no-eff-email
+  -d api.hkfastdc.com \
+  --email ops@hkfastdc.com --agree-tos --no-eff-email
 
 # 2. 再啟動整個堆疊
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
@@ -52,10 +52,10 @@ nginx 與 certbot 是兩個容器，**之間沒有訊號通道**，而 nginx 只
 
 ### 把主機名換掉
 
-`nginx/realtaxihk.conf` 內目前是佔位符 `api.realtaxihk.com`。
-**注意**：repo 內目前有**三種**拼法——文檔寫 `realtaxihk.com`，
-`mobile/lib/core/config/app_config.dart` 的註釋寫 `realtaxi.hk`，
-console 的 server block 寫 `console.realtaxihk.com`。
+`nginx/hkfastdc.conf` 內目前是佔位符 `api.hkfastdc.com`。
+**注意**：repo 內目前有**三種**拼法——文檔寫 `hkfastdc.com`，
+`mobile/lib/core/config/app_config.dart` 的註釋寫 `hkfastdc.com`，
+console 的 server block 寫 `console.hkfastdc.com`。
 三者都還不是決定，請擇一並保持一致。`PUBLIC_BASE_URL` 必須是同一台主機的
 `https://` 來源，否則驗證信會把使用者帶到別的地方。
 
@@ -63,7 +63,7 @@ console 的 server block 寫 `console.realtaxihk.com`。
 所以**改漏一處**的後果不是警告，是 nginx 找不到 cert 而**啟動失敗**
 （`docker-compose.prod.yml` 的 api 註釋說明它會 restart-loop）。若要一次解掉
 「三種拼法 + cert 路徑寫死」兩個問題：把 conf 移到
-`deploy/nginx/templates/realtaxihk.conf.template`，nginx 官方 image 會對它做
+`deploy/nginx/templates/hkfastdc.conf.template`，nginx 官方 image 會對它做
 `envsubst`，用 `${PUBLIC_HOSTNAME}` 取代全部四處。**此改動需要一台真的 nginx
 才驗證得了**（本 repo 的部署設定一律無法在本機跑），所以在此只記錄做法，
 不預先改動。
@@ -206,7 +206,7 @@ R2 與 VPS 若在同一個帳號下，一次帳號事故會同時帶走兩者。
 
 ### 其他
 
-- **主機名**：`realtaxihk.com` 與 `realtaxi.hk` 兩種拼法並存，尚未決定。
-- **後台主控台（`admin-web/web`）**：`nginx/realtaxihk.conf` 末端有一段被註解掉的
+- **主機名**：`hkfastdc.com` 與 `hkfastdc.com` 兩種拼法並存，尚未決定。
+- **後台主控台（`admin-web/web`）**：`nginx/hkfastdc.conf` 末端有一段被註解掉的
   SPA server block。目前未啟用；要用的話得先把 `npm run build` 的產物放到 nginx
   容器內（`/var/www/console`），並為該主機名另簽一張憑證。

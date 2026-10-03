@@ -211,7 +211,7 @@ def create_app() -> FastAPI:
             await _shutdown_resources(app)
 
     app = FastAPI(
-        title="realtaxihk.com API",
+        title="hkfastdc.com API",
         version=_API_VERSION,
         lifespan=lifespan,
         description=(

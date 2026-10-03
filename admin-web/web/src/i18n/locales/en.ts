@@ -42,7 +42,7 @@ export const en = {
     accounts: 'Admin accounts',
   },
   brand: {
-    title: 'RealTaxi HK',
+    title: 'hkfastdc',
     sub: 'Admin console',
   },
   prefs: {

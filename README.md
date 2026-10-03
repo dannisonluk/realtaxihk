@@ -1,4 +1,4 @@
-# realtaxihk.com
+# hkfastdc.com
 
 Hong Kong taxi matching platform — **information intermediary** (Cap. 374D compliant).
 One repo, **three complete deliverables**: a FastAPI backend, a Flutter app for
@@ -292,7 +292,7 @@ One Flutter app, **three roles**, routed by the authenticated account.
 Plus `features/fleet/` (fleet members see their own roster and settlement) and
 `features/auth/` (phone → OTP → role-based redirect).
 
-Target: **Android first** (minSdk 24, `applicationId = hk.realtaxi.mobile`),
+Target: **Android first** (minSdk 24, `applicationId = com.hkfastdc.mobile`),
 iOS-compatible source. Flutter 3.44.0 / Dart 3.12.0, Java 17 / Kotlin JVM 17.
 
 ### 4.2 Structure

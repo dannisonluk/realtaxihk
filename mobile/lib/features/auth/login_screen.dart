@@ -73,7 +73,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             children: <Widget>[
               Icon(Icons.local_taxi_rounded, size: 56, color: theme.colorScheme.primary),
               const SizedBox(height: AppTheme.space6),
-              Text('RealTaxi HK', style: theme.textTheme.headlineMedium),
+              Text('hkfastdc', style: theme.textTheme.headlineMedium),
               const SizedBox(height: AppTheme.space2),
               Text(
                 '輸入電話號碼，我們會以 WhatsApp 發送驗證碼。',

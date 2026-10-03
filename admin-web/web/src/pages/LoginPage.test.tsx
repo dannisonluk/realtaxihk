@@ -67,7 +67,7 @@ const ENROLMENT = {
   enrolment: {
     secret: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
     otpauth_uri:
-      'otpauth://totp/RealTaxi%20HK:ops-admin?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=RealTaxi%20HK',
+      'otpauth://totp/hkfastdc:ops-admin?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=hkfastdc',
     recovery_codes: ['AAAA-1111', 'BBBB-2222', 'CCCC-3333'],
   },
 };

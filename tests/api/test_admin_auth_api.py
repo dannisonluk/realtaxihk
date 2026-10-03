@@ -253,7 +253,7 @@ def test_an_admin_token_with_no_enrolment_is_refused(client):
     un-enrolled row holding a token means either a hand-edited database or a
     minting path that skipped the factor. Both should read as "no admin here".
     """
-    admin_id, secret = _seed_admin(client, username="unproven", email="unproven@realtaxi.hk")
+    admin_id, secret = _seed_admin(client, username="unproven", email="unproven@hkfastdc.com")
     assert secret is not None
 
     challenge = _login(client, username="unproven").json()["challenge_token"]

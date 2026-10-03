@@ -99,7 +99,7 @@ open source server）配上任何支援 TOTP 的 client，等於密碼與第二�
 我們發出的 `otpauth://` URI 是：
 
 ```
-otpauth://totp/RealTaxi%20HK:<username>?secret=<base32>&issuer=RealTaxi+HK&digits=6&period=30
+otpauth://totp/hkfastdc:<username>?secret=<base32>&issuer=hkfastdc&digits=6&period=30
 ```
 
 | 參數 | 值 | 為甚麼 |

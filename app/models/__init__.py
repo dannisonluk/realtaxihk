@@ -1,4 +1,4 @@
-"""SQLAlchemy 2.0 declarative models — realtaxihk.com core domain.
+"""SQLAlchemy 2.0 declarative models — hkfastdc.com core domain.
 
 This is the **public import path**: every model, enum and helper is importable
 as `from app.models import User, OrderStatus, ...` exactly as it was when this

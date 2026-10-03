@@ -151,7 +151,7 @@ function renderShell(children) {
         el('div', { class: 'brand' }, [
           el('div', { class: 'brand__mark', text: 'R' }),
           el('div', { class: 'brand__text' }, [
-            el('div', { class: 'brand__title', text: 'RealTaxi HK' }),
+            el('div', { class: 'brand__title', text: 'hkfastdc' }),
             el('div', { class: 'brand__sub', text: '管理後台' }),
           ]),
         ]),

@@ -5,5 +5,5 @@ import 'app.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ProviderScope(child: RealTaxiApp()));
+  runApp(const ProviderScope(child: HkfastdcApp()));
 }
