@@ -32,6 +32,7 @@ nobody holds.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
@@ -68,6 +69,17 @@ from app.services.admin.admin_refresh_service import AdminRefreshService
 logger = logging.getLogger("realtaxihk.admin_auth")
 
 router = APIRouter(prefix="/api/v1/admin/auth", tags=["admin-auth"])
+
+
+def _cleared_session_headers() -> Any:
+    """`clear_session_cookie_headers()`, typed for `HTTPException`.
+
+    Starlette declares `headers` as `Mapping[str, str]`, but `set-cookie` must
+    be a *list* of values -- its response builder appends each one.
+    Comma-folding is not an option: `expires=Thu, 01 Jan ...` carries its own
+    comma, so splitting on it would corrupt both cookies.
+    """
+    return clear_session_cookie_headers()
 
 
 class LoginIn(BaseModel):
@@ -314,7 +326,7 @@ async def refresh_admin_session(
         raise HTTPException(
             status_code=401,
             detail="refresh token reuse detected",
-            headers=clear_session_cookie_headers(),
+            headers=_cleared_session_headers(),
         )
 
     if outcome.new_refresh is None or outcome.admin_id is None:
@@ -327,7 +339,7 @@ async def refresh_admin_session(
         raise HTTPException(
             status_code=403,
             detail="account disabled",
-            headers=clear_session_cookie_headers(),
+            headers=_cleared_session_headers(),
         )
 
     set_session_cookies(

@@ -14,8 +14,9 @@ import contextlib
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import CursorResult, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import AdminRefreshToken, Order, OrderStatus, OtpCode, RefreshToken
@@ -166,9 +167,12 @@ class MaintenanceService:
                 delete(OtpCode).where(OtpCode.created_at < now - timedelta(days=retention_days_otp))
             )
             await session.commit()
-            otp_n = otp_res.rowcount or 0
-            ref_n = refresh_res.rowcount or 0
-            admin_ref_n = admin_refresh_res.rowcount or 0
+            # A Core DML statement returns a `CursorResult`, which is where
+            # `rowcount` lives; `execute()` is typed as returning the base
+            # `Result`.
+            otp_n = cast("CursorResult[Any]", otp_res).rowcount or 0
+            ref_n = cast("CursorResult[Any]", refresh_res).rowcount or 0
+            admin_ref_n = cast("CursorResult[Any]", admin_refresh_res).rowcount or 0
         if otp_n or ref_n or admin_ref_n:
             logger.info("pdpo purge: otp=%d refresh=%d admin_refresh=%d", otp_n, ref_n, admin_ref_n)
         return {

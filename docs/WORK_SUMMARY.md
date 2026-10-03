@@ -24,7 +24,7 @@
   `git rev-list --count origin/main..HEAD` —— 而 **0 的意思是 HEAD 等於
   origin/main**（即所有改動都未 commit），**不是**「都推上去了」。
 
-- **現時狀態**：`pytest` **960 passed / 0 failed / 0 error / 0 skipped**（以
+- **現時狀態**：`pytest` **961 passed / 0 failed / 0 error / 0 skipped**（以
   `--junit-xml` 讀，39 個模組）·
   > 📌 **文檔原本寫的 955 早就過期了。** 上一個 commit `bab78b9` 加了 2 條 licence
   > 測試但沒有同步文檔。實測：`HEAD` 是 **957**，加上
@@ -48,7 +48,7 @@
 
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **82 paths / 89 operations** · 960 tests |
+| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **82 paths / 89 operations** · 961 tests |
 | Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**21 個畫面**，三角色） | ✅ 97 tests |
 | Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/legacy/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **69 vitest** · UI verifier PASS |
 
@@ -70,7 +70,8 @@ commit）。**該文件是歷史記錄，刻意不更新** —— 裡面的測�
 
 ```bash
 uv run ruff check . && uv run ruff format --check .
-uv run pytest -q                                       # 960 passed（用 --junit-xml 讀，見下）
+uv run mypy                                            # types; no DB needed
+uv run pytest -q                                       # 961 passed（用 --junit-xml 讀，見下）
 uv run python scripts/verify/audit_response_models.py  # 68 块夹具 vs response_model，0 丢失
 cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run --no-file-parallelism --pool=forks
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
@@ -200,7 +201,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 ## 8. 一頁看完
 
 ```
-✅ 後端 82 paths / 89 ops / 960 tests / ruff lint + format clean — 生產就緒
+✅ 後端 82 paths / 89 ops / 961 tests / ruff lint + format clean — 生產就緒
 ✅ mobile 21 畫面 / 97 tests / 0 diagnostics      — 三角色完整
 ✅ admin-web React / 69 vitest / typecheck + build clean / UI verifier PASS
 ✅ 後台治理：四級 RBAC（rank 比較、live row 為權威）+ 審計覆蓋金錢／狀態改動

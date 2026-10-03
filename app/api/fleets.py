@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -73,7 +73,9 @@ def _money(value: MoneyInput) -> str:
 
 
 def _fleet_out(fleet: Fleet, *, member_count: int | None = None) -> dict:
-    out = {
+    # Annotated rather than inferred: `member_count` is an int added below, and
+    # inference from the literal alone types every value as `str | None`.
+    out: dict[str, Any] = {
         "id": str(fleet.id),
         "name": fleet.name,
         "license_no": fleet.license_no,
@@ -341,6 +343,8 @@ async def add_fleet_member(
     )
     await session.commit()
     driver = await session.get(DriverProfile, payload.driver_profile_id)
+    if driver is None:  # `add_member` resolved this id a line earlier
+        raise HTTPException(status_code=404, detail="driver profile not found")
     return _member_out(membership, driver)
 
 
@@ -360,6 +364,8 @@ async def remove_fleet_member(
     membership = await FleetService(session).remove_member(fleet_id, driver_profile_id)
     await session.commit()
     driver = await session.get(DriverProfile, driver_profile_id)
+    if driver is None:  # the membership row just named this id
+        raise HTTPException(status_code=404, detail="driver profile not found")
     return _member_out(membership, driver)
 
 

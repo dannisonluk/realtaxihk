@@ -184,21 +184,42 @@ FastAPI 慣用法）、`RUF001/002/003`（雙語 CJK 註釋的 ambiguous-unicode
 > lint 規則（E501 等）抓不到引號風格、行合併這類純格式差異。`admin-web/`
 > **不在** `extend-exclude` 內，所以前端目錄下的 `.py` 工具腳本同樣受格式門禁約束。
 
-### 沒有型別檢查器（已知缺口）
+### 型別檢查（`mypy`，已納入 CI）
 
-CI 只跑 `ruff check` + `ruff format --check` + `pytest`。**Ruff 不做型別推論**，
-所以參數註解寫錯不會被任何 gate 攔下 —— 只有編輯器（Pylance / pyright）會報。
+CI 的 `types` job 跑 `uv run mypy`，gate 整個 `app/`。設定在 `pyproject.toml` 的
+`[tool.mypy]`。
+
+**這條 gate 不是裝飾。** 它一開就抓到一個真 bug：`app/api/orders.py` 的 keyset
+游標寫成 Python tuple 比較 `(Order.created_at, Order.id) < (anchor[0], anchor[1])`，
+而 Python 的 tuple `<` 會先測相等 —— `bool(Order.created_at == ts)` 對 SQLAlchemy
+欄位回 **`False`（不拋錯）**，於是直接落到 `created_at < ts`，**`id` tie-breaker
+從未進入 SQL**。同一時間戳的訂單因此會被分頁靜默丟掉。修法是用
+`tuple_(...) < tuple_(...)`。詳見 `STRUCTURE_REVIEW.md` R9。
+
+**SQLAlchemy 2.0 與 FastAPI 都自帶 typing，不需要 plugin** —— 這是反直覺但重要
+的一點：`Mapped[...]`、`Depends()`、Pydantic 模型都直接解析。所以 gate 可以一次
+覆蓋全樹。
+
+兩類仍然要人手處理的情況：
+
+- **Core DML 的 `rowcount`**：`execute()` 被標成回傳 `Result`，但 DML 實際回
+  `CursorResult`。用 `cast("CursorResult[Any]", res).rowcount`。
+- **`HTTPException.headers`**：Starlette 宣告為 `Mapping[str, str]`，但
+  `set-cookie` 必須是**值清單**。`app/api/admin_auth.py` 的
+  `_cleared_session_headers()` 就是為此存在。
+
+### 型別註解要寫函式體真正接受的東西
 
 真實案例：`app/core/money.py` 的四個格式化函式參數原本註解為 `Decimal`，
 但函式體一直是 `Decimal(v)`、docstring 也明說接受 int 與 str。於是
 `money_str(settings.weekly_fee_hkd)`（`weekly_fee_hkd: int`）在編輯器裡報錯，
-而 CI 全綠。修法是讓註解與函式體一致：統一的輸入聯集 `MoneyInput`
+而當時 CI 全綠。修法是讓註解與函式體一致：統一的輸入聯集 `MoneyInput`
 （見 `app/core/money.py`，`ratio_str` 與 `refund_service.request` 早就是這個形狀）。
 
 > **寫這一類「轉換型」參數時**：如果函式體做 `Decimal(v)` / `int(v)` / `str(v)`，
 > 註解就要寫成它真正接受的聯集。註解比函式體窄不會令呼叫變得不安全，
-> 只會令檢查器與程式碼各說各話。建議日後把 pyright 或 mypy 納入 CI
-> （見 `STRUCTURE_REVIEW.md` R9）。
+> 只會令檢查器與程式碼各說各話。`tests/infra/test_money_input_annotations.py`
+> 用 AST 守住這條規則，不需要型別檢查器也能在 CI 跑。
 
 ---
 

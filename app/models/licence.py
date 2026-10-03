@@ -16,6 +16,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
@@ -33,6 +34,13 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models._base import Base
+
+if TYPE_CHECKING:
+    # Imported for the checker only: `DriverLicenceSubmission.driver_profile`
+    # and `DriverProfile.licence_submissions` point at each other, so the
+    # reference has to be a string and one side cannot import the other at
+    # runtime.
+    from app.models.user import DriverProfile
 
 __all__ = [
     "DocumentKind",
@@ -137,9 +145,7 @@ class DriverLicenceSubmission(Base):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
 
-    driver_profile: Mapped[DriverProfile] = relationship(  # noqa: F821
-        back_populates="licence_submissions"
-    )
+    driver_profile: Mapped[DriverProfile] = relationship(back_populates="licence_submissions")
     documents: Mapped[list[DriverDocument]] = relationship(
         back_populates="submission", cascade="all, delete-orphan"
     )

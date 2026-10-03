@@ -13,7 +13,7 @@ from decimal import Decimal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.schemas import FareEstimateOut
+from app.api.schemas import FareEstimateOut, FareSurchargeOut
 from app.core.client_ip import client_ip
 from app.core.config import get_settings
 from app.core.exceptions import BusinessRuleError
@@ -114,12 +114,12 @@ async def estimate_fare(
         meter_discount=_meter_str(breakdown.meter_discount),
         meter_after_discount=_meter_str(breakdown.meter_after_discount),
         surcharges=[
-            {
-                "code": s.code,
-                "name_en": s.name_en,
-                "name_zh": s.name_zh,
-                "amount": _meter_str(s.amount),
-            }
+            FareSurchargeOut(
+                code=s.code,
+                name_en=s.name_en,
+                name_zh=s.name_zh,
+                amount=_meter_str(s.amount),
+            )
             for s in breakdown.surcharges
         ],
         surcharges_total=_meter_str(breakdown.surcharges_total),

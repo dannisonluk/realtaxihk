@@ -184,7 +184,10 @@ class IdentityService:
         invalid = BusinessRuleError("this verification link is invalid or has expired")
         if row is None or row.consumed_at is not None:
             raise invalid
-        if _now() >= _as_aware(row.expires_at):
+        expires_at = _as_aware(row.expires_at)
+        # A NULL expiry cannot be trusted, so it is treated as expired -- the
+        # same fail-closed direction as every other branch in this method.
+        if expires_at is None or _now() >= expires_at:
             raise invalid
 
         user = await self.session.get(User, row.user_id)

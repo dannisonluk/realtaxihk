@@ -38,6 +38,7 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
+    "mypy>=1.13",
 ]
 
 [build-system]
@@ -112,3 +113,28 @@ known-first-party = ["app"]
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+files = ["app"]
+# SQLAlchemy 2.0 and FastAPI ship their own typing, so no plugin is needed:
+# `Mapped[...]`, `Depends()` and the Pydantic models all resolve as written.
+# That is worth stating because the opposite is the usual assumption, and it is
+# the reason this gate could be turned on for the whole of `app/` at once
+# instead of being staged module by module.
+show_error_codes = true
+# `warn_unused_ignores` also makes a stale `# type: ignore` fail the gate, so an
+# annotation cannot be silenced and then quietly become unnecessary. There are
+# no `# type: ignore` comments under `app/` today; the two deliberate escapes
+# are `cast(...)` calls that carry a comment explaining why.
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+# boto3 ships neither a `py.typed` marker nor stubs. `storage_service` is the
+# only consumer and it is a thin wrapper over `put_object` /
+# `generate_presigned_url`, whose shapes the API tests pin rather than the types.
+module = ["boto3", "boto3.*", "botocore", "botocore.*"]
+ignore_missing_imports = true

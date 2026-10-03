@@ -51,8 +51,9 @@ import logging
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any, Literal, cast
 
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -106,7 +107,7 @@ def cookies_are_secure() -> bool:
     return get_settings().app_env == "prod"
 
 
-def same_site_policy() -> str:
+def same_site_policy() -> Literal["lax", "strict", "none"]:
     """`Strict` in prod, `Lax` in dev.
 
     `Strict` is the right production value: the console is a separate origin
@@ -275,4 +276,4 @@ class AdminRefreshService:
             .values(revoked_at=_now())
         )
         await self.session.flush()
-        return res.rowcount or 0
+        return cast("CursorResult[Any]", res).rowcount or 0

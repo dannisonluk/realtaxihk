@@ -92,6 +92,33 @@ jobs:
       - name: Response-model contract audit
         run: uv run python scripts/verify/audit_response_models.py
 
+  # Types. Neither ruff nor pytest can see this class of defect: ruff does not
+  # infer types at all, so a wrong annotation is invisible to every other gate.
+  # That is how a *correct* call — `money_str(settings.weekly_fee_hkd)`, where
+  # the setting is an `int` — came to be flagged by editors while CI stayed
+  # green for months.
+  types:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      # `--all-extras` for mypy itself (a dev dependency); `--frozen` because
+      # the lockfile is the authority — see the note on the floors in
+      # pyproject.toml.
+      - name: Install dependencies
+        run: uv sync --frozen --all-extras
+
+      # Configuration lives in `[tool.mypy]`; the target list is `files = ["app"]`.
+      # No service containers: this reads source, not a database.
+      - name: Type check (mypy)
+        run: uv run mypy
+
   mobile:
     runs-on: ubuntu-latest
     timeout-minutes: 15

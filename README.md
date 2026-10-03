@@ -6,7 +6,7 @@ three roles, and a web admin console.
 
 > 香港的士配對平台，走**資訊中介**定位（非承運人）。一個 repo 內含三件完整交付物。
 
-**Status: production-hardened.** 960 backend tests · 97 mobile assertions · 54
+**Status: production-hardened.** 961 backend tests · 97 mobile assertions · 54
 contract fixtures · 69 console tests · browser UI verifier PASS.
 
 **New here? Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first** — a guided
@@ -117,7 +117,7 @@ cp .env.example .env          # adjust if needed; see §8.2 Configuration
 # 4. run + verify
 .venv/Scripts/python scripts/dev/serve_and_probe.py   # detached uvicorn + health wait
 .venv/Scripts/python scripts/verify/verify_api.py     # one-shot API smoke
-.venv/Scripts/python -m pytest -q                     # 960 tests
+.venv/Scripts/python -m pytest -q                     # 961 tests
 uv run ruff check . && uv run ruff format --check .
 ```
 
@@ -487,6 +487,7 @@ Two concrete traps this repo hit, both worth knowing:
 # backend — needs db + redis containers up
 .venv/Scripts/python -m pytest -q --junit-xml=.tmp/full.xml
 uv run ruff check . && uv run ruff format --check .
+uv run mypy                                        # types; no database needed
 
 # mobile (Dart, in mobile/)
 python tool/dart_check.py .                        # 0 diagnostics expected
@@ -507,7 +508,7 @@ npm run typecheck && npx vitest run && npm run build
 
 | Suite | Count | Covers |
 |---|---|---|
-| `tests/` (39 files) | **960** | fare unit · per-module API · WS streaming · fleets/roster/settlement · backup retention + restore drill · console contrast · hardening regressions |
+| `tests/` (39 files) | **961** | fare unit · per-module API · WS streaming · fleets/roster/settlement · backup retention + restore drill · console contrast · hardening regressions |
 | `mobile/tool/run_tests.dart` | **97** | Dart unit assertions |
 | `mobile/tool/verify_contract.dart` | **54 fixtures** | every wire shape, decoded by the real models |
 | `admin-web/web` (vitest) | **69** | page-level behaviour |
@@ -540,8 +541,21 @@ for what each check maps to.
 
 ### 7.4 CI
 
-`.github/workflows/ci.yml`: ruff check → format check → full pytest, with PostGIS
-+ Redis service containers on `ubuntu-latest`, Python 3.12, `uv sync --frozen`.
+`.github/workflows/ci.yml` — four jobs on `ubuntu-latest`, Python 3.12,
+`uv sync --frozen`:
+
+| Job | Runs |
+|---|---|
+| `test` | ruff check → format check → full pytest → prod boot drill → response-model audit (PostGIS + Redis service containers) |
+| `types` | `uv run mypy` over `app/` — no services; it reads source, not a database |
+| `mobile` | `flutter analyze` → `run_tests.dart` → `verify_contract.dart` |
+| `admin-web` | `tsc --noEmit` → vitest → `npm run build` |
+
+The `types` job is not decoration. It found a real defect the first time it ran:
+the keyset cursor in `app/api/orders.py` compared a Python tuple against two
+columns, which Python evaluates as a single-column comparison, so orders sharing
+the anchor's `created_at` were silently dropped from the history page. See
+[`docs/STRUCTURE_REVIEW.md`](docs/STRUCTURE_REVIEW.md) R9.
 
 ---
 

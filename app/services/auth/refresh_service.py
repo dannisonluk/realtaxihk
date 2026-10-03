@@ -19,8 +19,9 @@ import hashlib
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -125,4 +126,4 @@ class RefreshService:
             .values(revoked_at=_now())
         )
         await self.session.flush()
-        return res.rowcount or 0
+        return cast("CursorResult[Any]", res).rowcount or 0

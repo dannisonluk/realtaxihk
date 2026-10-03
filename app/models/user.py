@@ -17,6 +17,7 @@ import enum
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from geoalchemy2 import Geography
 from sqlalchemy import (
@@ -42,6 +43,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models._base import Base
+
+if TYPE_CHECKING:
+    # Checker-only, for the same reason as the mirror image in
+    # `app/models/licence.py`.
+    from app.models.licence import DriverLicenceSubmission
 
 __all__ = [
     "AccountStatus",
@@ -237,7 +243,7 @@ class DriverProfile(Base):
     # (ordering is applied at query time, not here). The target class lives in
     # `app.models.licence`; the reference is a string so the two modules can be
     # imported in either order.
-    licence_submissions: Mapped[list[DriverLicenceSubmission]] = relationship(  # noqa: F821
+    licence_submissions: Mapped[list[DriverLicenceSubmission]] = relationship(
         back_populates="driver_profile", cascade="all, delete-orphan"
     )
     # Current GPS position (updated every 3-5s while online).

@@ -171,30 +171,49 @@ re-export，是因為 model 模組只 import `_base`。
 **已改名為 `app/api/service_area_route.py`**（唯一外部引用是 `app/main.py`）。
 `app.openapi()` 前後完全一致。
 
-### R9 — CI 沒有任何型別檢查器（本回合發現的實際代價）
+### R9 — CI 沒有任何型別檢查器 ✅ 已處理（並抓出一個真 bug）
 
-CI 的三個 job 只跑 `ruff check` + `ruff format --check` + `pytest`。
+原本 CI 只跑 `ruff check` + `ruff format --check` + `pytest`。
 **Ruff 不做型別推論**，所以參數註解與函式體不一致時，沒有任何 gate 會紅。
 
-這不是理論風險 —— 本回合就抓到一個活案例：`app/core/money.py` 的四個格式化
-函式參數註解為 `Decimal`，但函式體一直是 `Decimal(v)`（docstring 也明說接受
-int 與 str）。`money_str(settings.weekly_fee_hkd)`（`weekly_fee_hkd: int`）在
-編輯器報錯、CI 全綠，而且已經存在了一段時間。
+**已加第四個 job `types`**（`uv run mypy`，設定在 `pyproject.toml` 的
+`[tool.mypy]`），gate 整個 `app/`。
 
-**建議**：把 `pyright`（或 `mypy`）加進 CI，但**不要一次對全樹開嚴格模式** ——
-SQLAlchemy 2.0 的 `Mapped[]` 與 FastAPI 的 `Depends()` 在無 plugin 的情況下
-噪音很大，一次開全樹會得到幾百條無關錯誤，然後整條 gate 會被 ignore 掉。
+**我原本的判斷是錯的，在此更正。** 我預期 SQLAlchemy 的 `Mapped[]` 與 FastAPI 的
+`Depends()` 在無 plugin 下會產生幾百條噪音，所以要分階段。實際量測：整個 `app/`
+只有 **26 個**錯誤 —— SQLAlchemy 2.0 與 FastAPI 都自帶 typing，不需要 plugin。
+所以一次 gate 全樹，沒有分階段。
 
-分階段做法：
+**這 26 個錯誤裡有一個是真 bug**（其餘是註解缺口或 mypy 的泛型限制）：
 
-1. 先用**寬鬆模式**只 gate `app/core/`（純邏輯、無 ORM 泛型），零噪音。
-2. 再擴到 `app/services/`，逐個模組收。
-3. `app/api/` 與 `app/models/` 最後處理，並視需要引入
-   `sqlalchemy2-stubs` / `SQLAlchemy` 官方 typing plugin。
-4. 每一步都把「目前錯誤數」寫進 CI 的 `--baseline` 或註解，只擋**新增**的。
+> **`app/api/orders.py` 的 keyset 游標比較錯了一整年。**
+> `ORDER BY created_at DESC, id DESC` 是複合排序，游標卻寫成 Python 的 tuple 比較
+> `(Order.created_at, Order.id) < (anchor[0], anchor[1])`。
+> Python 的 tuple `<` 會**先測相等**，而 `bool(Order.created_at == ts)` 對
+> SQLAlchemy 欄位回 **`False`（不拋錯）**，於是直接落到第二步的
+> `created_at < ts` —— **`id` tie-breaker 從未進入 SQL**（實測：產生的 SQL 就是
+> `orders.created_at < :created_at_1`）。
+>
+> 這在兩張單同一時間戳時就會出錯，而那不是假設：`created_at` 是
+> `server_default=func.now()`，Postgres 的 `now()` 是**交易時間戳**，
+> 同一交易寫入的列完全相同。後果是**分頁靜默丟單**。
+>
+> 修法：`tuple_(Order.created_at, Order.id) < tuple_(anchor[0], anchor[1])`。
+> 新增 `test_history_keyset_survives_a_shared_timestamp` —— 它**先被證實會失敗**
+> 才修（用 `exec_sql` 強制兩張單同一時間戳，修正前第二頁回空）。
+> 原有的 `test_history_keyset_pagination` 用了 `first or second` 的弱斷言，
+> 所以蓋不住。
 
-> 若不想引入第二套工具鏈，退一步的做法是把 `MoneyInput` 這類聯集型別當成
-> 專案慣例寫進 `DEVELOPMENT.md`，讓 code review 時人手看 —— 但那需要有人真的看。
+其餘 25 個分三類：**註解與實作不符**（`same_site_policy() -> str`、
+`_as_aware` 的 `datetime | None`、`claimed` 的 dict key）、**forward reference**
+（`app/models/` 兩個跨模組 relationship，改用 `TYPE_CHECKING` import，並移除已
+多餘的 `# noqa: F821`）、以及 **mypy 的泛型限制**（Core DML 的
+`Result.rowcount` 要用 `cast("CursorResult[Any]", …)`；`HTTPException.headers`
+要容納 `set-cookie` 的值清單，Starlette 宣告為 `Mapping[str, str]`）。
+
+**順帶修好一個既有的不一致**：`uv lock --check` 本來就失敗（lock 與
+`pyproject.toml` 不同步）。加入 mypy 後 re-lock，`tzdata` 也一併補上，
+`uv lock --check` 現在通過。re-lock 是**純新增**，沒有改動任何既有套件版本。
 
 ---
 

@@ -167,18 +167,23 @@ class OtpService:
             .scalars()
             .first()
         )
-        created = user is None
-        if created:
-            # The first deadline is set at creation, not left NULL. A NULL column
-            # is treated as "due" by the P-4 guard (fail-closed for grandfathered
-            # rows), so leaving it empty would make a brand-new account show a
-            # spurious "re-verify your number" prompt on its first order.
-            user = User(
-                phone_e164=phone_e164,
-                role=UserRole.PASSENGER,
-                phone_verified_at=_now(),
-                phone_reverify_due_at=next_deadline(),
-            )
-            self.session.add(user)
-            await self.session.flush()
-        return user, created
+        if user is not None:
+            return user, False
+
+        # Branched on `user is None` rather than on a separate `created` flag: a
+        # bool copy of the check tells the type checker nothing, so the return
+        # read as `User | None` while the code guarantees a `User`.
+        #
+        # The first deadline is set at creation, not left NULL. A NULL column is
+        # treated as "due" by the P-4 guard (fail-closed for grandfathered rows),
+        # so leaving it empty would make a brand-new account show a spurious
+        # "re-verify your number" prompt on its first order.
+        user = User(
+            phone_e164=phone_e164,
+            role=UserRole.PASSENGER,
+            phone_verified_at=_now(),
+            phone_reverify_due_at=next_deadline(),
+        )
+        self.session.add(user)
+        await self.session.flush()
+        return user, True

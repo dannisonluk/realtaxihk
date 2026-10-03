@@ -286,7 +286,10 @@ class SettlementService:
                 driver_id: reference_for_weekly(driver_id, period) for driver_id in driver_ids
             }
 
-            claimed: dict[str, LedgerEntry] = {}
+            # Keyed by the stored reference. The column is typed nullable, but
+            # the query below only selects the references it was given, all of
+            # which came from `reference_for_weekly`.
+            claimed: dict[str | None, LedgerEntry] = {}
             if references:
                 claimed = {
                     row.reference: row
