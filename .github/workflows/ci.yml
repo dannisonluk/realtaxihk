@@ -121,7 +121,10 @@ jobs:
 
   mobile:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15 was enough for analyze + two Dart scripts. The APK build adds a cold
+    # Gradle 9.1 download plus the Android SDK components AGP 9 needs, which is
+    # minutes, not seconds.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: mobile
@@ -158,6 +161,20 @@ jobs:
 
       - name: Wire-contract fixtures
         run: dart --packages=.dart_tool/package_config.json tool/verify_contract.dart
+
+      # Nothing here used to compile the Android build at all. `flutter analyze`
+      # is a Dart check: it never reads `build.gradle.kts`, never resolves the
+      # manifest placeholders and never registers the native plugins. So a build
+      # script that had never once been compiled shipped, and it only surfaced
+      # when someone ran the build by hand -- `app/build.gradle.kts` wrote
+      # `java.util.Properties()`, which does not compile in a project script.
+      #
+      # This step is the gate for that class of defect: it runs Gradle for real.
+      # Keep it --debug on purpose. A debug build needs no signing key, so the
+      # gate stays green on a repo that has no credentials; a release build would
+      # fail here until a keystore exists, which is not what this is checking.
+      - name: Build debug APK
+        run: flutter build apk --debug
 
   admin-web:
     runs-on: ubuntu-latest

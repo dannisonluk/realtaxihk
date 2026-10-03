@@ -40,6 +40,42 @@ val googleMapsApiKey: String =
         properties.getProperty("GOOGLE_MAPS_API_KEY") ?: ""
     }
 
+// --- Release signing ---------------------------------------------------------
+//
+// Credentials live in android/key.properties, which is gitignored — the same
+// place the Maps key goes, so there is one file to provision and nothing to
+// leak. The shape is the one the Flutter docs use:
+//
+//   storeFile=/path/to/upload-keystore.jks
+//   storePassword=…
+//   keyAlias=upload
+//   keyPassword=…
+//
+// Generate the keystore once and keep it out of the repo:
+//
+//   keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA \
+//     -keysize 2048 -validity 10000 -alias upload
+//
+// While key.properties is absent the release build falls back to the debug keys,
+// so the build still runs on a machine that has no keystore. That APK is **not
+// shippable** — it cannot be uploaded, and it cannot update a published build
+// because the signature does not match. So a release task warns rather than
+// producing it quietly.
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+val hasReleaseKeystore = keystorePropertiesFile.exists()
+if (hasReleaseKeystore) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+}
+if (!hasReleaseKeystore &&
+    gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
+) {
+    logger.warn(
+        "android/key.properties is missing: this release build will be signed with " +
+            "the DEBUG keys and cannot be published. See mobile/README.md.",
+    )
+}
+
 android {
     namespace = "hk.realtaxi.mobile"
     compileSdk = flutter.compileSdkVersion
@@ -62,11 +98,29 @@ android {
         manifestPlaceholders["googleMapsApiKey"] = googleMapsApiKey
     }
 
+    signingConfigs {
+        // Only created when the credentials are present. Resolving an absent
+        // signing config throws, which would break every build on a machine that
+        // has no keystore — including CI.
+        if (hasReleaseKeystore) {
+            create("release") {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile =
+                    keystoreProperties.getProperty("storeFile")?.let { rootProject.file(it) }
+                storePassword = keystoreProperties.getProperty("storePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig =
+                if (hasReleaseKeystore) {
+                    signingConfigs.getByName("release")
+                } else {
+                    signingConfigs.getByName("debug")
+                }
         }
     }
 }

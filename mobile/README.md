@@ -83,11 +83,30 @@ command works.
 
 Two things to settle before a release build means anything:
 
-* **The release build type currently signs with the debug keys.**
-  `android/app/build.gradle.kts` has
-  `signingConfig = signingConfigs.getByName("debug")` and a
-  `TODO: Add your own signing config for the release build.` A debug APK is
-  fine; a release APK built this way is not shippable.
+* **Release signing is wired up, but there is no keystore yet.**
+  `android/app/build.gradle.kts` reads `android/key.properties` (gitignored) and
+  creates a `release` signing config from it. While that file is absent the
+  release build falls back to the debug keys **and warns**, because the APK it
+  produces cannot be uploaded and cannot update a published build — the signature
+  would not match. The file it expects:
+
+  ```properties
+  storeFile=/path/to/upload-keystore.jks
+  storePassword=…
+  keyAlias=upload
+  keyPassword=…
+  ```
+
+  Generate the keystore once (keep it out of the repo):
+
+  ```bash
+  keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA \
+    -keysize 2048 -validity 10000 -alias upload
+  ```
+
+  Verified with a throwaway keystore: `./gradlew :app:signingReport` then reports
+  `Variant: release → Config: release → Store: …/upload-keystore.jks → Alias: upload`.
+  `storeFile` is resolved against `mobile/android/`, so a relative path is fine.
 * **`GOOGLE_MAPS_API_KEY` is absent from `android/local.properties`.** The build
   still succeeds — the manifest placeholder resolves to empty and the map
   surfaces render their labelled placeholder (`AppConfig.mapsConfigured`) — but
