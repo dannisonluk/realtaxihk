@@ -24,22 +24,7 @@ from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api.admin import router as admin_router
-from app.api.admin_analytics import router as admin_analytics_router
-from app.api.admin_auth import router as admin_auth_router
-from app.api.admin_licence import router as admin_licence_router
-from app.api.auth import router as auth_router
-from app.api.drivers import router as drivers_router
-from app.api.fare import router as fare_router
-from app.api.fleets import admin_router as admin_fleets_router
-from app.api.fleets import router as fleets_router
-from app.api.identity import router as identity_router
-from app.api.licence import router as licence_router
-from app.api.orders import router as orders_router
-from app.api.service_area_route import router as service_area_router
-from app.api.tracking import router as tracking_router
-from app.api.trips import router as trips_router
-from app.api.ws import router as ws_router
+from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import (
@@ -235,30 +220,10 @@ def create_app() -> FastAPI:
         ),
     )
     register_exception_handlers(app)
-    app.include_router(fare_router)
-    app.include_router(auth_router)
-    app.include_router(identity_router)
-    app.include_router(drivers_router)
-    # Mounted before the platform `admin_router` so `/api/v1/admin/auth/*` is
-    # matched by the admin-auth handlers rather than falling into a catch-all.
-    app.include_router(admin_auth_router)
-    # P-3: likewise before `admin_router`, so `/api/v1/admin/licence/*` reaches
-    # the licence-review handlers. The licence queue and the generic driver
-    # queue are different views of the same domain and must not be conflated.
-    app.include_router(admin_licence_router)
-    # P-5 analytics: likewise before `admin_router`, so
-    # `/api/v1/admin/analytics/*` is matched here. It shares the `/admin`
-    # prefix with the platform router and would otherwise be swallowed by it.
-    app.include_router(admin_analytics_router)
-    app.include_router(admin_router)
-    app.include_router(licence_router)
-    app.include_router(fleets_router)
-    app.include_router(admin_fleets_router)
-    app.include_router(orders_router)
-    app.include_router(tracking_router)
-    app.include_router(trips_router)
-    app.include_router(service_area_router)
-    app.include_router(ws_router)
+    # The whole route table, assembled in one auditable place. Registration
+    # order is load-bearing (three admin routers must precede the platform
+    # one) -- see `app/api/router.py`.
+    app.include_router(api_router)
 
     from app.core.db import get_redis, get_session_factory
     from app.core.logging import attach_request_logging, configure_logging

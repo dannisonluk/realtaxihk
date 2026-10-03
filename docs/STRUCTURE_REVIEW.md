@@ -95,11 +95,19 @@ tests/
 **風險**：要逐條移植 97 條斷言並確認數目不變；`dart_check.py` 仍要保留（本機
 唯一能做的靜態檢查）。
 
-### R4 — 路由掛載集中在 `main.py`
+### R4 — 路由掛載集中在 `main.py` ✅ 已處理
 
-現在 16 個 router 在 `app/main.py` 逐個 `include_router`。加一個
-`app/api/router.py` 只做聚合，`main.py` 只 import 一次 —— 好處是**路由表可以
-在一處審閱**（route-table 審計的對象也集中）。低風險，與 R1 一起做。
+原本 16 個 router 在 `app/main.py` 逐個 `include_router`，路由表只能靠在腦內重組
+那 20 行。**已加 `app/api/router.py`**：一個 `api_router` 聚合全部，`main.py` 只
+`include_router` 一次，而**註冊順序的註釋也搬過去**（三個 admin router 必須排在
+平台 `admin_router` 之前，否則 `/admin/auth/*`、`/admin/licence/*`、
+`/admin/analytics/*` 會被它吞掉）。路由表現在可以在一處審閱。
+
+**驗證**：`app.openapi()` 完全相同；並特別驗了
+`tests/test_security_hardening.py` 的 `_iter_api_routes` —— 它遞迴走訪路由樹，
+仍然找到 **89 條 APIRoute、51 條非公開 `/api/v1` 路由、0 個缺 guard**，
+`checked >= 15` 的下限守衛也成立。這一項必須驗，因為 R4 把路由樹的嵌套由
+**1 層變成 2 層**，而該走訪器是整個測試套件唯一依賴路由樹形狀的地方。
 
 ### R5 — `admin-web/` 混著兩代 console
 
