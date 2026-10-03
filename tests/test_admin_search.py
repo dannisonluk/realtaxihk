@@ -22,7 +22,7 @@ import uuid
 
 import pytest
 
-from app.services.search_service import digits_only, normalize_query
+from app.services.admin.search_service import digits_only, normalize_query
 
 
 def _mk_user(

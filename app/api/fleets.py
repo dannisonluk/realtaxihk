@@ -49,7 +49,7 @@ from app.models import (
     FleetSettlementRun,
     FleetStatus,
 )
-from app.services.fleet_service import FleetService, FleetSettlementService
+from app.services.fleet.fleet_service import FleetService, FleetSettlementService
 
 router = APIRouter(prefix="/api/v1/fleets", tags=["fleets"])
 admin_router = APIRouter(prefix="/api/v1/admin/fleets", tags=["admin"])

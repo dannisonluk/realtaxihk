@@ -39,9 +39,9 @@ from app.core.deps import Principal, require_active_user
 from app.core.exceptions import BusinessRuleError
 from app.core.masking import mask_phone
 from app.models import Gender, User
-from app.services import phone_reverify_service as phone_reverify
-from app.services.identity_service import IdentityService
-from app.services.storage_service import get_storage_service
+from app.services.auth import phone_reverify_service as phone_reverify
+from app.services.auth.identity_service import IdentityService
+from app.services.licence.storage_service import get_storage_service
 
 logger = logging.getLogger("realtaxihk.identity")
 
@@ -241,7 +241,7 @@ async def reverify_phone(
     new here is the second half: `mark_verified` moves `phone_reverify_due_at`
     forward. Without that the caller would verify and stay blocked.
     """
-    from app.services.otp_service import OtpService
+    from app.services.auth.otp_service import OtpService
 
     limiter = request.app.state.rate_limiter
     if not await limiter.allow(

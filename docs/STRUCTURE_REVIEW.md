@@ -116,15 +116,36 @@ React build（`web/`）、驗證腳本（`tool/`）、`serve.py`、`README.md`�
 建議 legacy 三件搬入 `admin-web/legacy/`，並更新 `serve.py` 的兩個服務路徑。
 注意 `verify_ui.mjs` **明文拒絕** legacy build，所以搬動不會影響 UI 驗證。
 
-### R6 — `app/services/` 27 個平鋪模組
+### R6 — `app/services/` 27 個平鋪模組 ✅ 已處理
 
-`app/models/` 已按 context 拆包，`app/services/` 沒有。建議同構分組
-（`auth/` · `order/` · `ledger/` · `fleet/` · `licence/` · `admin/`）。
+`app/models/` 已按 context 拆包，`app/services/` 沒有。**已同構分組為 7 個
+bounded context**，對齊文檔已定義的模組（A 認證／B 派單／C 帳本／E 車隊／F 後台），
+而不是我臨時發明一套分類：
 
-**與 `app/models/` 的關鍵差別**：models 有 `__init__` re-export，所以拆包**零
-呼叫點改動**；services **沒有**這層聚合，所以每個 `from app.services.x import y`
-都要改。這是本清單中改動面最廣的一項 —— 要做的話，先加一層
-`app/services/__init__.py` re-export 再搬，才享有同樣的零改動。
+| group | 模組數 | 內容 |
+|---|---|---|
+| `auth/` | 4 | OTP、refresh、phone re-verify、identity |
+| `licence/` | 3 | 文件提交／審核、object storage |
+| `order/` | 6 | 訂單、搶單、狀態機、行程、fare engine、geo |
+| `ledger/` | 4 | 帳本、結算 job、confirm token、退款 |
+| `fleet/` | 1 | 車隊（持牌營運商） |
+| `admin/` | 7 | 後台帳戶／認證／審計／爭議／分析／搜尋 |
+| `infra/` | 2 | 通知、背景任務 |
+
+**這是本清單改動面最廣的一項**：151 個引用、64 個檔案（含 `docs/` 與 CI 設定）。
+
+**原建議有一處寫錯了，在此更正。** 我原本說「先加 `__init__.py` re-export 再搬，
+就享有零呼叫點改動」—— **不成立**。`app/models/` 能做到零改動，是因為 consumer
+本來就用 `from app.models import X`；services 的 consumer 用的是**深層路徑**
+（`from app.services.ledger_service import LedgerService`），re-export 層幫不上忙，
+舊路徑照樣斷。所以改法是**直接改寫全部引用**。
+
+**也刻意沒有為每個 group 加 re-export**：那會令每個 group 的 `__init__` 成為互相
+import 的樞紐，製造 import cycle —— 比路徑長一點更糟。`app/models/` 能安全
+re-export，是因為 model 模組只 import `_base`。
+
+**驗證**：`app.openapi()` **剝掉 `description` 後完全相同**（只有 4 條 description
+有變，逐條檢查過，全部是 docstring 內被更新的服務路徑文字）；960 tests 全過。
 
 ### R7 — `service_area` 兩份同名 ✅ 已處理
 

@@ -27,7 +27,7 @@ explicit on the server.
 Money forms — the reason every amount is `str`
 ----------------------------------------------
 Fare figures use the **meter's 1-dp rule** (`meter_str`: `"75.2"`), not the
-2-dp rule used for stored balances. `app/services/order_service.py` documents why
+2-dp rule used for stored balances. `app/services/order/order_service.py` documents why
 at length: `fare_snapshot` previously emitted `134.00` where the estimate
 endpoint emitted `134.0` for the same trip, because one path used `money_str`
 and the other `meter_str`. The fixtures pin it — `fare_estimate.json` and
@@ -47,7 +47,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 
-from app.services.fare_calculator import TaxiType
+from app.services.order.fare_calculator import TaxiType
 
 __all__ = [
     "FareEstimateOut",
@@ -83,7 +83,7 @@ class FareEstimateOut(BaseModel):
       It is a `str`-subclass enum, so the wire form is unchanged (`"URBAN"`).
     - `distance_km` and `waiting_min` are the **caller's inputs echoed back**,
       not computed money. `FareBreakdown` carries them as `Decimal`
-      (`app/services/fare_calculator.py`) and the handler forwards them
+      (`app/services/order/fare_calculator.py`) and the handler forwards them
       untouched — they never pass through `meter_str`. They are therefore the
       only two figures here with no canonical formatting rule, which the fixture
       confirms: `"12.5"` and `"3"` (note: *not* `"3.0"`).

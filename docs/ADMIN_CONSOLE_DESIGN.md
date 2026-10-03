@@ -223,9 +223,9 @@ order_disputes
 
 ### 設計方案
 
-1. 抽 `app/services/audit_service.py` 的
+1. 抽 `app/services/admin/audit_service.py` 的
    `record_audit(session, event, outcome, actor, detail, request)`
-   （原 `AdminAuthService.audit()`，`app/services/admin_auth_service.py:177`）。
+   （原 `AdminAuthService.audit()`，`app/services/admin/admin_auth_service.py:177`）。
 2. 補動錢 event 常數（加法，無需 migration——表設計是 string 非 enum）：
 
    ```

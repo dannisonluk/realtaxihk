@@ -326,7 +326,7 @@ SSRF、以及 Docker 下 `FORWARDED_ALLOW_IPS` 被設成 `*` 的常見誤配）�
 ### 處理範圍
 
 **production 代碼**（4 檔）：
-- `app/services/otp_service.py` — 刪 `dev_code` 回吐、刪 `_last_code`，改 docstring。
+- `app/services/auth/otp_service.py` — 刪 `dev_code` 回吐、刪 `_last_code`，改 docstring。
 - `app/core/db.py` — `get_redis()` 改 per-loop cache；`close_redis()` 真正關閉。
 - `app/main.py` — `/health` 不再關共用 client；lifespan 關閉清單按 identity 去重；
   `auth_redis` 註釋更新。

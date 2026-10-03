@@ -14,7 +14,7 @@ consequences show up here:
   into every list response would leak it into any log that captured the payload.
 
 `LicenceSubmissionOut` is `SubmissionOut.as_dict()` from
-`app/services/licence_service.py` — the driver's view of one submission. Its
+`app/services/licence/licence_service.py` — the driver's view of one submission. Its
 `documents` are already serialised dicts (not a second model), because the
 service is the single place that decides a document's wire form and duplicating
 that decision here is how the list and detail views would drift apart.
@@ -75,7 +75,7 @@ class LicenceSubmissionOut(BaseModel):
     client actually needs to render (the document list) would be undocumented.
 
     `reviewed_by` is deliberately absent — see `SubmissionOut` in
-    `app/services/licence_service.py`: an operator's internal id is not the
+    `app/services/licence/licence_service.py`: an operator's internal id is not the
     driver's business.
     """
 

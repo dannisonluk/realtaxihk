@@ -135,7 +135,7 @@ class FleetSettlementRunOut(BaseModel):
 
     Declared fresh rather than inheriting `FleetSettlementRowOut`, because it
     **does not carry `created_at`** — the run endpoint returns the totals it just
-    computed (`app/services/fleet_service.py::run_weekly`), not the reloaded
+    computed (`app/services/fleet/fleet_service.py::run_weekly`), not the reloaded
     row. Inheriting would have published a field the route never sends, and a
     client trusting the schema would read `undefined` for it.
     """

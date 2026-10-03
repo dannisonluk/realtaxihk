@@ -1,7 +1,7 @@
 """Order schemas — the order payload, the trip-location view, and their lists.
 
 The order payload is deliberately thin and carries no passenger or driver
-identity. `order_out` (`app/services/order_service.py`) is the single producer,
+identity. `order_out` (`app/services/order/order_service.py`) is the single producer,
 and every route that returns an order returns exactly this shape — create,
 grab, arrive, start, complete, detail, and both history pages. One model with
 eight producers is why the "one shape" property is worth pinning: a route that

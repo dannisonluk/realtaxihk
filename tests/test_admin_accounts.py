@@ -24,7 +24,7 @@ import uuid
 import pytest
 from sqlalchemy import text
 
-from app.services.audit_service import (
+from app.services.admin.audit_service import (
     EV_ADMIN_ACCOUNT_CREATE,
     EV_ADMIN_PASSWORD_RESET,
     EV_ADMIN_ROLE_CHANGE,
@@ -307,7 +307,7 @@ class TestLastSuperAdminCannotBeRemoved:
 
         async with client.db_factory() as session:
             from app.models import AdminRole
-            from app.services.admin_account_service import AdminAccountService
+            from app.services.admin.admin_account_service import AdminAccountService
 
             service = AdminAccountService(session)
             # Remove the caller's super status first, leaving `spare` the sole

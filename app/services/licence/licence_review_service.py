@@ -43,14 +43,14 @@ from app.models import (
     DriverStatus,
     LicenceReviewStatus,
 )
-from app.services.licence_service import (
+from app.services.licence.licence_service import (
     LICENCE_NO_RE,
     REQUIRED_DOCUMENT_KINDS,
     SubmissionOut,
     _out,
 )
-from app.services.state_machine import assert_driver_transition
-from app.services.storage_service import get_storage_service
+from app.services.licence.storage_service import get_storage_service
+from app.services.order.state_machine import assert_driver_transition
 
 logger = logging.getLogger(__name__)
 

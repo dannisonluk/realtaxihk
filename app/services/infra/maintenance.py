@@ -19,7 +19,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import AdminRefreshToken, Order, OrderStatus, OtpCode, RefreshToken
-from app.services.geo_service import GEO_ORDERS_KEY
+from app.services.order.geo_service import GEO_ORDERS_KEY
 
 logger = logging.getLogger("realtaxihk.maintenance")
 

@@ -43,7 +43,7 @@ from __future__ import annotations
 from fastapi import Request, Response
 
 from app.core.config import get_settings
-from app.services.admin_refresh_service import (
+from app.services.admin.admin_refresh_service import (
     cookies_are_secure,
     csrf_cookie_name,
     refresh_cookie_name,

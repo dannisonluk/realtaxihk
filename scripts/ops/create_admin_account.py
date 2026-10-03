@@ -16,7 +16,7 @@ TOTP is never enrolled here
 ---------------------------
 This does not generate a TOTP secret. The admin enrols on their **first login**,
 which is the only way the secret can be proven to work before it is trusted — the
-flow is in `app/services/admin_auth_service.py` (`_begin_enrolment` holds the
+flow is in `app/services/admin/admin_auth_service.py` (`_begin_enrolment` holds the
 secret in Redis until a valid code confirms it). Writing a secret from a script
 would mean an operator could create an account whose second factor nobody can
 generate a code for, and the account would then be locked out by design.

@@ -175,7 +175,7 @@ class TestAtomicGrab:
         from sqlalchemy.pool import NullPool
 
         from app.core.config import get_settings
-        from app.services.grab_service import GrabService
+        from app.services.order.grab_service import GrabService
 
         async def hammer():
             engine = create_async_engine(client.db_url, poolclass=NullPool)
@@ -291,7 +291,7 @@ class TestStateMachineInvariants:
         would then be computed over a moving target.
         """
         from app.models import OrderStatus
-        from app.services.state_machine import ORDER_TRANSITIONS
+        from app.services.order.state_machine import ORDER_TRANSITIONS
 
         for terminal in (OrderStatus.COMPLETED, OrderStatus.CANCELLED):
             assert ORDER_TRANSITIONS[terminal] == set(), (
@@ -307,7 +307,7 @@ class TestStateMachineInvariants:
         cancelled trip could still carry in-trip ledger entries.
         """
         from app.models import OrderStatus
-        from app.services.state_machine import ORDER_TRANSITIONS
+        from app.services.order.state_machine import ORDER_TRANSITIONS
 
         assert OrderStatus.CANCELLED not in ORDER_TRANSITIONS[OrderStatus.IN_TRIP]
 
@@ -320,7 +320,7 @@ class TestStateMachineInvariants:
         failure instead of a production dead end.
         """
         from app.models import OrderStatus
-        from app.services.state_machine import ORDER_TRANSITIONS
+        from app.services.order.state_machine import ORDER_TRANSITIONS
 
         missing = set(OrderStatus) - set(ORDER_TRANSITIONS)
         assert not missing, f"statuses with no transition row: {missing}"
@@ -328,7 +328,7 @@ class TestStateMachineInvariants:
     def test_every_target_is_a_known_status(self):
         """No edge points at a status outside the enum."""
         from app.models import OrderStatus
-        from app.services.state_machine import ORDER_TRANSITIONS
+        from app.services.order.state_machine import ORDER_TRANSITIONS
 
         known = set(OrderStatus)
         for source, targets in ORDER_TRANSITIONS.items():
@@ -343,7 +343,7 @@ class TestStateMachineInvariants:
         complete an order that was never driven.
         """
         from app.models import OrderStatus
-        from app.services.state_machine import ORDER_TRANSITIONS
+        from app.services.order.state_machine import ORDER_TRANSITIONS
 
         sources = {
             src for src, targets in ORDER_TRANSITIONS.items() if OrderStatus.COMPLETED in targets
@@ -352,6 +352,6 @@ class TestStateMachineInvariants:
 
     def test_driver_terminated_is_terminal(self):
         from app.models import DriverStatus
-        from app.services.state_machine import DRIVER_TRANSITIONS
+        from app.services.order.state_machine import DRIVER_TRANSITIONS
 
         assert DRIVER_TRANSITIONS[DriverStatus.TERMINATED] == set()

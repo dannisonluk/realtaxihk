@@ -19,7 +19,7 @@ CRITICAL, which is the difference between a silent revenue leak and an alert.
 
 Fleet members are excluded from this run — they are billed by
 `FleetSettlementService` at their fleet's discounted rate, under the separate
-`fleet:` reference namespace. See `app/services/fleet_service.py`.
+`fleet:` reference namespace. See `app/services/fleet/fleet_service.py`.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ from app.models import (
     LedgerEntry,
     LedgerEntryType,
 )
-from app.services.ledger_service import LedgerService, reference_for_weekly
+from app.services.ledger.ledger_service import LedgerService, reference_for_weekly
 
 logger = logging.getLogger("realtaxihk.settlement")
 

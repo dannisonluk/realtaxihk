@@ -25,7 +25,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select, update
 
 from app.models import DriverProfile, DriverStatus, Order, OrderStatus
-from app.services.state_machine import assert_order_transition
+from app.services.order.state_machine import assert_order_transition
 
 _LOCK_TTL_MS = 15_000
 

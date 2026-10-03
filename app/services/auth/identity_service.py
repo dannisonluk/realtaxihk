@@ -45,7 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.exceptions import BusinessRuleError
 from app.models import AccountStatus, EmailVerificationToken, Gender, User
-from app.services.notify import get_email_provider
+from app.services.infra.notify import get_email_provider
 
 logger = logging.getLogger("realtaxihk.identity")
 

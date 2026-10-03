@@ -4,7 +4,7 @@ from decimal import Decimal as D
 
 import pytest
 
-from app.services.fare_calculator import TaxiType, Tunnel, calculate_fare
+from app.services.order.fare_calculator import TaxiType, Tunnel, calculate_fare
 
 URBAN = TaxiType.URBAN
 NT = TaxiType.NT

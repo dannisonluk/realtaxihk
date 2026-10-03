@@ -134,7 +134,7 @@ weekly 層要經得起「幾日後才發現」的問題，所以 40 日 / keep 7
 - **Location check**：`app/core/hk_bounds.py` —— 8 個 polygon 取代
   `lat 22.1-22.6, lng 113.8-114.5` 的 bbox，因為**舊 bbox 含深圳**
   （Futian / Luohu / Bao'an 全部在內）。Server 為準，403 帶 `OUTSIDE_HK`。
-- **Analytics**：`app/services/analytics_service.py` + `#/analytics`。
+- **Analytics**：`app/services/admin/analytics_service.py` + `#/analytics`。
   `timezone('Asia/Hong_Kong', completed_at)` 同時用於 SELECT 同 GROUP BY，
   半開區間 `[00:00 HKT, 翌日 00:00 HKT)`。收入 = COMPLETED 訂單的
   `estimated_total_hkd`（已含折扣與貼士）。
@@ -289,7 +289,7 @@ weekly 層要經得起「幾日後才發現」的問題，所以 40 日 / keep 7
 **（a）审计覆盖金錢／狀態，並按角色設閘。**
 此前 15 個 `.audit()` 調用點**全部**在 `admin_auth_service.py` —— 也就是說
 管理員登入有記錄，但**動錢的六條路由什麼都不寫**。新增共用寫入器
-（`app/services/audit_service.py`）並補上金錢／狀態事件，同時加 `payload`
+（`app/services/admin/audit_service.py`）並補上金錢／狀態事件，同時加 `payload`
 欄位（migration `a1c4e8b7f209`）令審計行帶得住「改了什麼」而不只是「誰按了」。
 
 **（b）四級 RBAC。**

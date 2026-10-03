@@ -45,7 +45,7 @@ _TICK = Decimal("0.1")
 # docstring has always said it accepts a string or an int. It surfaced as a real
 # editor error wherever an int setting was rendered -- `Settings.weekly_fee_hkd`
 # is an `int` (`200`), and `money_str(200)` is the *intended* way to get
-# `"200.00"` (see the call site's comment in `app/api/admin.py`). A narrow
+# `"200.00"` (see the call site's comment in `app/api/admin/settlement.py`). A narrow
 # annotation on a widening body does not make the call unsafe; it only makes the
 # type checker disagree with the code.
 MoneyInput = Decimal | int | str

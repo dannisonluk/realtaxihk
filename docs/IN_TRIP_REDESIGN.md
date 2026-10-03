@@ -23,7 +23,7 @@
 
 ### 1.1 狀態機
 
-`app/services/state_machine.py`：
+`app/services/order/state_machine.py`：
 
 ```python
 ORDER_TRANSITIONS = {
@@ -932,7 +932,7 @@ P1 / P2 已確認：**行程生命週期事件從未被 publish**，
 |---|---|---|---|
 | 1 | `OrderStatus` 加 3 態 + `InterruptionReason` + 3 個 `LedgerEntryType` | `app/models/user.py` | `native_enum=False`，enum 加值無需 migration |
 | 2 | `orders` 加 15 欄位、`order_disputes`、`order_events` | Alembic migration | 見 §3.1 / §3.3 / §3.4 |
-| 3 | 重寫 `ORDER_TRANSITIONS` | `app/services/state_machine.py` | 加 property test 守住 §2.2 的四條不變式 |
+| 3 | 重寫 `ORDER_TRANSITIONS` | `app/services/order/state_machine.py` | 加 property test 守住 §2.2 的四條不變式 |
 | 4 | `arrival-claim` + `arrival-confirm`（拆取代 `/arrive`） | `app/api/orders.py` | **含 GPS 距離計算** |
 | 5 | `change-destination` 端點（不經 admin） | `app/api/orders.py` | |
 | 6 | `interrupt` 端點（**即時生效** + 自動開 dispute） | `app/api/orders.py` | 單一 transaction |

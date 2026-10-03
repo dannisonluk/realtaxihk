@@ -22,7 +22,7 @@ from datetime import datetime
 import pytest
 from sqlalchemy import text
 
-from app.services.settlement_confirm import (
+from app.services.ledger.settlement_confirm import (
     PREVIEW_TTL_SECONDS,
     issue_confirm_token,
     verify_confirm_token,
@@ -92,7 +92,7 @@ def _mint_token(driver_ref: str, period: str) -> str:
     from decimal import Decimal
 
     from app.core.config import get_settings
-    from app.services.settlement_confirm import issue_confirm_token
+    from app.services.ledger.settlement_confirm import issue_confirm_token
 
     return issue_confirm_token(period=period, fee_hkd=str(Decimal(get_settings().weekly_fee_hkd)))
 
@@ -358,7 +358,7 @@ class TestTokenBinding:
         import time
 
         from app.core.config import get_settings
-        from app.services.settlement_confirm import _PURPOSE, _sign
+        from app.services.ledger.settlement_confirm import _PURPOSE, _sign
 
         body = json.dumps(
             {
@@ -488,7 +488,7 @@ def _week_instant(reference: str) -> datetime:
     an ISO string is rejected with
     `expected a datetime.date or datetime.datetime instance, got 'str'`.
     """
-    from app.services.settlement_service import period_start
+    from app.services.ledger.settlement_service import period_start
 
     period = reference.rsplit(":", 1)[-1]
     return period_start(period)
@@ -505,7 +505,7 @@ class TestPeriodStartIsTheInverseOfPeriodKey:
         year. Using the wrong one here would have made the test pass by
         asserting nothing.
         """
-        from app.services.settlement_service import period_key, period_start
+        from app.services.ledger.settlement_service import period_key, period_start
 
         for period in ("2024-W52", "2025-W52", "2026-W01", "2026-W40", "2026-W53"):
             assert period_key(period_start(period)) == period
@@ -515,7 +515,7 @@ class TestPeriodStartIsTheInverseOfPeriodKey:
         raises a business rule for the impossible case rather than letting
         `fromisocalendar` surface a stack trace for a typo."""
         from app.core.exceptions import BusinessRuleError
-        from app.services.settlement_service import period_start
+        from app.services.ledger.settlement_service import period_start
 
         assert period_start("2026-W53") is not None
         with pytest.raises(BusinessRuleError):

@@ -31,7 +31,7 @@ from sqlalchemy import func, select, text
 
 from app.core.config import get_settings
 from app.models import User
-from app.services import phone_reverify_service as phone_reverify
+from app.services.auth import phone_reverify_service as phone_reverify
 
 CODE = "123456"
 PHONE = "+85290003301"

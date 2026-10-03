@@ -8,7 +8,7 @@ from decimal import Decimal as D
 
 import pytest
 
-from app.services.fare_calculator import TaxiType, estimate_meter_fare
+from app.services.order.fare_calculator import TaxiType, estimate_meter_fare
 
 URBAN = TaxiType.URBAN
 NT = TaxiType.NT

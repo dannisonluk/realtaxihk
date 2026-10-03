@@ -44,7 +44,7 @@ from app.models import (
     DriverStatus,
     LicenceReviewStatus,
 )
-from app.services.storage_service import (
+from app.services.licence.storage_service import (
     ALLOWED_IMAGE_TYPES,
     MAX_DOCUMENT_BYTES,
     get_storage_service,

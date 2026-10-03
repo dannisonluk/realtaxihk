@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
 from app.core.deps import Principal, require_admin
-from app.services.analytics_service import (
+from app.services.admin.analytics_service import (
     AnalyticsService,
     Granularity,
     SortBy,

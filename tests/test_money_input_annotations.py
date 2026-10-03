@@ -11,7 +11,8 @@ only makes the type checker disagree with the code.
 That was not theoretical. `Settings.weekly_fee_hkd` is an `int` (`200`), and
 `money_str(settings.weekly_fee_hkd)` is the *intended* way to render it as
 `"200.00"` — the call site carries a comment saying so. So the editor flagged a
-correct line (`app/api/admin.py:689`, `:725`, plus
+correct line (`app/api/admin/settlement.py` -- it was `app/api/admin.py:689`/`:725`
+before that module was split, plus
 `tests/test_admin_settlement_preview.py:265` and a string literal in
 `tests/test_analytics_admin.py`), while CI stayed green, because ruff does not
 infer types.

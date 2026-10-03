@@ -218,7 +218,7 @@ assert statuses[-1] in (401, 429)           # 舊
 
 ### 🟡 SEV-3：顯示層 round-mode 不一致（未修）
 
-**位置**：`app/services/analytics_service.py:141`、`:191`、`:224`
+**位置**：`app/services/admin/analytics_service.py:141`、`:191`、`:224`
 
 ```python
 return str((Decimal(numerator) / denominator).quantize(Decimal("0.01")))

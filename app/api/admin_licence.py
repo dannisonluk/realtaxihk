@@ -36,7 +36,7 @@ from app.core.db import get_session
 from app.core.deps import Principal, require_admin
 from app.core.exceptions import BusinessRuleError
 from app.models import LicenceReviewStatus
-from app.services.licence_review_service import LicenceReviewService
+from app.services.licence.licence_review_service import LicenceReviewService
 
 logger = logging.getLogger("realtaxihk.licence.admin")
 

@@ -39,9 +39,9 @@ from app.core.masking import mask_email, mask_phone
 from app.core.security import create_access_token
 from app.core.token_revocation import revoke_user_tokens
 from app.models import AdminAccount, User, UserRole
-from app.services import phone_reverify_service as phone_reverify
-from app.services.otp_service import OtpService
-from app.services.refresh_service import RefreshService
+from app.services.auth import phone_reverify_service as phone_reverify
+from app.services.auth.otp_service import OtpService
+from app.services.auth.refresh_service import RefreshService
 
 logger = logging.getLogger("realtaxihk.auth")
 

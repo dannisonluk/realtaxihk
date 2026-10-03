@@ -23,7 +23,8 @@ app/api/admin/     管理後台路由，一個資源一個模組（drivers / set
                    audit / accounts / orders / disputes / search / live；
                    `_roles.py` 放角色閘門，`_shared.py` 放跨資源的 helper）
 app/api/schemas/   Pydantic 響應模型（見 §3.1 的警告）
-app/services/      領域邏輯——所有業務不變式住在這裡
+app/services/      領域邏輯——所有業務不變式住在這裡，按 bounded context 分組
+                   （auth / licence / order / ledger / fleet / admin / infra）
 app/models/        SQLAlchemy 2.0 declarative，按 bounded context 拆包
 app/core/          橫切關注點——config、money、deps（RBAC）、rate_limit、client_ip、
                    hk_bounds、exceptions、logging、security、totp

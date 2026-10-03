@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.money import MoneyInput, meter_str, money_str
 from app.models import Order, OrderStatus
-from app.services.fare_calculator import TaxiType, Tunnel, calculate_fare
-from app.services.state_machine import assert_order_transition
+from app.services.order.fare_calculator import TaxiType, Tunnel, calculate_fare
+from app.services.order.state_machine import assert_order_transition
 
 
 def _meter_str(v: MoneyInput) -> str:

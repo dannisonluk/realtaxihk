@@ -89,7 +89,7 @@ message = payload.pop("message", "Request failed.")   # 修復前
 
 ### H-3 · 結算：一種「錢沒收到」的失敗被誤計為「正常跳過」
 
-**檔案**：`app/services/settlement_service.py`
+**檔案**：`app/services/ledger/settlement_service.py`
 
 ```python
 except BusinessRuleError:
@@ -208,7 +208,7 @@ drop 自己的 template（`pytest_unconfigure` → `_drop_template`）。
 ### H-6 · 兩個並行的測試行程會互相清空對方的 rate-limit 計數器
 
 **檔案**：`tests/conftest.py`、`app/core/config.py`、`app/main.py`、
-`app/services/admin_auth_service.py`
+`app/services/admin/admin_auth_service.py`
 
 修完 H-5 之後再並行跑一次，**H-5 的症狀全部消失**（沒有 `relation ... does
 not exist`），但跑出**另一組**失敗 —— 而且這一組更陰險：

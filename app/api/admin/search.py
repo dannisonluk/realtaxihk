@@ -8,16 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.api.schemas import AdminSearchOut
 from app.core.db import get_session_factory
 from app.core.deps import Principal, require_admin
-from app.services.search_service import (
+from app.services.admin.search_service import (
     DEFAULT_LIMIT as DEFAULT_SEARCH_LIMIT,
 )
-from app.services.search_service import (
+from app.services.admin.search_service import (
     MAX_LIMIT as MAX_SEARCH_LIMIT,
 )
-from app.services.search_service import (
+from app.services.admin.search_service import (
     MIN_QUERY_LENGTH as MIN_SEARCH_LENGTH,
 )
-from app.services.search_service import (
+from app.services.admin.search_service import (
     SearchService,
     normalize_query,
 )

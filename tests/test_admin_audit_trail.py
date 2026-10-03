@@ -24,7 +24,7 @@ import uuid
 import pytest
 from sqlalchemy import text
 
-from app.services.audit_service import (
+from app.services.admin.audit_service import (
     EV_DEPOSIT_ADJUST,
     EV_DEPOSIT_GRANT,
     EV_KYC_DECISION,

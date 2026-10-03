@@ -384,13 +384,13 @@ def test_a_real_link_completes_verification(client):
     masking working, not an inconvenience to route around. The provider is the
     seam instead, exactly as `otp_inbox` is for WhatsApp.
 
-    Patch `app.services.identity_service.get_email_provider`, NOT
+    Patch `app.services.auth.identity_service.get_email_provider`, NOT
     `notify.get_email_provider`: the service does `from ... import
     get_email_provider`, which binds the function object into its own namespace,
     so patching the source module leaves the service's reference untouched. Same
     trap the `otp_inbox` fixture documents.
     """
-    from app.services import identity_service
+    from app.services.auth import identity_service
 
     captured: list[tuple[str, str]] = []
 

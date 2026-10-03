@@ -19,7 +19,7 @@ class TestMasking:
 
 class TestOtpService:
     async def test_request_and_verify_roundtrip(self, db_session, otp_inbox):
-        from app.services.otp_service import OtpService
+        from app.services.auth.otp_service import OtpService
 
         svc = OtpService(db_session)
         result = await svc.request_otp("+85291234567")
@@ -37,7 +37,7 @@ class TestOtpService:
 
     async def test_wrong_code_rejected_and_attempts_counted(self, db_session, otp_inbox):
         from app.core.exceptions import BusinessRuleError
-        from app.services.otp_service import OtpService
+        from app.services.auth.otp_service import OtpService
 
         svc = OtpService(db_session)
         await svc.request_otp("+85291234567")
@@ -50,7 +50,7 @@ class TestOtpService:
 
     async def test_expired_code_rejected(self, db_session, otp_inbox):
         from app.core.exceptions import BusinessRuleError
-        from app.services.otp_service import OtpService
+        from app.services.auth.otp_service import OtpService
 
         svc = OtpService(db_session)
         await svc.request_otp("+85291234567", ttl_seconds=-1)
@@ -58,7 +58,7 @@ class TestOtpService:
             await svc.verify_otp("+85291234567", otp_inbox["+85291234567"])
 
     async def test_invalid_phone_format_rejected(self, db_session):
-        from app.services.otp_service import OtpService
+        from app.services.auth.otp_service import OtpService
 
         svc = OtpService(db_session)
         with pytest.raises(ValueError):
@@ -68,7 +68,7 @@ class TestOtpService:
 
     async def test_resend_cooldown(self, db_session):
         from app.core.exceptions import BusinessRuleError
-        from app.services.otp_service import OtpService
+        from app.services.auth.otp_service import OtpService
 
         svc = OtpService(db_session)
         await svc.request_otp("+85291234567")

@@ -54,7 +54,7 @@
 | Auth | ✅ P1-5 refresh token 輪換（SHA-256 hash at rest、single-use、`/auth/refresh` `/auth/logout`） |
 | Notify | ✅ P2-9 真 WhatsApp Cloud API provider（httpx，template message，fail-closed on prod OTP） |
 
-**新增檔案**：`app/core/logging.py`、`app/services/maintenance.py`、`app/services/refresh_service.py`、`alembic/versions/b4f1c2a7d901_*.py`（refresh_tokens 表＋ledger idempotency index）、`.github/workflows/ci.yml`、`uv.lock`、`tests/test_hardening.py`、`scripts/verify/prod_boot_drill.py`。
+**新增檔案**：`app/core/logging.py`、`app/services/infra/maintenance.py`、`app/services/auth/refresh_service.py`、`alembic/versions/b4f1c2a7d901_*.py`（refresh_tokens 表＋ledger idempotency index）、`.github/workflows/ci.yml`、`uv.lock`、`tests/test_hardening.py`、`scripts/verify/prod_boot_drill.py`。
 
 **過程中修復的 regression**：Redis client singleton 跨 event-loop 污染（TestClient portal 每 test 新 loop → pooled connection 綁死舊 loop → WS suite hang）。P2-7 一度改為 **per-call client**，但這樣每次 request 都開一條新 Redis socket（SEC-18 的 revocation check 就是熱路徑）。現已改為 **per-loop cache**（`db.py`，`WeakKeyDictionary` keyed on the running loop）：production 單 loop 只有一個 client，測試每個 TestClient loop 各自一個，兩邊都正確，也沒有 socket churn。
 
@@ -97,7 +97,7 @@
 **修法**：頂部補 `from fastapi import HTTPException`。
 
 ### B2. Ledger `append()` 沒有 `with_for_update` → 並發 lost update
-`app/services/ledger_service.py:36-52`：balance 更新是 ORM read-modify-write（SELECT → Python 相加 → UPDATE 覆寫）。兩個並發 request（同時 grant、grant+penalty）均讀取 balance=500，各自 +100，後 commit 覆蓋前者 → **帳目靜靜地錯**。
+`app/services/ledger/ledger_service.py:36-52`：balance 更新是 ORM read-modify-write（SELECT → Python 相加 → UPDATE 覆寫）。兩個並發 request（同時 grant、grant+penalty）均讀取 balance=500，各自 +100，後 commit 覆蓋前者 → **帳目靜靜地錯**。
 grep 全 repo 證實 `for_update` 出現次數 = 0。SETNX 只保護搶單，不保護 ledger。
 **修法**（二選一）：
 ```python
@@ -127,7 +127,7 @@ UPDATE driver_deposits SET balance_hkd = balance_hkd + :amt ... RETURNING balanc
 
 ### P0-2. Prod fail-safe：誤設定就全平台失守
 - **JWT secret**：`app/core/config.py:23` 有 dev default secret。docker-compose 有 `:?` 強制（`docker-compose.yml:45`），但裸 uvicorn / PM2 / systemd 部署完全沒有保護。`app_env=prod` + dev secret = 任何人可以自簽 token 冒充任何 user。
-- **OTP dev_code**：`app/services/otp_service.py:70,83-85` — `app_env=dev` 時回 `dev_code="123456"` 且繞過 WhatsApp。若 prod 機器 `.env` 匆忙留下 `APP_ENV=dev`，**全平台大門洞開**。
+- **OTP dev_code**：`app/services/auth/otp_service.py:70,83-85` — `app_env=dev` 時回 `dev_code="123456"` 且繞過 WhatsApp。若 prod 機器 `.env` 匆忙留下 `APP_ENV=dev`，**全平台大門洞開**。
 **修法**（startup 時 fail-fast，一個 validator 即可完成）：
 ```python
 # config.py — model_validator(mode="after")
@@ -302,18 +302,18 @@ JWT 2 小時（`config.py:25`）、無 refresh token。的士 trip 夠用，但�
 | 判斷 | 證據 |
 |---|---|
 | auth.py NameError | `app/api/auth.py:4`（imports）vs `:69`（用法） |
-| ledger 無鎖 | `app/services/ledger_service.py:36-52`；`grep for_update app/` → 0 |
+| ledger 無鎖 | `app/services/ledger/ledger_service.py:36-52`；`grep for_update app/` → 0 |
 | tip 無上限 | `app/api/orders.py:55`、`app/api/fare.py:33` |
 | is_active 零使用 | `grep is_active app/` → 僅 `models/__init__.py:87` |
 | 無 lifespan | `grep lifespan app/` → 0；`db.py:54` `dispose_engine` 無人呼叫 |
 | 無 logging | `grep getLogger app/` → 僅 notify.py |
 | /health 假 | `app/main.py:53-55` |
-| dev_code 風險 | `app/services/otp_service.py:70,83-85` |
+| dev_code 風險 | `app/services/auth/otp_service.py:70,83-85` |
 | JWT dev default | `app/core/config.py:23` |
 | compose 有 JWT 強制 | `docker-compose.yml:45` |
 | 無 lockfile/CI | `ls uv.lock .github` → 不存在 |
-| 訂單無隧道欄位 | `app/services/order_service.py:56-57`、`app/api/orders.py:44-55` |
-| geo 無 TTL | `app/services/geo_service.py:23-27`；live smoke count 4→8 |
+| 訂單無隧道欄位 | `app/services/order/order_service.py:56-57`、`app/api/orders.py:44-55` |
+| geo 無 TTL | `app/services/order/geo_service.py:23-27`；live smoke count 4→8 |
 | ledger 全量回 | `app/api/drivers.py:108-114` |
 | WS token 在 query | `app/api/ws.py:48` |
 | PII masking 展示層 | `app/core/masking.py`（本 audit 無受影響 — 無讀取 PII 欄位值） |

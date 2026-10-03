@@ -68,7 +68,7 @@ from app.core.totp import (
     verify_totp,
 )
 from app.models import AdminAccount, AdminRecoveryCode
-from app.services.audit_service import record_audit
+from app.services.admin.audit_service import record_audit
 
 logger = logging.getLogger("realtaxihk.admin_auth")
 
@@ -188,7 +188,7 @@ class AdminAuthService:
         """Append an audit row. Never raises: an audit failure must not fail
         a login, or a full disk becomes an outage.
 
-        Delegates to `app.services.audit_service.record_audit`, which is the
+        Delegates to `app.services.admin.audit_service.record_audit`, which is the
         single implementation. This method stays because the login path already
         resolves the client address through the trusted-proxy rules and holds
         it as a plain string; passing it straight through avoids handing over a

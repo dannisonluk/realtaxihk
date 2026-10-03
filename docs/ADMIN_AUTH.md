@@ -23,7 +23,7 @@
 本文回答 P-1 遺留的問題：**「推薦一個免費、open source、兼容標準 TOTP app 的 authenticator 方案」**，
 並把 admin 認證的實際行為寫清楚，方便日後交接。
 
-實作位置：`app/core/totp.py`、`app/services/admin_auth_service.py`、`app/api/admin_auth.py`。
+實作位置：`app/core/totp.py`、`app/services/admin/admin_auth_service.py`、`app/api/admin_auth.py`。
 
 ---
 

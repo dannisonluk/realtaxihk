@@ -285,10 +285,10 @@ def otp_inbox(monkeypatch) -> dict[str, str]:
     """The code most recently sent to each phone, keyed by E.164 phone.
 
     `otp_service` calls `get_whatsapp_provider()` through its own module global,
-    so that is the name to patch — patching `app.services.notify` would leave
+    so that is the name to patch — patching `app.services.infra.notify` would leave
     the already-bound reference in place.
     """
-    from app.services import otp_service
+    from app.services.auth import otp_service
 
     sink: dict[str, str] = {}
     monkeypatch.setattr(

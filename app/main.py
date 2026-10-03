@@ -228,9 +228,9 @@ def create_app() -> FastAPI:
     from app.core.db import get_redis, get_session_factory
     from app.core.logging import attach_request_logging, configure_logging
     from app.core.rate_limit import RateLimiter
-    from app.services.maintenance import MaintenanceService
-    from app.services.settlement_service import SettlementService
-    from app.services.trip_service import ConnectionRegistry, TripHub
+    from app.services.infra.maintenance import MaintenanceService
+    from app.services.ledger.settlement_service import SettlementService
+    from app.services.order.trip_service import ConnectionRegistry, TripHub
 
     configure_logging(settings.log_level)
     attach_request_logging(app)

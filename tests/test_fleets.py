@@ -404,7 +404,7 @@ class TestFleetSettlement:
 
     def test_the_discount_is_rounded_to_a_cent(self, client):
         """Truncation across a few hundred members is a quiet revenue leak."""
-        from app.services.fleet_service import discounted_fee
+        from app.services.fleet.fleet_service import discounted_fee
 
         # 33% of 200 = 134 exactly; 1/3 of 100 does not divide.
         assert discounted_fee(Decimal("200"), Decimal("33")) == Decimal("134.00")

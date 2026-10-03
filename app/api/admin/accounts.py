@@ -25,8 +25,8 @@ from app.api.schemas import (
 from app.core.db import get_session
 from app.core.deps import Principal
 from app.models import AdminAccount, AdminRole
-from app.services.admin_account_service import AdminAccountService
-from app.services.audit_service import (
+from app.services.admin.admin_account_service import AdminAccountService
+from app.services.admin.audit_service import (
     EV_ADMIN_ACCOUNT_CREATE,
     EV_ADMIN_PASSWORD_RESET,
     EV_ADMIN_ROLE_CHANGE,

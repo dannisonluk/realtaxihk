@@ -33,8 +33,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.exceptions import BusinessRuleError
 from app.models import OtpCode, User, UserRole
-from app.services.notify import get_whatsapp_provider
-from app.services.phone_reverify_service import next_deadline
+from app.services.auth.phone_reverify_service import next_deadline
+from app.services.infra.notify import get_whatsapp_provider
 
 _PHONE_RE = re.compile(r"^\+852\d{8}$")
 _MAX_ATTEMPTS = 5

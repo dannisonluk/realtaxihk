@@ -27,7 +27,7 @@
 | 司機自行報 `distance_km`，平台不強制 | 平台不是承運人；但這確實是已知的 gaming 風險（見 §8） |
 
 ```python
-# app/services/fare_calculator.py
+# app/services/order/fare_calculator.py
 """Fares produced here are ESTIMATES ONLY. Every breakdown must carry the
 information-intermediary disclaimer per Cap. 374D."""
 ```
@@ -68,7 +68,7 @@ POST /orders → Redis GEO → SETNX+Lua → 狀態機推進 → 凍結 fare →
 ### ③ 搶單——**這是整個系統最值得讀的一段併發邏輯**
 
 ```python
-# app/services/grab_service.py
+# app/services/order/grab_service.py
 # 贏家：Redis SETNX 鎖 → 條件式 UPDATE ... WHERE status='BROADCASTING'
 #       → rowcount == 1 → commit → 釋放鎖
 lock_key = f"lock:grab:{order_id}"
@@ -113,7 +113,7 @@ end
 ### ④⑤ 狀態機——不合法轉換直接拋錯
 
 ```python
-# app/services/state_machine.py
+# app/services/order/state_machine.py
 ORDER_TRANSITIONS = {
     CREATED:          {BROADCASTING, CANCELLED},
     BROADCASTING:     {ACCEPTED, CANCELLED},
@@ -146,7 +146,7 @@ ORDER_TRANSITIONS = {
 ### 3.1 帳本是 append-only 的，餘額是一條鏈
 
 ```python
-# app/services/ledger_service.py
+# app/services/ledger/ledger_service.py
 """All money mutations (deposits, weekly fees, penalties, refunds) MUST go
 through LedgerService.append; direct balance edits are forbidden."""
 ```
@@ -213,7 +213,7 @@ def reference_for_adjustment(driver_profile_id, reason, client_key=None) -> str:
 ### 3.3 週結算——收入模型，以及它現在會「報警」而不是「靜默」
 
 ```python
-# app/services/settlement_service.py
+# app/services/ledger/settlement_service.py
 """Every ACTIVE driver pays a flat weekly service fee, deducted from their
 deposit balance through the append-only ledger.
 Arrears are allowed by design: 餘額變負的司機仍然可以接單，下次充值時清還。"""
@@ -248,7 +248,7 @@ job 跑兩次（崩潰後重試、排程重疊、人手觸發）也只會收一�
 不開放自助登記。**名冊（roster）就是收費邊界**：
 
 ```python
-# app/services/fleet_service.py 的設計要點
+# app/services/fleet/fleet_service.py 的設計要點
 # ACTIVE 成員會「離開」平台全站的週結算，改為按其車隊的折扣價收費。
 # 一個 partial unique index 保證司機最多只出現在一份 ACTIVE 名冊上，
 # 所以「第二次加入」是 409，而不是靜靜地雙重收費。

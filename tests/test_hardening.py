@@ -89,7 +89,7 @@ class TestB2LedgerConcurrency:
 
         # seed the deposit row once (serially) so the race is on the append path
         from app.models import DriverProfile
-        from app.services.ledger_service import LedgerService
+        from app.services.ledger.ledger_service import LedgerService
 
         async with factory() as s0:
             from sqlalchemy import select as _select
@@ -107,7 +107,7 @@ class TestB2LedgerConcurrency:
                 from decimal import Decimal
 
                 from app.models import LedgerEntryType
-                from app.services.ledger_service import LedgerService
+                from app.services.ledger.ledger_service import LedgerService
 
                 await LedgerService(s).append(
                     did,

@@ -35,7 +35,7 @@ from app.models import (
     DisputeStatus,
     OrderDispute,
 )
-from app.services.audit_service import (
+from app.services.admin.audit_service import (
     EV_DISPUTE_ASSIGN,
     EV_DISPUTE_CREATE,
     EV_DISPUTE_MESSAGE,
@@ -43,7 +43,7 @@ from app.services.audit_service import (
     OUTCOME_SUCCESS,
     record_audit,
 )
-from app.services.dispute_service import DisputeService, case_is_overdue
+from app.services.admin.dispute_service import DisputeService, case_is_overdue
 
 router = APIRouter()
 

@@ -25,7 +25,7 @@ from app.core.db import get_session
 from app.core.security import decode_access_token
 from app.core.token_revocation import is_token_revoked
 from app.models import AccountStatus, AdminAccount, AdminRole, User, UserRole
-from app.services import phone_reverify_service as phone_reverify
+from app.services.auth import phone_reverify_service as phone_reverify
 
 _bearer = HTTPBearer(auto_error=False)
 

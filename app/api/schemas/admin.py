@@ -456,7 +456,7 @@ class SettlementPreviewOut(BaseModel):
     """`POST /admin/settlement/preview` — what a run *would* do, and proof of it.
 
     `confirm_token` is the only way to run a settlement. It is signed over this
-    preview's period and fee (`app/services/settlement_confirm.py`), so a token
+    preview's period and fee (`app/services/ledger/settlement_confirm.py`), so a token
     issued for one week's numbers cannot be spent on another's.
 
     The outcome fields are all **counts or ids**, never names. A preview is a

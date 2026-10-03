@@ -324,7 +324,7 @@ class Order(Base):
     # `NotImplementedError`). Writing `Mapped[str]` or `Mapped[Any]` would claim a
     # guarantee the column type does not make, so a type checker would be
     # verifying against a fiction — worse than no annotation. The reader gets the
-    # real description from `app/services/trip_service.py`, which is the only
+    # real description from `app/services/order/trip_service.py`, which is the only
     # place that parses these (WKT via `_wkt`).
     #
     # Every *other* `Mapped[object]` in this module was the same habit applied to

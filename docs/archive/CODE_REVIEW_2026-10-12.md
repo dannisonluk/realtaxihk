@@ -122,7 +122,7 @@ balance_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"
 2. **兩個 PostGIS 欄位**（`pickup_location` / `dropoff_location`，`user.py:268/272`）
    的正確型別是 `Mapped[WKBElement]`（來自 `geoalchemy2.elements`）或
    `Mapped[str]`（若走 WKT 文本）。**先確認 `trip_snapshot` 的 `_wkt` 解析吃什麼型別**
-   （`app/services/trip_service.py`），再改——那裡是唯一讀這兩個欄位的地方。
+   （`app/services/order/trip_service.py`），再改——那裡是唯一讀這兩個欄位的地方。
 3. 改完跑一次 `alembic check`，確認**沒有新增** drift（本專案本來就有 5 組 `uq_*`→`ix_*`
    與 4 個 `VARCHAR`→`Enum` 的既有 drift，所以必定 FAIL；要睇嘅係有冇新增）。
 
@@ -182,7 +182,7 @@ balance_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"
 
 ### P0-3. `_eligible_driver_ids` 的 `not_in` 子查詢在大量司機時退化為 O(n) 往返
 
-**位置**：`app/services/settlement_service.py:207-219`
+**位置**：`app/services/ledger/settlement_service.py:207-219`
 
 ```python
 fleet_managed = select(FleetMembership.driver_profile_id).where(
@@ -234,7 +234,7 @@ existing = dict(
 
 ### P0-4. `except BusinessRuleError` 用字串比對做控制流
 
-**位置**：`app/services/settlement_service.py:343`
+**位置**：`app/services/ledger/settlement_service.py:343`
 
 ```python
 if "duplicate ledger reference" in exc.message:
@@ -282,7 +282,7 @@ class DuplicateReferenceError(BusinessRuleError):
 ### P1-1. `_client_ip` 複製 5 份——而 SEC-07 的核心邏輯就在裡面
 
 **位置**：`app/api/admin_auth.py:92`、`auth.py:74`、`fare.py:73`、`identity.py:75`、
-`licence.py:86`（`app/services/audit_service.py` 用 lazy import 拿 `admin_auth` 那份）
+`licence.py:86`（`app/services/admin/audit_service.py` 用 lazy import 拿 `admin_auth` 那份）
 
 **為何是問題**：這個函式實作的是「從右往左數第 N 跳才是真 IP，N 由
 `TRUSTED_PROXY_COUNT` 決定」。它是 SEC-07 的**全部**。五份副本意味著：
@@ -344,7 +344,7 @@ async def driver_profile_of(session: AsyncSession, user_id) -> DriverProfile | N
 
 ### P1-3. `list_accounts` 的 docstring 與 `ORDER BY` 不符
 
-**位置**：`app/services/admin_account_service.py:99-103`
+**位置**：`app/services/admin/admin_account_service.py:99-103`
 
 ```python
 async def list_accounts(self) -> list[AdminAccount]:
@@ -415,7 +415,7 @@ SUPER_ADMIN**。
 
 ### P1-5. `fleet_service.run_weekly` 在 `async with` 之外使用 ORM 物件
 
-**位置**：`app/services/fleet_service.py:362-489`
+**位置**：`app/services/fleet/fleet_service.py:362-489`
 
 ```python
 async with self.session_factory() as session:
@@ -970,7 +970,7 @@ def quantize_money(v: Decimal) -> Decimal:
 
 ### P2-8. `audit_service` 對 `_client_ip` 的 lazy import 是循環依賴的偽裝
 
-**位置**：`app/services/audit_service.py`（lazy import `app.api.admin_auth._client_ip`）
+**位置**：`app/services/admin/audit_service.py`（lazy import `app.api.admin_auth._client_ip`）
 
 **為何是問題**：`services/` 依賴 `api/` 是**分層倒置**——service 應該不知道 HTTP
 的存在。現在是「延後到呼叫時才 import」來繞過循環。修好 P1-1（把 `_client_ip` 移到
@@ -1437,20 +1437,20 @@ OTP 畫面沒有電話號碼是沒有意義的狀態，不該存在。
 | 編號 | 改動 | 檔案 |
 |---|---|---|
 | **P0-1** | 14 個 `Mapped[object]` Numeric 欄改成 `Mapped[Decimal]`（`user.py` 10 個、`fleet.py` 4 個）。3 個 PostGIS `geography` 欄**保持** `Mapped[object]` 並加註釋說明為什麼（GeoAlchemy2 的 `Geography.python_type` 就是回 `object`，改成 `Mapped[Any]` 只是換一個謊） | `app/models/user.py`, `app/models/fleet.py` |
-| **P0-3** | `run_weekly` 加批次預載 `references` + `claimed`，與 loop 會走到的結果鎖定在同一個 outcome。**存款預載刻意沒加** —— 加了會讓「被刪掉的存款列」看起來像乾淨的 skip（見下） | `app/services/settlement_service.py` |
-| **P0-4** | 新增 `DuplicateReferenceError(BusinessRuleError)`，race loser 改拋型別化錯誤。原本的 `except BusinessRuleError` 用**訊息字串**做控制流 | `app/core/exceptions.py`, `app/services/ledger_service.py`, `settlement_service.py`, `fleet_service.py` |
+| **P0-3** | `run_weekly` 加批次預載 `references` + `claimed`，與 loop 會走到的結果鎖定在同一個 outcome。**存款預載刻意沒加** —— 加了會讓「被刪掉的存款列」看起來像乾淨的 skip（見下） | `app/services/ledger/settlement_service.py` |
+| **P0-4** | 新增 `DuplicateReferenceError(BusinessRuleError)`，race loser 改拋型別化錯誤。原本的 `except BusinessRuleError` 用**訊息字串**做控制流 | `app/core/exceptions.py`, `app/services/ledger/ledger_service.py`, `settlement_service.py`, `fleet_service.py` |
 | **P1-1** | 5 份 byte-identical 的 `_client_ip` 抽成 `app/core/client_ip.py::client_ip()`，5 個 route 模組改 import | 新檔 + 5 個 `app/api/*.py` |
 | **P1-2** | 6 份司機 profile 查詢收攏成 `DriverProfile.for_user()`；刪掉 `_driver_profile_of`（×2）與 `_get_profile`。`ws.py:197` 的 2 欄投影**刻意保留**（熱路徑，每 tick 都跑） | `app/models/user.py` + 6 個 consumer |
-| **P1-3** | `list_accounts` 的 docstring 改成對齊現實（字母序，不是 seniority），並解釋為什麼不用 `CASE` 真排序 | `app/services/admin_account_service.py` |
+| **P1-3** | `list_accounts` 的 docstring 改成對齊現實（字母序，不是 seniority），並解釋為什麼不用 `CASE` 真排序 | `app/services/admin/admin_account_service.py` |
 | **P1-4** | `run_weekly` 的 `fee_hkd` 從 `str(fee)` 改成 `money_str(fee)`，與 preview 一致。**這是 breaking change**，一併改了 3 個測試斷言 + 3 個 mobile fixture | `settlement_service.py`, `tests/`, `mobile/test/fixtures/` |
-| **P1-5** | `fleet.name` 在 session 關閉後被讀取 → 在 `async with` 內先抽成 `fleet_name` 純量 | `app/services/fleet_service.py` |
-| **P1-6** | 刪掉 `deposit.held_hkd = Decimal(deposit.held_hkd)` 這行**無意義的自我賦值**（存在的唯一理由是讓 `Mapped[object]` 的讀者安心） | `app/services/ledger_service.py` |
+| **P1-5** | `fleet.name` 在 session 關閉後被讀取 → 在 `async with` 內先抽成 `fleet_name` 純量 | `app/services/fleet/fleet_service.py` |
+| **P1-6** | 刪掉 `deposit.held_hkd = Decimal(deposit.held_hkd)` 這行**無意義的自我賦值**（存在的唯一理由是讓 `Mapped[object]` 的讀者安心） | `app/services/ledger/ledger_service.py` |
 | **P2-1** | 刪除死代碼 `app/api/auth.py` 的 `require_role`（讀 `UserRole`，與 `deps.py` 讀 `AdminRole` 的同名函式並存 —— 正是「後台全黑」那個 bug 的形狀） | `app/api/auth.py` |
 | **P2-3** | prod 下 `CORS_ORIGINS` 為空 / 含 `*` / 非 https → fail closed；`TRUSTED_PROXY_COUNT <= 0` → fail closed | `app/core/config.py` |
 | **P2-4** | 斷掉的 `deploy/pgbouncer/README.md` 引用改指 `deploy/README.md#pgbouncer`（該檔從未存在）；`CORS_ORIGINS` 加 `:?` 必填守衛 | `docker-compose.prod.yml` |
 | **P2-6** | `include_object` 的過濾從 `("table",)` 擴到 `("table", "index")` | `alembic/env.py` |
-| **P2-7** | `money.py` 新增 `quantize_money()`（回 `Decimal`，非字串），`fleet_service` 刪掉私有 `_CENT` 與 `ROUND_HALF_UP` import | `app/core/money.py`, `app/services/fleet_service.py` |
-| **P2-8** | `audit_service` 的 lazy import 提升到模組層（`core/` 化之後循環依賴已消失，延遲不再有理由） | `app/services/audit_service.py` |
+| **P2-7** | `money.py` 新增 `quantize_money()`（回 `Decimal`，非字串），`fleet_service` 刪掉私有 `_CENT` 與 `ROUND_HALF_UP` import | `app/core/money.py`, `app/services/fleet/fleet_service.py` |
+| **P2-8** | `audit_service` 的 lazy import 提升到模組層（`core/` 化之後循環依賴已消失，延遲不再有理由） | `app/services/admin/audit_service.py` |
 | **P2-10** | `README.md` 的 `uv sync` 加 `--frozen`（與 Dockerfile / CI 一致）；`pyproject.toml` 註明 floor 只為可讀性、`uv.lock` 才是權威 | `README.md`, `pyproject.toml` |
 | **P0-M-1** | `do_run_migrations` 補 `CREATE EXTENSION IF NOT EXISTS postgis`，**放在 `with context.begin_transaction():` 之內**（放外面會令整個 migration block commit 不到任何東西，但仍然報「全部已套用」）。驗證：新 DB → 22 張表 | `alembic/env.py` |
 | **P0-M-2** | **18 個 enum 欄位補上資料庫層 CHECK 約束**（原本 19 個之中只有 2 個有）。全專案 `SAEnum(...)` 統一加 `native_enum=False, create_constraint=True` 並改用 `name="ck_<table>_<column>"`；`dispute.py` 5 個從未綁 enum 的 `String(N)` 欄改綁 `SAEnum`（用 `length=` 鎖住原寬度，令 migration **只加約束、不改型別**，避免對 production 資料做窄化重寫）。新 migration `2e276a320b35` 加 18 條 CHECK，並**先跑 pre-flight 資料檢查**，發現越界值就點名 table/column 再拒絕，唔會死喺 `ALTER TABLE` 內部 | 新檔 `alembic/versions/2e276a320b35_enum_check_constraints.py` + `app/models/{user,fleet,licence,dispute}.py` + 4 個舊 migration 的 `name=` |

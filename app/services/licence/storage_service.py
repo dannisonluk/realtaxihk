@@ -111,7 +111,7 @@ class StorageService:
 
     Wraps `boto3` lazily so importing this module never requires credentials —
     prod-only paths and the test suite both import it, and a module-level client
-    would make `import app.services.storage_service` fail without a bucket.
+    would make `import app.services.licence.storage_service` fail without a bucket.
     """
 
     def __init__(self) -> None:

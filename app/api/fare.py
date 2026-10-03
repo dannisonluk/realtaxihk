@@ -18,7 +18,7 @@ from app.core.client_ip import client_ip
 from app.core.config import get_settings
 from app.core.exceptions import BusinessRuleError
 from app.core.money import MoneyInput, meter_str
-from app.services.fare_calculator import TaxiType, Tunnel, calculate_fare
+from app.services.order.fare_calculator import TaxiType, Tunnel, calculate_fare
 
 router = APIRouter(prefix="/api/v1/fare", tags=["fare"])
 

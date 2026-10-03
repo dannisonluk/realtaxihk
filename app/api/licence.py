@@ -41,7 +41,7 @@ from app.core.db import get_session
 from app.core.deps import Principal, require_active_user, require_phone_current
 from app.core.exceptions import BusinessRuleError
 from app.models import DocumentKind
-from app.services.licence_service import MAX_SUBMISSIONS_PER_DAY, LicenceService
+from app.services.licence.licence_service import MAX_SUBMISSIONS_PER_DAY, LicenceService
 
 logger = logging.getLogger("realtaxihk.licence")
 

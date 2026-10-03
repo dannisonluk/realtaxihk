@@ -558,7 +558,7 @@ class TestLedgerReferenceIntegrity:
         from sqlalchemy import select
 
         from app.models import DriverDeposit, LedgerEntryType
-        from app.services.ledger_service import LedgerService, reference_for_weekly
+        from app.services.ledger.ledger_service import LedgerService, reference_for_weekly
 
         profile = await self._driver_with_deposit(db_session)
         svc = LedgerService(db_session)
@@ -598,7 +598,7 @@ class TestLedgerReferenceIntegrity:
         """Idempotency must survive the SEC-13 fix: same reference, same
         entry_type, same amount -> replay the original, do not double-charge."""
         from app.models import LedgerEntryType
-        from app.services.ledger_service import LedgerService
+        from app.services.ledger.ledger_service import LedgerService
 
         profile = await self._driver_with_deposit(db_session)
         svc = LedgerService(db_session)
@@ -621,7 +621,7 @@ class TestLedgerReferenceIntegrity:
     async def test_grant_reference_is_namespaced_server_side(self):
         """SEC-13: a client-supplied key can never be shaped like another
         service's reference."""
-        from app.services.ledger_service import reference_for_grant
+        from app.services.ledger.ledger_service import reference_for_grant
 
         ref = reference_for_grant("driver-1", "weekly:driver-1:2099-W03")
         assert ref.startswith("grant:driver-1:")
