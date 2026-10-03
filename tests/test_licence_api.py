@@ -308,6 +308,59 @@ def test_a_submission_missing_a_required_kind_is_refused(client):
     assert "taxi driver pass" in response.json()["message"].lower()
 
 
+def test_an_optional_document_kind_rides_along_without_rejecting_the_submission(client):
+    """A third, optional document must not fail the whole submission.
+
+    Regression: `attach_document` used to accept only REQUIRED_DOCUMENT_KINDS +
+    OTHER, while `presign_upload` and `_index_documents` accepted every member
+    of `DocumentKind`. `submit()` loops the client's *entire* document list
+    through `attach_document`, so attaching a vehicle registration rejected the
+    submission outright — a driver lost a complete, valid application because
+    they supplied more evidence than the minimum.
+    """
+    token, _ = _register_driver(client)
+    docs = _full_document_set(client, token)
+    docs.append(
+        {
+            "kind": "VEHICLE_REGISTRATION",
+            "object_key": _presign(client, token, "VEHICLE_REGISTRATION"),
+            "content_type": "image/jpeg",
+            "size_bytes": 1024 * 1024,
+        }
+    )
+
+    response = _submit(client, token, documents=docs)
+    assert response.status_code == 201, response.text
+    assert {d["kind"] for d in response.json()["documents"]} == {
+        "DRIVER_LICENCE",
+        "TAXI_DRIVER_PASS",
+        "VEHICLE_REGISTRATION",
+    }
+
+
+def test_an_optional_document_cannot_stand_in_for_a_required_one(client):
+    """Accepting every kind must not relax the completion rule.
+
+    The minimum is still DRIVER_LICENCE + TAXI_DRIVER_PASS, and `submit()`
+    counts only those — so an insurance certificate cannot substitute for the
+    taxi driver pass (的士司機證).
+    """
+    token, _ = _register_driver(client)
+    docs = [d for d in _full_document_set(client, token) if d["kind"] == "DRIVER_LICENCE"]
+    docs.append(
+        {
+            "kind": "INSURANCE",
+            "object_key": _presign(client, token, "INSURANCE"),
+            "content_type": "image/jpeg",
+            "size_bytes": 1024 * 1024,
+        }
+    )
+
+    response = _submit(client, token, documents=docs)
+    assert response.status_code == 400, response.text
+    assert "taxi driver pass" in response.json()["message"].lower()
+
+
 def test_a_licence_expiring_too_soon_is_refused(client):
     """Approving something that expires before the next shift is not a service."""
     token, _ = _register_driver(client)

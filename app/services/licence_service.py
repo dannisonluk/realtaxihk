@@ -336,8 +336,22 @@ class LicenceService:
         existence check is skipped — the flow stays exercisable, and the risk is
         confined to an environment with no bucket to abuse.
         """
-        if kind not in REQUIRED_DOCUMENT_KINDS and kind != DocumentKind.OTHER:
-            raise BusinessRuleError(f"unsupported document kind: {kind.value}")
+        # Any *member* of DocumentKind is acceptable; only a value that is not a
+        # member at all is refused. This used to be a whitelist of
+        # REQUIRED_DOCUMENT_KINDS + OTHER, and that was wrong in a way that hurt
+        # real submissions: `presign_upload` accepts every member and
+        # `_index_documents` accepts every member, but `submit()` then loops the
+        # client's whole document list through here — so a driver who attached a
+        # VEHICLE_REGISTRATION had the *entire* submission rejected, not just
+        # that one file. The completion rule lives in `submit()` (it counts
+        # REQUIRED_DOCUMENT_KINDS), which is the right place for it: optional
+        # evidence is allowed to ride along without counting toward the minimum.
+        #
+        # The DB column carries a `ck_document_kind` CHECK as the backstop, so
+        # this is defence in depth that turns a constraint violation into a
+        # clean 400.
+        if not isinstance(kind, DocumentKind):
+            raise BusinessRuleError(f"unknown document kind: {kind}")
 
         expected_prefix = f"documents/{submission.driver_profile_id}/"
         if not object_key.startswith(expected_prefix):
