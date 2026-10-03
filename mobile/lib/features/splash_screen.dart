@@ -28,10 +28,11 @@ class SplashScreen extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(Icons.local_taxi_rounded, size: 64, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(height: AppTheme.space6 - 4),
-            Text('hkfastdc', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: AppTheme.space8 - 4),
+            // The poster *is* the wordmark, so there is no `Text` beside it —
+            // that would print "hkfastdc" twice, a few points apart. The
+            // wordmark still reaches a screen reader; see [BrandLogo].
+            const BrandLogo(size: 240),
+            const SizedBox(height: AppTheme.space8),
             const SizedBox(
               width: 24,
               height: 24,

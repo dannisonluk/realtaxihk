@@ -67,9 +67,11 @@ ProcessPackageException: ProcessException: 所有的管道例項都在使用中�
 ```
 
 **Gradle itself is unaffected, so call it directly and the APK does build here.**
-Verified on 2026-10-03: a 163 MB `app-debug.apk`, package `com.hkfastdc.mobile`,
-`minSdk 24 / targetSdk 36`, with the geolocator and network permissions merged in
-and `com.google.android.geo.API_KEY` resolved to empty as expected.
+Verified on 2026-10-03, and again on 2026-10-04 with the brand assets in place: a
+~182 MB universal `app-debug.apk` (arm64-v8a / armeabi-v7a / x86_64), package
+`com.hkfastdc.mobile`, `minSdk 24 / targetSdk 36`, with the geolocator and
+network permissions merged in and `com.google.android.geo.API_KEY` resolved to
+empty as expected.
 
 ```bash
 cd mobile/android
@@ -138,6 +140,76 @@ path and the notice is a warning. The footer counts warnings and errors together
 The Dart source is verified too, and all of it passes: the four commands above
 (`tool/dart_check.py` reports 58 files / 0 diagnostics), `tool/run_tests.dart`
 (97 assertions) and `tool/verify_contract.dart` (54 fixtures, 0 failures).
+
+None of those four can see `res/` or the `assets:` block — the Dart analyzer does
+not read Android resources, and the two scripts never load an image. Only the
+Gradle build does, which is why `./gradlew :app:assembleDebug` is a gate rather
+than just a packaging step.
+
+## Branding
+
+The artwork is two 2048x2048 posters in `branding/source/` (`logo-zh.jfif`,
+`logo-en.jfif`) with the wordmark **baked into the pixels**. There is no vector
+mark to compose from, so every size is derived:
+
+```bash
+python tool/gen_branding_assets.py           # writes everything below
+python tool/gen_branding_assets.py --check   # verifies, writes nothing
+```
+
+| Output | Where | Why that size |
+|---|---|---|
+| In-app poster | `assets/branding/logo-{zh,en}.webp`, 1024px | `BrandLogo` renders it at 160-240dp, so 1024 is ~4x headroom |
+| Legacy launcher icon | `mipmap-*dpi/ic_launcher.png`, 48-192px | full bleed |
+| Adaptive launcher icon | `drawable-*dpi/ic_launcher_foreground.png` + `mipmap-anydpi-v26/ic_launcher.xml` | a 108dp canvas with the poster inset to 72dp |
+
+The generator is the single source of truth for all of them. The generated files
+are committed, and CI runs `--check` so they cannot silently drift from the
+artwork. Pillow is required for this and is deliberately **not** a project
+dependency — CI resolves it ephemerally.
+
+### Why the adaptive icon is inset to 72dp
+
+An `adaptive-icon` foreground is drawn on a 108dp canvas of which only the
+central 66-72dp is guaranteed visible. The launcher crops to that viewport and
+*then* applies a mask — circle, squircle, rounded square or square. Dropping the
+full-bleed poster in would put "HKFASTDC" and the bottom banner outside the safe
+zone, and they would be cut off on every modern launcher.
+
+The poster's own background is a flat `#D9DDE6`, so filling the canvas with that
+same colour and insetting the poster to 72dp makes the mask edge land on
+identical colour. The artwork reads as full-bleed while every element stays
+inside the safe zone.
+
+**Previewing this is where it is easy to fool yourself.** Looking at the 108dp
+canvas proves nothing — you have to crop the central 72/108 *first*, then apply
+each mask. Measured on this artwork the content bounding box is
+`x 0.104-0.865 / y 0.137-0.873` of the poster, and all four mask shapes clip
+**0.00%** of it: the poster's own margins are exactly what the masks remove.
+
+### Why the in-app assets are WebP and the launcher icons are not
+
+The source is a **JPEG**, so it already carries compression noise. Storing that
+noise in a PNG preserves it perfectly and expensively. Measured at 1024px:
+
+| PNG (optimize) | PNG (256 colours) | WebP q90 | JPEG q90 |
+|---|---|---|---|
+| 904 KB | 382 KB | **92 KB** | 138 KB |
+
+PNG is the worst column, and it is the one this started with. 92 KB is a 10x
+saving on art that is flat fills and hard type, which is exactly what lossy WebP
+handles without visible damage. WebP is safe here because this app ships Android
+only — there is no `ios/` directory, and Android has decoded WebP since API 14.
+
+The launcher icons stay PNG: they total about 290 KB, they are the first thing
+the OS decodes, and 48px is where a lossy encode *would* show.
+
+**The legacy icon is a deliberate trade-off.** At 48px the full poster is an
+unreadable red blob; a car-only crop would stay legible. Android 8 and above uses
+the adaptive icon instead, which is essentially every device in service, so the
+blob is only ever seen on Android 7.1 and below.
+
+---
 
 ## The contract is verified, not assumed
 
@@ -313,10 +385,15 @@ lib/
   router/     go_router configuration and the role redirect
   features/   screens, grouped by role (`passenger/`, `driver/`, `admin/`,
               `fleet/`), plus shared widgets
+branding/
+  source/     the two 2048px posters as supplied — the only hand-edited input
+assets/
+  branding/   generated: the in-app posters, WebP (see Branding above)
 tool/
-  dart_check.py        type-check via LSP (see above)
-  run_tests.dart       unit tests for the pure code
-  verify_contract.dart decode every fixture with the real models
+  dart_check.py             type-check via LSP (see above)
+  gen_branding_assets.py    regenerate every icon and in-app asset
+  run_tests.dart            unit tests for the pure code
+  verify_contract.dart      decode every fixture with the real models
 ```
 
 ## Known gaps
@@ -325,3 +402,13 @@ tool/
   work here, and there is no headless alternative without the Flutter tool.
   Everything testable without a widget tree is covered by `tool/run_tests.dart`.
 * Push notifications are not wired up; the trip screen polls instead.
+* **The app never calls `/api/v1/identity/*`.** There is no email screen and no
+  username screen. The backend requires all three of phone + email + username
+  before an account may start business (`require_verified_account`), and OTP
+  login supplies only the phone — so on a real device, browsing works while
+  **creating an order, grabbing one, or going online returns 403
+  `ACCOUNT_UNVERIFIED`**. See `docs/QA_TEST_ENVIRONMENT.md` section 6 for the
+  supported way to complete an account while this is missing.
+* **`/identity/phone/reverify` (the P-4 monthly re-verification) is likewise
+  unimplemented**, so an overdue number surfaces a raw 403 with no way to fix it
+  from inside the app.

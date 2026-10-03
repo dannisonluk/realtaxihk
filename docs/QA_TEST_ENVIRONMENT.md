@@ -2,13 +2,16 @@
 
 > **EN — QA test environment.** Everything a tester needs to bring the stack up
 > and log in: the four environment variables that actually matter, how to get an
-> OTP, how to create an admin, and the addresses the three clients dial. The
+> OTP, how to create an admin, and the addresses the three clients dial. **§6 is
+> the one to read before testing the APK** — the two walls a first login hits
+> (a phone-only login that still leaves the account `UNVERIFIED`, and a dev
+> server that binds `127.0.0.1` so a physical device cannot reach it). The
 > traps section is the part worth reading twice — every entry there has cost
 > somebody an hour.
 >
 > **中文摘要**：這份文檔只講「QA 要怎麼把環境跑起來並登入」。**四個一定要改的
-> 環境變數**、OTP 怎麼拿、管理員怎麼建、三個客戶端各連哪個位址。第 7 節「常見
-> 陷阱」每一條都真的令人卡過。
+> 環境變數**、OTP 怎麼拿、管理員怎麼建、三個客戶端各連哪個位址，以及**手機 App
+> 第一次登入會撞到的兩道牆**（第 6 節）。第 8 節「常見陷阱」每一條都真的令人卡過。
 
 ---
 
@@ -72,7 +75,7 @@ Linux／macOS 把 `.venv/Scripts/python` 換成 `.venv/bin/python`。
 | `POSTGRES_HOST` / `REDIS_URL` | `127.0.0.1` | **刻意不用 `localhost`**。Windows 上 `localhost` 會先解析到 `::1`，而 Docker 發佈的埠只有 IPv4，該次連線是被丟棄而非拒絕 —— 每個新連線白等約 2 秒（實測 2034ms vs 1ms） |
 | `POSTGRES_PORT` / `REDIS_PORT` | `15433` / `16379` | 避開同機另一個專案 `ineedajob`（用 15432／6379） |
 | `CORS_ORIGINS` | 四個 loopback origin（3000、8081 各兩種寫法） | 只在**瀏覽器直接跨域**時才生效。Vite dev server 與 `serve.py` 都會把 `/api` 反向代理到 API，所以正常情況下不會觸發 CORS。要從別的埠開後台才需擴充此清單 |
-| `OTP_IP_RATE_LIMIT` | `10`（每 600 秒） | **QA 最常撞到的限制**，見第 7 節 |
+| `OTP_IP_RATE_LIMIT` | `10`（每 600 秒） | **QA 最常撞到的限制**，見第 8 節 |
 | `APP_PORT` | `8000` | 三個客戶端都假設這個埠 |
 | `TRUSTED_PROXY_COUNT` | `0` | 本機直連，沒有代理，所以 `X-Forwarded-For` 完全被忽略（正確行為） |
 
@@ -231,7 +234,8 @@ cd .. && python serve.py --dist      # → http://127.0.0.1:3000
 |---|---|---|
 | Android **模擬器** | `http://10.0.2.2:8000` | fallback 的預設值。模擬器裡的 `127.0.0.1` 是**模擬器自己**的 loopback，不是你的機器 |
 | 桌面／iOS 模擬器 | `http://127.0.0.1:8000` | fallback 的預設值 |
-| **真機**（同一 Wi-Fi） | `http://<你的區網 IP>:8000` | 例如 `--dart-define=API_BASE_URL=http://192.168.0.103:8000`。**API 需綁到 `0.0.0.0`**（`APP_HOST`），且真機與電腦要在同一網段 |
+| **真機（USB）** | `http://127.0.0.1:8000` + `adb reverse tcp:8000 tcp:8000` | **建議**。`adb reverse` 令手機上的 `127.0.0.1:8000` 轉到電腦，不必改任何綁定 |
+| **真機**（同一 Wi-Fi） | `http://<你的區網 IP>:8000` | 例如 `--dart-define=API_BASE_URL=http://192.168.0.103:8000`。**API 需綁到 `0.0.0.0`，但 `APP_HOST` 做不到** —— 見第 6.2 節 |
 
 ```bash
 cd mobile/android && ./gradlew :app:assembleDebug
@@ -247,7 +251,136 @@ cd mobile/android && ./gradlew :app:assembleDebug
 
 ---
 
-## 6. 驗證腳本
+## 6. 手機 App 首次登入：兩道牆
+
+### 6.1 電話驗證**就是**登入，沒有「跳過」這回事
+
+App 沒有密碼 —— 整個後端都沒有密碼登入。`/api/v1/auth/otp/verify` 是唯一的入口，
+所以「一開始就要電話 verify」不是一道額外的閘，**它就是門口本身**，沒有測試開關可以
+繞過，這是刻意的。
+
+但「要電話驗證」不等於「要真電話」：
+
+| 你想要 | 做法 |
+|---|---|
+| 一個固定的驗證碼 | `.env` 設 `ALLOW_DEV_OTP=true` → 永遠是 `123456` |
+| 用真號碼但不想等 WhatsApp | 讀 API 日誌的 `[WHATSAPP:dev] OTP <code> -> +852****4567`（需 `LOG_LEVEL=INFO`） |
+| 一個號碼 | 任何 `+852` + 8 位都可以，第一次驗證時自動註冊（見 3.1） |
+
+換句話說：**登入這一關不需要繞，因為它本來就不是真的在發訊息。**
+
+### 6.2 第一道牆：真機連不到你的 API
+
+`scripts/dev/serve_and_probe.py` 把 uvicorn 寫死在 **`127.0.0.1`**（第 24 行與第 34
+行都是硬編碼），所以 `APP_HOST=0.0.0.0` **不會生效** —— 那個設定沒有任何 dev 啟動
+腳本讀它。結果是 APK 裝在真機上時，`10.0.2.2`（那是模擬器專用的別名）與區網 IP 都
+連不到。
+
+| 做法 | 步驟 | 適用 |
+|---|---|---|
+| **A（建議）** | `adb reverse tcp:8000 tcp:8000`，APK 用 `--dart-define=API_BASE_URL=http://127.0.0.1:8000` | USB 連著的實機。`adb reverse` 令手機上的 `127.0.0.1:8000` 轉到電腦，**完全不用改綁定** |
+| **B** | 自己起 `.venv/Scripts/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-proxy-headers`，APK 用 `--dart-define=API_BASE_URL=http://<區網 IP>:8000` | Wi-Fi、不想插線。要自己確認防火牆放行 8000 |
+
+`adb reverse` 在每次重新插線（或 adb 重啟）之後都要再下一次。
+
+> `--no-proxy-headers` 不是可選的裝飾：少了它，uvicorn 會相信來自 `127.0.0.1` 的
+> `X-Forwarded-For`，每一個 IP 速率限制就變成可偽造（SEC-31）。
+
+### 6.3 第二道牆：登入之後帳號仍然是 `UNVERIFIED`
+
+這一處**最容易被誤判成 bug**。
+
+OTP 只證明電話。剛註冊的帳號 `account_status` 是 `UNVERIFIED`，而
+`require_verified_account`（`app/core/deps.py:243`）要求**三樣齊全**才放行：
+
+| 缺什麼 | 403 的 `missing` 會列出 |
+|---|---|
+| `username` 未設 | `"profile"` |
+| `email_verified_at` 為空 | `"email"` |
+| `phone_verified_at` 為空 | `"phone"` |
+
+OTP 登入已經設好 `phone_verified_at`，所以實際上 `missing` 是 `["profile","email"]`。
+
+被這道閘擋住的是**開始新生意**的路由，也就是掛 `require_phone_current` 的那幾條：
+
+| 路由 | 守門依賴 | UNVERIFIED 時 |
+|---|---|---|
+| `POST /api/v1/orders`（建立訂單） | `require_phone_current` | **403 `ACCOUNT_UNVERIFIED`** |
+| `POST /api/v1/orders/{id}/grab`（接單） | `require_phone_current` | **403** |
+| `POST /api/v1/drivers/location`（上線） | `require_phone_current` | **403** |
+| 其餘（查訂單、行程、`/identity/*`、`/drivers/register`） | `require_active_user` | 正常 |
+
+403 的 body 是機器可讀的，客戶端要靠 `reason` 分辨「去補資料」與「去收信」：
+
+```json
+{"detail": {"message": "account verification is incomplete",
+            "reason": "ACCOUNT_UNVERIFIED",
+            "missing": ["profile", "email"]}}
+```
+
+**而手機 App 目前沒有處理這個狀態的畫面。** `mobile/lib/` 完全沒有呼叫
+`/api/v1/identity/*` —— 沒有電郵輸入畫面，也沒有使用者名稱畫面。所以在 APK 上按
+「叫車」只會拿到一個 403，然後顯示一句錯誤。這是**已知缺口**，見 6.5。
+
+### 6.4 用「支援的路徑」通過它（四步）
+
+`/identity/*` 全部由 `require_active_user` 守門 —— 未驗證的帳號**可以**呼叫它們。
+所以這條路本來就是通的，而且它就是正式流程本身，不是測試後門。
+
+```bash
+API=http://127.0.0.1:8000/api/v1
+PHONE=+85290000001          # 任何 +852 + 8 位都可以
+
+# 1. 拿 token（ALLOW_DEV_OTP=true 時驗證碼固定為 123456）
+curl -s $API/auth/otp/request -H 'content-type: application/json' \
+     -d "{\"phone\":\"$PHONE\"}"
+TOKEN=$(curl -s $API/auth/otp/verify -H 'content-type: application/json' \
+     -d "{\"phone\":\"$PHONE\",\"code\":\"123456\"}" \
+     | .venv/Scripts/python -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
+
+# 2. 設 username —— 這一步補上 missing 裡的 "profile"
+curl -s $API/identity/profile -H "authorization: Bearer $TOKEN" \
+     -H 'content-type: application/json' \
+     -d '{"username":"qatester","given_name":"QA","family_name":"Tester"}'
+
+# 3. 要一封驗證信，再從日誌撈連結（dev 只印日誌，不真的寄）
+curl -s $API/identity/email/request -H "authorization: Bearer $TOKEN" \
+     -H 'content-type: application/json' -d '{"email":"qa@example.com"}'
+grep -o 'verify-email?token=[A-Za-z0-9_-]*' .tmp/uvicorn.log | tail -1
+
+# 4. 把 ?token= 之後那串貼回去
+curl -s $API/identity/email/confirm -H 'content-type: application/json' \
+     -d '{"token":"<貼上>"}'
+```
+
+驗一下狀態真的翻了：
+
+```bash
+curl -s $API/identity/me -H "authorization: Bearer $TOKEN"
+# → "account_status":"ACTIVE", "email_verified":true, "phone_verified":true
+```
+
+> **不要自己去 `UPDATE users SET account_status='ACTIVE'`。**
+> `_promote_if_ready`（`identity_service.py:277`）是**唯一**定義「齊了沒有」的地方，
+> 兩道閘共用它。手改會造出一列「狀態寫著 ACTIVE、但三樣有缺」的資料，而那一列之後
+> 會在任何一道閘上以一個看起來毫不相關的錯誤炸掉。
+
+### 6.5 已知缺口：App 做不到自己的 onboarding
+
+後端要求三樣齊全，而 App 只做得到一樣（電話）。所以在真機上跑 APK 的實際覆蓋範圍是：
+
+| 流程 | 狀態 |
+|---|---|
+| 登入、看行程、看帳戶、看歷史 | ✅ 可用 |
+| **建立訂單、接單、上線** | ❌ 403（帳號未驗證），而 App 沒有補齊的畫面 |
+
+要測叫車流程目前只有兩條路：用 6.4 的 curl 把帳號補齊（推薦 —— 它同時驗證了後端的
+正式流程），或者補上 App 的電郵與使用者名稱畫面（那是 **App 的功能缺口**，不是後端
+的問題）。
+
+---
+
+## 7. 驗證腳本
 
 | 腳本 | 用途 |
 |---|---|
@@ -262,7 +395,7 @@ cd mobile/android && ./gradlew :app:assembleDebug
 
 ---
 
-## 7. 常見陷阱
+## 8. 常見陷阱
 
 1. **OTP 不會出現在回應裡。** 沒設 `ALLOW_DEV_OTP=true` 就會一直等一個永遠不來的
    欄位。這條是本文檔最常被問的一個。
@@ -282,10 +415,15 @@ cd mobile/android && ./gradlew :app:assembleDebug
    用 `create_admin.py` 建的 `users` 列**打不開** `/api/v1/admin/*`。
 10. **管理員 TOTP 在第一次登入時才註冊。** 腳本不會產生秘密；想跳過互動流程用
     `enrol_admin_totp.py`。
+11. **`serve_and_probe.py` 把 API 綁在 `127.0.0.1`，`APP_HOST` 對它無效。** 真機
+    要麼 `adb reverse tcp:8000 tcp:8000`，要麼自己起 `uvicorn --host 0.0.0.0`。
+    見第 6.2 節。
+12. **OTP 登入成功 ≠ 帳號可用。** 新帳號是 `UNVERIFIED`，建立訂單／接單／上線會
+    回 403 `ACCOUNT_UNVERIFIED`，而**手機 App 沒有補齊驗證的畫面**。見第 6 節。
 
 ---
 
-## 8. 收尾
+## 9. 收尾
 
 QA 機不建議長期開著 dev 設定：
 

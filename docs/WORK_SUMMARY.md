@@ -6,12 +6,15 @@
 >
 > **Read §4 first if you are picking this up cold.** It splits the outstanding
 > work into two categories that need different handling: **§4A** blocked on
-> credentials or a deployment target (not a code problem), and **§4B** deliberate
-> product trade-offs, recorded so they are not "fixed" later.
+> credentials or a deployment target (not a code problem), **§4B** deliberate
+> product trade-offs, recorded so they are not "fixed" later, **§4C** known
+> functional gaps that need code, and **§4D** closed items kept so they are not
+> re-opened.
 >
 > **中文摘要**：本專案的總索引 —— 已建了什麼、已實跑驗證了什麼，以及**還有什麼
-> 未做、為什麼**。**剛接手請先讀 §4**：它把未完成項分成兩類 —— 卡在憑證／部署
-> 目標（不是程式問題），以及刻意的產品取捨（看似未完成，其實已決定）。
+> 未做、為什麼**。**剛接手請先讀 §4**：它把未完成項分成四類 —— 卡在憑證／部署
+> 目標（不是程式問題）、刻意的產品取捨（看似未完成，其實已決定）、**已知功能缺口
+> （要寫程式，見 §4C）**，以及已結案項。
 >
 > 逐輪工作的完整記錄（問題 → 修法 → 證據，§2.1…§2.21）已抽到
 > **[`archive/WORK_LOG.md`](archive/WORK_LOG.md)**，內容刻意不更新。
@@ -51,7 +54,7 @@
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
 | 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **82 paths / 89 operations** · 961 tests |
-| Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**21 個畫面**，三角色） | ✅ 97 tests |
+| Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**21 個畫面**，三角色）；品牌資產由 `tool/gen_branding_assets.py` 由 `branding/source/` 的原圖產生 | ✅ 97 tests · APK BUILD SUCCESSFUL |
 | Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/legacy/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **69 vitest** · UI verifier PASS |
 
 一個 repo、三件完整交付物。定位：**Cap. 374D 合規的士資訊中介**（非的士營運商）。
@@ -83,6 +86,10 @@ cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run --no-fil
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
 cd mobile && python tool/dart_check.py mobile          # LSP，非 flutter analyze；要帶路徑
 cd mobile && dart --packages=.dart_tool/package_config.json tool/verify_contract.dart
+# 品牌資產問的是「有沒有跟上原圖」，不是「能不能編譯」——不跑這條檢查就沒有人會發現
+.venv/Scripts/python mobile/tool/gen_branding_assets.py --check
+# 圖示與 `assets:` 只有真正建置 APK 才驗得到：dart_check 與 run_tests 看不到 res/
+cd mobile/android && ./gradlew :app:assembleDebug
 # 備份：不止跑 backup，還要跑 drill
 .venv/Scripts/python scripts/ops/db_backup.py backup
 .venv/Scripts/python scripts/ops/db_backup.py verify   # 還原 + 逐表核對 row count
@@ -118,7 +125,16 @@ cd mobile && dart --packages=.dart_tool/package_config.json tool/verify_contract
   FINANCE 角色閘（職責分離第一步），`ADJUSTMENT` 本身仍為單人。
 - **搜尋不逐次審計** —— 高頻讀取，寫滿審計表會淹沒真正的金錢事件。刻意。
 
-### C. 已結案（保留以免重複處理）
+### C. 已知功能缺口（要寫程式，未排期）
+
+| 缺口 | 影響 | 為什麼現在是這樣 |
+|---|---|---|
+| **App 完全沒有實作 `/api/v1/identity/*`** | 後端要求 `phone + email + username` 三樣齊全才放行 `POST /orders`／`grab`／`drivers/location`；App 只做得到電話。**所以在真機上：登入、看行程、看帳戶都正常，但叫車、接單、上線一律 403 `ACCOUNT_UNVERIFIED`** | 後端閘是刻意設計（`require_verified_account`，單一強制點）；缺的是 App 端的電郵／使用者名稱畫面。`mobile/lib/` 現時零處呼叫 `/identity/*` |
+| **`serve_and_probe.py` 把 uvicorn 寫死在 `127.0.0.1`** | 真機連不到 API，而 `APP_HOST=0.0.0.0` 對它**無效**（沒有任何 dev 啟動腳本讀那個設定）。現時要手動 `adb reverse tcp:8000 tcp:8000` | 不是 bug（本機開發預設綁 loopback 是對的），是 dev 工具缺口。要修就是讓該腳本接受 `--host` |
+| **沒有「一鍵補齊測試帳號驗證」的 ops 腳本** | 每次要新開一個能叫車的測試帳號，都要手打 4 條 curl（見 `QA_TEST_ENVIRONMENT.md` §6.4） | 刻意**先不做**：那 4 條 curl 走的正是正式流程，等於順手驗證了後端。加一條捷徑腳本會令這條路徑**無人再跑**。若日後要頻繁重跑，再加 `scripts/ops/` 腳本，但必須走 service 層而不是 `UPDATE users` |
+| **App 未實作 `/identity/phone/reverify`（P-4 月度重驗）** | 電話重驗到期後，App 只會看到 403 `PHONE_REVERIFY_DUE` 而沒有處理畫面 | 與上面第一條同源：`/identity/*` 整組未接。P-4 是軟性阻擋（只擋「開始新生意」），所以現階段影響有限 |
+
+### D. 已結案（保留以免重複處理）
 
 - **Sentry 已接好**（`app/main.py`，`sentry_dsn` 有值就 init）。已補 `release`
   （綁 `_API_VERSION`）與 `max_request_body_size="never"`（PDPO：不送 request body）。
@@ -177,7 +193,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 | `docs/ADMIN_CONSOLE_DESIGN.md` | 後台九大模組設計 + 四級 RBAC | ✅ 大部分已實作 |
 | `docs/IN_TRIP_REDESIGN.md` | in-trip + 預約重設計：狀態機、schema、API、$5 平台費 | 設計提案，7 個 DECISION 全部已拍板 |
 | `docs/DEPLOYMENT_REQUIREMENTS.md` · `docs/DEPLOY_TARGET_DECISION.md` | 部署需求清單 / 選型取捨 | 選定後少變 |
-| **`docs/QA_TEST_ENVIRONMENT.md`** | **測試環境交接**：四個必改的環境變數、OTP 怎麼拿（**不會**出現在回應裡）、管理員怎麼建、三個客戶端各連哪個位址、10 條實際卡過的陷阱 | 跟設定更新 |
+| **`docs/QA_TEST_ENVIRONMENT.md`** | **測試環境交接**：四個必改的環境變數、OTP 怎麼拿（**不會**出現在回應裡）、管理員怎麼建、三個客戶端各連哪個位址、**手機 App 首次登入的兩道牆**（§6）、12 條實際卡過的陷阱 | 跟設定更新 |
 | `docs/LANDMARK_COORDINATES.md` | 地標落客座標 + 深圳灣口岸幾何分析 | 覆核清單 |
 | `docs/REALTIME_POSITION_COST.md` | 實時位置每 tick 成本實測 + 5 項優化 | 已實測 |
 | `docs/ADMIN_AUTH.md` · `docs/DEVELOPMENT.md` §4 | 管理員認證模型 / ruff 規則集 | 少變 |
@@ -195,8 +211,10 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 |---|---|---|
 | `curl` 打 `127.0.0.1` 回 `502 upstream connect failed` | 沙盒 proxy 攔截，**即使該 port 根本沒有東西在聽** | 用 Python `urllib` + `ProxyHandler({})`；`NO_PROXY` 對 curl 不可靠 |
 | **Dart 完全無法開啟 child process**（`where` / `git` / `adb` 全部一樣）→ `flutter --version`、`dart analyze`、`dart run` 全失敗 | Dart 在 Windows 用**具名管道**接 child 的 stdio，沙盒令 `CreatePipe`/`CreateFile` 回 `ERROR_PIPE_BUSY (231)`。**停用沙盒也不行**，是 host 限制；Python 用匿名管道所以正常 | `dart --packages=.dart_tool/package_config.json <script>`（繞過 dartdev）；靜態檢查用 `python mobile/tool/dart_check.py mobile` |
-| **`flutter build apk`（CLI）跑唔到，但 APK 建得到** | `flutter` 第一件事是跑 `git log` → spawn `git.exe` → 231，**根本未到 Gradle**。**但 Gradle 本身不受影響** | 繞過 CLI 直接跑 `cd mobile/android && ./gradlew :app:assembleDebug` —— **2026-10-03 實測 BUILD SUCCESSFUL**，出 163 MB `app-debug.apk`（`com.hkfastdc.mobile`、minSdk 24 / targetSdk 36）。Flutter Gradle plugin 自己讀 `local.properties` 的 `flutter.sdk` 去驅動 `flutter assemble`，所以跳過的只是 CLI 的版本新鮮度檢查。CI 是 Linux，**沒有**這個問題 |
-| **Gradle script 編譯 footer 的「N errors」會把警告一齊計入** | `ScriptCompilationException` 列出全部診斷（含 warning）再報總數 → 2 個真錯 + 1 個 `android { }` deprecation 會印成「3 errors」 | 睇每行有無 `e:` 前綴，同最終 `BUILD SUCCESSFUL`／exit code，唔好讀 footer 個數 |
+| **`flutter build apk`（CLI）無法執行，但 APK 建得出來** | `flutter` 第一件事是跑 `git log` → spawn `git.exe` → 231，**根本還沒到 Gradle**。**但 Gradle 本身不受影響** | 繞過 CLI 直接執行 `cd mobile/android && ./gradlew :app:assembleDebug` —— **2026-10-03 實測 BUILD SUCCESSFUL**，2026-10-04 加入品牌資產後再實測仍然成功，產出約 182 MB 的 universal debug 包（`com.hkfastdc.mobile`、minSdk 24 / targetSdk 36、含 arm64-v8a／armeabi-v7a／x86_64）。Flutter Gradle plugin 自己讀 `local.properties` 的 `flutter.sdk` 去驅動 `flutter assemble`，所以跳過的只是 CLI 的版本新鮮度檢查。CI 是 Linux，**沒有**這個問題 |
+| **自適應圖示（adaptive icon）用 108dp 畫布預覽看似無事，實機卻被裁到** | 看 108dp 畫布**不等於**看 launcher 視窗 —— launcher 只顯示中央 **72dp** 再套 circle／squircle 遮罩，外面 18dp 一律裁掉 | 預覽必須 **crop 中央 72/108 再套遮罩**，不可以整張 108dp 直接看。本專案實測：海報內文 bbox `x 0.104–0.865 / y 0.137–0.873`，四種遮罩（circle／squircle／rounded square／square）**0.00%** 內容被裁 |
+| **換海報做圖示之後，兩個 in-app 資產就 1.6 MB** | 原圖是 **JPEG**，本身已經帶壓縮噪聲；用 PNG 存等於把那些噪聲「無損」保存下來 —— 兩邊都吃虧。實測 1024px：PNG-opt **904 KB** vs WebP q90 **92 KB** | in-app 用 **WebP**（本專案只有 Android，`ios/` 不存在，所以沒有相容性顧慮）。**launcher 圖示保留 PNG** —— 總共只有約 290 KB，而且是 OS 最先要解碼的東西；48px 用 lossy 會直接看到 artefact |
+| **Gradle script 編譯 footer 的「N errors」會把警告一齊計入** | `ScriptCompilationException` 列出全部診斷（含 warning）再報總數 → 2 個真錯 + 1 個 `android { }` deprecation 會印成「3 errors」 | 看每行有沒有 `e:` 前綴，以及最終的 `BUILD SUCCESSFUL`／exit code，不要讀 footer 的數字 |
 | Background server 無聲死 | Bash tool call 內 `cmd &` 隨 shell 退出被收割 | 用 `run_in_background=true` + `TaskStop` |
 | 用 `conftest.ADMIN_ID` mint token 打 live server → 401 | 它是每個 test session 隨機 `uuid4()` | 讀真 DB：`docker exec realtaxi-db psql -U realtaxi -d realtaxihk -c "SELECT id FROM users WHERE role='ADMIN';"` |
 | 要 login 但 OTP code 不在 response（SEC-02） | 刻意設計 | `ALLOW_DEV_OTP=true` + code `123456` |

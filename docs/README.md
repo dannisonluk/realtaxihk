@@ -37,7 +37,7 @@
 | [`IN_TRIP_REDESIGN.md`](IN_TRIP_REDESIGN.md) | 未實作的 in-trip + 預約重設計：新狀態機、到達雙重驗證、違約扣款、schema、API、前端流程、$5 平台費（7 個 DECISION 已拍板） | 提案 |
 | [`DEPLOYMENT_REQUIREMENTS.md`](DEPLOYMENT_REQUIREMENTS.md) | 部署的硬約束、執行環境、**完整環境變數清單**、步驟、上線前 gap list | 清單 |
 | [`DEPLOY_TARGET_DECISION.md`](DEPLOY_TARGET_DECISION.md) | 部署選型 A/B/C 的取捨與成本，以及選定後的執行順序 | 決策 |
-| [`QA_TEST_ENVIRONMENT.md`](QA_TEST_ENVIRONMENT.md) | 測試環境交接：**四個必改的環境變數**、OTP 怎麼拿（**不會**出現在回應裡）、管理員怎麼建、三個客戶端各連哪個位址、10 條實際卡過的陷阱 | 清單 |
+| [`QA_TEST_ENVIRONMENT.md`](QA_TEST_ENVIRONMENT.md) | 測試環境交接：**四個必改的環境變數**、OTP 怎麼拿（**不會**出現在回應裡）、管理員怎麼建、三個客戶端各連哪個位址、**手機 App 首次登入的兩道牆**（§6）、12 條實際卡過的陷阱 | 清單 |
 | [`LANDMARK_COORDINATES.md`](LANDMARK_COORDINATES.md) | 19 個地標落客座標（供人手覆核）＋深圳灣口岸港方口岸區的完整幾何分析與法律依據 | 參考資料 |
 | [`REALTIME_POSITION_COST.md`](REALTIME_POSITION_COST.md) | 一個 GPS tick 的成本實測、不同並發下的開銷、擴展天花板、5 項按投報率排序的優化 | 分析 |
 | [`STRUCTURE_REVIEW.md`](STRUCTURE_REVIEW.md) | 目錄佈局的評估：已很好的部分、8 項按價值／風險排序的建議、以及比目錄更重要的那個結構盲點 | 評估 |

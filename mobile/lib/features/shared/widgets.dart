@@ -38,6 +38,83 @@ class AsyncValueView<T> extends StatelessWidget {
   }
 }
 
+/// The brand poster, rendered [size] logical pixels square.
+///
+/// The artwork carries the wordmark *in the pixels* — there is no vector mark to
+/// compose from — so this is an [Image] and not a `Row` of an icon and a `Text`.
+/// `mobile/tool/gen_branding_assets.py` generates the file this loads; run it
+/// after the artwork changes.
+///
+/// Three deliberate choices:
+///
+///  * **Corners are rounded** by `size * 0.22`, which lands near the squircle
+///    iOS masks an app icon to. The poster's own background is a flat `#D9DDE6`
+///    that matches neither appearance's scaffold, so left square it reads as a
+///    grey tile pasted onto the page rather than as the app's own mark.
+///  * **The locale picks the file.** The wordmark is baked into the art
+///    ("香港Call的士" vs "HKFASTDC"), so there is nothing to localise at runtime
+///    — there are two files and we choose one. `HkfastdcApp` pins the locale to
+///    `zh-HK` today, so this resolves to the Chinese poster in practice.
+///  * **The whole thing is one semantics node.** A poster whose text lives in
+///    the pixels is one object to a screen reader, not a picture followed by a
+///    stray wordmark. [semanticLabel] is that object's name, and it is also the
+///    wordmark the fallback below draws.
+class BrandLogo extends StatelessWidget {
+  const BrandLogo({required this.size, this.semanticLabel = 'hkfastdc', super.key});
+
+  /// Width and height in logical pixels. The source is 1024px, so anything up
+  /// to ~340dp is a downscale — which is the case [FilterQuality.medium] is
+  /// built for. It mipmaps; `FilterQuality.high` is documented as *worse* than
+  /// `medium` below 0.5x, and this runs at ~0.23x.
+  final double size;
+
+  /// What a screen reader announces, and the wordmark the fallback draws.
+  final String semanticLabel;
+
+  static String _asset(BuildContext context) {
+    return Localizations.localeOf(context).languageCode == 'en'
+        ? 'assets/branding/logo-en.webp'
+        : 'assets/branding/logo-zh.webp';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      image: true,
+      label: semanticLabel,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(size * 0.22),
+        child: Image.asset(
+          _asset(context),
+          width: size,
+          height: size,
+          filterQuality: FilterQuality.medium,
+          excludeFromSemantics: true,
+          // A missing asset means the generator was never run. Draw the mark the
+          // app used before — icon plus wordmark — rather than Flutter's grey
+          // error box on the first screen a user ever sees.
+          errorBuilder: (BuildContext context, Object error, StackTrace? stack) => SizedBox(
+            width: size,
+            height: size,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Icon(
+                  Icons.local_taxi_rounded,
+                  size: size * 0.5,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(height: AppTheme.space2),
+                Text(semanticLabel, style: Theme.of(context).textTheme.titleMedium),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// A failure with the server's own message and, where it helps, a hint about
 /// what to do next.
 ///

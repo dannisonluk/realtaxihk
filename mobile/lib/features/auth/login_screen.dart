@@ -71,10 +71,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Icon(Icons.local_taxi_rounded, size: 56, color: theme.colorScheme.primary),
+              // Centred because the column stretches. The poster is the
+              // wordmark, so nothing under it repeats the name; the line below
+              // says what this screen wants instead.
+              const Center(child: BrandLogo(size: 160)),
               const SizedBox(height: AppTheme.space6),
-              Text('hkfastdc', style: theme.textTheme.headlineMedium),
-              const SizedBox(height: AppTheme.space2),
               Text(
                 '輸入電話號碼，我們會以 WhatsApp 發送驗證碼。',
                 style: theme.textTheme.bodyMedium?.copyWith(
