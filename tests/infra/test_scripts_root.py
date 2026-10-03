@@ -66,7 +66,10 @@ def test_the_helper_resolves_the_readme() -> None:
 
     sys.path.insert(0, str(_SCRIPTS))
     try:
-        from _root import REPO_ROOT
+        # `_SCRIPTS` was prepended to `sys.path` two lines up, which is how a
+        # script imports its sibling helper. A checker cannot follow a runtime
+        # `sys.path` mutation, so it reports the import as unresolvable.
+        from _root import REPO_ROOT  # pyright: ignore[reportMissingImports]
 
         assert (REPO_ROOT / "README.md").is_file()
         assert (REPO_ROOT / "app").is_dir()

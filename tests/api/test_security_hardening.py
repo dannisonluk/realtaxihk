@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
+from typing import Any, cast
 
 import pytest
 from pydantic import ValidationError
+from starlette.requests import Request
 
 from app.core.config import Settings
 from app.core.exceptions import BusinessRuleError
@@ -22,6 +24,20 @@ _STRONG_SECRET = "Zx9q7Lm2Wp4Rt6Yk8Bn3Vc5Hj1Sd0Fg6"
 
 def _phone() -> str:
     return f"+8529{uuid.uuid4().int % 10**7:07d}"
+
+
+def _settings(**overrides: object) -> Settings:
+    """`Settings` with the `.env` file switched off.
+
+    `_env_file` is a real `BaseSettings` parameter, but a type checker cannot see
+    it: pyright synthesises `Settings.__init__` from the pydantic *fields*
+    (verified with `reveal_type`), and `_env_file` is not a field. Unpacking a
+    dict keeps the runtime call byte-identical while leaving the checker a
+    signature it can actually check. `_prod` below already leans on the same
+    trick.
+    """
+    values: dict[str, Any] = {"_env_file": None, **overrides}
+    return Settings(**values)
 
 
 def _login(client, phone: str) -> dict:
@@ -44,17 +60,16 @@ class TestConfigFailClosed:
         served a fixed OTP code in the response on a host with no .env."""
         monkeypatch.delenv("APP_ENV", raising=False)
         with pytest.raises(ValidationError, match="APP_ENV is not set"):
-            Settings(_env_file=None, jwt_secret_key=_STRONG_SECRET)
+            _settings(jwt_secret_key=_STRONG_SECRET)
 
     def test_non_whitelisted_app_env_rejected(self):
         """SEC-04: `== 'prod'` let 'production'/'PROD'/'staging' skip prod checks."""
         with pytest.raises(ValidationError, match="must be one of"):
-            Settings(_env_file=None, app_env="production", jwt_secret_key=_STRONG_SECRET)
+            _settings(app_env="production", jwt_secret_key=_STRONG_SECRET)
 
     def test_prod_rejects_dev_jwt_secret(self):
         with pytest.raises(ValidationError, match="JWT_SECRET_KEY"):
-            Settings(
-                _env_file=None,
+            _settings(
                 app_env="prod",
                 jwt_secret_key="dev-only-secret-change-in-prod-0123456789abcdef",
                 postgres_password="a-real-password",
@@ -63,8 +78,7 @@ class TestConfigFailClosed:
     def test_prod_rejects_dev_otp_switch(self):
         """SEC-02: the dev OTP shortcut is not a prod option."""
         with pytest.raises(ValidationError, match="ALLOW_DEV_OTP"):
-            Settings(
-                _env_file=None,
+            _settings(
                 app_env="prod",
                 jwt_secret_key=_STRONG_SECRET,
                 postgres_password="a-real-password",
@@ -73,12 +87,12 @@ class TestConfigFailClosed:
 
     def test_short_secret_rejected(self):
         with pytest.raises(ValidationError, match="at least"):
-            Settings(_env_file=None, app_env="dev", jwt_secret_key="abc123")
+            _settings(app_env="dev", jwt_secret_key="abc123")
 
     def test_low_entropy_secret_rejected(self):
         """Length alone is not entropy: 64 identical characters is one guess."""
         with pytest.raises(ValidationError, match="entropy"):
-            Settings(_env_file=None, app_env="dev", jwt_secret_key="x" * 64)
+            _settings(app_env="dev", jwt_secret_key="x" * 64)
 
     # --- prod CORS / proxy-trust (found by the 2026-10-12 review) --------- #
 
@@ -137,7 +151,7 @@ class TestConfigFailClosed:
         """The dev defaults must keep working — this is the whole point of
         scoping the new checks to `app_env == 'prod'`."""
         monkeypatch.delenv("CORS_ORIGINS", raising=False)
-        s = Settings(_env_file=None, app_env="dev", jwt_secret_key=_STRONG_SECRET)
+        s = _settings(app_env="dev", jwt_secret_key=_STRONG_SECRET)
         assert s.trusted_proxy_count == 0
         assert len(s.cors_origins) == 4
 
@@ -146,10 +160,8 @@ class TestConfigFailClosed:
         # seam), so "switch off" is already the ambient state; clear it anyway
         # to keep the assertion independent of the developer's own environment.
         monkeypatch.delenv("ALLOW_DEV_OTP", raising=False)
-        on = Settings(
-            _env_file=None, app_env="dev", jwt_secret_key=_STRONG_SECRET, allow_dev_otp=True
-        )
-        off = Settings(_env_file=None, app_env="dev", jwt_secret_key=_STRONG_SECRET)
+        on = _settings(app_env="dev", jwt_secret_key=_STRONG_SECRET, allow_dev_otp=True)
+        off = _settings(app_env="dev", jwt_secret_key=_STRONG_SECRET)
         assert on.dev_otp_enabled is True
         assert off.dev_otp_enabled is False
 
@@ -189,14 +201,13 @@ class TestForwardedFor:
 
         monkeypatch.setattr(
             "app.core.client_ip.get_settings",
-            lambda: Settings(
-                _env_file=None,
+            lambda: _settings(
                 app_env="dev",
                 jwt_secret_key=_STRONG_SECRET,
                 trusted_proxy_count=1,
             ),
         )
-        assert client_ip(_Req()) == "9.9.9.9"
+        assert client_ip(cast(Request, _Req())) == "9.9.9.9"
 
     def test_the_attacker_supplied_prefix_is_never_returned(self, monkeypatch):
         """The specific SEC-07 defect: `[0]` is the part a client controls.
@@ -216,14 +227,13 @@ class TestForwardedFor:
 
         monkeypatch.setattr(
             "app.core.client_ip.get_settings",
-            lambda: Settings(
-                _env_file=None,
+            lambda: _settings(
                 app_env="dev",
                 jwt_secret_key=_STRONG_SECRET,
                 trusted_proxy_count=1,
             ),
         )
-        assert client_ip(_Req()) == "198.51.100.7"
+        assert client_ip(cast(Request, _Req())) == "198.51.100.7"
 
     def test_every_module_shares_one_implementation(self):
         """Five byte-identical copies is five places to reintroduce SEC-07."""
@@ -369,8 +379,15 @@ class TestHttpErrorCodeMap:
 
         @probe.get("/probe")
         async def _raise():
+            # `detail` is `str | None` on Starlette's `HTTPException` but `Any`
+            # on FastAPI's, and this test uses the Starlette one on purpose: the
+            # point is that the *handler* copes with a raw starlette exception.
+            # A structured detail is what the handler serialises, so the dict is
+            # correct at runtime and only the stub disagrees.
             raise StarletteHTTPException(
-                status_code=429, detail={"reason": "COOLDOWN"}, headers={"Retry-After": "900"}
+                status_code=429,
+                detail={"reason": "COOLDOWN"},  # pyright: ignore[reportArgumentType]
+                headers={"Retry-After": "900"},
             )
 
         with TestClient(probe, raise_server_exceptions=False) as c:
@@ -514,7 +531,7 @@ class TestRouteAuthzCoverage:
                 "require_role_guard",
             }
             if not (live_guards & deps):
-                offenders.append(f"{sorted(route.methods)} {route.path}")
+                offenders.append(f"{sorted(route.methods or ())} {route.path}")
         assert checked >= 15, f"route discovery looks wrong (only found {checked})"
         assert offenders == [], f"routes missing a live-state guard: {offenders}"
 

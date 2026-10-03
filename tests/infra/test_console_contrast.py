@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
 
@@ -47,12 +48,18 @@ def _load_tool() -> ModuleType:
 
 
 @pytest.fixture()
-def tool() -> ModuleType:
+def tool() -> Iterator[ModuleType]:
     """The guard, with `CSS` restored afterwards so tests cannot leak into each other."""
     module = _load_tool()
     original = module.CSS
     yield module
-    module.CSS = original
+    # `module.__dict__[...]`, not `module.CSS = ...`: the tool is loaded by path,
+    # so it has no static type of its own and a checker rejects assigning to
+    # `ModuleType`. `setattr` silences that but trips ruff's B010 ("use plain
+    # assignment") -- which is the very assignment the checker just refused. A
+    # module's `__dict__` *is* its namespace, so this is the same write with
+    # neither checker objecting.
+    module.__dict__["CSS"] = original
 
 
 @pytest.fixture()
@@ -65,7 +72,7 @@ def _mutate(tool: ModuleType, tmp_path: Path, source: str, old: str, new: str) -
     assert source.count(old) >= 1, f"anchor {old!r} is no longer in styles.css"
     target = tmp_path / "styles.css"
     target.write_text(source.replace(old, new, 1), encoding="utf-8")
-    tool.CSS = target
+    tool.__dict__["CSS"] = target
 
 
 # --- the shipped stylesheet -------------------------------------------------

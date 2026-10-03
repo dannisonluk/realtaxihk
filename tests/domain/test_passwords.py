@@ -155,8 +155,12 @@ class TestRehashUpgradePath:
 
         weak_hasher = argon2.PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
         weak = weak_hasher.hash(GOOD)
-        if needs_rehash(weak):
-            upgraded = hash_password(GOOD)
+        # Asserted, not branched on: the old `if needs_rehash(weak):` left
+        # `upgraded` unbound whenever it was false, so this test would have
+        # raised `UnboundLocalError` instead of testing the upgrade path. The
+        # previous test pins the precondition; here it is a step.
+        assert needs_rehash(weak), "the weak hash must be flagged, or this proves nothing"
+        upgraded = hash_password(GOOD)
         assert verify_password(upgraded, GOOD)
         assert not needs_rehash(upgraded)
 

@@ -25,8 +25,10 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
+from httpx import Response
 from sqlalchemy import text
 
 PHONE_DRIVER = "+85290002201"
@@ -179,7 +181,7 @@ def _full_document_set(client, token: str) -> list[dict]:
     ]
 
 
-def _submit(client, token: str, **overrides) -> dict:
+def _submit(client, token: str, **overrides) -> Response:
     """Build a valid submission payload and POST it.
 
     `documents` is only presigned when the caller did not supply their own. The
@@ -188,7 +190,10 @@ def _submit(client, token: str, **overrides) -> dict:
     helper while preparing the payload rather than on the assertion it cares
     about.
     """
-    payload = {
+    # Annotated, not inferred: the literal's three values are all `str`, so
+    # without this the dict narrows to `dict[str, str]` and the `documents` key
+    # added below (a list) is a type error.
+    payload: dict[str, Any] = {
         "licence_no": "DL123456",
         "expires_on": (datetime.now(UTC) + timedelta(days=365)).isoformat(),
         "note": "first application",

@@ -13,6 +13,8 @@ import uuid
 from decimal import Decimal
 
 import pytest
+from conftest import AdminHeaders
+from httpx import Response
 
 # --------------------------------------------------------------------------- #
 # helpers
@@ -30,7 +32,7 @@ def _mk_user_token(client, phone: str) -> str:
     return client.activate(phone)
 
 
-def _admin_headers(client) -> dict:
+def _admin_headers(client) -> AdminHeaders:
     return client.admin_headers()
 
 
@@ -121,7 +123,7 @@ def active_driver(client):
     return _make_active(client, "+85293000001")
 
 
-def _request_refund(client, token: str, note: str = "") -> dict:
+def _request_refund(client, token: str, note: str = "") -> Response:
     return client.post("/api/v1/drivers/me/refund/request", headers=_h(token), json={"note": note})
 
 

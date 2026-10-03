@@ -60,19 +60,27 @@ _DIGITS = re.compile(r"\D+")
 _LIKE_SPECIAL = str.maketrans({"\\": r"\\", "%": r"\%", "_": r"\_"})
 
 
-def normalize_query(raw: str) -> str:
+def normalize_query(raw: str | None) -> str:
     """Trim and collapse internal whitespace. Rejects the too-short case.
 
     Whitespace is collapsed rather than preserved because a name pasted from a
     chat message routinely arrives with a trailing newline or a double space,
     and `"Chan  Tai"` failing to match `"Chan Tai"` is a bug the operator
     experiences as "the search is broken".
+
+    `None` is accepted and treated as empty. The console's search box sends
+    `null` for a cleared field, and `(raw or "")` below is exactly that
+    tolerance — the annotation said `str` until a type checker pointed out the
+    body disagreed.
     """
     return " ".join((raw or "").split())
 
 
-def digits_only(raw: str) -> str:
-    """Digits, for phone and plate matching. Empty when there are none."""
+def digits_only(raw: str | None) -> str:
+    """Digits, for phone and plate matching. Empty when there are none.
+
+    `None` in, `""` out — same contract as `normalize_query` above.
+    """
     return _DIGITS.sub("", raw or "")
 
 

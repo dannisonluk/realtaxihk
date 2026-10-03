@@ -22,6 +22,7 @@ from datetime import datetime
 import pytest
 from sqlalchemy import text
 
+from app.core.exceptions import BusinessRuleError
 from app.services.ledger.settlement_confirm import (
     PREVIEW_TTL_SECONDS,
     issue_confirm_token,
@@ -326,7 +327,7 @@ class TestTokenBinding:
         token = issue_confirm_token(period="2026-W40", fee_hkd="200.00")
         claims = verify_confirm_token(token, period="2026-W40", fee_hkd="200.00")
         assert claims["period"] == "2026-W40"
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(BusinessRuleError) as exc:
             verify_confirm_token(token, period="2026-W41", fee_hkd="200.00")
         assert exc.value.details["reason"] == "CONFIRM_TOKEN_MISMATCH"
 
@@ -334,7 +335,7 @@ class TestTokenBinding:
         """A preview that said HK$200 and a run that charged HK$500 is exactly
         the mismatch the preview exists to prevent."""
         token = issue_confirm_token(period="2026-W40", fee_hkd="200.00")
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(BusinessRuleError) as exc:
             verify_confirm_token(token, period="2026-W40", fee_hkd="500.00")
         assert exc.value.details["reason"] == "CONFIRM_TOKEN_MISMATCH"
 
@@ -342,12 +343,12 @@ class TestTokenBinding:
         token = issue_confirm_token(period="2026-W40", fee_hkd="200.00")
         body, _, sig = token.rpartition(".")
         forged = body.replace("200.00", "1.00") + "." + sig
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(BusinessRuleError) as exc:
             verify_confirm_token(forged, period="2026-W40", fee_hkd="1.00")
         assert exc.value.details["reason"] == "CONFIRM_TOKEN_INVALID"
 
     def test_a_random_string_is_rejected(self):
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(BusinessRuleError) as exc:
             verify_confirm_token("not-a-token")
         assert exc.value.details["reason"] == "CONFIRM_TOKEN_MISSING"
 
@@ -371,7 +372,7 @@ class TestTokenBinding:
             separators=(",", ":"),
         )
         token = f"{body}.{_sign(get_settings().jwt_secret_key, body)}"
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(BusinessRuleError) as exc:
             verify_confirm_token(token, period="2026-W40", fee_hkd="200.00")
         assert exc.value.details["reason"] == "CONFIRM_TOKEN_EXPIRED"
 

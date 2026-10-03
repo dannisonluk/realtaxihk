@@ -309,6 +309,7 @@ class TestP1OtpLimits:
                 json={"phone_e164": f"+852600000{i:02d}"},
                 headers={"X-Forwarded-For": "203.0.113.77"},
             )
+        assert last is not None, "the loop body always assigns a response"
         assert last.status_code == 429
 
 

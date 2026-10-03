@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
+from collections.abc import Iterator
 from pathlib import Path
 
 import asyncpg
@@ -92,7 +93,7 @@ async def _admin_conn() -> asyncpg.Connection:
 
 
 @pytest.fixture(scope="module")
-def migrated_db() -> str:
+def migrated_db() -> Iterator[str]:
     """A scratch database with every migration applied, torn down afterwards.
 
     Module-scoped because a full `upgrade head` is not cheap and the assertions

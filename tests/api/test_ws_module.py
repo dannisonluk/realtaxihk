@@ -183,6 +183,7 @@ class TestWsStreaming:
                     .scalars()
                     .first()
                 )
+                assert prof is not None, "the registered driver must have a profile row"
                 prof.status = DriverStatus.SUSPENDED
                 await s.commit()
             await engine.dispose()
@@ -266,10 +267,18 @@ class TestWsConnectionLifetime:
         `include_router` is not flattened in this FastAPI version, so the app's
         own route list does not contain the WebSocket route at all.
         """
+        from fastapi.routing import APIWebSocketRoute
+
         from app.api.ws import router
         from app.core.db import get_session
 
-        (route,) = [r for r in router.routes if getattr(r, "path", "") == "/ws/trip/{order_id}"]
+        # `isinstance`, not `getattr`: only `APIWebSocketRoute` carries
+        # `.dependant`, which is what the assertion below reads.
+        (route,) = [
+            r
+            for r in router.routes
+            if isinstance(r, APIWebSocketRoute) and r.path == "/ws/trip/{order_id}"
+        ]
         declared = {dep.call for dep in route.dependant.dependencies}
 
         assert get_session not in declared, (

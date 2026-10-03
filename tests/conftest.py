@@ -28,8 +28,10 @@ anyone able to forge a token would already know which `sub` to use.
 
 import asyncio
 import contextlib
+import itertools
 import os
 import uuid
+from collections.abc import Iterator
 
 # Test-process defaults, seeded before any app module is imported.
 #
@@ -298,7 +300,7 @@ def otp_inbox(monkeypatch) -> dict[str, str]:
 
 
 @pytest.fixture()
-def client(otp_inbox) -> TestClient:
+def client(otp_inbox) -> Iterator[TestClient]:
     """App wired to a fresh per-test database (one engine for the whole test)."""
     from app.core.db import get_session, get_session_factory
     from app.main import create_app
@@ -372,6 +374,13 @@ class AdminHeaders(dict):
         self.admin_id = admin_id
 
 
+# Each call provisions a distinct account, so this is a counter rather than a
+# fixed name. It lives at module level rather than as a function attribute:
+# assigning to a function object is invisible to a type checker, which reports
+# `Cannot assign to attribute "_seq" for class "FunctionType"`.
+_ADMIN_SEQ = itertools.count(1)
+
+
 def admin_headers(
     client, *, username: str | None = None, role: str = "SUPER_ADMIN"
 ) -> AdminHeaders:
@@ -400,10 +409,9 @@ def admin_headers(
     Each call provisions a distinct account (a counter, not a fixed name) so a
     test that calls this twice does not collide on the unique username index.
     """
-    admin_headers._seq += 1
-    seq = admin_headers._seq
+    seq = next(_ADMIN_SEQ)
     name = username or f"testadmin{seq}"
-    email = f"{name}@realtaxi.hk"
+    email = f"{name}@hkfastdc.com"
     # Not "TestAdmin!2026-hk" — `_WEAK_FRAGMENTS` blocks the substring "admin",
     # so a password containing the word its own account type is named after
     # fails the policy and every caller errors in setup. The content here is
@@ -438,9 +446,6 @@ def admin_headers(
     )
     assert r.status_code == 200, r.text
     return AdminHeaders(f"Bearer {r.json()['access_token']}", str(admin_id))
-
-
-admin_headers._seq = 0
 
 
 # One fixture per admin role, so a test reads `client.get(url, headers=finance)`

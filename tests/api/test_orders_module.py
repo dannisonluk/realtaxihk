@@ -5,8 +5,10 @@ service-level grabs: exactly one must win, the rest must lose cleanly.
 """
 
 import asyncio
+from typing import cast
 
 import pytest
+from fastapi import Request
 
 
 def _mk_user_token(client, phone: str) -> str:
@@ -244,7 +246,11 @@ class TestConcurrentCancel:
                 async with factory() as s:
                     try:
                         await order_cancel(
-                            oid, CancelIn(reason="double tap"), _Request(), principal, s
+                            oid,
+                            CancelIn(reason="double tap"),
+                            cast(Request, _Request()),
+                            principal,
+                            s,
                         )
                     except Exception as exc:  # the refusal is the point
                         await s.rollback()

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 import pytest
 from sqlalchemy import func, select, text
@@ -183,11 +184,23 @@ def _fresh_code(client, phone: str) -> str:
 # ---------------------------------------------------------------- #
 
 
-class _U:
+class _UserStub:
     """A stand-in for the User row. `evaluate` reads exactly one column."""
 
     def __init__(self, due_at):
         self.phone_reverify_due_at = due_at
+
+
+def _U(due_at: datetime | None) -> User:
+    """`_UserStub` presented as the `User` that `evaluate` declares.
+
+    The cast is the honest statement of what these boundary cases are:
+    `evaluate` is documented to read only `phone_reverify_due_at`, and building
+    a real `User` would drag in the ORM mapper and a dozen NOT NULL columns that
+    none of the cases below touch. A function rather than a class so every call
+    site keeps reading `_U(...)`.
+    """
+    return cast(User, _UserStub(due_at))
 
 
 _row_seq = 0
