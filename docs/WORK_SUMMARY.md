@@ -28,7 +28,7 @@
   `--junit-xml` 讀，39 個模組）·
   > 📌 **文檔原本寫的 955 早就過期了。** 上一個 commit `bab78b9` 加了 2 條 licence
   > 測試但沒有同步文檔。實測：`HEAD` 是 **957**，加上
-  > `tests/test_money_input_annotations.py` 的 3 條 money 註解守衛後是 **960**。
+  > `tests/infra/test_money_input_annotations.py` 的 3 條 money 註解守衛後是 **960**。
   > 此數字為 2026-10-03 實跑（6m59s，`--junit-xml` 讀出）。
   `ruff check` clean · `ruff format --check` clean ·
   console `tsc` clean + **69 vitest passed（9 files）** · `npm run build` 主包

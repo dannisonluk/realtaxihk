@@ -155,13 +155,13 @@ LatLng(22.5150, 114.0200),  # 深圳河口（不變）
 - **網格掃描**：在整片后海灣 / 蛇口角上以 0.0025° 步長掃 212 個境內點，
   確認沒有任何一點落到「管制站以北」或「蛇口東岸以西」的深圳一側。
 
-測試見 `tests/test_hk_bounds.py`：`test_the_shenzhen_bay_port_area_defect_cannot_come_back`
+測試見 `tests/domain/test_hk_bounds.py`：`test_the_shenzhen_bay_port_area_defect_cannot_come_back`
 （鎖死舊的兩頂點邊界）與 `test_admitting_the_port_area_did_not_admit_shenzhen`
 （網格性質測試）。後者已用兩個故意的錯誤邊界驗證過**會 fail**，不是空轉。
 
 > ⚠️ **改動此段前必讀**：`_HK_MAIN` 這段是全模組唯一一處刻意伸到深圳河
 > 走廊以北。它靠的不是「放寬」，而是「**只在港方口岸區這一小塊**放寬」。
-> 若要再動，先跑 `tests/test_hk_bounds.py`。
+> 若要再動，先跑 `tests/domain/test_hk_bounds.py`。
 
 ---
 

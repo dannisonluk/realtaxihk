@@ -150,7 +150,7 @@ flush 時每個訂單只發一次。另外可考慮用 `PUBLISH` 的批次形式
   而 Postgres 預設 `max_connections=100` —— **會爆**。
   **這個正確性問題已處理**：三個數字改為由環境變數驅動
   （`app/core/config.py`），並在 `docker-compose.prod.yml` 內明確寫成
-  `(10 + 20) × 1 = 30 ≤ 100`，由 `tests/test_prod_compose_pool_arithmetic.py`
+  `(10 + 20) × 1 = 30 ≤ 100`，由 `tests/infra/test_prod_compose_pool_arithmetic.py`
   守住。它解決的是**正確性**（不會超出上限），不是**擴容量**。
 - 要解除「行程數 × 池大小」這個硬上限——即在單台機器上容納更多行程——
   仍需在資料庫前放 PgBouncer（transaction pooling）。屆時算式要改對

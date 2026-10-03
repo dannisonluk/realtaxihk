@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-_SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
+_SCRIPTS = Path(__file__).resolve().parent.parent.parent / "scripts"
 
 # An expression that walks up three levels: `a.parent.parent.parent`,
 # `parents[2]`, or `dirname(dirname(dirname(...)))`.

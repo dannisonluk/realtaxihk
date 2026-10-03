@@ -127,7 +127,7 @@ ORDER_TRANSITIONS = {
 
 這張表**同時是安全產物**，不只是領域模型。它讓
 「已取消的訂單不可能被完成」成為**不變式**而不是慣例。
-`tests/test_orders_module.py::TestStateMachineInvariants` 直接斷言兩個性質：
+`tests/api/test_orders_module.py::TestStateMachineInvariants` 直接斷言兩個性質：
 
 1. **終態沒有出邊**——有的話，已完成的行程可以被重開，
    而所有收益數字（週結算、analytics API）都是從 `orders` 推出來的。
@@ -469,7 +469,7 @@ SUPPORT(0) < OPERATIONS(1) < FINANCE(2) < SUPER_ADMIN(3)
 ## 8. 地理邊界：香港特別行政區的範圍
 
 `app/core/hk_bounds.py` 定義服務範圍，郵政編碼那一類東西。它有**兩個刻意的例外**，
-改動之前必須讀註釋並跑 `tests/test_hk_bounds.py`（87 條）。
+改動之前必須讀註釋並跑 `tests/domain/test_hk_bounds.py`（87 條）。
 
 **例外一：深圳河沿線。** 邊界跟深圳河走廊走，在落馬洲、羅湖、文錦渡、
 沙頭角留下香港一側。鬆弛最多約 610 m，**不可以**到深圳建成區。

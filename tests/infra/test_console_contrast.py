@@ -30,7 +30,7 @@ from types import ModuleType
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 CONSOLE = ROOT / "admin-web" / "web"
 TOOL = CONSOLE / "tool" / "check_contrast.py"
 

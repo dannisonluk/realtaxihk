@@ -28,7 +28,7 @@ from pathlib import Path
 
 from app.core.config import Settings
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 ENV_EXAMPLE = ROOT / ".env.example"
 COMPOSE_FILES = (ROOT / "docker-compose.yml", ROOT / "docker-compose.prod.yml")
 

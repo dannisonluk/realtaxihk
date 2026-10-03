@@ -757,7 +757,7 @@ class TestProxyHeaderTrust:
     def _launch_files(self):
         from pathlib import Path
 
-        root = Path(__file__).resolve().parent.parent
+        root = Path(__file__).resolve().parent.parent.parent
         return [
             root / "Dockerfile",
             root / "docker-compose.yml",
@@ -899,7 +899,7 @@ class TestSharedRedisClientOwnership:
         import re
         from pathlib import Path
 
-        root = Path(__file__).resolve().parent.parent
+        root = Path(__file__).resolve().parent.parent.parent
         offenders = []
         for path in sorted((root / "app").rglob("*.py")):
             text = path.read_text(encoding="utf-8")

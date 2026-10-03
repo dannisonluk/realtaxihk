@@ -37,7 +37,7 @@ import yaml
 
 from app.core.config import Settings
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 COMPOSE_PROD = ROOT / "docker-compose.prod.yml"
 
 # Connections Postgres needs for things that are not the api's pool:

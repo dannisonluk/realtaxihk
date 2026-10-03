@@ -137,7 +137,7 @@ scope = SCOPE_ADMIN if claims.get("scope") == SCOPE_ADMIN else SCOPE_USER
 5. **登出／撤銷後立即清除 cookie**：`clear_session_cookie_headers()` 產生兩個
    `Set-Cookie`（各帶 `Max-Age=0`）經 `HTTPException(headers=...)` 送出。
 
-**驗證**：`tests/test_admin_session_cookie.py`（24 tests）—— 涵蓋輪換、
+**驗證**：`tests/api/test_admin_session_cookie.py`（24 tests）—— 涵蓋輪換、
 重放偵測、撤銷、停用帳戶時清除 cookie、logout 對已停用帳戶仍可用等。
 全 656 tests 通過。
 
@@ -201,7 +201,7 @@ wire 上可分。** 因此修復後 locked 仍回 401，差異只保留在 log �
 
 ### ✅ SEV-4b（已修復）：弱斷言改為可證偽
 
-**原位置**：`tests/test_admin_auth_api.py:674`
+**原位置**：`tests/api/test_admin_auth_api.py:674`
 
 ```python
 assert 429 in statuses or 401 in statuses   # 舊
@@ -274,7 +274,7 @@ epsilon 內縮。
 
 1. ✅ **修 SEV-1 —— 已完成**（採用選項 (c)：`HttpOnly` refresh cookie +
    CSRF double-submit；`/admin/auth/refresh` 與 `/admin/auth/logout` 已通）。
-   詳見上文 SEV-1 條目與 `tests/test_admin_session_cookie.py`。
+   詳見上文 SEV-1 條目與 `tests/api/test_admin_session_cookie.py`。
 2. ✅ **修 SEV-2 —— 已完成**（型別化 exception；locked 維持 401，見上文說明）。
 3. ✅ **`ruff format` 全樹套用 —— 已完成**（109 files already formatted；CI 已加
    `ruff format --check` gate 防復發）。
@@ -312,4 +312,4 @@ epsilon 內縮。
 - `ADMIN_AUTH.md` —— 管理員認證模型與 authenticator 選型
 - `DEPLOYMENT_REQUIREMENTS.md` —— 部署需求與 gap list
 - `WORK_SUMMARY.md` —— 整體工作總覽
-- 驗證方法：`scripts/verify/security_verify.py`、`tests/test_security_hardening.py`
+- 驗證方法：`scripts/verify/security_verify.py`、`tests/api/test_security_hardening.py`

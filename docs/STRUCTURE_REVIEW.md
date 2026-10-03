@@ -15,7 +15,7 @@
 
 | 位置 | 為什麼好 |
 |---|---|
-| `scripts/{ops,verify,dev}` | 按「你在做什麼」分組，規則寫在 `scripts/README.md`；`scripts/_root.py` 把 repo root 的推算集中在一處，由 `tests/test_scripts_root.py` 守住。**這是全 repo 最值得複製的模式。** |
+| `scripts/{ops,verify,dev}` | 按「你在做什麼」分組，規則寫在 `scripts/README.md`；`scripts/_root.py` 把 repo root 的推算集中在一處，由 `tests/infra/test_scripts_root.py` 守住。**這是全 repo 最值得複製的模式。** |
 | `app/models/` | 按 bounded context 拆包（`_base` / `user` / `admin` / `fleet` / `licence` / `dispute`），公開 import 路徑不變（`__init__` re-export）。 |
 | `app/api/schemas/` | 響應模型獨立於 handler，且由夹具反推、有審計腳本守住。 |
 | `deploy/` + `docker-compose.prod.yml` | prod 是 **overlay** 而非獨立檔，基礎檔承載全部加固。 |
@@ -64,23 +64,31 @@
 
 > 先做這一項再做 R4／R6，因為它們都會動到 import。
 
-### R2 — `tests/` 39 個檔案平鋪
+### R2 — `tests/` 39 個檔案平鋪 ✅ 已處理
 
-`tests/` 目前 39 個 `.py` 平鋪。建議按領域分組（鏡像 `app/`）：
+**已分為 3 組**，分類用**客觀準則**而不是憑感覺 —— 「是否使用 `client` fixture」
+（即是否驅動 HTTP 介面）：
 
-```
-tests/
-  conftest.py            # 必須留在這一層（session 層守衛）
-  api/                   # test_admin_*.py, test_auth_module.py, test_orders_module.py, test_fleets.py…
-  services/              # test_fare_*, test_deposits_module.py, test_refund_and_settlement.py…
-  core/                  # test_money_wire.py, test_hk_bounds.py, test_totp.py, test_passwords.py…
-  infra/                 # test_migration_schema_parity.py, test_db_pool_config.py, test_db_backup.py,
-                         # test_prod_compose_pool_arithmetic.py, test_scripts_root.py, test_env_example.py
-```
+| group | 檔數 | 準則 |
+|---|---|---|
+| `api/` | 24 | 使用 `client` fixture，驅動真實 HTTP 介面 |
+| `domain/` | 6 | 純邏輯，無 DB：fare、money、hk_bounds、passwords、totp |
+| `infra/` | 9 | 對檔案與配置的守衛：migration parity、db pool、backup、compose 算式、`scripts/` root、`.env.example`、console 對比、money 註解 |
 
-**注意**：`tests/` 現在**沒有** `__init__.py`（正確）。加子目錄後若兩個子目錄
-有同名檔案會撞 module 名 —— 現時沒有同名，但**要加 `__init__.py` 或保持檔名唯一**。
-驗收：`pytest --collect-only -q` 的數目**必須仍是 960**。
+**注意（與 `scripts/` 同一個陷阱）**：8 個測試用 `__file__` 推算 repo root
+（`Path(__file__).resolve().parent.parent`）。**每加一層目錄，這些全部要改**，
+而且**改錯是靜默的** —— 路徑會指到 `tests/` 而不是 repo root，測試照樣收集、
+照樣執行，只是掃錯目錄。
+
+- 已把 7 個檔案的深度加一層（`parent.parent` → `.parent.parent.parent`、
+  `parents[1]` → `parents[2]`）。
+- **`test_scripts_root.py` 刻意手動處理**：它有一個 `__file__` 出現在**f-string
+  訊息內**，示範「腳本應該怎樣寫」。那裡的 `parent.parent` 是**正確的**
+  （腳本在 `scripts/<group>/x.py`，比測試淺一層），自動替換會把它改壞。
+- `conftest.py` 留在 `tests/` 根層；子目錄**不加** `__init__.py`（39 個檔名唯一，
+  rootdir 模式不會撞名）。
+
+驗證：`pytest --junit-xml` 讀出仍是 **960 passed / 0 failed**；ruff clean。
 
 ### R3 — mobile 的測試不在 `test/`
 
@@ -104,7 +112,7 @@ tests/
 `/admin/analytics/*` 會被它吞掉）。路由表現在可以在一處審閱。
 
 **驗證**：`app.openapi()` 完全相同；並特別驗了
-`tests/test_security_hardening.py` 的 `_iter_api_routes` —— 它遞迴走訪路由樹，
+`tests/api/test_security_hardening.py` 的 `_iter_api_routes` —— 它遞迴走訪路由樹，
 仍然找到 **89 條 APIRoute、51 條非公開 `/api/v1` 路由、0 個缺 guard**，
 `checked >= 15` 的下限守衛也成立。這一項必須驗，因為 R4 把路由樹的嵌套由
 **1 層變成 2 層**，而該走訪器是整個測試套件唯一依賴路由樹形狀的地方。
@@ -200,7 +208,7 @@ SQLAlchemy 2.0 的 `Mapped[]` 與 FastAPI 的 `Depends()` 在無 plugin 的情�
 **`tests/conftest.py` 用 `Base.metadata.create_all` 建 schema，從不跑
 migration。** 所以「migration 跑不跑得到」「migration 建的 schema 與 model
 是否一致」這兩個問題，**只有一個測試問過**
-（`tests/test_migration_schema_parity.py`）。
+（`tests/infra/test_migration_schema_parity.py`）。
 
 後果不是理論性的：本專案已經因此出過兩次真問題 ——
 `alembic upgrade head` 對乾淨 Postgres 必定失敗（缺 `CREATE EXTENSION postgis`），

@@ -1,7 +1,7 @@
 # `scripts/`
 
 Standalone tooling, grouped by **what you are doing**. Nothing here is imported
-by `app/`; the only exception is `tests/test_db_backup.py`, which imports the
+by `app/`; the only exception is `tests/infra/test_db_backup.py`, which imports the
 pure helpers out of `ops/db_backup.py` to unit-test the retention logic.
 
 | Group | Question it answers | Rule of thumb |
@@ -81,7 +81,7 @@ path; that is the chicken-and-egg, and it now lives in one place instead of
 fifteen.
 
 `scripts/_root.py` is a module, not a package (`scripts/__init__.py` is absent),
-so adding it does not change pytest collection. `tests/test_scripts_root.py`
+so adding it does not change pytest collection. `tests/infra/test_scripts_root.py`
 guards both halves: it fails if any script re-derives a depth (three
 `parent`/`parents[2]`/nested-`dirname` spellings are checked) or if a script
 referenced by name in another script does not exist.

@@ -39,7 +39,7 @@ from sqlalchemy.pool import NullPool
 from alembic import command
 from app.core.config import get_settings
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # The drift that predates this file, captured as data so a *new* entry is a
 # failure rather than an accepted-looking line in a diff.

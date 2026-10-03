@@ -36,7 +36,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-_APP = Path(__file__).resolve().parent.parent / "app"
+_APP = Path(__file__).resolve().parent.parent.parent / "app"
 _MONEY_MODULE = _APP / "core" / "money.py"
 _CANONICAL_FORMATTERS = {"money_str", "meter_str", "quantize_money", "ratio_str"}
 

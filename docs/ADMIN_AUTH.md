@@ -7,7 +7,7 @@
 >
 > **The two facts to take away**: the time-step arithmetic is verified against
 > the published RFC 6238 / 4226 test vectors — evidence lives in
-> `tests/test_totp.py::TestRfc6238Vectors`, not in this document — because an
+> `tests/domain/test_totp.py::TestRfc6238Vectors`, not in this document — because an
 > off-by-one in the time step is *silent*: the code still returns 6 digits, just
 > the wrong ones. And admin tokens live in HttpOnly refresh cookies with CSRF
 > double-submit, **not** in localStorage (see `app/core/admin_cookies.py`).
@@ -15,7 +15,7 @@
 > **中文摘要**：回答一個選型問題（推薦哪個免費、開源、兼容標準 TOTP 的
 > authenticator），然後把 admin 認證的**實際行為**（含已知缺口）寫清楚以便交接。
 > 兩個要帶走的事實：時間步長算法對 RFC 6238 / 4226 官方向量驗證過（證據在
-> `tests/test_totp.py::TestRfc6238Vectors`，**不在本文**）——
+> `tests/domain/test_totp.py::TestRfc6238Vectors`，**不在本文**）——
 > 因為時間步長差一格是**靜默**的：照樣回 6 位數，只是錯的；
 > admin token 放 **HttpOnly refresh cookie + CSRF double-submit**
 > （見 `app/core/admin_cookies.py`），**不是** localStorage。

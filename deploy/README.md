@@ -113,7 +113,7 @@ console 的 server block 寫 `console.realtaxihk.com`。
 `docker-compose.prod.yml` 目前是 `(10 + 20) × 1 = 30`，對 `PG_MAX_CONNECTIONS=100`
 留了 70 條餘量給 `alembic upgrade head`、psql、每晚的 `pg_dump` 與監控。
 
-`tests/test_prod_compose_pool_arithmetic.py` 會在這個算式不成立時失敗，並且會
+`tests/infra/test_prod_compose_pool_arithmetic.py` 會在這個算式不成立時失敗，並且會
 檢查 `--workers` 確實取自 `${API_WORKERS}`（否則那個算式守的是一個容器根本沒在用的
 數字）。
 

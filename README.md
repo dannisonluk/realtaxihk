@@ -559,7 +559,7 @@ first run `certbot certonly --standalone`.
 
 > **連線池三個數字是同一個決定**：`(DB_POOL_SIZE + DB_MAX_OVERFLOW) × API_WORKERS`
 > 才是對 Postgres 的總需求（池是 per-process）。prod 檔明示
-> `(10+20)×1 = 30 ≤ 100`，由 `tests/test_prod_compose_pool_arithmetic.py` 守住。
+> `(10+20)×1 = 30 ≤ 100`，由 `tests/infra/test_prod_compose_pool_arithmetic.py` 守住。
 >
 > `API_WORKERS` 預設 1 是**正確性**而不是保守：`ConnectionRegistry` 與速率限制
 > 計數器都在行程記憶體內，N 個行程會把全域上限各別執行 N 次，而且不會報錯。
@@ -652,7 +652,12 @@ mobile/           Flutter client (Android first) — see §4
 admin-web/        Web console, React + legacy — see §5
 
 alembic/          async migrations (postgis tables filtered via include_object)
-tests/            39 pytest files — the only place migrations are actually run
+tests/            39 pytest files, grouped by what they need — and the only place
+                  migrations are actually run
+  api/              24 drive the HTTP surface (they take the `client` fixture)
+  domain/            6 pure logic, no database (fare, money, bounds, totp)
+  infra/             9 guards over files and configuration (migration parity,
+                     pool arithmetic, backup, compose, `scripts/` root, contrast)
 scripts/          tooling, grouped by what you are doing
   ops/              operate a real environment — db_backup, create_admin,
                     create_admin_account, enrol_admin_totp

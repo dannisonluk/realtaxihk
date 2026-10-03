@@ -1024,7 +1024,7 @@ P1 / P2 已確認：**行程生命週期事件從未被 publish**，
     蛇口各處、**深圳灣口岸深圳側管制站**、南山、前海、后海灣北面水域、福田、羅湖（深圳）、
     鹽田、寶安、華強北、市民中心 全 False；網格掃描后海灣 / 蛇口角 0.0025° 步長 **212 個境內
     點**，無一點落到深圳一側。
-  - **測試**：`tests/test_hk_bounds.py` 的
+  - **測試**：`tests/domain/test_hk_bounds.py` 的
     `test_the_shenzhen_bay_port_area_defect_cannot_come_back`（鎖死舊兩頂點邊界）與
     `test_admitting_the_port_area_did_not_admit_shenzhen`（網格性質測試，已用兩個故意錯誤的
     邊界驗證**會 fail**）。
