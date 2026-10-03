@@ -30,7 +30,7 @@
   的 commit 都令它變錯；要查：`git log --oneline -1`）；
   `origin/main..HEAD` = **有未推 commit**（查：`git rev-list --count origin/main..HEAD`，見 §5）；
   working tree **clean**。
-- **現時狀態**：`pytest` **928 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean** · console `tsc` clean + **69 vitest passed（9 files）** · `npm run build` 主包 468.49 kB（gzip 146.50 kB）＋地圖分包 155.70 kB（gzip 45.58 kB，按需載入）· Dart **93 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · `audit_layout` **52 renders clean（4 locale/theme 組合 × 13 條路由，1440px 與 500px 各跑一次）** · `tool/check_contrast.py` **OK** · API **82 paths / 89 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
+- **現時狀態**：`pytest` **955 passed / 0 failed / 0 error / 0 skipped**（以 `--junit-xml` 讀）· `ruff check` clean · **`ruff format --check` clean** · console `tsc` clean + **69 vitest passed（9 files）** · `npm run build` 主包 468.49 kB（gzip 146.50 kB）＋地圖分包 155.70 kB（gzip 45.58 kB，按需載入）· Dart **97 passed / 0 failed** · contract **54 fixtures decoded, 0 failure** · `dart_check` 58 files, 0 diagnostics · `audit_layout` **52 renders clean（4 locale/theme 組合 × 13 條路由，1440px 與 500px 各跑一次）** · `tool/check_contrast.py` **OK** · API **82 paths / 89 operations，全部已声明响应模型** · fixture↔schema 审计 **68/68 块无数据丢失**
 - **✅ 已解決：管理員 session 15 分鐘硬死** —— 已改為 `HttpOnly` refresh cookie（`SameSite=Strict`，path `/api/v1/admin/auth`）＋ CSRF double-submit。詳見 `SECURITY.md`
 
 > **這份文件的用途**：一份可以單獨看完的總覽 —— 做過什麼、現在是什麼狀態、
@@ -44,7 +44,7 @@
 
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **82 paths / 89 operations** · 928 tests |
+| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **82 paths / 89 operations** · 955 tests |
 | Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**21 個畫面**，三角色） | ✅ 97 tests |
 | Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/js/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **69 vitest** · UI verifier PASS |
 
@@ -903,7 +903,7 @@ pytest 收集**。新增 `tests/test_scripts_root.py`（26 tests）守兩件事�
 
 ```bash
 uv run ruff check . && uv run ruff format --check .   # 或 ./.venv/Scripts/python.exe -m ruff
-uv run pytest -q                                       # 928 passed（用 --junit-xml 讀，見下）
+uv run pytest -q                                       # 955 passed（用 --junit-xml 讀，見下）
 uv run python scripts/verify/audit_response_models.py         # 68 块夹具 vs response_model，0 丢失
 cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run --no-file-parallelism --pool=forks
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
@@ -1156,7 +1156,7 @@ CI gate（`.github/workflows/ci.yml`）：
 
 > **✅ 已修正**：`docs/PROJECT_UNDERSTANDING.md` 曾停在 `4333f2a`（寫 HEAD =
 > `446b7ee`、221 tests、54 Dart files、38 endpoints）。**2026-10-01 已全面重寫**，
-> 現值：**928 tests**、**82 paths / 89 operations**、**69 vitest**，
+> 現值：**955 tests**、**82 paths / 89 operations**、**69 vitest**，
 > 並新增 RBAC 設計、`/auth/me` 雙形狀、`StarletteHTTPException`
 > cookie 陷阱等章節。（**HEAD 刻意不寫死** —— 之前寫死過三次，每次之後的 commit
 > 都令它變錯。）
@@ -1186,8 +1186,8 @@ CI gate（`.github/workflows/ci.yml`）：
 ## 8. 一頁看完
 
 ```
-✅ 後端 82 paths / 89 ops / 928 tests / ruff lint + format clean — 生產就緒
-✅ mobile 21 畫面 / 93 tests / 0 diagnostics      — 三角色完整
+✅ 後端 82 paths / 89 ops / 955 tests / ruff lint + format clean — 生產就緒
+✅ mobile 21 畫面 / 97 tests / 0 diagnostics      — 三角色完整
 ✅ admin-web React / 69 vitest / typecheck + build clean / UI verifier PASS
 ✅ 後台治理：四級 RBAC（rank 比較、live row 為權威）+ 審計覆蓋金錢／狀態改動
 ✅ 後台新增：帳戶管理 / 訂單監控 / 結算預覽+confirm token+CSV / 爭議 / 主體搜尋 / 頭像上傳

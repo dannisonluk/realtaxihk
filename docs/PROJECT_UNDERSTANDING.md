@@ -168,7 +168,7 @@ router/     routing_rules.dart（純函數，可獨立測試）· app_router.dar
 
 | 項目 | 結果 |
 |---|---|
-| `pytest tests/ -q --junit-xml=...` | **928 passed / 0 failed / 0 error / 0 skipped** |
+| `pytest tests/ -q --junit-xml=...` | **955 passed / 0 failed / 0 error / 0 skipped** |
 | `alembic heads` | `2e276a320b35 (head)` |
 | `alembic check` | 有**既有 baseline drift**（5 組 `uq_*`→`ix_*`、4 個 `VARCHAR`→`Enum`）；看**有無新增**，非「必須 FAIL」 |
 | `scripts/verify/audit_response_models.py` | **68 fixture blocks + 89 operations，OK** |
@@ -176,7 +176,7 @@ router/     routing_rules.dart（純函數，可獨立測試）· app_router.dar
 | `ruff check` / `format --check` | clean / clean（全樹） |
 | console `tsc` / `vitest` / `build` | clean / **69 passed（9 files）** / 主包 468.49 kB（gzip 146.50 kB）＋地圖分包 155.70 kB（gzip 45.58 kB，按需載入） |
 | Dart contract verifier | 54 decoded, 0 failures（`dart --packages=… tool/verify_contract.dart`） |
-| Dart unit tests | 93 passed, 0 failed（`dart --packages=… tool/run_tests.dart`） |
+| Dart unit tests | 97 passed, 0 failed（`dart --packages=… tool/run_tests.dart`） |
 | Dart 靜態檢查 | 58 files, 0 diagnostics（`python mobile/tool/dart_check.py`） |
 | `admin-web/tool/audit_layout.mjs` | **52 renders clean**（13 條路由 × {zh-Hant,en} × {light,dark}，1440px 與 500px） |
 
