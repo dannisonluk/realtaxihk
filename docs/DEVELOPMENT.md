@@ -208,6 +208,36 @@ CI 的 `types` job 跑 `uv run mypy`，gate 整個 `app/`。設定在 `pyproject
   `set-cookie` 必須是**值清單**。`app/api/admin_auth.py` 的
   `_cleared_session_headers()` 就是為此存在。
 
+### 第二個意見：`pyright`（Pylance 的引擎）
+
+`pyright` 是 Pylance 用的引擎，所以它是「編輯器會不會報錯」的權威。跑它需要一個
+`pyrightconfig.json` 告訴它 venv 在哪 —— **沒有它，CLI 會回報 182 條
+`reportMissingImports`**，那不是程式碼問題，只是它找不到 venv，看起來卻像災難。
+
+**那個設定檔刻意沒有加入 repo。** 本專案的型別 gate 是 mypy（設定在
+`pyproject.toml`、由 CI 的 `types` job 跑），再放一份 pyright 設定就是第二個真相
+來源。要跑交叉檢查時臨時建立即可：
+
+```json
+{"venvPath": ".", "venv": ".venv", "pythonVersion": "3.12"}
+```
+
+**兩個檢查器的結果不一致 —— pyright 在 mypy 全綠時另外抓到 3 個：**
+
+| 位置 | 問題 | 修法 |
+|---|---|---|
+| `app/core/logging.py` | `scrub_tokens` 沒有註解，推斷出的返回型別含 `str`，而 `LogRecord.args` 只接受 `tuple` 或 `Mapping` | 簽名改成形狀不變的 `_T -> _T`（它本來就是） |
+| `app/services/auth/phone_reverify_service.py` | 賦值後把 `user.phone_reverify_due_at` 讀回來 → 報可能的 None 解引用 | 綁到區域變數 |
+| `app/services/licence/licence_review_service.py` | 同一形狀 | 綁到區域變數 |
+
+> **為甚麼 mypy 看不到而 pyright 看到**：`Mapped[datetime | None]` 在 pyright
+> 是經 SQLAlchemy 的描述符解析的，而**賦值後的窄化不會保留** —— 用
+> `reveal_type` 實測，賦值之後它仍然認為型別是 `datetime | None`。綁到區域
+> 變數就會正常窄化。
+>
+> **教訓**：我最初的最小重現用了**普通類別**（不是 `Base` 子類），所以重現不出來。
+> 重現一個 bug 時，環境必須跟真實情況同構，否則你驗的是另一件事。
+
 ### 型別註解要寫函式體真正接受的東西
 
 真實案例：`app/core/money.py` 的四個格式化函式參數原本註解為 `Decimal`，

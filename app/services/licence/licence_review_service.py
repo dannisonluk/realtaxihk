@@ -278,10 +278,16 @@ class LicenceReviewService:
             target.value,
             admin_id,
         )
+        # Read into a local before the truthiness test. `sub.reviewed_at` is
+        # `Mapped[datetime | None]`, and pyright resolves that through
+        # SQLAlchemy's descriptor, where the assignment above does not narrow --
+        # so `sub.reviewed_at.isoformat() if sub.reviewed_at` was reported as a
+        # possible None dereference. A local narrows reliably.
+        reviewed_at = sub.reviewed_at
         return {
             "id": str(sub.id),
             "status": sub.status.value,
-            "reviewed_at": sub.reviewed_at.isoformat() if sub.reviewed_at else None,
+            "reviewed_at": reviewed_at.isoformat() if reviewed_at else None,
             **driver_state,
         }
 

@@ -21,6 +21,7 @@ import re
 import sys
 import time
 import uuid
+from typing import TypeVar, cast
 
 request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 
@@ -31,14 +32,26 @@ request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id
 _TOKEN_RE = re.compile(r"([?&])token=[^&\s\"'%]+")
 
 
-def scrub_tokens(value):
-    """Recursively redact ?token=… inside str / tuple / dict log payloads."""
+_T = TypeVar("_T")
+
+
+def scrub_tokens(value: _T) -> _T:
+    """Recursively redact ?token=… inside str / tuple / dict log payloads.
+
+    Typed as a shape-preserving transform (`_T -> _T`) because that is what it
+    is: a `str` stays a `str`, a `tuple` stays a `tuple` of scrubbed elements, a
+    `dict` stays a `dict`, anything else is returned untouched. Saying so matters
+    at the one call site that assigns the result back to `LogRecord.args`, whose
+    declared type is `tuple[object, ...] | Mapping[str, object] | None` — an
+    untyped return was inferred as a union that included a bare `str`, which is
+    not assignable there.
+    """
     if isinstance(value, str):
-        return _TOKEN_RE.sub(r"\1token=REDACTED", value)
+        return cast("_T", _TOKEN_RE.sub(r"\1token=REDACTED", value))
     if isinstance(value, tuple):
-        return tuple(scrub_tokens(v) for v in value)
+        return cast("_T", tuple(scrub_tokens(v) for v in value))
     if isinstance(value, dict):
-        return {k: scrub_tokens(v) for k, v in value.items()}
+        return cast("_T", {k: scrub_tokens(v) for k, v in value.items()})
     return value
 
 

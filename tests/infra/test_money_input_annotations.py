@@ -102,7 +102,11 @@ def test_the_canonical_formatters_take_the_shared_union() -> None:
     annotations: dict[str, str] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name in _CANONICAL_FORMATTERS:
-            annotations[node.name] = ast.unparse(node.args.args[0].annotation)
+            annotation = node.args.args[0].annotation
+            # An unannotated formatter is reported by the `missing` check below
+            # rather than crashing here on `ast.unparse(None)`.
+            if annotation is not None:
+                annotations[node.name] = ast.unparse(annotation)
 
     missing = _CANONICAL_FORMATTERS - set(annotations)
     assert not missing, f"formatter(s) not found in {_MONEY_MODULE.name}: {sorted(missing)}"

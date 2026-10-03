@@ -234,6 +234,31 @@ re-export，是因為 model 模組只 import `_base`。
 `pyproject.toml` 不同步）。加入 mypy 後 re-lock，`tzdata` 也一併補上，
 `uv lock --check` 現在通過。re-lock 是**純新增**，沒有改動任何既有套件版本。
 
+**覆核時補上的第二個意見**：跑 `pyright`（就是 Pylance 用的引擎）時，它在 mypy
+全綠的情況下**另外報了 3 個**：
+
+- `app/core/logging.py` —— `scrub_tokens` 沒有註解，推斷出的返回型別含 `str`，
+  而 `LogRecord.args` 只接受 `tuple` 或 `Mapping`。
+- `app/services/auth/phone_reverify_service.py` 與
+  `app/services/licence/licence_review_service.py` —— 都是「對
+  `Mapped[datetime | None]` 屬性賦值後再讀回來」，pyright 報可能的 None 解引用。
+
+根因是 pyright 對 SQLAlchemy 描述符屬性的**賦值後窄化不保留**（`reveal_type`
+實測：賦值之後它仍認為是 `datetime | None`）；綁到區域變數即可。三個都已修，
+現在 **mypy 與 pyright 都是 0 errors**。
+
+> **教訓**：我第一次做最小重現時用了**普通類別**，結果重現不出來 —— 重現必須用
+> 真的 `Base` 子類，否則驗的是另一件事。另外，`pyright` CLI 沒有
+> `pyrightconfig.json` 時會回報 182 條 `reportMissingImports`，那是找不到 venv，
+> 不是程式碼問題；該檔**刻意沒有加入 repo**（本專案的型別 gate 是 mypy，
+> 再放一份 pyright 設定就是第二個真相來源），需要交叉檢查時臨時建立即可。
+
+> **`tests/` 與 `scripts/` 不在任何型別 gate 之內。** mypy 的 `files = ["app"]`
+> 是刻意的；`pyright` 對那兩棵樹另有既有 finding —— 實測 **`tests/` 140 個、
+> `scripts/` 6 個**（pytest fixture 的 generator 註解、動態屬性賦值、`_root` 的
+> sys.path import 等），全部早於本次改動，`app/` 的 0 不受影響。
+> 把它們也納入 gate 是另一件工作，不在這 8 項之內。
+
 ---
 
 ## 3. 根目錄整潔

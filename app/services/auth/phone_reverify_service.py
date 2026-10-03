@@ -145,13 +145,18 @@ async def mark_verified(session: AsyncSession, user: User, *, now: datetime | No
     to prevent.
     """
     now = now or datetime.now(UTC)
+    # Bound to a local: `phone_reverify_due_at` is `Mapped[datetime | None]`, and
+    # pyright resolves that through SQLAlchemy's descriptor, where the assignment
+    # below does not narrow -- reading it back for the log line was reported as a
+    # possible None dereference.
+    due = next_deadline(now=now)
     user.phone_verified_at = now
-    user.phone_reverify_due_at = next_deadline(now=now)
+    user.phone_reverify_due_at = due
     await session.flush()
     logger.info(
         "phone re-verified user=%s next_due=%s",
         user.id,
-        user.phone_reverify_due_at.date().isoformat(),
+        due.date().isoformat(),
     )
     return user
 
