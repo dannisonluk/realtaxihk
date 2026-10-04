@@ -31,4 +31,4 @@ HK_PHONE_DIGITS = 8
 
 def is_hk_phone(value: str | None) -> bool:
     """True for a value this system will accept as a Hong Kong number."""
-    return bool(value) and HK_PHONE_RE.fullmatch(value) is not None
+    return value is not None and HK_PHONE_RE.fullmatch(value) is not None
