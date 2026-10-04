@@ -28,6 +28,36 @@ class AppConfig {
 
   static bool get mapsConfigured => googleMapsApiKey.isNotEmpty;
 
+  /// Cloudflare Turnstile **site** key. Not a secret — it is embedded in the page
+  /// the WebView renders, exactly like the Maps key is embedded in the manifest.
+  ///
+  ///   flutter build apk --dart-define=TURNSTILE_SITE_KEY=0x4AAAAAAA...
+  ///
+  /// There is **no endpoint that serves this**. `app/core/config.py` defines
+  /// `turnstile_site_key`, but no route exposes it, so a build-time define is the
+  /// only way the app can learn it. That is a deliberate gap worth knowing about:
+  /// rotating the key needs a new build, not a config change.
+  static const String turnstileSiteKey = String.fromEnvironment('TURNSTILE_SITE_KEY');
+
+  /// The origin the Turnstile widget is loaded under.
+  ///
+  /// Turnstile mints a token *for a hostname*, and the WebView's `baseUrl`
+  /// decides which one. It must therefore be a host listed on the site key's
+  /// allowed-domain list, and it must not be the API host unless that host is on
+  /// the list too — Cloudflare validates the origin, not the caller.
+  static const String turnstileBaseUrl = String.fromEnvironment(
+    'TURNSTILE_BASE_URL',
+    defaultValue: 'https://hkfastdc.com/',
+  );
+
+  /// Whether this build can solve a challenge at all.
+  ///
+  /// False is normal in development: `DisabledHumanVerifier` allows everything
+  /// server-side, so a dev build sends no `human_token` and still works. Under
+  /// `APP_ENV=prod` the same request is a 403 — see `core/human/turnstile.dart`
+  /// for what a release build does about it.
+  static bool get humanVerificationConfigured => turnstileSiteKey.isNotEmpty;
+
   /// The Android emulator reaches the host machine on 10.0.2.2, never on
   /// 127.0.0.1 — the latter is the emulator's own loopback.
   static String get _devHost {
