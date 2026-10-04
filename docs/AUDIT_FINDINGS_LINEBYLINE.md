@@ -401,6 +401,612 @@ inside `_completed_in_range` for the WHERE clause (lines 117-129), with `HK_TZ =
 as a name rather than a fixed +8 so the database's own tz rules apply. The docstring explains
 why the cast is in SQL and not in Python. Consistent — no repeat of the AC-08 defect.
 
+## NEW-19 — LOW — an unvalidated enum taken from the query string answers 500, at two sites
+
+`register_exception_handlers` (`app/core/exceptions.py:78-205`) installs handlers for
+`RequestValidationError` (422), `BusinessRuleError` (400), `NotFoundError` (404),
+`StarletteHTTPException` and a catch-all `Exception` (500). There is **no handler for a plain
+`ValueError`** — and `Enum("bogus")` raises exactly that. So a coercion straight from request input
+reaches the catch-all and the caller gets a 500 for what is a malformed request:
+
+```python
+app/api/admin/drivers.py:79   q = q.where(DriverProfile.status == DriverStatus(status_filter))
+app/api/fleets.py:270         fleet_status = FleetStatus(status_filter) if status_filter else None
+```
+
+`GET /api/v1/admin/drivers?status_filter=bogus` and `GET /api/v1/admin/fleets?status_filter=bogus`
+both answer `500 INTERNAL_ERROR`; the correct answer is 400 (as `/admin/orders` gives) or 422 (as
+`/admin/refunds` gives). The cost is a wrong status code plus one `logger.exception` per probe, so
+anyone can fill the unhandled-exception log with a curl loop — the 500 handler is the only place
+these are observed, which is what makes the noise worth avoiding.
+
+**The codebase already contains both correct patterns**, which is what makes this a missed site
+rather than a design choice:
+
+* `app/api/admin/orders.py:129-141` wraps the coercion in `try/except ValueError` and raises a 400
+  carrying `{"reason": "UNKNOWN_STATUS", "allowed": [...]}` — the docstring even explains why
+  ("a filter that silently matches nothing is how an operator concludes there are no cancelled
+  trips this week");
+* `app/api/admin/refunds.py:29` and `app/api/fleets.py:145` push the check into the type
+  (`Annotated[str | None, Query(pattern=r"^(PENDING|APPROVED|REJECTED)$")]`,
+  `Field(pattern=r"^(ACTIVE|SUSPENDED|DISSOLVED)$")`) so FastAPI rejects it before the handler runs.
+
+The same `Field(pattern=...)` treatment on the two `status_filter` parameters is the smallest fix.
+
+## NEW-20 — LOW — `GET /admin/drivers` reports the unfiltered total while filtering the rows
+
+`list_drivers` (`app/api/admin/drivers.py:66-94`) builds the page query with the filter and the
+count query without it:
+
+```python
+q = select(DriverProfile).order_by(DriverProfile.created_at)
+if status_filter:
+    q = q.where(DriverProfile.status == DriverStatus(status_filter))   # line 78-79
+rows = (await session.execute(q.limit(limit).offset(offset))).scalars().all()
+total = (await session.execute(select(func.count()).select_from(DriverProfile))).scalar_one()
+```
+
+So with 900 drivers of whom 12 are `SUSPENDED`, `GET /admin/drivers?status_filter=SUSPENDED`
+returns 12 rows and `"total": 900`. The console's pager renders "1–50 of 900" over a 12-row list,
+and — worse — keeps offering pages 2..18 that come back empty, which is the failure mode the
+`admin/orders.py` docstring calls out in a different guise: a filter that appears to have results
+when it does not.
+
+Every sibling list endpoint applies the filter to **both** queries, so this is the odd one out:
+`admin/orders.py:145-148` (`for f in filters: q = q.where(f); count_q = count_q.where(f)`),
+`admin/refunds.py:37-40`, and `FleetService.list_page` (`fleet_service.py:171-178`). The fix is to
+hoist the predicate into a `filters` list and apply it to both, exactly as `admin/orders.py` does.
+
+## NEW-21 — MEDIUM — `driver_deposit_default_hkd` is dead config, and its value is a literal in three places
+
+`Settings.driver_deposit_default_hkd: int = 500` exists at `app/core/config.py:255` and is read by
+**nothing**: `grep -rn "driver_deposit_default_hkd" app/ tests/` matches the definition and its
+`.pyc` and no call site. The number that actually decides a driver's collateral is written as a
+literal in three independent places:
+
+```python
+app/services/ledger/ledger_service.py:218   required_hkd=Decimal("500"),      # creates the row
+app/api/admin/drivers.py:164                required = ... else Decimal("500") # console fallback
+app/api/drivers.py:115                      money_str(Decimal("500"))         # driver app fallback
+```
+
+The first is the authoritative one — it is what `ensure_deposit_row` writes — and it ignores the
+setting too. So the failure is silent in the direction that matters: an operator sets
+`DRIVER_DEPOSIT_DEFAULT_HKD=800`, restarts, and every new driver is still asked for 500, because no
+code path consults the setting. The two API fallbacks are for a driver who has no deposit row yet,
+so they exist to show progress against the real target; with the literal they can disagree with the
+row the moment the row is created differently.
+
+This is the same class as the two `ROUND_HALF_EVEN` `quantize` calls the codebase already fixed in
+this file and in `fleets.py` — a duplicated money constant that drifted from its single source —
+except the single source here is a setting nobody wired up.
+
+## NEW-22 — HIGH — a compromised admin cannot be evicted: the reset does not revoke, and nothing can deactivate an account
+
+Three facts that only bite together.
+
+**1. The service docstring promises a revocation the body does not perform.**
+`AdminAccountService.reset_password` (`app/services/admin/admin_account_service.py:225-244`):
+
+```python
+"""Set a new password and revoke everything that was already issued."""
+account = await self.get(account_id)
+account.password_hash = hash_password(new_password)      # <- the only change to the credential
+account.failed_login_count = 0
+account.locked_until = None
+await self.session.flush()
+```
+
+No refresh-token revocation, no access-token epoch bump. "Revoke everything that was already
+issued" is simply not what the function does.
+
+**2. The route's explanation for not revoking is false in this codebase.**
+`app/api/admin/accounts.py:212-218` answers `{"sessions_revoked": False}` with the comment:
+
+> The access token is a signed JWT with no server-side session store, so the reset cannot revoke
+> tokens already in flight.
+
+But there *is* a server-side store: `deps.assert_not_revoked` (`app/core/deps.py:120-134`) is
+called from `get_current_user` for **every** principal, admin scope included, and compares `iat`
+against the per-account epoch in Redis. `app/api/admin_auth.py:403` (admin logout) already performs
+exactly the two calls the reset is missing, and its comment says why:
+
+```python
+await svc.revoke_all_for_admin(row.admin_id)
+await revoke_user_tokens(request.app.state.auth_redis, admin_id)
+# Kill access tokens already in the wild (SEC-18). Without the same key
+# `deps.assert_not_revoked` reads, this would be a no-op and the
+# operator's 15-minute access token would outlive their logout.
+```
+
+`admin_auth.py:321` does the same on refresh-token replay. So the capability is present, exercised,
+and documented — in the sibling module.
+
+**3. Nothing can deactivate an admin account.** `admin_accounts.is_active` is written in exactly
+one place — `is_active=True` at creation (`admin_account_service.py:177`) — and
+`grep -rn "is_active = False\|is_active=False\|values(is_active" app/` returns nothing. The four
+routes in `app/api/admin/accounts.py` are list, create, role-change and password-reset; there is no
+fifth. Meanwhile `require_admin` (`app/core/deps.py:285-287`) gates every console request on
+
+```python
+if row is None or not row.is_active or user.role != UserRole.ADMIN:
+    raise HTTPException(403, "admin privileges required")
+```
+
+so the guard is correct, fail-closed, and **unreachable** — it can only ever fire through manual
+SQL.
+
+**Consequence.** The canonical incident response — "this admin's credentials are compromised, reset
+the password" — does not end the session. The refresh cookie stays valid for
+`settings.refresh_token_expire_days` days and rotates indefinitely, minting fresh 15-minute access
+tokens, while the console reports `sessions_revoked: false` and the service docstring tells the
+reader the opposite. The only ways a rogue session ends are the attacker's own choices (logging out,
+or replaying a rotated token to trip SEC-17), plus **demotion** — which narrows what the session may
+do, because `live_admin_role` (`deps.py:467-487`) re-reads the row, but leaves it authenticated.
+
+**Fix.** Two calls in `reset_password` (or in the route, next to the audit row), mirroring logout,
+and `sessions_revoked: True`; plus a route that can set `is_active = False`, since the guard for it
+already exists and is the only lever that ends the session *and* the refresh family in one move.
+
+## NEW-13 — line-verified — `DisputeService.resolve` is a lock-free check-then-act
+
+Read at `app/services/admin/dispute_service.py:442-465`:
+
+```python
+async with self._session_factory() as session:
+    dispute = await session.get(OrderDispute, dispute_id)   # :443  plain SELECT, no FOR UPDATE
+    ...
+    if dispute.resolution is not None:                      # :452  the guard
+        raise BusinessRuleError("this dispute already has a resolution", ...)
+    dispute.resolution = res.value                          # :458  the write
+    dispute.resolved_by = admin_id
+    dispute.resolved_at = now
+    dispute.status = ...
+    await session.commit()                                  # :462
+```
+
+`session.get` takes no row lock, so two FINANCE admins resolving the same case in the same second
+both read `resolution is None`, both pass the guard, and both commit — the second silently
+overwrites the first, and **both** audit rows (`disputes.py:496-...`) report a successful
+resolution. The guard reads as protection and is only a TOCTOU. `set_status` (`:483-495`) has the
+same shape.
+
+The refund path in the same codebase shows the intended fix: `with_for_update()` on the read plus
+`populate_existing` so the identity map cannot answer from a stale snapshot.
+
+## NEW-23 — LOW — the dispute audit row is committed in a different transaction from the decision
+
+Every handler in `app/api/admin/disputes.py` mutates through `DisputeService(session_factory)`,
+which opens its own session and commits (`dispute_service.py:123/360/397/442/483`), and then opens a
+**second** session for the audit row:
+
+```python
+service = DisputeService(session_factory)
+dispute = await service.resolve(...)          # commits here
+session = session_factory()                   # <- a different transaction
+try:
+    await record_audit(session, ...)
+    await session.commit()
+finally:
+    await session.close()
+```
+
+Same shape at `:250-256` (create), `:322-343` (assign), `:378-407` (message), `:496-...` (resolve).
+`admin/drivers.py` does the opposite — one session for the state change *and* its audit row — so the
+two admin modules disagree about whether an audit row is part of the transaction it describes.
+
+The window is small and the failure mode is not a missing audit row alone: if the audit commit
+raises, the client sees a 500 for a decision that was already durable, and a retry answers
+`DISPUTE_ALREADY_RESOLVED` (400). An operator reading only the wire sees a failed action and a
+succeeded action in that order, for one request.
+
+## NEW-1 / NEW-2 — line-verified — the mobile boundary and error catalogue mirror symbols the server deleted
+
+### NEW-1 (HIGH) — the mirror is of an abandoned constant, and its docstring cites a symbol that no longer exists
+
+`mobile/lib/core/location/location_service.dart:11-26`:
+
+```dart
+/// The backend bounds every coordinate to `lat 22.1–22.6, lng 113.8–114.5`
+/// (`_HK_BOUNDS` in `app/api/orders.py`, repeated in `ws.py`), and rejects
+/// anything outside with a 422 or `{"type":"error","code":"BAD_LOCATION"}`.
+static const double minLat = 22.1;   static const double maxLat = 22.6;
+static const double minLng = 113.8;  static const double maxLng = 114.5;
+static bool isInHongKong(double lat, double lng) =>
+    lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng;
+```
+
+`grep -rn "_HK_BOUNDS" app/` returns **nothing** — the symbol the comment names does not exist in
+the backend. What exists is:
+
+```python
+app/core/hk_bounds.py:80    HK_BBOX = ((22.13, 22.60), (113.80, 114.45))   # cheap reject only
+app/core/hk_bounds.py:282   def is_in_hong_kong(lat, lng) -> bool:          # 8-polygon ray cast
+```
+
+and that module's own docstring says why the box was retired: it "**contains Shenzhen**", verified
+against Futian 22.5410/114.0540, Luohu 22.5480/114.1230 and Bao'an 22.5550/113.8830, and as an app
+gate "it is fatal: the users the check exists to stop would be the ones it admits."
+
+So the client's box is **wider than the server's** in both directions (`22.1 < 22.13`,
+`114.5 > 114.45`) and, more importantly, it is a box at all. `isInHongKong(22.5410, 114.0540)`
+returns **true** on the device for a coordinate in Shenzhen, where `is_in_hong_kong` returns
+**false**.
+
+Four call sites act on that answer (`grep -rn "isInHongKong" mobile/lib/`):
+
+| site | what the client decides from it |
+|---|---|
+| `mobile/lib/features/driver/driver_active_trip_screen.dart:132` | whether to send the location tick |
+| `mobile/lib/features/driver/driver_active_trip_screen.dart:153` | whether to **skip** the tick |
+| `mobile/lib/features/shared/map_panel.dart:167` | `outside = !isInHongKong(...)` → what the map tells the user |
+| `mobile/lib/features/passenger/request_ride_screen.dart:38`, `driver_jobs_screen.dart:33` | hold the service that answers it |
+
+The server still refuses the coordinate, so the invariant holds and this is not a breach — it is a
+parity defect with a user-visible face: a driver standing in Shenzhen is told locally that the
+position is fine, sends it, and meets a server refusal; a passenger at Shenzhen Bay Port's Hong Kong
+Port Area (admitted on purpose — see `hk_bounds.py:105-142`) is told locally that they are outside
+Hong Kong.
+
+### NEW-2 (MEDIUM) — the error-code catalogue is pinned by a green test to a code the server never sends
+
+Server side, the refusal is `OUTSIDE_HK` — `app/api/ws.py:191` emits
+`{"type": "error", "code": "OUTSIDE_HK"}`, and `app/core/service_area.py:34` defines
+`REASON_OUTSIDE_HK = "OUTSIDE_HK"` for the HTTP path.
+
+Client side, `OUTSIDE_HK` appears **nowhere** in `mobile/`. The catalogue is
+`mobile/lib/models/trip.dart:105`:
+
+```dart
+'BAD_LOCATION' => '座標不在香港範圍內',
+```
+
+with the documented code list at `:93` reading "`BAD_LOCATION`, `DRIVER_NOT_ACTIVE`". So the one
+string that would explain the refusal — "座標不在香港範圍內" — is present in the app and
+**unreachable**: it is keyed to a code the backend stopped emitting, and a real refusal falls
+through to whatever the default branch shows.
+
+The reason this is MEDIUM rather than LOW is `mobile/tool/run_tests.dart:523,531`, which asserts it:
+
+```dart
+'BAD_LOCATION',
+expect(const TripErrorEvent(code: 'BAD_LOCATION').messageZh, '座標不在香港範圍內');
+```
+
+The mobile suite is therefore **green while pinning a code the backend never emits** — a false green
+in exactly the place the project's contract discipline (`mobile/test/fixtures/`, compile-time TS
+mirrors) exists to catch. A fixture captured from a real refusal would have made this fail.
+
+### Refuted: "`admin_accounts.role` is an unconstrained VARCHAR"
+
+Raised by reading `app/models/admin.py:143-147` in isolation — the column is
+`Mapped[str] = mapped_column(String(16), default=DEFAULT_ADMIN_ROLE.value, server_default="SUPPORT")`,
+it is deliberately **not** in `2e276a320b35`'s 18 `_ENUM_CHECKS`, and `AdminAccount` is the table
+`require_admin` reads on **every** console request, so a bad value would take the whole console down.
+
+It is handled, and the handling is better than a CHECK would be:
+
+```python
+app/models/admin.py:184-197
+    def admin_role(self) -> AdminRole:
+        """The stored role as an enum, failing *closed* on an unknown value.
+        ...
+        `SUPPORT` is the floor, so an unrecognised role collapses to the least
+        authority rather than the most. Raising instead would turn a data
+        problem into an outage for every request that touches this account."""
+        try:
+            return AdminRole(self.role)
+        except ValueError:
+            return DEFAULT_ADMIN_ROLE
+```
+
+`require_role` (`deps.py:449`) reaches the role **only** through that property, and
+`DEFAULT_ADMIN_ROLE` is `AdminRole.SUPPORT`, rank 0 (`admin.py:105`, `admin.py:95-99`) — so an
+unrecognised value cannot outrank anything, cannot reach a single guarded route, and does not 500.
+The VARCHAR choice buys "add a role without a migration" and pays for it with one fail-closed
+coercion at the single read site. Recorded here so a later pass does not re-raise it as an
+"unconstrained enum column" and "fix" it into a CHECK constraint plus a 500.
+
+Note the contrast this makes with N-1: the *value* is handled defensively, while the *ordering* is
+the thing that carries the policy defect.
+
+### NEW-2 (MEDIUM) — the compounding chain, read end to end
+
+The code mismatch is not cosmetic. Tracing one refused tick through
+`mobile/lib/features/driver/driver_active_trip_screen.dart`:
+
+```dart
+:145  void _pushTick() {
+:148    if (position == null || channel == null || _closing) return;
+:151    // Guard the server's own bounds: a tick outside Hong Kong earns
+:152    // {"type":"error","code":"BAD_LOCATION"} and burns a token for nothing.
+:153    if (!LocationService.isInHongKong(position.latitude, position.longitude)) return;
+:156    channel.pushLocation(lat: position.latitude, lng: position.longitude);
+```
+
+1. `:153` asks the **mobile** box, which admits Shenzhen (NEW-1) — so for a driver just over
+   the border the guard **passes** and the tick **is** sent. The stated purpose of the guard
+   ("does not burn a token for nothing") fails at exactly the boundary it exists for.
+2. The server answers `{"type":"error","code":"OUTSIDE_HK"}` (`app/api/ws.py:191`).
+   `OUTSIDE_HK` has **zero matches in `mobile/`** — it is not in the catalogue
+   (`mobile/lib/models/trip.dart:101-108`), so the driver sees the fallback branch,
+   `'位置推送失敗（OUTSIDE_HK）'` (`:107`): a raw backend code in a Chinese sentence.
+3. `mobile/lib/models/trip.dart:99` — `bool get isFatal => code == 'DRIVER_NOT_ACTIVE';`
+   `OUTSIDE_HK` is **not** fatal, so `driver_active_trip_screen.dart:87-89` does **not** cancel
+   `_pushTimer`. The driver keeps pushing every `AppConfig.locationTickInterval`.
+4. Each refused push burns the socket's rate-limit budget — the file's own docstring (`:23-27`)
+   records the server's `ws_tick_burst` (5) and `ws_ticks_per_second` (2) and notes that "a
+   `RATE_LIMITED` error would otherwise be the normal case". So the loop drives the socket into
+   `RATE_LIMITED`, whose message is `'位置更新過於頻繁'` (`trip.dart:103`) — **a misdiagnosis**,
+   and also non-fatal, so the loop continues.
+
+Net effect: a driver near the boundary sees a persistent, wrong error, their live position
+**silently stops updating** for the passenger (every tick is refused), and the visible message blames
+frequency rather than location. For a live-tracking product that is the failure mode worth fixing
+first, and the fix is small: map `OUTSIDE_HK` in the catalogue and make it fatal (or at least stop
+the timer), and mirror `is_in_hong_kong` rather than the retired box.
+
+### NEW-1 — CORRECTION to the record above (the symbol is gone; the values are not)
+
+An earlier entry in this file says the server "deleted" the box. That is true of the **symbol**
+and false of the **values**, and the distinction is the whole finding. The box `lat 22.1-22.6,
+lng 113.8-114.5` is still live in `app/` at four sites, and at each one it is *documented as a
+cheap pre-filter with the polygon check behind it*:
+
+| site | what the box does there | the gate behind it |
+|---|---|---|
+| `app/api/orders.py:79-82` | `OrderCreateIn` pickup/dropoff field bounds | `require_in_hong_kong` at `:185-186` |
+| `app/api/tracking.py:39-40` | `LocationIn` field bounds | `require_in_hong_kong` at `:64` |
+| `app/api/ws.py` (tick path) | no box at all | `is_in_hong_kong(lat, lng)` at `:189` |
+| `app/api/orders.py:204-205` | `/orders/nearby` query bounds | **none — read-only geo query** |
+
+`require_in_hong_kong` has exactly three call sites (`orders.py:185`, `orders.py:186`,
+`tracking.py:64`) plus the WS polygon check, so every write path that publishes a coordinate is
+polygon-gated. The server is sound.
+
+The defect is therefore **the mobile promotes the pre-filter to the authoritative gate**:
+`LocationService.isInHongKong` is the *only* check the client has, and it is built from the same
+numbers the server keeps deliberately weaker than the truth. `mobile/lib/core/location/location_service.dart:12`
+even names the right file — "`_HK_BOUNDS` in `app/api/orders.py`" — for a symbol that no longer
+exists, while the values it mirrors are alive two lines into `OrderCreateIn` under a comment
+explaining they are only a first pass.
+
+Severity stays HIGH as a parity defect: the client's answer to "is this coordinate in Hong Kong"
+is wrong in the same direction as the box (it admits Shenzhen), and the app acts on it in four
+places (`driver_active_trip_screen.dart:132`, `:153`, `map_panel.dart:167`, and the location
+providers in `driver_jobs_screen.dart:33` / `request_ride_screen.dart:38`). The server refuses the
+coordinate afterwards, which is why this is not a breach — it is a client that confidently says
+"yes" and then gets told "no", with the consequences traced under NEW-2 below.
+
+---
+
+### NEW-23 — LOW — the dispute audit row is committed in a different transaction from the decision
+
+Every handler in `app/api/admin/disputes.py` mutates through a service that owns its own session,
+then writes the audit row through a **second** session:
+
+```python
+:250  session = session_factory()          # for the audit row
+:251  try:
+:252      service = DisputeService(session_factory)   # opens its own session, commits itself
+:253      dispute = await service.open_case(...)
+...
+:255      record_audit(session, ...)        # separate transaction
+```
+
+`DisputeService` opens and commits per method (`dispute_service.py:127-129`, `:442-444`,
+`:466-468` — `async with self._session_factory() as session: ... await session.commit()`), so the
+decision is durable before the audit row is attempted. A failure between the two commits leaves a
+resolved dispute — and, for a `moves_money` resolution, an approved money decision — with **no
+audit row**, and the operator sees a 500 for an action that actually succeeded. Retrying then
+returns `DISPUTE_ALREADY_RESOLVED` (400), so the operator is told the action failed twice.
+
+This is an inconsistency rather than the house style: `app/api/admin/refunds.py:79-92` and
+`app/api/admin/drivers.py` both call `record_audit(session, ...)` with the **same** session the
+service wrote through, so the audit row and the mutation commit together. `disputes.py` is the
+only admin module that splits them, and it splits them in the one module where the decision can
+carry money.
+
+The clean fix is to have `DisputeService` accept a session (as `RefundService` does) instead of a
+factory, so the route can hold one transaction for both writes.
+
+### NEW-24 — MEDIUM — the mobile suite has no standard runner, and its fixture set cannot see the WS refusal
+
+`mobile/test/` contains **no Dart test files at all** — only `fixtures/*.json`. The mobile suite is
+two hand-rolled tools under `mobile/tool/`:
+
+| file | lines | what it is |
+|---|---|---|
+| `run_tests.dart` | 1,647 | 133 `test()` in 18 `group()`s — a bespoke harness with a hand-written `expect`/`expectTrue`/`expectFalse` |
+| `verify_contract.dart` | 736 | decodes every captured fixture with the **real** models; fixture-driven |
+
+The reason is documented at `run_tests.dart:1-25` and is legitimate: `flutter test` cannot start on
+this machine (the Dart VM cannot spawn piped subprocesses — Windows `ERROR_PIPE_BUSY`), and the file
+carries an explicit migration list for when it can. So this is honest engineering, not a cover-up.
+Three consequences are still real and belong in the record:
+
+1. **The unit half asserts the author's assumptions, not captured bytes.** `run_tests.dart:531`
+   pins `'BAD_LOCATION'` as a known code and `:537` asserts it renders `'座標不在香港範圍內'`.
+   Both are green today and always will be — while the server's refusal code is `OUTSIDE_HK`
+   (NEW-2 above). A stale assumption in this file is *unfalsifiable*: nothing in the repo compares
+   the catalogue to the server's vocabulary.
+2. **The fixture half has a hole exactly where the drift is.** `mobile/test/fixtures/` holds
+   `ws_driver_ack.json`, `ws_location_tick.json` and `ws_read_only_error.json` — and **no frame for
+   the refusal**. `verify_contract.dart` can only check what `gen_mobile_fixtures.py` captured, so
+   the one code the server sends when it rejects a coordinate has never been captured, decoded, or
+   asserted. The `OUTSIDE_HK` mismatch is therefore invisible to *both* halves of the mobile suite.
+3. **No machine-readable report.** The backend's gate produces JUnit XML that can be hashed and
+   verified; the mobile gate prints to stdout and exits non-zero. "Mobile tests pass" cannot be
+   independently checked the way "pytest passed" can.
+
+To be fair to the file: `verify_contract.dart:1-45` is the strongest thing in the mobile tree. It is
+genuinely fixture-driven, it cross-references its Python counterpart
+(`scripts/verify/audit_response_models.py`), and its docstring records three real defects it caught
+that reading the source did not — including the `BusinessRuleError`-subclasses-`ValueError`
+catch-order bug that the backend's own migration docstrings also describe. The gap is in *what the
+generator captures*, not in the tool's design.
+
+---
+
+## Verified green by hand (not taken from a report)
+
+- **`scripts/verify/audit_response_models.py`** — run directly:
+  `68 fixture blocks checked`, `93 operations with a response_model`,
+  `OK — every fixture key survives its response_model`, exit 0. The 5 schemas it lists as
+  "declared but not reachable" are each explained in its own allow-list
+  (`ChallengeOut` = "declared for symmetry; never returned", `AdminDepositOut` = "base class of
+  `AdminDepositOut`Detail"), so the list is accounted for, not a gap.
+- **`tests/` has no disabled tests.** `grep -rn "pytest.mark.skip\|xfail\|skipif" tests/` finds no
+  markers; the only skip is a documented guard at `test_security_hardening.py:833-836`
+  (`pytest.importorskip("uvicorn.middleware.proxy_headers")` → `pytest.skip("uvicorn internals
+  changed — re-verify SEC-31 by hand")`). The last full run reports `skipped=0`, so it is currently
+  executing, not skipping. The residual risk is that SEC-31 can stop being covered silently if
+  uvicorn's module layout moves — the file says so itself, so it is a known, accepted risk.
+
+### NEW-25 — MEDIUM — a negative deposit balance renders without a sign, on both clients
+
+Arrears are legal by design and are a first-class state in this product:
+`app/services/ledger/ledger_service.py:167` — "Negative balances are allowed (arrears): a penalty
+may exceed the deposit"; `docs/ARCHITECTURE.md:222` — "欠款（arrears）是刻意合法的"; and
+`app/api/schemas/admin.py:471-472` — "those drivers are charged, they simply go into arrears".
+
+Both clients render a balance through a formatter that drops the sign by default:
+
+| deliverable | site | renders |
+|---|---|---|
+| console | `admin-web/web/src/components/primitives.tsx:197-213` | `formatMoney(value, sign = false)` — `Math.abs(amount)` for the magnitude, sign re-added **only** when `sign` is true |
+| console | `DriverDetailPage.tsx:402`, `:432` (deposit panel), `:230` (ledger `balance_after_hkd`) | `<Money value={…} />` — no `sign` |
+| mobile | `mobile/lib/core/format/money.dart:81` (`hkd`) vs `:106` (`signedHkd`) | `MoneyText(x)` defaults to `hkd` — unsigned |
+| mobile | `driver_onboarding_screen.dart:229` (目前餘額), `driver_earnings_screen.dart:111-113` (按金餘額, `displaySmall`) | `MoneyText(deposit.balanceHkd)` — no `signed: true` |
+
+So a driver whose deposit balance is `-200.00` is shown **`HK$200.00`**. On the mobile that is the
+driver's own view of their own debt, directly above the line "每週服務費會自動由此餘額扣除" — they
+are told they hold HK$200 when they owe HK$200. In the console it is the money panel an operator
+reads before deciding on a top-up.
+
+This is not an oversight in the formatter — it is careful work that is not wired up for levels.
+`primitives.tsx:173-183` documents the subtlety at length ("a ledger deduction is stored
+**negative** … `−HK$200.00` double-negates into a plus", with U+2212 chosen for column alignment),
+and `DriverDetailPage.tsx:227` uses it correctly through a local `SignedMoney` wrapper (`:441-442`)
+for the **amount** column. The `sign` prop is simply never applied to the **balance** columns, where
+the value can also be negative.
+
+The asymmetry is the tell: both clients sign the *delta* and not the *level*, so the ledger reads
+correctly while the balance does not. The fix is one prop at each of the five sites (or a
+`Balance` wrapper beside `SignedMoney`).
+
+---
+
+### NEW-26 — LOW — the console's deposit meter has no floor, and the mobile's does
+
+The same calculation, written twice, bounded differently:
+
+```tsx
+// admin-web/web/src/pages/DriverDetailPage.tsx:396
+const progress = required > 0 ? Math.min(100, Math.round((balance / required) * 100)) : 0;
+```
+```dart
+// mobile/lib/features/driver/driver_onboarding_screen.dart:236-240
+value: deposit.requiredHkd.asDouble <= 0
+    ? 0
+    : (deposit.balanceHkd.asDouble / deposit.requiredHkd.asDouble).clamp(0.0, 1.0)
+```
+
+The mobile clamps **both** ends; the console caps only the top. For a driver in arrears
+(`balance = -200`, `required = 500`) the console computes `progress = -40` and then:
+
+* writes `style={{ width: '-40%' }}` (`:428`) — an invalid CSS declaration the browser drops, so the
+  meter fill falls back to whatever the base rule says rather than to 0; and
+* prints `· -40%` as the caption text (`:433`).
+
+Reachable through the same legal arrears state as NEW-25, on the same card. One `Math.max(0, …)`
+closes it, and matching the mobile's `clamp(0, 1)` is the parity-correct form.
+
+## False positives I generated and killed (recorded so the method is auditable)
+
+Two candidates in this pass were real-looking and wrong. They are logged because the reasoning that
+killed them is the same reasoning that validates the findings above.
+
+1. **"The console computes money with floats."** True as far as it goes —
+   `DriverDetailPage.tsx:76`, `:500` and `FleetDetailPage.tsx:419` all do `Number(a) - Number(b)` /
+   `String(Number(x))` on money strings, while `mobile/lib/core/format/money.dart` was explicitly
+   rewritten to integer cents for exactly that reason. But it is **not** a defect: the console does
+   no *arithmetic on the result* — `shortfall_hkd` is computed server-side with `Decimal` and merely
+   re-parsed for display — and `FleetDetailPage`'s one subtraction is a display-only "saving" that
+   passes through `Math.abs(amount).toFixed(2)` (`primitives.tsx:207`), which absorbs a ~1e-14
+   representation error far below the 0.005 rounding threshold. `String(Number("0.20"))` giving
+   `"0.2"` is numerically lossless, so the value sent to the API is unchanged. Recorded as a
+   **latent fragility** (money maths in floats, correctness resting on `toFixed`), not a finding.
+2. **"`sign` is never passed anywhere in the console."** `grep -rn "sign={" admin-web/web/src/`
+   returns zero matches — and that is a bad pattern, because the one call site uses the bare boolean
+   attribute: `DriverDetailPage.tsx:441-442` defines `SignedMoney` → `<Money value={value} sign />`,
+   used at `:227` for the ledger amount column. The prop *is* wired for deltas; it is missing for
+   levels (NEW-25). A grep that encodes a syntactic guess about how a prop is passed is not evidence.
+
+### NEW-27 — MEDIUM — the console's wire mirror has no automated contract check, and names an authority that does not exist
+
+Of the three deliverables, two have a mechanical guard against server drift:
+
+| deliverable | guard |
+|---|---|
+| backend | `pytest` (1,071 tests) + `scripts/verify/audit_response_models.py` |
+| mobile | `mobile/tool/verify_contract.dart` (fixture-driven, real decoders) + the same audit script |
+| **console** | **none** — `package.json` scripts are `dev`, `build` (`tsc --noEmit && vite build`), `preview`, `test` (`vitest run`), `typecheck` |
+
+`admin-web/web/src/api/types.ts` is 949 lines declaring 51 interfaces, and its own header says it is
+"**Hand-written** from `app/api/admin.py`, which is the authority". That path **does not exist** —
+the admin routes are the `app/api/admin/` package plus `app/api/admin_licence.py`, `admin_auth.py`
+and `admin_analytics.py`. So the file names a non-existent authority for the contract it mirrors
+(the same staleness class as `_HK_BOUNDS` in NEW-1).
+
+`tsc --noEmit` proves the console is *self-consistent*; it cannot prove the console agrees with the
+server. A server-side field rename therefore compiles clean and fails at runtime as `undefined` /
+`—` in a cell. The file documents having shipped exactly that bug:
+
+> `types.ts:24-27` — "Declaring only `phone_masked` — as this type used to — is what made the sidebar
+> render `—` for every admin, because the field it read is never present on an admin."
+
+That is a real defect found by looking at a screen, fixed in the type, and recorded — with no guard
+added. `endpoints.ts:1-7` does better for *paths*: "The paths here are the contract;
+`tests/test_fleets.py` and `scripts/dev/gen_mobile_fixtures.py` pin the same ones from the other
+side." I checked that claim mechanically against all 92 server routes and it holds — every one of the
+console's 43 paths resolves to a real route. The gap is the **response field shapes**, which nothing
+pins.
+
+The cheapest closure is to extend `scripts/dev/gen_mobile_fixtures.py`'s captured JSON into the
+console's world: either generate `types.ts` from the fixtures, or add a `types.test.ts` that decodes
+each fixture with the declared interface (the console already runs `vitest`, so no new tooling is
+needed — only fixtures it currently has no copy of).
+
+---
+
+### NEW-28 — LOW — the documented TOTP recovery endpoint has no caller in any deliverable
+
+`POST /api/v1/admin/auth/totp/enrol` exists (`app/api/admin_auth.py:233-263`) and its docstring
+states its purpose plainly:
+
+> "Re-issue enrolment material for an admin who never finished setup. Requires the password again.
+> `/login` already returns the material on the first login; this exists for the case where that
+> response was lost (tab closed, network dropped) and the Redis-held secret has expired."
+
+Nothing calls it:
+
+* the console's `endpoints.ts` has only `/totp/enrol/confirm` (`:91`). `LoginPage.tsx:89-91` takes
+  the enrolment material out of the **login response** (`body.next === 'enrolment_required'` →
+  `body.enrolment`), so the console renders its QR (`:357`, `QRCodeSVG`) without ever needing the
+  recovery route — and has no UI for the case the route was written for;
+* `scripts/ops/enrol_admin_totp.py` — the one tool whose whole job is TOTP enrolment — walks
+  `/login` → `/totp/enrol/confirm` (its own docstring, `:36`, `:97`), not `/totp/enrol`;
+* `tests/api/test_security_hardening.py:463` lists it, but as a member of
+  `_PRE_AUTH_PATHS` — an assertion that it is exempt from the access-token guard, not a call.
+
+So the recovery path is reachable only with curl: documented in `docs/ADMIN_AUTH.md:58`, tested for
+its guard exemption, and unused by the console, the mobile, and the ops scripts. Either the console
+should offer the retry (one call from the `enrol` step, which is already implemented and already has
+the secret-rendering UI), or the route should be deleted and the doc claim removed. Today an admin
+whose first-login response was lost has no in-app way back in, which is the exact scenario the
+endpoint was built for.
+
 ---
 
 ## Refuted in this pass (recorded so they are not re-raised)
