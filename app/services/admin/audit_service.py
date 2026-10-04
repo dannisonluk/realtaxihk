@@ -49,6 +49,7 @@ from app.core.client_ip import client_ip as resolve_client_ip
 from app.models import AdminAuditLog
 
 __all__ = [
+    "EV_ADMIN_ACCOUNT_ACTIVE_CHANGE",
     "EV_ADMIN_ACCOUNT_CREATE",
     "EV_ADMIN_PASSWORD_RESET",
     "EV_ADMIN_ROLE_CHANGE",
@@ -86,6 +87,10 @@ EV_SETTLEMENT_RUN = "ADMIN_SETTLEMENT_RUN"
 EV_SETTLEMENT_PREVIEW = "ADMIN_SETTLEMENT_PREVIEW"
 EV_FLEET_UPSERT = "ADMIN_FLEET_UPSERT"
 EV_ADMIN_ACCOUNT_CREATE = "ADMIN_ACCOUNT_CREATE"
+# One label for both directions: the payload carries `from`/`to`, and a pair of
+# labels would let a reader of the log see one half of a transition without the
+# other.
+EV_ADMIN_ACCOUNT_ACTIVE_CHANGE = "ADMIN_ACCOUNT_ACTIVE_CHANGE"
 EV_ADMIN_ROLE_CHANGE = "ADMIN_ROLE_CHANGE"
 # ruff S105 reads the name as a hardcoded credential; it is an event label.
 EV_ADMIN_PASSWORD_RESET = "ADMIN_PASSWORD_RESET"  # noqa: S105

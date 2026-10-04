@@ -677,11 +677,40 @@ export interface AdminRoleChange {
 export interface AdminPasswordReset {
   id: string;
   /**
-   * Always `false` today, and reported rather than omitted.
+   * `true` — the reset revoked the account's sessions as well as its password.
    *
-   * The access token is a signed JWT with no server-side session store, so a
-   * reset cannot revoke tokens already in flight. A field that always reads
-   * `true` would train the operator to believe a claim the system cannot make.
+   * Two things die, by two different mechanisms. The refresh rows are stamped in
+   * the same transaction as the password change, so the family cannot rotate.
+   * The access token is a signed JWT with no server-side session store, so it is
+   * killed at the revocation epoch instead — which makes it at most one
+   * round-trip stale, not fifteen minutes stale.
+   *
+   * Reported rather than assumed: a reset that quietly did not eject anyone is
+   * the difference between "the compromised credential is contained" and "it is
+   * contained for the next fifteen minutes".
+   */
+  sessions_revoked: boolean;
+}
+
+/**
+ * `PATCH /admin/accounts/{id}/active` — acknowledgement of a state change.
+ *
+ * `previous_is_active` is echoed for the same reason `AdminRoleChange` echoes
+ * `previous_role`: the row holds only the new value, and the reader is trying to
+ * confirm what changed.
+ */
+export interface AdminActiveChange {
+  id: string;
+  is_active: boolean;
+  previous_is_active: boolean;
+  /**
+   * `true` when deactivating, `false` when reactivating.
+   *
+   * Not a nicety. Deactivation revokes the account's refresh family, and that is
+   * most of the point: `require_admin` re-reads `is_active`, but a refresh row is
+   * rotated rather than re-read, so an unstamped one would keep minting fresh
+   * access tokens for its full lifetime. Reactivation has nothing to revoke,
+   * because a deactivated account cannot authenticate to hold a session.
    */
   sessions_revoked: boolean;
 }

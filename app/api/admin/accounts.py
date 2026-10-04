@@ -19,6 +19,7 @@ from app.api.admin._shared import _actor_username
 from app.api.schemas import (
     AdminAccountCreatedOut,
     AdminAccountPageOut,
+    AdminActiveChangeOut,
     AdminPasswordResetOut,
     AdminRoleChangeOut,
 )
@@ -29,6 +30,7 @@ from app.models import AdminAccount, AdminRole
 from app.services.admin.admin_account_service import AdminAccountService
 from app.services.admin.admin_refresh_service import AdminRefreshService
 from app.services.admin.audit_service import (
+    EV_ADMIN_ACCOUNT_ACTIVE_CHANGE,
     EV_ADMIN_ACCOUNT_CREATE,
     EV_ADMIN_PASSWORD_RESET,
     EV_ADMIN_ROLE_CHANGE,
@@ -54,6 +56,10 @@ class AdminRoleChangeIn(BaseModel):
 
 class AdminPasswordResetIn(BaseModel):
     new_password: str = Field(min_length=1, max_length=256)
+
+
+class AdminActiveChangeIn(BaseModel):
+    is_active: bool
 
 
 def _account_out(row: AdminAccount) -> dict:
@@ -226,4 +232,71 @@ async def reset_admin_password(
     return {
         "id": str(account.id),
         "sessions_revoked": True,
+    }
+
+
+@router.patch("/accounts/{account_id}/active", response_model=AdminActiveChangeOut)
+async def change_admin_active(
+    account_id: uuid.UUID,
+    payload: AdminActiveChangeIn,
+    request: Request,
+    admin: Principal = Depends(_require_super),
+    session: AsyncSession = Depends(get_session),
+):
+    """Deactivate or reactivate an admin. SUPER_ADMIN only.
+
+    A door of its own rather than a field on a general `PATCH /accounts/{id}`,
+    for the reason `/role` is separate: the constraints differ per field — the
+    last active SUPER_ADMIN cannot be lowered *or* switched off, the self check
+    applies to both — and a combined endpoint is one where the next field is
+    added without anyone re-reading which constraints applied to the neighbours.
+
+    This is the half of "revoke an admin" that a password reset cannot do. A
+    reset restores access to an account that should keep it; deactivation ends
+    it. `require_admin` already re-reads `is_active` on every request, so the
+    access token stops working at the account's next call — but that check has
+    never had anything to act on, because no route could set the column. The
+    refresh family is revoked here because it is *rotated* rather than re-read,
+    so an unrevoked row would keep minting fresh access tokens for its full
+    lifetime.
+    """
+    service = AdminAccountService(session)
+    account, previous = await service.set_active(
+        account_id=account_id, is_active=payload.is_active, actor_id=admin.id
+    )
+    await record_audit(
+        session,
+        event=EV_ADMIN_ACCOUNT_ACTIVE_CHANGE,
+        actor_id=admin.id,
+        username=await _actor_username(session, admin),
+        detail=(
+            f"reactivated admin {account.username}"
+            if account.is_active
+            else f"deactivated admin {account.username}"
+        ),
+        # `from`/`to`, matching `AdminActiveChangeOut`, so the response and the
+        # audit row cannot disagree. `super_admin_count` is the count *after*
+        # the change: switching off a SUPER_ADMIN is the moment an operator
+        # needs to see how many are left.
+        payload={
+            "account_id": str(account.id),
+            "account_username": account.username,
+            "from": previous,
+            "to": account.is_active,
+            "super_admin_count": await service.count_super_admins(),
+        },
+        request=request,
+    )
+    if not account.is_active:
+        # The same pair as a password reset, for the same reason: the refresh
+        # rows inside this transaction, the access-token epoch after it.
+        await AdminRefreshService(session).revoke_all_for_admin(account.id)
+    await session.commit()
+    if not account.is_active:
+        await revoke_user_tokens(request.app.state.auth_redis, account.id)
+    return {
+        "id": str(account.id),
+        "is_active": account.is_active,
+        "previous_is_active": previous,
+        "sessions_revoked": not account.is_active,
     }

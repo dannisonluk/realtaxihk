@@ -21,6 +21,10 @@
  *    states it rather than implying it. An operator who reads "created" as
  *    "usable" hands over credentials that do not work.
  *
+ * 3. **The last super admin cannot be deactivated either.** Same rule, same
+ *    source (`super_admin_count`) — the server owns the count and the rule
+ *    together, and the page must not re-derive either.
+ *
  * The role control is a small set of explicit buttons rather than a free select.
  * A `PATCH` is one call per change and it is the dangerous transition, so it
  * gets a deliberate press with the destination spelled out — not a dropdown
@@ -143,10 +147,11 @@ export function AccountsPage() {
             />
           </div>
           {/*
-            The reset cannot revoke a token already in flight — the access token
-            is a signed JWT with no server-side session store. Saying so is the
-            honest answer; a claim the system cannot make would train the
-            operator to trust it.
+            The reset now revokes both halves of the session, so the note states
+            what happens instead of warning about what does not: the refresh
+            family is stamped immediately, and an access token already in flight
+            is killed at the revocation epoch — at most one round-trip stale, not
+            fifteen minutes.
           */}
           <p className="dim" style={{ margin: 0 }}>
             {t('accounts.tokenNote')}
@@ -156,15 +161,41 @@ export function AccountsPage() {
       onSubmit: async () => {
         if (password.length < 12) throw new Error(t('accounts.errTooShort'));
         if (password !== confirm) throw new Error(t('accounts.errMismatch'));
-        const result = await endpoints.accounts.resetPassword(client, account.id, password);
-        notify(
-          result.sessions_revoked
-            ? t('accounts.resetDone', { username: account.username })
-            : t('accounts.resetDonePending', { username: account.username }),
-        );
+        // The server always revokes now — `sessions_revoked` is `true` on every
+        // success, there is no partial-success form of the operation — so the
+        // message states the outcome instead of branching on a field that cannot
+        // be false.
+        await endpoints.accounts.resetPassword(client, account.id, password);
+        notify(t('accounts.resetDone', { username: account.username }));
         reload();
       },
     });
+  }
+
+  /**
+   * Deactivate or reactivate an account.
+   *
+   * Unlike a role change this ends access outright, and on the way out it revokes
+   * the account's refresh family — so the control should not read like the
+   * routine role moves beside it.
+   */
+  function changeActive(account: AdminAccount, next: boolean) {
+    void (async () => {
+      setPendingId(account.id);
+      try {
+        const result = await endpoints.accounts.setActive(client, account.id, next);
+        notify(
+          result.is_active
+            ? t('accounts.reactivated', { username: account.username })
+            : t('accounts.deactivated', { username: account.username }),
+        );
+        reload();
+      } catch (cause) {
+        notify(cause instanceof Error ? cause.message : String(cause), 'error');
+      } finally {
+        setPendingId(null);
+      }
+    })();
   }
 
   if (loading) return <LoadingState />;
@@ -216,6 +247,11 @@ export function AccountsPage() {
                   // the hierarchy. The server refuses it; the page does not
                   // pretend otherwise.
                   const demoteBlocked =
+                    account.admin_role === 'SUPER_ADMIN' && lastSuperAdmin <= 1;
+                  // Deactivating the last usable super admin is refused for the
+                  // same reason demoting them is: a state with nobody able to
+                  // grant a role again has no in-app repair.
+                  const deactivateBlocked =
                     account.admin_role === 'SUPER_ADMIN' && lastSuperAdmin <= 1;
                   return (
                     <tr key={account.id}>
@@ -280,6 +316,35 @@ export function AccountsPage() {
                             onClick={() => resetPassword(account)}
                           >
                             {t('accounts.resetPassword')}
+                          </button>
+                          {/*
+                            The server refuses both of these; the page does not
+                            offer what will be rejected. Disabling yourself is
+                            blocked because with a single super admin there is
+                            nobody left to switch you back on.
+                          */}
+                          <button
+                            type="button"
+                            className="btn btn--sm"
+                            disabled={
+                              isSelf ||
+                              pendingId === account.id ||
+                              (account.is_active && deactivateBlocked)
+                            }
+                            title={
+                              isSelf
+                                ? t('accounts.cannotDisableSelf')
+                                : account.is_active && deactivateBlocked
+                                  ? t('accounts.cannotDisableLast')
+                                  : account.is_active
+                                    ? t('accounts.deactivate')
+                                    : t('accounts.reactivate')
+                            }
+                            onClick={() => changeActive(account, !account.is_active)}
+                          >
+                            {account.is_active
+                              ? t('accounts.deactivate')
+                              : t('accounts.reactivate')}
                           </button>
                         </div>
                       </td>

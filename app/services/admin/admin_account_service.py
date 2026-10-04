@@ -247,3 +247,57 @@ class AdminAccountService:
         account.locked_until = None
         await self.session.flush()
         return account
+
+    async def set_active(
+        self,
+        *,
+        account_id: uuid.UUID,
+        is_active: bool,
+        actor_id: uuid.UUID,
+    ) -> tuple[AdminAccount, bool]:
+        """Deactivate or reactivate an account. Returns it and its previous state.
+
+        Deactivation is the operation that makes every other guard real. Until a
+        route could set `is_active = False`, `require_admin`'s live check had
+        nothing to act on: a compromised or departed admin's refresh token kept
+        rotating for its full lifetime, and `reset_password` addresses only the
+        credential half of that incident — not "this person no longer works
+        here". The two constraints are the same two faces as in `change_role`,
+        for the same reason:
+
+        1. **Nobody deactivates themselves.** With a single SUPER_ADMIN the "am
+           I the last one?" check is consulted *after* the caller has already
+           switched themselves off, and there is no one left to undo it — the
+           account cannot even authenticate to try. Refusing the self case
+           removes the ordering problem rather than solving it.
+        2. **The last active SUPER_ADMIN cannot be deactivated.** The same brick
+           as demoting them: a state with no account able to grant roles, whose
+           only repair is editing the database by hand.
+
+        Reactivation carries neither constraint — it only ever adds an account
+        able to act — but keeps the self check, where it can only fire on an
+        already-active account and is therefore the "already in that state"
+        refusal.
+        """
+        if account_id == actor_id:
+            raise BusinessRuleError("an admin may not change their own active state")
+
+        account = await self.get(account_id)
+        previous = bool(account.is_active)
+
+        if previous == is_active:
+            raise BusinessRuleError(
+                "account is already active" if is_active else "account is already inactive"
+            )
+
+        if not is_active and account.admin_role is AdminRole.SUPER_ADMIN:
+            remaining = await self.count_super_admins(excluding=account_id)
+            if remaining == 0:
+                raise BusinessRuleError(
+                    "cannot deactivate the last active SUPER_ADMIN",
+                    {"reason": "LAST_SUPER_ADMIN"},
+                )
+
+        account.is_active = is_active
+        await self.session.flush()
+        return account, previous

@@ -25,6 +25,7 @@ import pytest
 from sqlalchemy import text
 
 from app.services.admin.audit_service import (
+    EV_ADMIN_ACCOUNT_ACTIVE_CHANGE,
     EV_ADMIN_ACCOUNT_CREATE,
     EV_ADMIN_PASSWORD_RESET,
     EV_ADMIN_ROLE_CHANGE,
@@ -605,3 +606,233 @@ class TestRosterShape:
         assert "totp_secret" not in blob
         assert "password_hash" not in blob
         assert "$argon2" not in blob
+
+
+class TestAdminActiveChange:
+    """`PATCH /admin/accounts/{id}/active` — the route that makes `is_active` real.
+
+    `require_admin` and `require_live_principal` both re-read `is_active` on
+    every request (P0-3), and `_count_supers` already ignores inactive rows.
+    Every one of those guards was written and none had ever fired, because
+    nothing in the codebase could set the column. A reset password does not
+    cover this: a lost credential and a departed operator are different
+    incidents, and only the second one wants the account gone.
+    """
+
+    async def test_deactivating_revokes_the_access_token_and_the_refresh_rows(self, client):
+        """Both halves of the eviction, and neither asserted by reading a column.
+
+        The access token dies at the revocation *epoch*, not at the `is_active`
+        read: `get_current_user` consults the epoch before the row is loaded, so
+        a deactivation that wrote only the column would leave a live token until
+        it expired. The response says which half fired (`token has been
+        revoked`), which is why the assertion pins the message and not just the
+        status — 403 here would mean the epoch write did not happen.
+
+        The refresh row is the half that cannot be left to `is_active` at all:
+        it is rotated rather than re-read, so an unstamped row keeps minting
+        fresh access tokens for its full lifetime.
+        """
+        target = client.admin_headers(role="SUPPORT")
+        already_issued = dict(target)
+
+        r = client.patch(
+            f"/api/v1/admin/accounts/{target.admin_id}/active",
+            headers=client.admin_headers(),
+            json={"is_active": False},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["id"] == target.admin_id
+        assert body["is_active"] is False
+        assert body["previous_is_active"] is True
+        assert body["sessions_revoked"] is True
+
+        stale = client.get("/api/v1/auth/me", headers=already_issued)
+        assert stale.status_code == 401, stale.text
+        assert stale.json()["message"] == "token has been revoked"
+
+        rows = await _fetch(
+            client,
+            "SELECT revoked_at FROM admin_refresh_tokens WHERE admin_id = CAST(:i AS uuid)",
+            {"i": target.admin_id},
+        )
+        assert rows, "the login walked the real flow, so a refresh row exists"
+        assert all(row["revoked_at"] is not None for row in rows), rows
+
+    async def test_a_deactivated_row_is_refused_even_with_an_unrevoked_token(self, client):
+        """The `is_active` half, isolated from the epoch half.
+
+        The route writes both, and the epoch fires first — so the route's own
+        test cannot see this guard at all. The column is flipped directly here so
+        the token stays valid and the only thing left to refuse it is
+        `require_live_principal`'s live read, which is what makes "a disabled
+        account loses access the moment is_active flips" true rather than
+        aspirational.
+        """
+        target = client.admin_headers(role="SUPPORT")
+        client.exec_sql(
+            "UPDATE admin_accounts SET is_active = false WHERE id = CAST(:i AS uuid)",
+            {"i": target.admin_id},
+        )
+
+        r = client.get("/api/v1/auth/me", headers=dict(target))
+        assert r.status_code == 403, r.text
+        assert "disabled" in r.text
+
+    async def test_reactivating_restores_the_row_without_revoking_anything(self, client):
+        target = client.admin_headers(role="SUPPORT")
+        super_headers = client.admin_headers()
+
+        off = client.patch(
+            f"/api/v1/admin/accounts/{target.admin_id}/active",
+            headers=super_headers,
+            json={"is_active": False},
+        )
+        assert off.status_code == 200, off.text
+
+        on = client.patch(
+            f"/api/v1/admin/accounts/{target.admin_id}/active",
+            headers=super_headers,
+            json={"is_active": True},
+        )
+        assert on.status_code == 200, on.text
+        body = on.json()
+        assert body["is_active"] is True
+        assert body["previous_is_active"] is False
+        # Nothing to revoke: a deactivated account cannot authenticate, so it is
+        # holding no session for the reactivation to kill.
+        assert body["sessions_revoked"] is False
+
+        roster = client.get("/api/v1/admin/accounts", headers=super_headers)
+        row = next(i for i in roster.json()["items"] if i["id"] == target.admin_id)
+        assert row["is_active"] is True
+
+    async def test_an_admin_cannot_switch_themselves_off(self, client):
+        """The ordering problem, removed rather than solved.
+
+        With a single SUPER_ADMIN the last-admin check is consulted *after* the
+        caller has already switched themselves off, and the account cannot even
+        authenticate to undo it. Refusing the self case means that order is never
+        reached.
+        """
+        me = client.admin_headers()
+        r = client.patch(
+            f"/api/v1/admin/accounts/{me.admin_id}/active",
+            headers=me,
+            json={"is_active": False},
+        )
+        assert r.status_code == 400, r.text
+        assert r.json()["code"] == "BUSINESS_RULE_VIOLATION"
+        assert r.json()["message"] == "an admin may not change their own active state"
+        # And it survived the attempt.
+        assert await _fetch(
+            client,
+            "SELECT is_active FROM admin_accounts WHERE id = CAST(:i AS uuid)",
+            {"i": me.admin_id},
+        ) == [{"is_active": True}]
+
+    async def test_the_last_super_admin_cannot_be_switched_off(self, client):
+        """Same brick as demoting them — and the premise is proved first.
+
+        Without the first half this would pass against an implementation that
+        refuses *every* deactivation, under which the first super admin could
+        never be handed over.
+        """
+        keeper = client.admin_headers()
+        spare = client.admin_headers()
+
+        # Premise: with two usable supers, switching one off works.
+        ok = client.patch(
+            f"/api/v1/admin/accounts/{spare.admin_id}/active",
+            headers=keeper,
+            json={"is_active": False},
+        )
+        assert ok.status_code == 200, ok.text
+        assert await _count_supers(client) == 1
+
+        # Bring it back so the blocked attempt below has a real second super.
+        back = client.patch(
+            f"/api/v1/admin/accounts/{spare.admin_id}/active",
+            headers=keeper,
+            json={"is_active": True},
+        )
+        assert back.status_code == 200, back.text
+        assert await _count_supers(client) == 2
+
+        # Drive the service directly, so the rule under test is the service's
+        # business rule and not `_require_super`.
+        async with client.db_factory() as session:
+            from app.core.exceptions import BusinessRuleError
+            from app.services.admin.admin_account_service import AdminAccountService
+
+            service = AdminAccountService(session)
+            # Switch `keeper` off, leaving `spare` the sole usable SUPER_ADMIN.
+            _, _ = await service.set_active(
+                account_id=uuid.UUID(keeper.admin_id),
+                is_active=False,
+                actor_id=uuid.UUID(spare.admin_id),
+            )
+            await session.commit()
+
+        assert await _count_supers(client) == 1
+
+        async with client.db_factory() as session:
+            from app.core.exceptions import BusinessRuleError
+
+            service = AdminAccountService(session)
+            with pytest.raises(BusinessRuleError) as exc:
+                await service.set_active(
+                    account_id=uuid.UUID(spare.admin_id),
+                    is_active=False,
+                    actor_id=uuid.UUID(keeper.admin_id),
+                )
+            assert exc.value.details.get("reason") == "LAST_SUPER_ADMIN"
+
+        # And it survived.
+        assert await _fetch(
+            client,
+            "SELECT is_active FROM admin_accounts WHERE id = CAST(:i AS uuid)",
+            {"i": spare.admin_id},
+        ) == [{"is_active": True}]
+
+    async def test_lower_roles_cannot_change_active_state(self, client):
+        target = client.admin_headers(role="SUPPORT")
+        for role in ("SUPPORT", "OPERATIONS", "FINANCE"):
+            r = client.patch(
+                f"/api/v1/admin/accounts/{target.admin_id}/active",
+                headers=client.admin_headers(role=role),
+                json={"is_active": False},
+            )
+            assert r.status_code == 403, (role, r.text)
+
+        # Not one of them got through.
+        assert await _fetch(
+            client,
+            "SELECT is_active FROM admin_accounts WHERE id = CAST(:i AS uuid)",
+            {"i": target.admin_id},
+        ) == [{"is_active": True}]
+
+    async def test_the_transition_is_audited_from_to(self, client):
+        target = client.admin_headers(role="SUPPORT")
+        super_headers = client.admin_headers()
+
+        r = client.patch(
+            f"/api/v1/admin/accounts/{target.admin_id}/active",
+            headers=super_headers,
+            json={"is_active": False},
+        )
+        assert r.status_code == 200, r.text
+
+        rows = await _audit_rows(client, EV_ADMIN_ACCOUNT_ACTIVE_CHANGE)
+        assert len(rows) == 1, rows
+        payload = rows[0]["payload"]
+        assert payload["account_id"] == target.admin_id
+        # The row holds only the new value, so from/to is the whole record of
+        # what happened — the same reason `AdminRoleChangeOut` echoes
+        # `previous_role`.
+        assert payload["from"] is True
+        assert payload["to"] is False
+        # The count *after* the change: the number an operator needs at the
+        # moment they switch a SUPER_ADMIN off.
+        assert payload["super_admin_count"] == 1

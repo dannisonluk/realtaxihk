@@ -368,6 +368,28 @@ class AdminPasswordResetOut(BaseModel):
     sessions_revoked: bool
 
 
+class AdminActiveChangeOut(BaseModel):
+    """`PATCH /admin/accounts/{id}/active` — acknowledgement of a state change.
+
+    `previous_is_active` is echoed for the same reason `AdminRoleChangeOut`
+    echoes `previous_role`: the row holds only the new value, and "what was it
+    before" is what a reader of the response is confirming. It also lets the
+    console show the transition it just caused without re-fetching the roster.
+
+    `sessions_revoked` distinguishes the two directions. Deactivating ejects the
+    account's live sessions in the same transaction — that is most of the point,
+    since `require_admin` re-reads `is_active` on every request but the refresh
+    family would otherwise keep rotating for its full lifetime. Reactivating
+    revokes nothing, because there is nothing to revoke: a deactivated account
+    cannot authenticate, so it holds no session to kill.
+    """
+
+    id: str
+    is_active: bool
+    previous_is_active: bool
+    sessions_revoked: bool
+
+
 class AdminOrderRowOut(BaseModel):
     """One row of `GET /admin/orders` — the orders table.
 

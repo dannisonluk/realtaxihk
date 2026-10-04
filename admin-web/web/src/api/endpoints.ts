@@ -12,6 +12,7 @@ import type {
   AdjustResult,
   AdminAccountCreated,
   AdminAccountPage,
+  AdminActiveChange,
   AdminDriverRow,
   AdminIdentity,
   AdminLiveDrivers,
@@ -467,6 +468,25 @@ export const endpoints = {
       client.post<AdminPasswordReset>(
         `/api/v1/admin/accounts/${encodeURIComponent(accountId)}/password/reset`,
         { body: { new_password: newPassword } },
+      ),
+    /**
+     * Deactivate or reactivate another admin. SUPER_ADMIN only.
+     *
+     * A `PATCH` on `/active` rather than a general `PATCH /accounts/{id}`, for
+     * the reason the `/role` route gives: the constraints differ per field (the
+     * last usable super admin cannot be lowered *or* switched off; the self
+     * check applies to both), and one combined endpoint is where the next field
+     * gets added without anyone re-reading which constraints applied to the
+     * neighbours.
+     *
+     * This is the half of "revoke an admin" that a password reset cannot do. A
+     * lost credential and a departed operator are different incidents, and only
+     * the second one wants the account gone.
+     */
+    setActive: (client: ApiClient, accountId: string, isActive: boolean) =>
+      client.patch<AdminActiveChange>(
+        `/api/v1/admin/accounts/${encodeURIComponent(accountId)}/active`,
+        { body: { is_active: isActive } },
       ),
   },
 

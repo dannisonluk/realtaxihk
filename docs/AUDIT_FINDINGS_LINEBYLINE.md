@@ -11,6 +11,17 @@ Status: IN PROGRESS.
 | **NEW-22** (HIGH) | `app/api/admin/accounts.py:199-233`, `app/services/admin/admin_account_service.py:225` | `reset_admin_password` now revokes **both** halves of the session — the refresh rows inside the same transaction, then the access-token epoch in Redis — and reports `sessions_revoked: True`. That is what the response schema docstring already asserted ("the reset also ejected anyone already signed in") and what `AccountsPage.tsx:161` already branched on. The service docstring no longer claims to revoke. |
 | **NEW-19** (LOW) | `app/api/admin/drivers.py`, `app/api/fleets.py` | An unrecognised `status_filter` is now a **400** with `reason: UNKNOWN_STATUS` and an `allowed` list built from the enum — the shape `/admin/orders` already used. Was a 500. Enum-derived, so the list cannot drift from the column. |
 | **NEW-20** (LOW) | `app/api/admin/drivers.py` | `total` now carries the page's predicate. `FleetService.list_page` and `/admin/refunds` already did; this route was the odd one out. |
+| **NEW-22, second half** (HIGH) | `app/api/admin/accounts.py`, `app/services/admin/admin_account_service.py`, `app/services/admin/audit_service.py`, `admin-web/web/src/**` | New `PATCH /admin/accounts/{id}/active`, SUPER_ADMIN only, with the two constraints `change_role` already carried — nobody switches themselves off, and the last usable SUPER_ADMIN cannot be switched off — plus session revocation on the way out. Deactivation revokes the refresh family **and** writes the access-token epoch; reactivation revokes nothing and says so. A door of its own rather than a field on a general `PATCH /accounts/{id}`, for the reason `/role` gives. |
+
+**Third-deliverable parity, which the NEW-22 fix invalidated.** Three places in the console
+asserted that a reset *cannot* revoke a token in flight: the `types.ts` docstring, the
+`AccountsPage.tsx` comment above the note, and the `accounts.tokenNote` string in both locales.
+All three were true when written and became false with the fix, so they moved in the same commit:
+`tokenNote` now describes what happens, `resetDonePending` is deleted (the branch it served is
+unreachable — there is no partial-success form of the operation), and the page gained the
+deactivate/reactivate control. `lastSuperNote` now covers deactivation as well as demotion. The
+console had been rendering an `accounts.disabled` chip with no route that could produce such an
+account.
 
 Tests added with the fixes — `tests/api/test_admin_drivers.py` (new file, 3 tests),
 `tests/api/test_fleets.py` (2 tests), and
@@ -18,11 +29,8 @@ Tests added with the fixes — `tests/api/test_admin_drivers.py` (new file, 3 te
 which asserts the revocation by **using** the stale token afterwards (exercising the real
 Redis epoch on the hot path) rather than by checking that a key exists.
 
-**Deliberately not fixed**, because each needs an owner decision rather than a patch:
+**Still open, because the choice changes who may act rather than what the code does:**
 
-- **NEW-22, second half** — nothing in the app can set an admin `is_active = False`, so
-  `require_admin`'s check never fires. Closing it means a new endpoint, an audit event, and a
-  console control: three deliverables, one decision.
 - **N-1** — the SoD rank semantics (finance ⊃ operations). Three documented options; the
   choice changes who may act, so it is not mine to make.
 
@@ -1138,7 +1146,8 @@ Notable because it is the highest-privilege path in the system. Verified sound:
   twelve `downgrade()` bodies contain real `op.*` calls. *Honest scope:* the downgrades
   were checked for **presence, not executed** — running them would need a scratch
   database, and the one that matters (`b7d4e1c9a3f2`) documents that it fails loudly on
-  duplicate claims by design.
+  duplicate claims by design. Sub-agent `models_schemas_migrations.md` re-audits the
+  eleven not read here line-by-line.
 - **`b7d4e1c9a3f2_claimed_phone_and_reviewer_expiry.py` — read in full, and it is the
   best-reasoned migration in the tree.** It drops the plain UNIQUE on
   `users.phone_e164` *because* uniqueness there was a denial-of-registration vector
