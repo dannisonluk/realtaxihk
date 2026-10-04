@@ -3,7 +3,8 @@
  *
  * One function per endpoint, so no view builds a path by hand. The paths here
  * are the contract; `tests/test_fleets.py` and `scripts/dev/gen_mobile_fixtures.py`
- * pin the same ones from the other side.
+ * pin the same ones from the other side, and `scripts/verify/audit_response_models.py`
+ * pins the response shapes against the FastAPI schema objects.
  */
 
 import type { ApiClient } from './client';

@@ -1,11 +1,19 @@
 /**
  * Domain types for the console.
  *
- * Hand-written from `app/api/admin.py`, which is the authority: these are the
- * fields the console actually reads, spelled as the server sends them. Money is
- * always a **string** on the wire (the server formats it with `money_str`), so
- * every amount here is a string — do not "helpfully" type it as `number` or the
- * page will render `NaN` after arithmetic.
+ * Hand-written from the FastAPI schemas in `app/api/schemas/`, which are the
+ * authority: these are the fields the console actually reads, spelled as the
+ * server sends them. Money is always a **string** on the wire (the server
+ * formats it with `money_str`), so every amount here is a string — do not
+ * "helpfully" type it as `number` or the page will render `NaN` after
+ * arithmetic.
+ *
+ * This file is a mirror, not a generator, and it has been wrong before
+ * (`phone_masked` once made the sidebar render "—" for every admin because the
+ * field it reads is never present on an admin). The wire contract is pinned by
+ * `scripts/verify/audit_response_models.py` for the backend and by the mobile
+ * fixtures; when you change a server schema, change this mirror in the same
+ * commit.
  */
 
 /**
