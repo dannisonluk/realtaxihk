@@ -188,6 +188,30 @@ async function renderAndSettle(root: Root) {
   });
 }
 
+/**
+ * Poll until `assert` stops throwing, then rethrow its last failure.
+ *
+ * A fixed `setTimeout` is a guess about how long a code-split chunk takes to
+ * resolve *and* render. Under load the guess loses: this file failed once in
+ * nine full runs, during a parallel 1062-test pytest run that saturated the
+ * CPU, with the live-map heading not yet painted after 30 ms. Polling waits as
+ * long as the machine needs, and no longer.
+ */
+async function settleUntil(assert: () => void, timeoutMs = 2_000) {
+  const started = Date.now();
+  for (;;) {
+    try {
+      assert();
+      return;
+    } catch (error) {
+      if (Date.now() - started > timeoutMs) throw error;
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+    }
+  }
+}
+
 describe('the boot gate', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -418,10 +442,11 @@ describe('the boot gate', () => {
 
     await renderAndSettle(root);
     // The chunk resolves a tick after the boot gate does, and the page then
-    // makes its own request, so one more turn is needed than for a static route.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 30));
-    });
+    // makes its own request, so one more turn is needed than for a static
+    // route — but how long that turn takes is a property of the machine, not
+    // of the code, so poll rather than guess. The 30 ms sleep this replaces
+    // failed once in nine full runs, under a parallel pytest run.
+    await settleUntil(() => expect(heading()).toBe(LIVE()));
 
     expect(heading()).not.toBe(NOT_FOUND());
     expect(heading()).toBe(LIVE());
