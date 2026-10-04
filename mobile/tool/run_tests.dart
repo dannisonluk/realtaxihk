@@ -22,13 +22,20 @@ library;
 // ignore_for_file: avoid_print
 
 import 'package:hkfastdc_mobile/core/format/money.dart';
+// The *protocol* half of the Turnstile seam, not `turnstile.dart`: that file
+// imports `package:flutter` for `WebViewWidget` and `kReleaseMode`, and this
+// script runs on the plain VM.
+import 'package:hkfastdc_mobile/core/human/turnstile_protocol.dart';
 import 'package:hkfastdc_mobile/core/network/api_exception.dart';
 import 'package:hkfastdc_mobile/core/network/wire.dart';
+import 'package:hkfastdc_mobile/core/phone.dart';
+import 'package:hkfastdc_mobile/core/security/password_policy.dart';
 import 'package:hkfastdc_mobile/models/auth.dart';
 import 'package:hkfastdc_mobile/models/admin.dart';
 import 'package:hkfastdc_mobile/models/driver.dart';
 import 'package:hkfastdc_mobile/models/enums.dart';
 import 'package:hkfastdc_mobile/models/fleet.dart';
+import 'package:hkfastdc_mobile/models/identity.dart';
 import 'package:hkfastdc_mobile/models/ledger.dart';
 import 'package:hkfastdc_mobile/models/order.dart';
 import 'package:hkfastdc_mobile/models/refund.dart';
@@ -126,6 +133,9 @@ void main() {
   _modelTests();
   _fleetTests();
   _routingTests();
+  _credentialTests();
+  _humanVerificationTests();
+  _identityTests();
 
   print('');
   for (final String failure in _failures) {
@@ -1175,6 +1185,370 @@ void _routingTests() {
       expect(go(location: Routes.driverJobs, user: passenger), null);
       expect(go(location: Routes.driverOnboarding, user: passenger), null);
       expect(go(location: '${Routes.driverActiveTrip}/abc', user: passenger), null);
+    });
+
+    test('the phone unlock is not a pre-auth route', () {
+      // It must stay reachable for a **signed-in** account: the accounts that
+      // need it are exactly the ones that already have a session, and every
+      // `/login` path is redirected away from a signed-in user.
+      expectFalse(Routes.phoneUnlock.startsWith(Routes.login));
+      expect(go(location: Routes.phoneUnlock, user: passenger), null);
+      expect(go(location: Routes.phoneUnlock), Routes.login, reason: 'still needs a session');
+      // The new pre-auth doors stay pre-auth.
+      expect(go(location: Routes.register), null);
+      expect(go(location: Routes.phoneLogin), null);
+      expect(go(location: Routes.register, user: passenger), Routes.request);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The auth split: credentials, the phone claim, and the human-verification seam
+// ---------------------------------------------------------------------------
+
+void _credentialTests() {
+  group('password policy', () {
+    test('mirrors the server minimum of 12 characters', () {
+      expect(minPasswordLength, 12);
+      expect(passwordProblem('abcdefghijk'), '密碼至少需要 12 個字元。');
+      expect(passwordProblem('hkfastdc!2026'), null);
+      // Twelve characters is not enough on its own — the server also rejects
+      // `abcdefghijkl` outright, so the mirror must.
+      expect(passwordProblem('abcdefghijkl'), '密碼過於容易被猜到，請避免常見字詞或連續數字。');
+    });
+
+    test('counts code points, not UTF-16 units', () {
+      expect('👍👍👍'.length, 6, reason: 'UTF-16 units');
+      expect('👍👍👍'.runes.length, 3, reason: 'code points, which is what Python counts');
+      expect(passwordProblem('👍👍👍'), '密碼至少需要 12 個字元。');
+      // Twelve identical code points is a repeated-character password, and the
+      // server refuses it — so this must too.
+      expect(passwordProblem('👍👍👍👍👍👍👍👍👍👍👍👍'), '密碼過於容易被猜到，請避免常見字詞或連續數字。');
+      // The case `split('')` got wrong: four distinct UTF-16 units, but only
+      // three distinct code points, so the server calls it weak and the old
+      // mirror would have let it through.
+      expect(passwordProblem('ab👍👍👍👍👍👍👍👍👍👍'), '密碼過於容易被猜到，請避免常見字詞或連續數字。');
+    });
+
+    test('refuses leading or trailing whitespace', () {
+      expect(passwordProblem(' abcdefghijkl'), '密碼不可有開頭或結尾的空白。');
+      expect(passwordProblem('abcdefghijkl '), '密碼不可有開頭或結尾的空白。');
+    });
+
+    test('refuses the weak fragments the server refuses', () {
+      for (final String weak in <String>[
+        'mypassword12',
+        'qwertyuiop12',
+        'Realtaxi12345',
+        'letmein12345',
+      ]) {
+        expect(passwordProblem(weak), '密碼過於容易被猜到，請避免常見字詞或連續數字。', reason: weak);
+      }
+    });
+
+    test('refuses a repeated or sequential string', () {
+      expect(passwordProblem('aaaaaaaaaaaa'), '密碼過於容易被猜到，請避免常見字詞或連續數字。');
+      expect(passwordProblem('0123456789ab'), '密碼過於容易被猜到，請避免常見字詞或連續數字。');
+      // Twelve distinct characters with no fragment is accepted.
+      expect(passwordProblem('xz9Kp2Mv7Qr4'), null);
+    });
+
+    test('reports the first problem to fix, not a checklist', () {
+      // Too short *and* weak: the length message wins, because it is the first
+      // thing to fix.
+      expect(passwordProblem('password'), '密碼至少需要 12 個字元。');
+    });
+  });
+
+  group('HK phone numbers', () {
+    test('builds E.164 from the eight digits the field can hold', () {
+      expect(hkPhoneToE164('91234567'), '+85291234567');
+      expect(hkPhoneToE164(' 91234567 '), '+85291234567');
+    });
+
+    test('refuses anything that is not eight digits', () {
+      expect(hkPhoneToE164('9123456'), null);
+      expect(hkPhoneToE164('912345678'), null);
+      expect(hkPhoneToE164(''), null);
+      expect(hkPhoneToE164('+85291234567'), null, reason: 'the field holds digits only');
+    });
+
+    test('strips the country code back off for the field', () {
+      expect(hkPhoneDigits('+85291234567'), '91234567');
+      expect(hkPhoneDigits('91234567'), '91234567');
+    });
+  });
+}
+
+void _humanVerificationTests() {
+  group('Turnstile build mode', () {
+    test('a present site key always renders the widget', () {
+      expect(resolveTurnstileMode(siteKeyPresent: true, releaseMode: false), TurnstileMode.enabled);
+      expect(resolveTurnstileMode(siteKeyPresent: true, releaseMode: true), TurnstileMode.enabled);
+    });
+
+    test('an absent key is tolerated in dev and refused in release', () {
+      // The asymmetry is the point: development must not need a Cloudflare
+      // account, and a release must not ship a sign-in form that cannot work.
+      expect(
+        resolveTurnstileMode(siteKeyPresent: false, releaseMode: false),
+        TurnstileMode.disabled,
+      );
+      expect(
+        resolveTurnstileMode(siteKeyPresent: false, releaseMode: true),
+        TurnstileMode.misconfigured,
+      );
+    });
+  });
+
+  group('Turnstile widget protocol', () {
+    test('decodes a token', () {
+      final TurnstileSignal? signal = parseTurnstileSignal('{"event":"token","token":"0.abc"}');
+      expectTrue(signal is TurnstileToken);
+      expect((signal! as TurnstileToken).token, '0.abc');
+    });
+
+    test('treats expired and timeout as "the token is spent"', () {
+      expectTrue(parseTurnstileSignal('{"event":"expired"}') is TurnstileStale);
+      expectTrue(parseTurnstileSignal('{"event":"timeout"}') is TurnstileStale);
+    });
+
+    test("keeps Cloudflare's error code verbatim", () {
+      final TurnstileSignal? signal = parseTurnstileSignal('{"event":"error","code":"110200"}');
+      expectTrue(signal is TurnstileError);
+      expect((signal! as TurnstileError).code, '110200');
+      // An error event with no code is still an error, not a crash.
+      expect((parseTurnstileSignal('{"event":"error"}')! as TurnstileError).code, 'unknown');
+    });
+
+    test('an unknown event is data, not a failure', () {
+      final TurnstileSignal? signal = parseTurnstileSignal('{"event":"something_new"}');
+      expectTrue(signal is TurnstileUnknown);
+      expect((signal! as TurnstileUnknown).event, 'something_new');
+    });
+
+    test('noise is ignored rather than fatal', () {
+      // A widget that emitted rubbish must not be able to break a sign-in.
+      expect(parseTurnstileSignal('not json'), null);
+      expect(parseTurnstileSignal('[1,2,3]'), null);
+      expect(parseTurnstileSignal('{"token":"0.abc"}'), null, reason: 'no event');
+      expect(parseTurnstileSignal('{"event":7}'), null, reason: 'event is not a string');
+      expect(parseTurnstileSignal('{"event":"token"}'), null, reason: 'no token');
+      expect(parseTurnstileSignal('{"event":"token","token":""}'), null, reason: 'empty token');
+    });
+
+    test('renders the site key and emits every event the decoder understands', () {
+      final String html = turnstileHtml('0x4AAAAAAA-test-key');
+      expectTrue(html.contains("sitekey: '0x4AAAAAAA-test-key'"), reason: 'site key');
+      expectTrue(html.contains('Turnstile.postMessage'), reason: 'JS channel name');
+      expectTrue(html.contains('challenges.cloudflare.com'), reason: 'the API script');
+      // Every event the Dart side decodes must be one the page actually posts. A
+      // token minted but never delivered looks like a hung challenge, which is
+      // the worst possible symptom: nothing errors, the button just stays dead.
+      for (final String event in <String>['token', 'error', 'expired', 'timeout']) {
+        expectTrue(html.contains("post('$event'"), reason: 'the page must post $event');
+        expectTrue(
+          parseTurnstileSignal('{"event":"$event","token":"x"}') != null ||
+              parseTurnstileSignal('{"event":"$event"}') != null,
+          reason: 'the decoder must understand $event',
+        );
+      }
+      // The four callbacks that make those events fire. `callback` is unquoted —
+      // it is a valid JS identifier — while the dashed names need quotes.
+      expectTrue(html.contains('callback:'), reason: 'the success callback');
+      for (final String option in <String>[
+        'error-callback',
+        'expired-callback',
+        'timeout-callback',
+      ]) {
+        expectTrue(html.contains("'$option'"), reason: option);
+      }
+      // 'flexible' is what makes it fit a phone; 'normal' is a fixed 300dp.
+      expectTrue(html.contains("size: 'flexible'"));
+    });
+  });
+}
+
+Map<String, dynamic> _profileJson({
+  bool phoneVerified = false,
+  bool reverifyDue = false,
+  bool reverifyBlocked = false,
+  int? daysRemaining,
+}) => <String, dynamic>{
+  'id': '0a373307-4767-4485-9111-2e80f5046bf4',
+  'username': null,
+  'given_name': 'Dannison',
+  'family_name': 'Luk',
+  'gender': null,
+  'avatar_key': null,
+  'email': 'd@example.com',
+  'email_verified': false,
+  'phone_masked': '+852****4567',
+  'phone_verified': phoneVerified,
+  'phone_reverify_due_at': null,
+  'phone_reverify_grace_ends_at': null,
+  'phone_reverify_due': reverifyDue,
+  'phone_reverify_blocked': reverifyBlocked,
+  'phone_reverify_days_remaining': daysRemaining,
+  'account_status': 'UNVERIFIED',
+  'role': 'PASSENGER',
+};
+
+void _identityTests() {
+  group('Profile', () {
+    test('decodes the full profile', () {
+      final Profile profile = Profile.fromJson(_profileJson());
+      expect(profile.phoneMasked, '+852****4567');
+      expectFalse(profile.phoneVerified);
+      expect(profile.accountStatus, AccountStatus.unverified);
+      expect(profile.role, UserRole.passenger);
+      expect(profile.displayName, 'Dannison Luk');
+      expect(profile.phoneReverifyDueAt, null);
+    });
+
+    test('a proven phone is what decides whether the account can call a taxi', () {
+      expectFalse(Profile.fromJson(_profileJson()).canCallTaxi, reason: 'never proven');
+      expectTrue(Profile.fromJson(_profileJson(phoneVerified: true)).canCallTaxi);
+      // Proven but past grace: the server refuses new business with 403
+      // PHONE_REVERIFY_DUE, so the client must not offer the action either.
+      expectFalse(
+        Profile.fromJson(_profileJson(phoneVerified: true, reverifyBlocked: true)).canCallTaxi,
+      );
+      // Due but inside the grace window still works — a reminder, not a refusal.
+      expectTrue(
+        Profile.fromJson(
+          _profileJson(phoneVerified: true, reverifyDue: true, daysRemaining: 5),
+        ).canCallTaxi,
+      );
+    });
+
+    test('the reminder counts down to the next event', () {
+      expect(Profile.fromJson(_profileJson(phoneVerified: true)).phoneReverifyNoticeZh, null);
+      expect(
+        Profile.fromJson(
+          _profileJson(phoneVerified: true, reverifyDue: true, daysRemaining: 5),
+        ).phoneReverifyNoticeZh,
+        '請於 5 日內重新驗證電話號碼，否則將無法叫車。',
+      );
+      // Blocked: `days_remaining` is null because there is no next event.
+      expect(
+        Profile.fromJson(
+          _profileJson(phoneVerified: true, reverifyBlocked: true),
+        ).phoneReverifyNoticeZh,
+        '電話驗證已逾期，需重新驗證才能繼續叫車。',
+      );
+      // Due with no countdown (a grandfathered row) is still a reminder.
+      expect(
+        Profile.fromJson(
+          _profileJson(phoneVerified: true, reverifyDue: true),
+        ).phoneReverifyNoticeZh,
+        '請重新驗證電話號碼，否則將無法叫車。',
+      );
+    });
+
+    test('falls back to the username when no name is filled in', () {
+      final Map<String, dynamic> json = _profileJson();
+      json['given_name'] = null;
+      json['family_name'] = null;
+      expect(Profile.fromJson(json).displayName, null, reason: 'username is null too');
+      json['username'] = 'dannison';
+      expect(Profile.fromJson(json).displayName, 'dannison');
+    });
+
+    test('an unknown account status fails loudly', () {
+      final Map<String, dynamic> json = _profileJson();
+      json['account_status'] = 'ON_HOLIDAY';
+      expectThrows(() => Profile.fromJson(json), contains: 'AccountStatus');
+    });
+
+    test('a missing required field names itself', () {
+      final Map<String, dynamic> json = _profileJson();
+      json.remove('phone_verified');
+      expectThrows(() => Profile.fromJson(json), contains: 'phone_verified');
+    });
+
+    test('the binding reads `verified` and the profile off one flat body', () {
+      // `PhoneBindOut` is `{"verified": true, **profile}` — not a nested object.
+      final Map<String, dynamic> body = _profileJson(phoneVerified: true);
+      body['verified'] = true;
+      final PhoneBinding binding = PhoneBinding.fromJson(body);
+      expectTrue(binding.verified);
+      expectTrue(binding.profile.phoneVerified);
+      // The two are independent on purpose: `verified` confirms *this request*
+      // proved the number, `phone_verified` is a state that could already be true.
+      final Map<String, dynamic> stale = _profileJson(phoneVerified: true);
+      stale['verified'] = false;
+      expectFalse(PhoneBinding.fromJson(stale).verified);
+      expectTrue(PhoneBinding.fromJson(stale).profile.phoneVerified);
+    });
+  });
+
+  group('refusal reasons', () {
+    ApiException refusal(String reason) => ApiException.fromEnvelope(<String, dynamic>{
+      'code': 'FORBIDDEN',
+      'message': 'refused',
+      'details': <String, dynamic>{'reason': reason},
+    }, statusCode: 403);
+
+    test("reads the guard's reason out of details", () {
+      expect(refusal('PHONE_NOT_VERIFIED').reason, 'PHONE_NOT_VERIFIED');
+      expectTrue(refusal('PHONE_NOT_VERIFIED').isPhoneNotVerified);
+      expectTrue(refusal('PHONE_NOT_VERIFIED').needsPhoneUnlock);
+      expectTrue(refusal('PHONE_REVERIFY_DUE').isPhoneReverifyDue);
+      expectTrue(refusal('PHONE_REVERIFY_DUE').needsPhoneUnlock);
+      expectTrue(refusal('HUMAN_VERIFICATION_REQUIRED').isHumanVerificationRequired);
+      expectTrue(refusal('REVIEWER_ACCOUNT_EXPIRED').isReviewerExpired);
+      // Both phone refusals land on the same screen, so neither alone is the test.
+      expectFalse(refusal('HUMAN_VERIFICATION_REQUIRED').needsPhoneUnlock);
+    });
+
+    test('an unrelated refusal is not a phone problem', () {
+      final ApiException forbidden = ApiException.fromEnvelope(<String, dynamic>{
+        'code': 'FORBIDDEN',
+        'message': 'nope',
+        'details': <String, dynamic>{},
+      }, statusCode: 403);
+      expect(forbidden.reason, null);
+      expectFalse(forbidden.needsPhoneUnlock);
+    });
+
+    test('a non-string reason is ignored rather than thrown on', () {
+      // The error path is the worst place to discover a contract change: an
+      // `as String?` here would turn a handled refusal into a crash.
+      final ApiException odd = ApiException.fromEnvelope(<String, dynamic>{
+        'code': 'FORBIDDEN',
+        'message': 'refused',
+        'details': <String, dynamic>{'reason': 42},
+      }, statusCode: 403);
+      expect(odd.reason, null);
+      expectFalse(odd.needsPhoneUnlock);
+    });
+
+    test('a reviewer refusal is 403, so it is not an auth failure', () {
+      // 401 would tell the client to re-authenticate, which cannot help — a
+      // reviewer who retried with fresh credentials would be told the same thing.
+      final ApiException expired = refusal('REVIEWER_ACCOUNT_EXPIRED');
+      expectFalse(expired.isAuthFailure);
+      expectFalse(expired.isTransient);
+      expectFalse(expired.needsPhoneUnlock, reason: 'a lockout is not a phone problem');
+    });
+  });
+
+  group('AuthOutcome', () {
+    test('reads `created` off the same body as the session', () {
+      final Map<String, dynamic> body = <String, dynamic>{
+        'access_token': 'a',
+        'refresh_token': 'r',
+        'created': true,
+        'user': <String, dynamic>{'id': 'u', 'phone_masked': '+852****4567', 'role': 'PASSENGER'},
+      };
+      expectTrue(AuthOutcome.fromJson(body).created);
+      expect(AuthOutcome.fromJson(body).session.user.role, UserRole.passenger);
+      // `/auth/login` says false; `/auth/refresh` omits the key entirely.
+      body['created'] = false;
+      expectFalse(AuthOutcome.fromJson(body).created);
+      body.remove('created');
+      expectFalse(AuthOutcome.fromJson(body).created);
     });
   });
 }
