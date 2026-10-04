@@ -34,7 +34,7 @@ nginx 讀不到憑證會**直接啟動失敗並進入無限重啟**（`restart: 
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
   run --rm -p 80:80 certbot certonly --standalone \
   --preferred-challenges http \
-  -d api.hkfastdc.com \
+  -d hkfastdc.com \
   --email ops@hkfastdc.com --agree-tos --no-eff-email
 
 # 2. 再啟動整個堆疊
@@ -50,23 +50,36 @@ nginx 與 certbot 是兩個容器，**之間沒有訊號通道**，而 nginx 只
 憑證有效期而言，這把「續期後憑證閒置」的上限壓到 6 小時，換來的是不必在兩個容器
 之間做訊號轉發。
 
-### 把主機名換掉
+### 主機名：`hkfastdc.com`，唯一一個（2026-10-04 已定）
 
-`nginx/hkfastdc.conf` 內目前是佔位符 `api.hkfastdc.com`。
-**注意**：repo 內目前有**三種**拼法——文檔寫 `hkfastdc.com`，
-`mobile/lib/core/config/app_config.dart` 的註釋寫 `hkfastdc.com`，
-console 的 server block 寫 `console.hkfastdc.com`。
-三者都還不是決定，請擇一並保持一致。`PUBLIC_BASE_URL` 必須是同一台主機的
-`https://` 來源，否則驗證信會把使用者帶到別的地方。
+以前 repo 內有**三種**拼法並存而沒有任何一個是決定。現在決定了：**單一
+hostname `hkfastdc.com`，沒有 `api.` 也沒有 `console.` 前綴。** 所有東西用
+**路徑**分開，都在同一個 origin 上：
 
-`ssl_certificate` 的路徑把主機名寫死在裡面（`/etc/letsencrypt/live/<host>/…`），
+| 路徑 | 服務 |
+|---|---|
+| `/` | API（`location /` 保持原樣，所以既有路由一行沒改） |
+| `/ws/` | API，WebSocket upgrade |
+| `/console/` | 管理後台（靜態檔，`/var/www/console`） |
+
+同 origin 不只是整齊：console 用**相對** `/api/*` 呼叫（見
+`admin-web/web/vite.config.ts`），所以**沒有 CORS preflight**，也只需要簽一張憑證。
+`CORS_ORIGINS` 仍然填這個 origin，以備日後有別的 host 的呼叫者。
+
+`PUBLIC_BASE_URL` 必須是同一台主機的 `https://` 來源，否則驗證信會把使用者帶到
+別的地方。
+
+`ssl_certificate` 的路徑把主機名寫死在裡面（`/etc/letsencrypt/live/hkfastdc.com/…`），
 所以**改漏一處**的後果不是警告，是 nginx 找不到 cert 而**啟動失敗**
-（`docker-compose.prod.yml` 的 api 註釋說明它會 restart-loop）。若要一次解掉
-「三種拼法 + cert 路徑寫死」兩個問題：把 conf 移到
-`deploy/nginx/templates/hkfastdc.conf.template`，nginx 官方 image 會對它做
-`envsubst`，用 `${PUBLIC_HOSTNAME}` 取代全部四處。**此改動需要一台真的 nginx
-才驗證得了**（本 repo 的部署設定一律無法在本機跑），所以在此只記錄做法，
-不預先改動。
+（`docker-compose.prod.yml` 的 api 註釋說明它會 restart-loop）。conf 內共**五處**
+寫死主機名，要同步改。
+
+> 先前這裡建議用 `envsubst` 模板把主機名參數化。**主機名定了之後就不需要了**
+> —— 那個做法存在的理由是「三種拼法無法收斂」，而現在收斂了。多一層模板只會多
+> 一個要對齊的地方。
+
+console 的靜態檔要放進 nginx 容器（`/var/www/console`），來源是
+`cd admin-web/web && npm run build` 的 `dist/`。
 
 ## 三個必須對齊的設定（否則會靜默失效）
 
@@ -206,7 +219,8 @@ R2 與 VPS 若在同一個帳號下，一次帳號事故會同時帶走兩者。
 
 ### 其他
 
-- **主機名**：`hkfastdc.com` 與 `hkfastdc.com` 兩種拼法並存，尚未決定。
-- **後台主控台（`admin-web/web`）**：`nginx/hkfastdc.conf` 末端有一段被註解掉的
-  SPA server block。目前未啟用；要用的話得先把 `npm run build` 的產物放到 nginx
-  容器內（`/var/www/console`），並為該主機名另簽一張憑證。
+- **主機名**：已定為 `hkfastdc.com`，單一 origin（見上面「主機名」一節）。
+- **後台主控台（`admin-web/web`）**：`nginx/hkfastdc.conf` 內已有**啟用中**的
+  `location /console/`，與 API 同一個 origin，**不需要另簽憑證**。剩下的是把
+  `npm run build` 的 `dist/` 放進 nginx 容器的 `/var/www/console`（目前 compose
+  沒有這個 volume，要加）。在此之前 `/console/` 會回 404，其餘一切照常。

@@ -113,7 +113,7 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
 
 | 項目 | 阻塞原因 |
 |---|---|
-| **P1-1 WS token 走 `?token=`** | `app/api/ws.py` 仍是 query param。設計上**刻意如此**（瀏覽器 WS 無 header 通道），已有 `StripTokenQueryFilter` 兜底。反代已定為 nginx（`deploy/nginx/hkfastdc.conf`），其 `log_format` 用 `$uri` 而非 `$request_uri`，查詢字串（連 token）不會落地 —— **殘餘洩漏已封**。**仍待辦**：選定主機名（repo 內有**三種**拼法並存：文檔 `hkfastdc.com`、`app/api/ws.py` 註解 `hkfastdc.com`、nginx 註解區塊 `console.hkfastdc.com`）。nginx 檔內同時寫入憑證路徑，改錯會令 nginx **啟動失敗**而非警告。 |
+| **P1-1 WS token 走 `?token=`** | `app/api/ws.py` 仍是 query param。設計上**刻意如此**（瀏覽器 WS 無 header 通道），已有 `StripTokenQueryFilter` 兜底。反代已定為 nginx（`deploy/nginx/hkfastdc.conf`），其 `log_format` 用 `$uri` 而非 `$request_uri`，查詢字串（連 token）不會落地 —— **殘餘洩漏已封**。**主機名已定（2026-10-04）：`hkfastdc.com`，單一 origin。** console 掛 `/console/`（靜態檔），API 保持 `location /`，所以既有路由一行沒改。原本三種拼法已全部統一，`api.` 與 `console.` 前綴移除。nginx 檔內**憑證路徑仍寫死主機名（共五處）**，改漏一處的後果是 nginx **啟動失敗並 restart-loop**，不是警告。 |
 | **P1-4 備份 — off-host destination 未選擇** | script 已完成並實跑 PASS（`scripts/ops/db_backup.py`，27 tests，還原演練 49 tables / 17,627 rows 全對）。只剩**選擇 destination**。 |
 | **WhatsApp / FCM / Google Maps 未接** | config 欄位存在、env 空。需要三家 provider 的憑證。 |
 | **P2-2 遺留：部分退款** | 現時只做全額退還。 |

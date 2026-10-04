@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 /// on the same origin.
 ///
 /// Build against a real host with:
-///   flutter run --dart-define=API_BASE_URL=https://api.hkfastdc.com
+///   flutter run --dart-define=API_BASE_URL=https://hkfastdc.com
 class AppConfig {
   const AppConfig._();
 

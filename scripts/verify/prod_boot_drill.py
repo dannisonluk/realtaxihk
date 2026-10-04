@@ -63,9 +63,9 @@ _PROD_OK = {
     "POSTGRES_PASSWORD": "real",
     "SMTP_HOST": "smtp.example.com",
     "SMTP_FROM": "no-reply@example.com",
-    "PUBLIC_BASE_URL": "https://api.hkfastdc.com",
+    "PUBLIC_BASE_URL": "https://hkfastdc.com",
     "TRUSTED_PROXY_COUNT": "1",
-    "CORS_ORIGINS": '["https://console.hkfastdc.com"]',
+    "CORS_ORIGINS": '["https://hkfastdc.com"]',
     "TURNSTILE_SECRET_KEY": "0x4AAAAAAA-real-turnstile-secret",
 }
 
@@ -137,7 +137,7 @@ CASES = [
     ),
     (
         "prod + plain-http CORS origin",
-        {**_PROD_OK, "CORS_ORIGINS": '["http://console.hkfastdc.com"]'},
+        {**_PROD_OK, "CORS_ORIGINS": '["http://hkfastdc.com"]'},
         False,
         "https://",
     ),

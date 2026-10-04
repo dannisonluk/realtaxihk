@@ -26,15 +26,15 @@ services:
       # See app/core/client_ip.py::client_ip and deploy/README.md.
       TRUSTED_PROXY_COUNT: "1"
 
-      # Contrast the base file, which defaults this to the production-looking
-      # `["https://hkfastdc.com"]`. That default is a hostname, and a hostname
-      # is a guess: this repo has three spellings of it in circulation and no
-      # single decision (see the nginx hostname note in the base file). A wrong
-      # origin does not break anything loudly — the browser blocks the request
-      # and the server log stays empty — so the overlay demands a real value
-      # rather than inheriting a plausible one. `:?` makes an unset value a hard
-      # error at `up`, next to the other credentials this file already requires.
-      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS in .env — e.g. '["https://admin.example.com"]'}
+      # The base file defaults this to `["https://hkfastdc.com"]`, which is now
+      # the decided hostname (see the nginx header comment) — so the default is
+      # no longer a guess. The overlay still demands an explicit value, because
+      # a wrong origin does not break anything loudly: the browser blocks the
+      # request and the server log stays empty. A plausible-looking default is
+      # exactly the kind of value that ships broken. `:?` makes an unset value a
+      # hard error at `up`, next to the other credentials this file already
+      # requires.
+      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS in .env — e.g. '["https://hkfastdc.com"]'}
 
       # ---- connection pool -------------------------------------------------
       # These three numbers are ONE decision, not three. What has to stay under
