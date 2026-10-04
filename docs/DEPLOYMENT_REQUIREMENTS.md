@@ -230,13 +230,18 @@
 
 | # | 項目 | 現況 | 風險 |
 |---|---|---|---|
-| 1 | **多 instance 的 jobs 去重** | 無開關；`JOBS_ENABLED` 是全域 | 多 instance 會重複 sweep / purge |
-| 2 | **`WS_MAX_CONNECTIONS_TOTAL` 是 per-process** | 多 worker 時總容量 ×N | 與預期不符，需明確決定 |
-| 3 | **Admin console 無 refresh token** | `AdminSession` 只有 `access_token` | **15 分鐘後 session 硬死**，見 `SECURITY.md` 與發現報告 |
-| 4 | **Console TOTP 無 QR 圖** | 只顯示 base32 secret 與 otpauth URI | 首次登入對非技術管理員不友善，需手動輸入 32 字元 |
-| 5 | **`/auth/refresh` 對 admin token** | 伺服器端 `RefreshService` 只認 `users` | admin 無 refresh 路徑（與 #3 同源） |
-| 6 | **ruff format 未過** | 16 個檔案需重排 | CI 若加 format gate 會紅 |
-| 7 | **`alembic downgrade` 演練** | 未測 | 回滾路徑未驗證 |
+| 1 | **多 instance 的 jobs 去重** | 無開關；`jobs_enabled` 是全域（`app/core/config.py:125`） | 多 instance 會重複 sweep / purge。**單台 VPS 部署不受影響**；橫向擴展前必須處理 |
+| 2 | **`ws_max_connections_total` 是 per-process** | `app/main.py:254` 把它傳給單一 process 的 limiter | 多 worker 時總容量 ×N，與預期不符，需明確決定 |
+| 3 | **`alembic downgrade` 演練** | 未測 | 回滾路徑未驗證 |
+
+**已結案，不要再當成 gap 處理**（此表曾把這四項列為未做，實際已完成）：
+
+| 項目 | 現況 |
+|---|---|
+| Admin console 無 refresh token | ✅ `/api/v1/admin/auth/refresh` 已通（HttpOnly cookie + CSRF double-submit），見 `SECURITY.md` SEV-1 |
+| Console TOTP 無 QR 圖 | ✅ `qrcode.react` 在本機渲染 SVG，secret 不經第三方；已用獨立解碼器驗證，見 `ADMIN_AUTH.md` 缺口 #1 |
+| `/auth/refresh` 對 admin token | ✅ 同第一項 |
+| `ruff format` 未過 | ✅ 全樹已格式化（184 files），CI 已加 `ruff format --check` gate 防復發 |
 
 ---
 

@@ -133,6 +133,7 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
 
 | 缺口 | 影響 | 為什麼現在是這樣 |
 |---|---|---|
+| **P4 in-trip 重新設計未實作（最大的一項）** | 訂單狀態機仍是 `IN_TRIP → COMPLETED` 的死巷（`app/services/order/state_machine.py`）。行程中改目的地、司機中途結束、到達雙重驗證、違約扣款、$5 平台費全部沒有 —— 乘客與司機在行程中都只有「完成」一個動作 | 設計已完成且**七個 DECISION 全部拍板**，只差實作，見 [`IN_TRIP_REDESIGN.md`](IN_TRIP_REDESIGN.md) §9。它會動 `ORDER_TRANSITIONS` 與兩條由測試守住的不變式（終態無出邊、行程中不可達 `CANCELLED`），所以不能順手改 |
 | **沒有補完個人資料的畫面** | `POST /identity/profile` 要 username／given name／family name，而 App 沒有任何地方呼叫它，所以註冊出來的帳號 `username IS NULL`，帳戶頁只能退回顯示遮蔽後的電話 | 註冊刻意不收姓名 —— 那會在一個以「短」為目的的表格上加第四個必填欄位。要補就是登入後的一次性提示，不是把它塞回註冊 |
 | **沒有改密碼／忘記密碼流程** | 忘記密碼的帳號只剩「已驗證號碼 + OTP」這條次要登入，而它要求 `phone_verified_at IS NOT NULL` —— **未驗證電話又忘了密碼的帳號無路可走** | 後端也沒有 `POST /auth/password/*`，所以這同時是後端缺口。次要登入覆蓋得到一部分，覆蓋不到這一類 |
 | **`GET /identity/me` 不在 `mobile/test/fixtures/` 內** | `tool/verify_contract.dart` 的 fixture 迴圈**驗不到 `Profile`**，而 `Profile` 是唯一帶 `phone_verified` 的模型 —— 也就是「能不能叫車」的判準。它目前只有 `run_tests.dart` 裡手寫的樣本 | 產 fixture 需要跑著的 API（`scripts/dev/gen_mobile_fixtures.py`）。補上之後 `Profile` 才會像其他模型一樣被真回應釘住 |
