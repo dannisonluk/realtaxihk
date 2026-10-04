@@ -216,26 +216,41 @@ assert statuses[-1] in (401, 429)           # 舊
 
 ---
 
-### 🟡 SEV-3：顯示層 round-mode 不一致（未修）
+### ✅ SEV-3（已修復）：顯示層 round-mode 不一致
 
-**位置**：`app/services/admin/analytics_service.py:141`、`:191`、`:224`
+**原位置**：`app/services/admin/analytics_service.py`（三個呼叫點）
+
+原本三處寫成：
 
 ```python
 return str((Decimal(numerator) / denominator).quantize(Decimal("0.01")))
 ```
 
 `Decimal.quantize` **預設是 ROUND_HALF_EVEN（銀行家捨入）**，不是商業慣用的
-ROUND_HALF_UP。全專案的金額路徑（`app/core/money.py:42,52`、`fare_calculator.py:288`）
-都**明確**帶 `rounding=ROUND_HALF_UP`，只有這三處漏了。
-
-**實測差異**：`1/200 → 0.00`（應 0.01）、`1/8 → 0.12`（應 0.13）、`1.005 → 1.00`（應 1.01）。
+ROUND_HALF_UP。全專案的金額路徑都**明確**帶 `rounding=ROUND_HALF_UP`，只有這三處
+漏了 —— 於是同一張後台畫面上，比率用 HALF_EVEN、旁邊的金額用 HALF_UP，而 `sum()`
+的總計又是從那些**已渲染的字串**加起來的。實測差異：`1/200 → 0.00`（應 0.01）、
+`1/8 → 0.12`（應 0.13）、`1.005 → 1.00`（應 1.01）。兩套規則各自都站得住，
+同時出現在同一個 response 就站不住。
 
 **影響**：**僅顯示層**。這些是衍生比率與距離統計，**不是儲存的金額**，
 所以不影響帳目正確性。但一個「統計數字偶爾差一分」的後台會侵蝕信任。
 
-**為何未順手改**：需要先確認「統計比率該不該用商業捨入」是產品決定，不是純技術
-選擇（會計上 HALF_EVEN 反而更中性）。**建議你決定後再改**，改法是這三處補
-`rounding=ROUND_HALF_UP`，或統一在 `money.py` 開一個 `ratio_str()`。
+**修法**：新增 `app/core/money.py::ratio_str()` —— half-up，但**不宣稱是錢**
+（`money_str` 用在衍生數字上等於對數字的身份說謊）。三處呼叫點與 `_ratio_2dp()`
+全部改走它。`tests/test_money_input_annotations.py` 用 AST 守住這個家族的註解型別。
+
+**決策記錄（2026-10-04）**：用戶原先的意向是「金額保留原始數值、不做 rounding；
+若一定要 rounding 則偏好 HALF_EVEN」。實際情況是：
+
+- **金額本來就沒有精度損失。** 儲存是整數 cent（`app/core/money.py`），寫入時不
+  捨入；`money_str()` 把 cent 值渲染成 2dp 是**無損**的，因為 cent 值本身就是
+  2dp。唯一會產生小數的輸入 —— meter fare 打折 —— 在 `fare_calculator.py:291`
+  已明確帶 `ROUND_HALF_UP`。所以「保留原始數值」在金額路徑上**已經是事實**。
+- **HALF_EVEN 沒有被採用。** 理由就是上面那句：同一個 response 內不能有兩套捨入
+  規則，而金額那一側已經是全專案統一的 half-up。要改成 HALF_EVEN 是可以的，但
+  必須**連金額一起改**（`ratio_str` 與 `money_str` 同時），否則就是把這個 bug
+  反過來再犯一次。
 
 ---
 
