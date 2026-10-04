@@ -39,18 +39,28 @@ import { useLoad } from '../app/useLoad';
 import { PageHead } from '../app/Shell';
 import { useI18n } from '../i18n';
 
-/** Today as `YYYY-MM-DD` in the operator's own timezone, for the date inputs. */
+/**
+ * Today as `YYYY-MM-DD` **in Hong Kong**, for the date inputs.
+ *
+ * The server buckets analytics by Hong Kong calendar day. A console using the
+ * operator's own timezone asks for a different range by a day whenever the
+ * operator sits west of UTC+8, so the newest bucket reads as a drop to zero.
+ * Hong Kong has no DST, so a fixed offset is exact.
+ */
+const HK_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+function hkDay(offsetDays = 0): string {
+  return new Date(Date.now() + HK_OFFSET_MS - offsetDays * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
 function today(): string {
-  const now = new Date();
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 10);
+  return hkDay();
 }
 
 function daysAgo(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 10);
+  return hkDay(days);
 }
 
 /**
