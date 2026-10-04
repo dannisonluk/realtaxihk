@@ -407,6 +407,34 @@ void showInfo(BuildContext context, String message) {
     ..showSnackBar(SnackBar(content: Text(message)));
 }
 
+/// A refusal with a way out, for a failure whose fix is on another screen.
+///
+/// [showError] is right when the user can simply retry from where they are. It is
+/// wrong when the server refused for a reason that has to be resolved elsewhere —
+/// a 403 `PHONE_NOT_VERIFIED` on a booking, say — because a bare message leaves
+/// the user holding a form that will keep failing, with no route to the fix.
+///
+/// A `SnackBar` action rather than a dialog: the user is mid-form, the form is
+/// still valid, and a modal would take it away to ask a question with one obvious
+/// answer. The longer duration is because there is now something to read and then
+/// act on.
+void showErrorAction(
+  BuildContext context,
+  Object error, {
+  required String actionLabel,
+  required VoidCallback onAction,
+}) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(error.userMessage),
+        duration: const Duration(seconds: 8),
+        action: SnackBarAction(label: actionLabel, onPressed: onAction),
+      ),
+    );
+}
+
 /// Ask before an irreversible action, and return whether the user agreed.
 ///
 /// This replaces the `AlertDialog` this app used to build at each call site.

@@ -12,6 +12,7 @@ import '../../models/order.dart';
 import '../../router/app_router.dart';
 import '../../state/data_providers.dart';
 import '../../state/providers.dart';
+import '../auth/phone_unlock_screen.dart';
 import '../shared/map_panel.dart';
 import '../shared/widgets.dart';
 
@@ -97,7 +98,12 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
       // A 409 means another driver won the race — the lock plus the conditional
       // UPDATE guarantee exactly one winner, so this is not retryable.
       if (mounted) {
-        showError(context, e);
+        // `POST /orders/{id}/grab` runs `require_phone_current`. A driver is not
+        // exempt: a proven number is what makes the account accountable for the
+        // orders it takes on.
+        if (!offerPhoneUnlockIfNeeded(context, e)) {
+          showError(context, e);
+        }
         ref.invalidate(nearbyOrdersProvider);
       }
     } finally {

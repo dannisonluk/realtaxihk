@@ -10,6 +10,7 @@ import '../../models/fare.dart';
 import '../../models/order.dart';
 import '../../router/app_router.dart';
 import '../../state/providers.dart';
+import '../auth/phone_unlock_screen.dart';
 import '../shared/map_panel.dart';
 import '../shared/widgets.dart';
 
@@ -172,7 +173,15 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
       setState(() => _estimate = null);
       await context.push('${Routes.trackTrip}/${order.id}');
     } on ApiException catch (e) {
-      if (mounted) {
+      if (!mounted) {
+        return;
+      }
+      // `POST /orders` runs `require_phone_current`, so this is the one place a
+      // passenger can meet a 403 they cannot resolve from this screen. The quote
+      // above is **not** gated, so it must keep the plain toast: an unverified
+      // passenger is allowed to see prices, and offering the unlock there would
+      // imply otherwise.
+      if (!offerPhoneUnlockIfNeeded(context, e)) {
         showError(context, e);
       }
     } finally {

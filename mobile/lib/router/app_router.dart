@@ -10,6 +10,9 @@ import '../features/admin/admin_screen.dart';
 import '../features/admin/admin_settlement_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/otp_screen.dart';
+import '../features/auth/phone_login_screen.dart';
+import '../features/auth/phone_unlock_screen.dart';
+import '../features/auth/register_screen.dart';
 import '../features/driver/driver_active_trip_screen.dart';
 import '../features/driver/driver_earnings_screen.dart';
 import '../features/driver/driver_jobs_screen.dart';
@@ -67,11 +70,19 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
         builder: (BuildContext context, GoRouterState state) => const LoginScreen(),
         routes: <RouteBase>[
           GoRoute(
+            path: 'register',
+            builder: (BuildContext context, GoRouterState state) => const RegisterScreen(),
+          ),
+          GoRoute(
+            path: 'phone',
+            builder: (BuildContext context, GoRouterState state) => const PhoneLoginScreen(),
+          ),
+          GoRoute(
             path: 'otp',
             builder: (BuildContext context, GoRouterState state) {
               // `state.extra` is null when `/login/otp` is reached directly (a
               // deep link, a hot reload onto the location) rather than by
-              // pushing from the login screen.
+              // pushing from the phone screen.
               //
               // An OTP screen with no phone number is a state with no meaning:
               // it renders "code sent to " with nothing after it, and "resend"
@@ -87,6 +98,14 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
             },
           ),
         ],
+      ),
+      GoRoute(
+        // The phone unlock. On the root navigator and **outside** `/login`: the
+        // redirect sends a signed-in user away from every pre-auth path, and the
+        // accounts that need this screen are exactly the ones already signed in.
+        path: Routes.phoneUnlock,
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (BuildContext context, GoRouterState state) => const PhoneUnlockScreen(),
       ),
 
       // ---- passenger -----------------------------------------------------

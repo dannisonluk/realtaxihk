@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/driver.dart';
 import '../../models/enums.dart';
+import '../../models/identity.dart';
 import '../../router/app_router.dart';
 import '../../state/data_providers.dart';
 import '../../state/providers.dart';
@@ -52,6 +53,35 @@ class AccountScreen extends ConsumerWidget {
                     color: theme.colorScheme.primary,
                   ),
                 ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AppTheme.space4),
+          Text('電話驗證', style: theme.textTheme.titleSmall),
+          const SizedBox(height: AppTheme.space2),
+          Card(
+            // Read from `profileProvider`, not `currentUserProvider`: the token
+            // block carries no verified flag, so only the full profile knows
+            // whether a number has been **proven**. That flag is the whole
+            // difference between an account that can call a taxi and one that
+            // cannot.
+            child: AsyncValueView<Profile?>(
+              value: ref.watch(profileProvider),
+              onRetry: () => ref.invalidate(profileProvider),
+              builder: (Profile? data) => ListTile(
+                leading: Icon(
+                  (data?.canCallTaxi ?? false) ? Icons.verified_user : Icons.gpp_maybe_outlined,
+                  color: (data?.canCallTaxi ?? false) ? AppTheme.loss : AppTheme.pending,
+                ),
+                title: const Text('解鎖 call車'),
+                subtitle: Text(switch (data) {
+                  null => '正在讀取…',
+                  Profile(canCallTaxi: true, phoneMasked: final String masked) => '已驗證 $masked',
+                  Profile(phoneReverifyBlocked: true) => '驗證已逾期，需重新驗證才能叫車',
+                  _ => '尚未驗證電話號碼，驗證後即可叫車',
+                }),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push(Routes.phoneUnlock),
               ),
             ),
           ),

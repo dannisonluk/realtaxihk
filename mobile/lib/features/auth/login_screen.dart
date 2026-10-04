@@ -1,23 +1,30 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/human/turnstile.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/theme/app_theme.dart';
 import '../../router/app_router.dart';
 import '../../state/providers.dart';
 import '../shared/widgets.dart';
 
-/// Phone entry — the **secondary** login.
+/// Sign in with an email and a password — the **primary** door.
 ///
-/// The primary credential is email + password (`POST /auth/register` /
-/// `POST /auth/login`); this app has no screen for either yet, so this is the
-/// only door it currently has. Only an **already-verified** number can pass:
-/// `OtpService.verify_otp` requires `phone_verified_at IS NOT NULL`, so an
-/// unproven number is refused rather than turned into a new account. Proving a
-/// number is what unlocks calling a taxi (`/identity/phone/*`), and it is not a
-/// precondition for having an account.
+/// There are three ways into a session and this is the one that owns the account:
+///
+///  * email + password (here) — the primary credential;
+///  * a phone number + a code ([/login/phone]) — secondary, and only for a number
+///    that has already been **proven**;
+///  * registration ([/login/register]) — which creates the account and signs in.
+///
+/// A phone number is no longer a login credential in its own right. It is a claim
+/// at registration, a secondary login once proven, and the thing that unlocks
+/// calling a taxi. Proving it lives on the phone screen in the account area, not
+/// here, and it is **not** a precondition for having an account.
+///
+/// On success this screen does not navigate: the controller publishes the session
+/// and the router's `redirect` sends the account wherever its role belongs.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -26,45 +33,57 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final TextEditingController _phone = TextEditingController();
+  final TextEditingController _email = TextEditingController();
+  final TextEditingController _password = TextEditingController();
+  final GlobalKey<TurnstileChallengeState> _turnstile = GlobalKey<TurnstileChallengeState>();
+
+  String? _humanToken;
   bool _busy = false;
+  bool _showPassword = false;
 
   @override
   void dispose() {
-    _phone.dispose();
+    _email.dispose();
+    _password.dispose();
     super.dispose();
   }
 
-  /// The server enforces `^\+852\d{8}$`, so validate the same shape here and
-  /// never send a number the API will reject with a 422.
-  String? get _e164 {
-    final String digits = _phone.text.trim();
-    return digits.length == 8 ? '+852$digits' : null;
-  }
-
-  Future<void> _sendCode() async {
-    final String? phone = _e164;
-    if (phone == null) {
-      showInfo(context, '請輸入 8 位香港手機號碼');
+  Future<void> _submit() async {
+    final String email = _email.text.trim();
+    if (email.isEmpty || _password.text.isEmpty) {
+      showInfo(context, '請輸入電郵及密碼');
+      return;
+    }
+    if (turnstileMode == TurnstileMode.enabled && _humanToken == null) {
+      showInfo(context, '請先完成真人驗證');
       return;
     }
 
     setState(() => _busy = true);
     try {
-      await ref.read(authControllerProvider.notifier).requestOtp(phone);
-      if (!mounted) {
-        return;
-      }
-      await context.push(Routes.otp, extra: phone);
+      await ref
+          .read(authControllerProvider.notifier)
+          .login(email: email, password: _password.text, humanToken: _humanToken);
+      // No navigation: the router's redirect reacts to the new session.
     } on ApiException catch (e) {
       if (mounted) {
+        // The server's own sentence. A lockout arrives here as a 401 with a
+        // message that says so — this screen must not replace it with "wrong
+        // password", which is what a bare status check would produce.
         showError(context, e);
+        _spendHumanToken();
       }
     } finally {
       if (mounted) {
         setState(() => _busy = false);
       }
     }
+  }
+
+  /// A Turnstile token is single-use, and this request already spent it.
+  void _spendHumanToken() {
+    _humanToken = null;
+    _turnstile.currentState?.reset();
   }
 
   @override
@@ -74,54 +93,74 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(AppTheme.space6, 64, AppTheme.space6, AppTheme.space8),
+          padding: const EdgeInsets.fromLTRB(AppTheme.space6, 48, AppTheme.space6, AppTheme.space8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              // Centred because the column stretches. The poster is the
-              // wordmark, so nothing under it repeats the name; the line below
-              // says what this screen wants instead.
-              const Center(child: BrandLogo(size: 160)),
+              // Centred because the column stretches. The poster is the wordmark,
+              // so nothing under it repeats the name.
+              const Center(child: BrandLogo(size: 140)),
               const SizedBox(height: AppTheme.space6),
-              Text(
-                '輸入電話號碼，我們會以 WhatsApp 發送驗證碼。',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              TextField(
+                controller: _email,
+                autofocus: true,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                autocorrect: false,
+                decoration: const InputDecoration(labelText: '電郵', hintText: 'you@example.com'),
+              ),
+              const SizedBox(height: AppTheme.space4),
+              TextField(
+                controller: _password,
+                obscureText: !_showPassword,
+                textInputAction: TextInputAction.done,
+                autocorrect: false,
+                enableSuggestions: false,
+                onSubmitted: (String _) => _submit(),
+                decoration: InputDecoration(
+                  labelText: '密碼',
+                  suffixIcon: IconButton(
+                    onPressed: () => setState(() => _showPassword = !_showPassword),
+                    tooltip: _showPassword ? '隱藏密碼' : '顯示密碼',
+                    icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility),
+                  ),
                 ),
               ),
-              const SizedBox(height: AppTheme.space8 + 8),
-              TextField(
-                controller: _phone,
-                autofocus: true,
-                keyboardType: TextInputType.phone,
-                textInputAction: TextInputAction.done,
-                maxLength: 8,
-                inputFormatters: <TextInputFormatter>[
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(8),
-                ],
-                onSubmitted: (String _) => _sendCode(),
-                decoration: const InputDecoration(
-                  labelText: '手機號碼',
-                  prefixText: '+852  ',
-                  counterText: '',
-                  hintText: '91234567',
-                ),
+              const SizedBox(height: AppTheme.space2),
+              TurnstileChallenge(
+                key: _turnstile,
+                onToken: (String token) => _humanToken = token,
+                onStale: () => _humanToken = null,
+                onError: (String code) {
+                  if (mounted) {
+                    showInfo(context, '真人驗證失敗（$code），請重試。');
+                  }
+                },
               ),
               const SizedBox(height: AppTheme.space6),
               FilledButton(
-                onPressed: _busy ? null : _sendCode,
+                onPressed: _busy ? null : _submit,
                 child: _busy
                     ? const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('發送驗證碼'),
+                    : const Text('登入'),
               ),
-              const SizedBox(height: AppTheme.space4),
+              const SizedBox(height: AppTheme.space3),
+              TextButton(
+                onPressed: _busy ? null : () => context.push(Routes.register),
+                child: const Text('還沒有帳戶？建立帳戶'),
+              ),
+              const Divider(height: AppTheme.space8),
+              TextButton(
+                onPressed: _busy ? null : () => context.push(Routes.phoneLogin),
+                child: const Text('以已驗證的電話號碼登入'),
+              ),
+              const SizedBox(height: AppTheme.space2),
               Text(
-                '只支援已驗證的號碼登入；新號碼不會在此建立帳戶。',
+                '只支援已驗證的號碼；新號碼請先建立帳戶。',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,

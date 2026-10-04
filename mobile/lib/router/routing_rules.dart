@@ -15,7 +15,26 @@ import '../models/enums.dart';
 abstract final class Routes {
   static const String splash = '/splash';
   static const String login = '/login';
+
+  /// Create an account. Nested under [login] so `resolveRedirect`'s existing
+  /// `location.startsWith(Routes.login)` case keeps it pre-auth — a sibling path
+  /// would need a second rule, and two rules for one idea drift.
+  static const String register = '/login/register';
+
+  /// The **secondary** door: an already-proven number plus a code.
+  static const String phoneLogin = '/login/phone';
+
   static const String otp = '/login/otp';
+
+  /// Proving a phone number — the call車 unlock.
+  ///
+  /// **Deliberately not under `/login`.** `resolveRedirect` sends a signed-in user
+  /// away from every `/login` path, so a route there would be unreachable for
+  /// exactly the accounts that need it: the ones already signed in without a
+  /// proven number. It is mounted on the root navigator, like
+  /// [driverOnboarding], because it is reached from the passenger account screen,
+  /// from the driver account screen, and from a 403 on the ride-request screen.
+  static const String phoneUnlock = '/phone/unlock';
 
   static const String request = '/passenger/request';
   static const String trips = '/passenger/trips';
