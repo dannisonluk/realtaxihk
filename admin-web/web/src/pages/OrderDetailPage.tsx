@@ -190,7 +190,7 @@ export function OrderDetailPage() {
                       <Money value={entry.amount_hkd} sign />
                     </td>
                     <td className="num">
-                      <Money value={entry.balance_after_hkd} />
+                      <Money value={entry.balance_after_hkd} sign />
                     </td>
                     <td>{entry.note || <span className="dim">—</span>}</td>
                   </tr>

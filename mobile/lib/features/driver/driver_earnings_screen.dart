@@ -259,7 +259,7 @@ class _LedgerTile extends StatelessWidget {
         children: <Widget>[
           MoneyText(entry.amountHkd, signed: true, style: theme.textTheme.titleSmall),
           Text(
-            '餘 ${entry.balanceAfterHkd.display}',
+            '餘 ${entry.balanceAfterHkd.hkd}',
             style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ],

@@ -57,6 +57,35 @@ class AccountScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: AppTheme.space4),
+          Text('個人資料', style: theme.textTheme.titleSmall),
+          const SizedBox(height: AppTheme.space2),
+          Card(
+            child: AsyncValueView<Profile?>(
+              value: ref.watch(profileProvider),
+              onRetry: () => ref.invalidate(profileProvider),
+              builder: (Profile? data) => ListTile(
+                leading: Icon(
+                  data?.username == null ? Icons.badge_outlined : Icons.person_outline,
+                  color: data?.username == null
+                      ? AppTheme.pending
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                title: const Text('姓名與使用者名稱'),
+                // The same "offer it, do not gate it" rule as the phone unlock
+                // below: the server never refuses anything for an incomplete
+                // profile (`AccountStatus` is a completeness flag), so this is a
+                // prompt rather than a locked door.
+                subtitle: Text(switch (data) {
+                  null => '正在讀取…',
+                  Profile(username: null) => '尚未設定，訂單與收據會顯示為空',
+                  _ => data.displayName ?? '已設定',
+                }),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push(Routes.profileSetup),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppTheme.space4),
           Text('電話驗證', style: theme.textTheme.titleSmall),
           const SizedBox(height: AppTheme.space2),
           Card(
@@ -190,9 +219,9 @@ class _DriverSection extends ConsumerWidget {
               DetailRow(label: '的士證號', value: driver.taxiDriverPlateNo),
               DetailRow(label: '車輛登記', value: driver.vehicleRegMark),
               if (driver.deposit != null)
-                DetailRow(label: '按金', valueWidget: MoneyText(driver.deposit!.balanceHkd)),
+                DetailRow(label: '按金', valueWidget: MoneyText(driver.deposit!.balanceHkd, signed: true)),
               if (driver.deposit != null && !driver.deposit!.isFulfilled)
-                DetailRow(label: '尚欠', valueWidget: MoneyText(driver.deposit!.shortfall)),
+                DetailRow(label: '尚欠', valueWidget: MoneyText(driver.deposit!.shortfall, signed: true)),
             ],
           ),
         ),

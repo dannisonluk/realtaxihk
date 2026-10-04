@@ -116,15 +116,21 @@ class OrderHistoryController extends AsyncNotifier<OrderHistoryState> {
       // The server sends no cursor, so the end is a short page — or a cursor
       // that did not advance, which is also terminal. Guarded on total pages so
       // a misbehaving server cannot grow this unboundedly.
+      //
+      // `page.nextCursor == merged.last.id` is *not* the non-advance test:
+      // when a full page arrives, `nextCursor` IS `merged.last.id` by
+      // construction (`models/order.dart`), so that comparison is true on every
+      // successful full page and would mark the list exhausted after one page.
+      // The real non-advance case is an empty page, already handled above;
+      // a non-empty page always advances because `before_id` is `items.last.id`.
       final bool shortPage = page.items.length < _pageSize;
-      final bool stuck = page.nextCursor == merged.last.id;
       final bool tooMany = merged.length > _pageSize * _maxPages;
 
       state = AsyncData<OrderHistoryState>(
         OrderHistoryState(
           items: merged,
           loadingMore: false,
-          exhausted: shortPage || stuck || tooMany,
+          exhausted: shortPage || tooMany,
         ),
       );
     } catch (error) {

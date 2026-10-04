@@ -7,8 +7,10 @@ import '../../core/network/api_exception.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/enums.dart';
 import '../../models/fare.dart';
+import '../../models/identity.dart';
 import '../../models/order.dart';
 import '../../router/app_router.dart';
+import '../../state/data_providers.dart';
 import '../../state/providers.dart';
 import '../auth/phone_unlock_screen.dart';
 import '../shared/map_panel.dart';
@@ -196,6 +198,10 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
     final ThemeData theme = Theme.of(context);
     final MapPoint? pickup = _pickup;
     final MapPoint? dropoff = _dropoff;
+    // Null while the profile is still loading, which is deliberately treated as
+    // "no prompt" rather than "no username" — a card that appears and then
+    // vanishes on every cold start reads as a bug.
+    final Profile? profile = ref.watch(profileProvider).value;
 
     return Scaffold(
       appBar: AppBar(
@@ -232,6 +238,28 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(AppTheme.space4),
                 children: <Widget>[
+                  // A brand-new account has no username — `POST /auth/register`
+                  // does not ask for one — and every receipt, order row and
+                  // roster line that names the passenger would then render "—".
+                  // Offered here, on the screen a fresh account lands on,
+                  // because this is the one place the gap is otherwise invisible.
+                  //
+                  // Offered, **not gated**: the server never refuses a booking
+                  // for an incomplete profile (`AccountStatus` is a completeness
+                  // flag, and no guard in `app/core/deps.py` reads it), so this
+                  // must not be the only way to reach the booking button either.
+                  if (profile != null && profile.username == null) ...<Widget>[
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.badge_outlined),
+                        title: const Text('補完個人資料'),
+                        subtitle: const Text('設定姓名後，訂單與收據會顯示你的名字'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => context.push(Routes.profileSetup),
+                      ),
+                    ),
+                    const SizedBox(height: AppTheme.space4),
+                  ],
                   SegmentedButton<_Target>(
                     segments: const <ButtonSegment<_Target>>[
                       ButtonSegment<_Target>(
@@ -424,6 +452,8 @@ class _FareBreakdownCard extends StatelessWidget {
             ),
             const Divider(height: AppTheme.space6),
             DetailRow(label: '起錶', valueWidget: MoneyText(estimate.meterFare, showSymbol: false)),
+            if (!estimate.discountPercent.isZero)
+              DetailRow(label: '折扣率', valueWidget: MoneyText(estimate.discountPercent, showSymbol: false)),
             if (!estimate.meterDiscount.isZero)
               DetailRow(label: '折扣', valueWidget: MoneyText(estimate.meterDiscount, signed: true)),
             if (!estimate.surchargesTotal.isZero)

@@ -34,6 +34,7 @@ class FareEstimate {
     required this.distanceKm,
     required this.waitingMin,
     required this.meterFare,
+    required this.discountPercent,
     required this.meterDiscount,
     required this.meterAfterDiscount,
     required this.surcharges,
@@ -41,6 +42,7 @@ class FareEstimate {
     required this.tip,
     required this.totalFare,
     required this.tariffVersion,
+    required this.isEstimate,
     required this.disclaimerEn,
     required this.disclaimerZh,
   });
@@ -50,6 +52,7 @@ class FareEstimate {
     distanceKm: asDouble(json['distance_km'], 'distance_km'),
     waitingMin: asDouble(json['waiting_min'], 'waiting_min'),
     meterFare: Money.parse(json['meter_fare']),
+    discountPercent: Money.parse(json['discount_percent']),
     meterDiscount: Money.parse(json['meter_discount']),
     meterAfterDiscount: Money.parse(json['meter_after_discount']),
     surcharges: asObjectList(json['surcharges'], 'surcharges', FareSurcharge.fromJson),
@@ -57,6 +60,7 @@ class FareEstimate {
     tip: Money.parse(json['tip']),
     totalFare: Money.parse(json['total_fare']),
     tariffVersion: asString(json['tariff_version'], 'tariff_version'),
+    isEstimate: json['is_estimate'] as bool? ?? true,
     disclaimerEn: asString(json['disclaimer_en'], 'disclaimer_en'),
     disclaimerZh: asString(json['disclaimer_zh'], 'disclaimer_zh'),
   );
@@ -65,6 +69,7 @@ class FareEstimate {
   final double distanceKm;
   final double waitingMin;
   final Money meterFare;
+  final Money discountPercent;
   final Money meterDiscount;
   final Money meterAfterDiscount;
   final List<FareSurcharge> surcharges;
@@ -72,6 +77,7 @@ class FareEstimate {
   final Money tip;
   final Money totalFare;
   final String tariffVersion;
+  final bool isEstimate;
 
   /// Cap. 374D requires the quote to be labelled an estimate and to carry the
   /// disclaimer; the server sends both and the UI must render them.

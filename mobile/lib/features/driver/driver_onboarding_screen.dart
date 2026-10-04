@@ -226,7 +226,7 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
               padding: const EdgeInsets.all(AppTheme.space4),
               child: Column(
                 children: <Widget>[
-                  DetailRow(label: '目前餘額', valueWidget: MoneyText(deposit.balanceHkd)),
+                  DetailRow(label: '目前餘額', valueWidget: MoneyText(deposit.balanceHkd, signed: true)),
                   DetailRow(label: '凍結中', valueWidget: MoneyText(deposit.heldHkd)),
                   DetailRow(label: '要求金額', valueWidget: MoneyText(deposit.requiredHkd)),
                   if (!deposit.isFulfilled)

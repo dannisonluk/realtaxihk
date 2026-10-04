@@ -30,6 +30,7 @@ import 'package:hkfastdc_mobile/core/network/api_exception.dart';
 import 'package:hkfastdc_mobile/core/network/wire.dart';
 import 'package:hkfastdc_mobile/core/phone.dart';
 import 'package:hkfastdc_mobile/core/security/password_policy.dart';
+import 'package:hkfastdc_mobile/core/security/username_policy.dart';
 import 'package:hkfastdc_mobile/models/auth.dart';
 import 'package:hkfastdc_mobile/models/admin.dart';
 import 'package:hkfastdc_mobile/models/driver.dart';
@@ -564,6 +565,19 @@ void _paginationTests() {
     test('stops on an empty page', () {
       final OrderPage page = OrderPage.fromJson(<String, dynamic>{'items': <Object?>[]});
       expect(page.nextCursor, null);
+    });
+
+    test('a full page is not exhausted: the cursor equals the last id by design', () {
+      // Regression for the history controller: `page.nextCursor == merged.last.id`
+      // used to be read as "no progress", but a full page's cursor IS the last id
+      // on the merged list, so that check made every full page the final page.
+      final Map<String, dynamic> full = <String, dynamic>{
+        'items': List<Object?>.generate(2, (int i) => _orderJson('id-$i')),
+      };
+      final OrderPage page = OrderPage.fromJson(full, limit: 2);
+      expect(page.items.length, 2);
+      expect(page.nextCursor, 'id-1');
+      expect(page.nextCursor, page.items.last.id, reason: 'the inferred cursor is the last id');
     });
 
     test('the ledger reads its cursor directly', () {
@@ -1199,6 +1213,33 @@ void _routingTests() {
       expect(go(location: Routes.phoneLogin), null);
       expect(go(location: Routes.register, user: passenger), Routes.request);
     });
+
+    test('the profile form is reachable, and is not a gate', () {
+      // Same shape as the unlock above: outside `/login`, so a signed-in account
+      // can reach it, and still requiring a session.
+      expectFalse(Routes.profileSetup.startsWith(Routes.login));
+      expect(go(location: Routes.profileSetup, user: passenger), null);
+      expect(go(location: Routes.profileSetup), Routes.login, reason: 'still needs a session');
+      // And no rule sends anyone *to* it. The server never refuses anything for
+      // an incomplete profile — `account_status` is a completeness flag — so a
+      // client-side redirect here would be stricter than the API. If this ever
+      // starts failing, someone has turned the offer into a gate.
+      for (final String location in <String>[
+        Routes.request,
+        Routes.trips,
+        Routes.passengerAccount,
+        Routes.driverJobs,
+      ]) {
+        expect(
+          go(location: location, user: passenger),
+          null,
+          reason: location,
+        );
+      }
+      // An admin account has no `users` row to complete a profile on, so the
+      // console keeps it out of the passenger app entirely.
+      expect(go(location: Routes.profileSetup, user: admin), Routes.adminKyc);
+    });
   });
 }
 
@@ -1257,6 +1298,71 @@ void _credentialTests() {
       // Too short *and* weak: the length message wins, because it is the first
       // thing to fix.
       expect(passwordProblem('password'), '密碼至少需要 12 個字元。');
+    });
+  });
+
+  group('username policy', () {
+    test('accepts what the server accepts', () {
+      // `^[a-z0-9][a-z0-9._-]{2,31}$` — one leading alphanumeric, then two to
+      // thirty-one more. The shortest legal handle is three characters.
+      expect(usernameProblem('abc'), null);
+      expect(usernameProblem('kaming.chan'), null);
+      expect(usernameProblem('a_b-c9'), null);
+      expect(usernameProblem(List<String>.filled(32, 'a').join()), null);
+      expect(usernameProblem(List<String>.filled(33, 'a').join()), '使用者名稱最多 32 個字元。');
+    });
+
+    test('normalises before judging, because the server does', () {
+      // `normalize_username` lower-cases and trims *before* `_assert_username`,
+      // so `KaMing` reaches the regex as `kaming` and is accepted. Rejecting the
+      // raw text would refuse a handle the API is happy with.
+      expect(normalizeUsername('  KaMing  '), 'kaming');
+      expect(usernameProblem('  KaMing  '), null);
+      // And the normalised form is what the reserved list is checked against,
+      // so an upper-cased reserved word is still reserved.
+      expect(usernameProblem('ADMIN'), '此使用者名稱已被保留，請改用其他名稱。');
+    });
+
+    test('refuses the reserved handles', () {
+      for (final String reserved in <String>[
+        'admin',
+        'root',
+        'support',
+        'system',
+        'realtaxi',
+        'null',
+        'undefined',
+      ]) {
+        expect(usernameProblem(reserved), '此使用者名稱已被保留，請改用其他名稱。', reason: reserved);
+      }
+      // `me` is in the server's reserved set too, but it is two characters and
+      // `_assert_username` tests the regex **before** the reserved list — so the
+      // reserved branch is unreachable for it. Asserting the reserved message
+      // here would pin behaviour the server never has.
+      expect(usernameProblem('me'), '使用者名稱至少需要 3 個字元。');
+      // A handle that merely contains a reserved word is fine — the server tests
+      // the whole string, not a substring.
+      expect(usernameProblem('admin2'), null);
+      expect(usernameProblem('meme'), null);
+    });
+
+    test('refuses the shapes the regex refuses', () {
+      expect(usernameProblem(''), '請輸入使用者名稱。');
+      expect(usernameProblem('   '), '請輸入使用者名稱。');
+      expect(usernameProblem('ab'), '使用者名稱至少需要 3 個字元。');
+      // Must start with a letter or digit: no leading dot, underscore or hyphen.
+      expect(usernameProblem('.abc'), '使用者名稱只可用小寫英文字母、數字、點、底線或連字號，並以字母或數字開頭。');
+      expect(usernameProblem('-abc'), '使用者名稱只可用小寫英文字母、數字、點、底線或連字號，並以字母或數字開頭。');
+      // No spaces, and no characters outside the allowed set.
+      expect(usernameProblem('ka ming'), '使用者名稱只可用小寫英文字母、數字、點、底線或連字號，並以字母或數字開頭。');
+      expect(usernameProblem('kaming!'), '使用者名稱只可用小寫英文字母、數字、點、底線或連字號，並以字母或數字開頭。');
+      expect(usernameProblem('陳大文'), '使用者名稱只可用小寫英文字母、數字、點、底線或連字號，並以字母或數字開頭。');
+    });
+
+    test('reports the first problem to fix, not a checklist', () {
+      // Too short *and* reserved: the length message wins, matching the order
+      // `_assert_username` checks in.
+      expect(usernameProblem('me'), '使用者名稱至少需要 3 個字元。');
     });
   });
 

@@ -392,14 +392,14 @@ function DepositSection({ driver }: { driver: DriverProfileDetail }) {
   const deposit = driver.deposit;
   const required = Number(deposit?.required_hkd ?? 0);
   const balance = Number(deposit?.balance_hkd ?? 0);
-  const progress = required > 0 ? Math.min(100, Math.round((balance / required) * 100)) : 0;
+  const progress = required > 0 ? Math.min(100, Math.max(0, Math.round((balance / required) * 100))) : 0;
   const fulfilled = deposit?.is_fulfilled ?? false;
 
   return (
     <Card className="card--pad">
       <Rows>
         <DetailRow label={t('driverDetail.depositAvailable')}>
-          <Money value={deposit?.balance_hkd ?? '0.00'} />
+          <Money value={deposit?.balance_hkd ?? '0.00'} sign />
         </DetailRow>
         <DetailRow label={t('driverDetail.depositFrozen')}>
           <Money value={deposit?.held_hkd ?? '0.00'} />
@@ -429,7 +429,7 @@ function DepositSection({ driver }: { driver: DriverProfileDetail }) {
         />
       </div>
       <div className="dim" style={{ marginTop: 6, fontSize: '12.5px' }}>
-        <Money value={deposit?.balance_hkd ?? '0.00'} /> /{' '}
+        <Money value={deposit?.balance_hkd ?? '0.00'} sign /> /{' '}
         <Money value={deposit?.required_hkd ?? '0.00'} /> · {progress}%
       </div>
     </Card>
