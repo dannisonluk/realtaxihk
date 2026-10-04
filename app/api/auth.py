@@ -376,7 +376,7 @@ async def otp_verify(
 # --------------------------------------------------------------------------- #
 
 
-@router.post("/refresh", response_model=TokenPairOut)
+@router.post("/refresh", response_model=TokenPairOut, response_model_exclude_none=True)
 async def refresh_tokens(
     payload: RefreshIn,
     request: Request,
@@ -407,6 +407,13 @@ async def refresh_tokens(
         raise HTTPException(status_code=403, detail="account disabled")
     # No `created`: a refresh never creates anything, and `None` here means
     # "this route does not report it" rather than "nothing was created".
+    #
+    # `_issue_session` omits the key, but a `response_model` does not merely
+    # filter — it also **fills in defaults**, so `TokenPairOut.created = None`
+    # put `"created": null` back on the wire and quietly falsified this comment
+    # (and the two docstrings that repeat it). Hence `exclude_none` on the route
+    # decorator. `created` is the only nullable field in `TokenPairOut` and
+    # `UserOut`, so that removes exactly this one key and nothing else.
     return await _issue_session(session, user)
 
 
