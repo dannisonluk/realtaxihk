@@ -111,7 +111,13 @@ TEMPLATE_DB = f"{_TEMPLATE_PREFIX}_{uuid.uuid4().hex[:8]}"
 # Seeded into the template DB, so every per-test clone already has one admin.
 # Random per session — see the module docstring.
 ADMIN_ID = str(uuid.uuid4())
-ADMIN_PHONE = "+85200000000"
+# Deliberately OUTSIDE the reviewer range `+8520000xxxx` that
+# `scripts/ops/create_reviewer_account.py` allocates from. It used to be
+# `+85200000000`, which is that range's first member: harmless while the ops
+# script only ever ran against dev/prod, but a test that drives the script's
+# allocator would then have found the number already taken and would have been
+# asserting the collision rather than the allocation.
+ADMIN_PHONE = "+85210000000"
 
 
 def _admin_dsn() -> str:
@@ -336,6 +342,12 @@ def client(otp_inbox) -> Iterator[TestClient]:
             def _sign_in(phone: str) -> str:
                 return sign_in(tc, phone)
 
+            def _otp_login(phone: str) -> dict:
+                return otp_login(tc, phone)
+
+            def _register(*, email: str, phone: str, password: str = TEST_PASSWORD) -> dict:
+                return register(tc, email=email, phone=phone, password=password)
+
             def _activate(phone: str, *, username: str | None = None) -> str:
                 return activate(tc, phone, username=username)
 
@@ -348,6 +360,8 @@ def client(otp_inbox) -> Iterator[TestClient]:
                 return admin_headers(tc, username=username, role=role)
 
             tc.sign_in = _sign_in
+            tc.otp_login = _otp_login
+            tc.register = _register
             tc.activate = _activate
             tc.exec_sql = _exec
             tc.admin_headers = _admin_headers
@@ -531,8 +545,56 @@ def _exec_sync(client, sql: str, params: dict | None = None) -> None:
         pool.submit(asyncio.run, _inner()).result()
 
 
-def sign_in(client, phone: str) -> str:
-    """Phone-OTP login, returning an access token. Creates the account if new.
+# The password every test account is created with. Long enough for
+# `app.core.passwords.MIN_PASSWORD_LENGTH` (12) — see `register()` below.
+TEST_PASSWORD = "TestPassw0rd!Xy"
+
+
+def _ensure_phone_owner(client, phone: str) -> None:
+    """Guarantee `phone` is a *verified* number on some account.
+
+    OTP sign-in is a **secondary** login in the current model:
+    `OtpService.verify_otp` refuses a number that no account has proven
+    (`phone_verified_at IS NOT NULL`), because otherwise a stolen code would sign
+    into whichever account merely *claims* the number. A helper that hands back a
+    token by phone therefore has to arrange that precondition first, and this is
+    where it does so.
+
+    Two statements rather than one. The INSERT is conditional so a test that
+    already created its own row (`test_admin_search` does, with a chosen
+    `display_name` and `role`) keeps it, and the UPDATE then promotes whatever
+    row exists. Both use `COALESCE` so a second call inside one test is a no-op
+    rather than a reset of the monthly deadline the test may have moved.
+    """
+    interval = get_settings().phone_reverify_interval_days
+    # Two distinct parameters for the same value on purpose: `:p` in the SELECT
+    # list and in the comparison infer different types, and asyncpg refuses the
+    # statement with "inconsistent types deduced for parameter" rather than
+    # picking one. Same reason for the explicit CAST.
+    _exec_sync(
+        client,
+        "INSERT INTO users (id, phone_e164, role, is_active, created_at, account_status, "
+        "phone_verified_at, phone_reverify_due_at) "
+        "SELECT CAST(:i AS uuid), CAST(:p AS varchar), 'PASSENGER', true, now(), 'UNVERIFIED', "
+        "now(), now() + make_interval(days => :d) "
+        "WHERE NOT EXISTS (SELECT 1 FROM users WHERE phone_e164 = :existing)",
+        {"i": str(uuid.uuid4()), "p": phone, "existing": phone, "d": interval},
+    )
+    _exec_sync(
+        client,
+        "UPDATE users SET phone_verified_at = COALESCE(phone_verified_at, now()), "
+        "phone_reverify_due_at = COALESCE(phone_reverify_due_at, "
+        "now() + make_interval(days => :d)) WHERE phone_e164 = :p",
+        {"p": phone, "d": interval},
+    )
+
+
+def otp_login(client, phone: str) -> dict:
+    """Drive the real OTP request/verify pair; returns the whole session body.
+
+    Split out of `sign_in` so a test can assert on the response — masking, the
+    absence of `dev_code`, the `created` flag — rather than only getting a token
+    back. See `sign_in` for why the row has to be arranged first.
 
     Backdates the previous OTP rows first. A code is single-use and a resend
     cooldown blocks a fresh request while one is recent — both are production
@@ -540,6 +602,7 @@ def sign_in(client, phone: str) -> str:
     this. Backdating is arrangement, not a bypass: the app under test still sees
     a genuine single-use code inside its cooldown window.
     """
+    _ensure_phone_owner(client, phone)
     _exec_sync(
         client,
         "UPDATE otp_codes SET created_at = created_at - interval '10 minutes', "
@@ -553,21 +616,56 @@ def sign_in(client, phone: str) -> str:
         json={"phone_e164": phone, "code": client.otp_inbox[phone]},
     )
     assert r.status_code == 200, r.text
-    return r.json()["access_token"]
+    return r.json()
+
+
+def sign_in(client, phone: str) -> str:
+    """Access token for the account that owns `phone`, via the real OTP path.
+
+    **Not a registration helper any more.** It used to be the only way to get an
+    account at all, because `POST /auth/otp/verify` both registered and logged in.
+    It is now a secondary login, so `otp_login` puts the row into the state the
+    bind flow would leave it in (`_ensure_phone_owner`) and then runs the genuine
+    request/verify pair. Tests that are *about* registration should call
+    `register()` instead.
+    """
+    return otp_login(client, phone)["access_token"]
+
+
+def register(client, *, email: str, phone: str, password: str = TEST_PASSWORD) -> dict:
+    """Create an account through the real endpoint; returns the session body.
+
+    The one helper that exercises `POST /auth/register` rather than writing the
+    row directly. Tests *about* registration must go through it; tests that only
+    need an account to exist should not, because that would couple them to the
+    registration request shape.
+    """
+    r = client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password, "phone_e164": phone},
+    )
+    assert r.status_code == 201, r.text
+    return r.json()
 
 
 def activate(client, phone: str, *, username: str | None = None) -> str:
-    """Sign in and bring the account to ACTIVE, returning its access token.
+    """Sign in and bring the account to the state every business route wants.
 
-    P-2 gates every business route on `AccountStatus.ACTIVE` via
-    `require_verified_account`, and P-4 layers a phone-deadline check on top
-    (`require_phone_current`). A test that is *about* fleets, settlement or
-    orders has to clear those gates first, or it asserts the wrong refusal.
+    Two gates sit in front of a business route and both are cleared here:
+    `require_phone_verified` (the number must be *proven* — which is what unlocks
+    call-taxi, and is deliberately not implied by merely having an account) and
+    `require_phone_current` (the monthly deadline must not be in the past).
+    `account_status` is set to ACTIVE as well, but it gates nothing now: it is a
+    profile-completeness flag, kept accurate here so tests that read it are not
+    reading a lie.
+
+    A test that is *about* fleets, settlement or orders has to clear these gates
+    first, or it asserts the wrong refusal.
 
     Writing the row directly rather than walking the profile + email-verify
     endpoints is deliberate: this helper is about getting an account out of the
     way, and doing it through the API would couple every unrelated test file to
-    whatever P-2's registration flow looks like next month. The flows themselves
+    whatever the registration flow looks like next month. The flows themselves
     are covered by `test_identity_api.py` and `test_phone_reverify.py`.
     """
     token = sign_in(client, phone)

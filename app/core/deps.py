@@ -8,6 +8,26 @@ user row so a phantom/stale ADMIN claim is rejected.
 SEC-18: `get_current_user` also consults the per-user revocation epoch, so a
 logout (or a detected refresh-token replay) invalidates access tokens that are
 already in the wild instead of waiting for them to expire.
+
+The two questions a user-facing route can ask
+---------------------------------------------
+These used to be one question. `require_verified_account` demanded a username,
+an email **and** a phone before an account could do anything, and it sat on the
+booking path — so proving a phone became a precondition for using the app at
+all, which is exactly what had to go. The requirement is the other way round:
+signing in must not need a phone, and proving one must unlock **calling a taxi**.
+
+So the gate is now one question, asked in two strengths:
+
+* `require_phone_verified` — has a number been proven? This is the call車
+  unlock, and it is the only gate the booking path needs.
+* `require_phone_current` — is that proof still fresh? P-4's monthly deadline,
+  layered on top as a *soft* block.
+
+`account_status` (`UNVERIFIED` / `ACTIVE`) survives as a profile-completeness
+flag and gates nothing. Keeping the two ideas apart is what stops a later
+"we should check they are verified" from quietly rebuilding the wall that was
+just taken down.
 """
 
 from __future__ import annotations
@@ -24,8 +44,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.security import decode_access_token
 from app.core.token_revocation import is_token_revoked
-from app.models import AccountStatus, AdminAccount, AdminRole, User, UserRole
+from app.models import AdminAccount, AdminRole, User, UserRole
 from app.services.auth import phone_reverify_service as phone_reverify
+from app.services.auth.account_service import reviewer_expired
+from app.services.infra import human
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -154,6 +176,18 @@ async def require_live_principal(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
     if not row.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account disabled")
+    if reviewer_expired(row):
+        # Repeated from `require_active_user` on purpose. This dependency exists
+        # because `/auth/me` resolves the principal a *different* way, and a
+        # guard that is only applied on the common path is exactly the guard a
+        # reviewer account would walk around.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "message": "this reviewer account has expired",
+                "reason": "REVIEWER_ACCOUNT_EXPIRED",
+            },
+        )
     return user
 
 
@@ -188,7 +222,15 @@ async def require_active_user(
     user: Principal = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Principal:
-    """JWT + live DB check: user exists, is_active, and matches the claim role."""
+    """JWT + live DB check: user exists, is_active, and matches the claim role.
+
+    Also the **single** place a restricted reviewer account is stopped once its
+    expiry has passed. It lives here rather than on a per-route guard because
+    "every user-facing route" is exactly the set this dependency already covers —
+    including the ones nobody remembers to think about. A date the guard reads on
+    every request cannot be forgotten the way a runbook step can, and that is the
+    entire reason the expiry is a column rather than a note.
+    """
     row = await session.get(User, user.id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account not found")
@@ -197,6 +239,18 @@ async def require_active_user(
     if row.role != user.role:
         # Claim no longer matches reality (e.g. demoted admin) — trust the DB.
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account state changed")
+    if reviewer_expired(row):
+        # 403 rather than 401: the token is perfectly valid, the *account* has
+        # lapsed. A 401 would tell the client to re-authenticate, which cannot
+        # help — and a reviewer who retries with fresh credentials would be told
+        # the same thing, so the reason has to be machine-readable.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "message": "this reviewer account has expired",
+                "reason": "REVIEWER_ACCOUNT_EXPIRED",
+            },
+        )
     return user
 
 
@@ -240,63 +294,57 @@ async def require_admin(
     return user
 
 
-async def require_verified_account(
+async def require_phone_verified(
     user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ) -> Principal:
-    """P-2: both an email and a phone must be proven before the account works.
+    """The call車 unlock: has this account proven a phone number?
 
-    This is the single enforcement point for "only verified with OTP and email
-    can be used". Putting it in a dependency rather than in each handler means a
-    new endpoint is gated by default — the failure mode of the alternative is a
-    route that forgets the check and silently lets an unverified account through.
+    This is the single enforcement point for "proving a phone is what unlocks
+    booking". Putting it in a dependency rather than in each handler means a new
+    endpoint is gated by default; the failure mode of the alternative is a route
+    that forgets the check, which on a booking route means a passenger nobody can
+    call back.
 
-    `UNVERIFIED` is the only blocked state. `SUSPENDED` is an admin action and is
-    already covered by `is_active`; refusing it here too would produce a
-    confusing "verify your email" message for a banned account.
+    It asks **one** question, deliberately. It replaces `require_verified_account`,
+    which also demanded a username and a verified email and sat on the booking
+    path — so merely signing in required a phone, which is the thing being
+    removed. Email verification is about recovery and notification; it is not a
+    precondition for taking a taxi, and nothing here should reacquire that belief.
 
     The error is 403 with a machine-readable `reason`, because the client has to
-    distinguish "finish your profile" from "confirm your email" to route the user
-    to the right screen.
+    route the user to the phone-unlock screen rather than show a generic refusal.
     """
     row = await session.get(User, user.id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="account not found")
 
-    if row.account_status == AccountStatus.UNVERIFIED:
-        missing = []
-        if row.username is None:
-            missing.append("profile")
-        if row.email_verified_at is None:
-            missing.append("email")
-        if row.phone_verified_at is None:
-            missing.append("phone")
+    if row.phone_verified_at is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
-                "message": "account verification is incomplete",
-                "reason": "ACCOUNT_UNVERIFIED",
-                "missing": missing,
+                "message": "verify a phone number to call a taxi",
+                "reason": "PHONE_NOT_VERIFIED",
             },
         )
     return user
 
 
 async def require_phone_current(
-    user: Principal = Depends(require_verified_account),
+    user: Principal = Depends(require_phone_verified),
     session: AsyncSession = Depends(get_session),
 ) -> Principal:
     """P-4: the monthly phone re-verification, as a **soft** block.
 
     Attached only to the routes that *start new business* — creating an order,
-    accepting one, going online. Not to reads, and not to `require_verified_account`
+    accepting one, going online. Not to reads, and not to `require_phone_verified`
     itself, because the point of a soft block is precisely that the account keeps
     working: a driver mid-shift can still see their current trip, their statement
     and their profile while their number is overdue. They just cannot take on
     anything new until it is re-proven.
 
     That distinction is the whole reason this is a separate dependency rather than
-    another branch in `require_verified_account`. Hanging it on the verified gate
+    another branch in `require_phone_verified`. Hanging it on the verified gate
     would turn a reminder into a lockout, which is the failure mode the grace
     window exists to avoid.
 
@@ -319,6 +367,33 @@ async def require_phone_current(
             },
         )
     return user
+
+
+async def assert_human(token: str | None, remote_ip: str | None = None) -> None:
+    """Refuse unless the caller solved the human-verification challenge.
+
+    A plain function rather than a `Depends` because the token arrives in the
+    request **body**, and the bodies differ per route — a dependency cannot read
+    a field whose shape it does not know. So this is called explicitly at the top
+    of the four routes that need it, which is a weaker guarantee than "gated by
+    default". That trade is worth stating: the four are registration, login and
+    the two code-request routes, and an endpoint added later that creates rows or
+    sends billed messages should be added here *deliberately* rather than
+    inheriting the check by accident.
+
+    `human.get_human_verifier()` is reached through the module rather than
+    imported by name so a test can swap the provider without having to patch this
+    module's globals — the same reason `app/api/*` reaches for
+    `request.app.state` instead of a module-level singleton.
+    """
+    if not await human.get_human_verifier().verify(token, remote_ip):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "message": "human verification failed — complete the challenge and retry",
+                "reason": "HUMAN_VERIFICATION_REQUIRED",
+            },
+        )
 
 
 def require_role(

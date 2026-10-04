@@ -1,20 +1,29 @@
-"""Registration identity API (P-2): profile completion and email verification.
+"""Registration identity API: profile completion, email verification, and
+binding a phone number.
 
-Complements `app.api.auth`, which owns the phone-OTP half. An account is created
-there on the first successful OTP verify; this router finishes it.
+Complements `app.api.auth`, which owns sign-in. An account is created there
+(`POST /auth/register`); this router fills it in.
 
     POST /api/v1/identity/profile          — username, names, gender, avatar key
     GET  /api/v1/identity/username-check   — availability, for live form feedback
     POST /api/v1/identity/email/request    — send a verification link
     POST /api/v1/identity/email/confirm    — consume the link
-    POST /api/v1/identity/phone/reverify   — P-4: re-prove the phone, reset the clock
+    POST /api/v1/identity/phone/request    — send a code to a number to be bound
+    POST /api/v1/identity/phone/confirm    — prove it; this is the call車 unlock
+    POST /api/v1/identity/phone/reverify   — P-4: re-prove the current number only
     GET  /api/v1/identity/me               — the full profile
 
-The confirm endpoint is deliberately **unauthenticated**. The link is usually
-opened in a different browser or on a different device from the app session, and
-requiring a bearer token would make it unusable exactly when it is needed. The
-token in the link is the credential — 256 bits, single-use, expiring — which is
-why it can stand alone.
+`phone/request` + `phone/confirm` are the **call車 unlock**. Signing in does not
+require a proven number; starting a booking does. `phone/reverify` is the
+narrower P-4 remedy for an account whose monthly deadline has passed — it accepts
+only the number already on the account, because re-verifying proves a number you
+own rather than choosing a new one.
+
+The email-confirm endpoint is deliberately **unauthenticated**. The link is
+usually opened in a different browser or on a different device from the app
+session, and requiring a bearer token would make it unusable exactly when it is
+needed. The token in the link is the credential — 256 bits, single-use,
+expiring — which is why it can stand alone.
 """
 
 from __future__ import annotations
@@ -29,18 +38,22 @@ from app.api.schemas import (
     AvatarPresignOut,
     EmailConfirmOut,
     EmailRequestOut,
+    OtpRequestOut,
+    PhoneBindOut,
     PhoneReverifyOut,
     ProfileOut,
     UsernameCheckOut,
 )
 from app.core.client_ip import client_ip
 from app.core.db import get_session
-from app.core.deps import Principal, require_active_user
+from app.core.deps import Principal, assert_human, require_active_user
 from app.core.exceptions import BusinessRuleError
 from app.core.masking import mask_phone
+from app.core.phone import HK_PHONE_PATTERN
 from app.models import Gender, User
 from app.services.auth import phone_reverify_service as phone_reverify
 from app.services.auth.identity_service import IdentityService
+from app.services.auth.phone_binding_service import PhoneBindingService
 from app.services.licence.storage_service import get_storage_service
 
 logger = logging.getLogger("realtaxihk.identity")
@@ -53,6 +66,20 @@ _CHECK_IP_RATE_LIMIT = 120  # username availability, polled as the user types
 _CHECK_IP_WINDOW_S = 60
 _PHONE_REVERIFY_IP_RATE_LIMIT = 20  # lower than login's 60: this is not a launch path
 _PHONE_REVERIFY_IP_WINDOW_S = 3600
+
+# Phone binding. The send is the half that costs a billed WhatsApp message, so it
+# carries two budgets rather than one: a per-IP counter stops a single host
+# walking the number space, and a per-ACCOUNT counter stops one signed-in account
+# doing the same thing from a pool of addresses. Either alone leaves the other
+# open, which is the same argument as login's two budgets in `account_service`.
+_PHONE_BIND_IP_RATE_LIMIT = 20
+_PHONE_BIND_IP_WINDOW_S = 3600
+_PHONE_BIND_ACCOUNT_RATE_LIMIT = 5
+_PHONE_BIND_ACCOUNT_WINDOW_S = 3600
+# Confirming is cheap and idempotent-ish (the code is attempt-capped at five), so
+# its budget is generous — a tighter one would mostly punish a bad phone signal.
+_PHONE_CONFIRM_IP_RATE_LIMIT = 60
+_PHONE_CONFIRM_IP_WINDOW_S = 3600
 
 
 class ProfileIn(BaseModel):
@@ -112,6 +139,28 @@ async def _run(coro, session: AsyncSession):
     except BusinessRuleError as exc:
         await session.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+async def _run_rule(coro, session: AsyncSession):
+    """Commit a refusal's writes, then re-raise it for the global 400 handler.
+
+    `_run` above converts a `BusinessRuleError` into an `HTTPException`, which is
+    right for the routes that only ever refuse with a sentence. It is wrong for
+    the phone routes: `OtpService.consume_code` attaches `details`
+    (`attempts_remaining`), and `HTTPException` has nowhere to put them — the
+    envelope would lose the count the client renders as "3 tries left".
+
+    The commit is **not** optional. A wrong code increments `otp.attempts` and
+    flushes it; without committing here, `get_session` would roll that back along
+    with the refusal and the five-attempt cap would never be reached — an OTP
+    that accepts unlimited guesses. Same reasoning, and the same shape, as
+    `app.api.admin_auth._run`.
+    """
+    try:
+        return await coro
+    except BusinessRuleError:
+        await session.commit()
+        raise
 
 
 @router.get("/me", response_model=ProfileOut)
@@ -217,8 +266,104 @@ async def confirm_email(
 
 
 class PhoneReverifyIn(BaseModel):
-    phone_e164: str = Field(pattern=r"^\+852\d{8}$")
+    phone_e164: str = Field(pattern=HK_PHONE_PATTERN)
     code: str = Field(pattern=r"^\d{6}$")
+
+
+class PhoneRequestIn(BaseModel):
+    phone_e164: str = Field(pattern=HK_PHONE_PATTERN)
+    human_token: str | None = Field(default=None, max_length=4096)
+
+
+class PhoneConfirmIn(BaseModel):
+    phone_e164: str = Field(pattern=HK_PHONE_PATTERN)
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+@router.post("/phone/request", response_model=OtpRequestOut)
+async def request_phone_binding(
+    payload: PhoneRequestIn,
+    request: Request,
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Send a code to a number the caller wants to bind — the call車 unlock, step 1.
+
+    Guarded by `require_active_user` and **not** by `require_phone_verified`: the
+    whole point is to let an account that has not proved a number prove one.
+    Gating the unlock behind the thing it unlocks is the one way this becomes a
+    permanent lockout.
+
+    Refuses a number that another account has already verified *before* sending
+    anything, so the platform does not pay for a message whose only possible
+    outcome is a refusal at the next step.
+
+    Rate-limited per IP **and** per account. The IP budget stops one host walking
+    the number space; the account budget stops one signed-in account doing the
+    same thing from a pool of addresses. Either alone leaves the other open —
+    the same argument as login's two budgets in `account_service`.
+    """
+    limiter = request.app.state.rate_limiter
+    ip = client_ip(request)
+    if not await limiter.allow(
+        f"identity:phone-bind:ip:{ip}", _PHONE_BIND_IP_RATE_LIMIT, _PHONE_BIND_IP_WINDOW_S
+    ):
+        raise HTTPException(status_code=429, detail="too many verification requests")
+    if not await limiter.allow(
+        f"identity:phone-bind:user:{user.id}",
+        _PHONE_BIND_ACCOUNT_RATE_LIMIT,
+        _PHONE_BIND_ACCOUNT_WINDOW_S,
+    ):
+        raise HTTPException(status_code=429, detail="too many verification requests")
+
+    # After the local budgets and before the billed message — see the reasoning
+    # on `otp_request` in `app.api.auth`.
+    await assert_human(payload.human_token, ip)
+
+    row = await session.get(User, user.id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    return await _run_rule(PhoneBindingService(session).request(row, payload.phone_e164), session)
+
+
+@router.post("/phone/confirm", response_model=PhoneBindOut)
+async def confirm_phone_binding(
+    payload: PhoneConfirmIn,
+    request: Request,
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Prove the code and attach the number. **This is what unlocks call車.**
+
+    Returns the whole profile rather than a bare flag, because proving a phone is
+    often the step that flips `account_status` to ACTIVE — the client has to
+    re-render the gate it is sitting behind, and `{"verified": true}` would not
+    tell it to.
+
+    It also acts as the P-4 re-verification when the number is the one already on
+    the account: `confirm` pushes the next deadline out either way, because
+    proving the number *is* proving the number. `/phone/reverify` stays as the
+    narrower remedy for an overdue account that only wants to clear the block.
+    """
+    limiter = request.app.state.rate_limiter
+    if not await limiter.allow(
+        f"identity:phone-confirm:ip:{client_ip(request)}",
+        _PHONE_CONFIRM_IP_RATE_LIMIT,
+        _PHONE_CONFIRM_IP_WINDOW_S,
+    ):
+        raise HTTPException(status_code=429, detail="too many verification attempts")
+
+    row = await session.get(User, user.id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    await _run_rule(
+        PhoneBindingService(session).confirm(row, payload.phone_e164, payload.code), session
+    )
+    await session.commit()
+    logger.info("phone bound user=%s", row.id)
+    return {"verified": True, **_profile_out(row)}
 
 
 @router.post("/phone/reverify", response_model=PhoneReverifyOut)
@@ -236,10 +381,11 @@ async def reverify_phone(
     make an overdue account permanently unable to clear it, which is the one way
     a soft block becomes a lockout.
 
-    The OTP itself is verified by `OtpService`, the same code path as login — the
-    number has to be proven by a code sent to it, not merely asserted. What is
-    new here is the second half: `mark_verified` moves `phone_reverify_due_at`
-    forward. Without that the caller would verify and stay blocked.
+    Narrower than `/phone/confirm` on purpose — it accepts only the number
+    already on the account. A re-verify proves a number you own, and accepting a
+    different one here would make this endpoint a silent phone-change primitive
+    that skips whatever safeguards a real change-of-number flow needs. Changing
+    the number is `/phone/request` + `/phone/confirm`, which says so out loud.
     """
     from app.services.auth.otp_service import OtpService
 
@@ -256,19 +402,16 @@ async def reverify_phone(
         raise HTTPException(status_code=404, detail="user not found")
 
     if payload.phone_e164 != row.phone_e164:
-        # A re-verify proves a number you already own. Accepting a new one here
-        # would make this endpoint a silent phone-change primitive, bypassing
-        # whatever safeguards a real change-of-number flow needs.
-        raise HTTPException(status_code=400, detail="this number is not the one on your account")
+        raise BusinessRuleError("this number is not the one on your account")
 
-    created = await _run(OtpService(session).verify_otp_for_user(row, payload.code), session)
+    await _run_rule(OtpService(session).verify_otp_for_user(row, payload.code), session)
     # `verify_otp_for_user` refuses unless the code was issued for *this* row's
     # number, so the deadline can be moved with confidence: the code proved the
     # phone on this account, not merely that someone somewhere held a valid OTP.
     await phone_reverify.mark_verified(session, row)
     await session.commit()
-    logger.info("phone re-verified user=%s created=%s", row.id, created)
-    return {"verified": True, "created": created, **_profile_out(row)}
+    logger.info("phone re-verified user=%s", row.id)
+    return {"verified": True, "created": False, **_profile_out(row)}
 
 
 class AvatarUploadIn(BaseModel):

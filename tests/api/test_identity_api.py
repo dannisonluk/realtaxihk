@@ -1,8 +1,15 @@
-"""P-2 — registration identity: profile completion and email verification.
+"""Registration identity: the profile, the username, and email verification.
 
-The property under test is the user's requirement, stated plainly: **an account
-is not usable until both the phone and the email are proven.** Everything else
-here protects that gate from being walked around or from locking someone out.
+The requirement this file used to encode — *"an account is not usable until both
+the phone and the email are proven"* — was deliberately replaced. An account is
+now created with an email and a password and is usable at once; proving a
+**phone** is a separate act that unlocks calling a taxi, and lives in
+`test_phone_reverify.py` and `test_phone_binding_api.py`.
+
+What remains here is everything about the profile itself: the username rules,
+name normalisation, the avatar key, and email verification. `account_status` is
+still asserted, but as a **completeness flag** rather than a gate — see the note
+on that section.
 """
 
 from __future__ import annotations
@@ -20,9 +27,24 @@ CHECK = "/api/v1/identity/username-check"
 EMAIL_REQ = "/api/v1/identity/email/request"
 EMAIL_CONFIRM = "/api/v1/identity/email/confirm"
 ME = "/api/v1/identity/me"
+ORDERS = "/api/v1/orders"
 
 PHONE = "+85290001111"
 CODE = "123456"
+
+# A body that satisfies OrderCreateIn — every field is inside its ge/le bound.
+# Present so the "can this account start business?" question is asked of a real
+# business route rather than of a helper.
+ORDER_BODY = {
+    "pickup_lat": 22.3193,
+    "pickup_lng": 114.1694,
+    "dropoff_lat": 22.2783,
+    "dropoff_lng": 114.1747,
+    "pickup_address": "Tsim Sha Tsui",
+    "dropoff_address": "Central",
+    "distance_km": 8.5,
+    "taxi_type": "URBAN",
+}
 
 
 # ---------------------------------------------------------------- #
@@ -33,14 +55,27 @@ CODE = "123456"
 def _sign_in(client, phone: str = PHONE) -> str:
     """Phone-OTP login, returning an access token.
 
-    Uses the app's real OTP path with the test double installed by the `otp_inbox`
-    fixture, so this exercises the same code the mobile app hits.
+    Runs the app's real OTP path against the test double installed by the
+    `otp_inbox` fixture, so this exercises the same code the mobile app hits.
+
+    OTP login is a **secondary** login now: it refuses a number no account has
+    *proven*, so `client.otp_login` arranges that precondition first. That is
+    also why this file can no longer use it to *create* an account — see
+    `_register` for that, and `test_a_registered_account_exists_before_any_proof`
+    for the property that replaced it.
     """
-    client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
-    code = client.otp_inbox.get(phone, CODE)
-    response = client.post("/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": code})
-    assert response.status_code == 200, response.text
-    return response.json()["access_token"]
+    return client.otp_login(phone)["access_token"]
+
+
+def _register(client, phone: str = PHONE, email: str | None = None) -> str:
+    """Create an account through `POST /auth/register`; returns its token.
+
+    The helper every test that is about *having* an account should use now. The
+    account is immediately usable for reads and profile work, and cannot call a
+    taxi until a number is proven — which is the whole point of the split.
+    """
+    body = client.register(email=email or f"{phone.lstrip('+')}@example.hk", phone=phone)
+    return body["access_token"]
 
 
 def _auth(token: str) -> dict:
@@ -140,18 +175,27 @@ def _issue_token(client, phone: str = PHONE) -> str:
 
 
 # ---------------------------------------------------------------- #
-# The gate
+# `account_status` — a completeness flag, not a gate
 # ---------------------------------------------------------------- #
 
 
-def test_a_fresh_account_is_unverified(client):
+def test_a_fresh_account_is_incomplete(client):
+    """`account_status` records how complete the profile is.
+
+    It is **not** an authorisation gate. `require_active_user` never reads it, so
+    an account can read, edit its profile and hold a session while UNVERIFIED.
+    What it cannot do is start business, and the guard for that is
+    `require_phone_verified`, which reads `phone_verified_at` — see
+    `test_a_registered_account_reads_but_cannot_start_business`. The flag is kept
+    accurate anyway, because the console surfaces display it.
+    """
     _sign_in(client)
     row = _read(client)
     assert row["account_status"] == "UNVERIFIED"
 
 
-def test_completing_the_profile_alone_does_not_activate(client):
-    """The requirement: email AND phone. A profile is neither."""
+def test_completing_the_profile_alone_does_not_complete_the_account(client):
+    """Completeness needs the email *and* the username; a profile is only half."""
     token = _sign_in(client)
     response = client.post(
         PROFILE,
@@ -190,18 +234,34 @@ def test_account_status_is_active_only_when_everything_is_present(client):
     assert _read(client)["account_status"] == "ACTIVE"
 
 
-def test_an_unverified_account_is_refused_by_a_gated_route(client):
-    """The gate has to actually block something, or it is decoration."""
-    from app.core.deps import require_verified_account
-    from app.main import create_app
+def test_a_registered_account_reads_but_cannot_start_business(client):
+    """The gate has to actually block something, or it is decoration.
 
-    app = create_app()
-    paths = [
-        getattr(r, "path", "") for r in app.routes if "verified" in str(getattr(r, "dependant", ""))
-    ]
-    # Assert the dependency exists and is wired to something real.
-    assert require_verified_account is not None
-    assert isinstance(paths, list)
+    Replaces a test that asserted `require_verified_account` was importable and
+    attached to *some* path. That version passed for as long as the name existed
+    and would have kept passing if the dependency had been wired to nothing at
+    all — the name is gone now, and this asserts the behaviour it stood for.
+
+    Both halves matter. If the account could not read either, a new user could
+    never complete their profile or find out what is missing; if it could start
+    business, proving a number would unlock nothing.
+    """
+    token = _register(client, PHONE)
+
+    # Reads and profile work: the account exists and is usable immediately.
+    assert client.get(ME, headers=_auth(token)).status_code == 200
+    completed = client.post(
+        PROFILE,
+        json={"username": "needsphone", "given_name": "Needs", "family_name": "Phone"},
+        headers=_auth(token),
+    )
+    assert completed.status_code == 200, completed.text
+
+    # Business is refused, with the reason the client renders as "verify a number
+    # to call a taxi" rather than as a generic refusal.
+    refused = client.post(ORDERS, json=ORDER_BODY, headers=_auth(token))
+    assert refused.status_code == 403, refused.text
+    assert refused.json()["details"]["reason"] == "PHONE_NOT_VERIFIED"
 
 
 # ---------------------------------------------------------------- #

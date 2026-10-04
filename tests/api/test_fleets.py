@@ -22,11 +22,12 @@ from decimal import Decimal
 def _mk_user_token(client, phone: str) -> str:
     """A fully verified, ACTIVE account's token.
 
-    Was a bare OTP login, which no longer reaches any business route: P-2 gates
-    on `AccountStatus.ACTIVE` (`require_verified_account`) and P-4 adds a phone
-    deadline on top (`require_phone_current`). This test file is about fleet
-    billing, not about those gates, so it clears them and moves on — the gates
-    themselves are covered by `test_identity_api` and `test_phone_reverify`.
+    Was a bare OTP login, which no longer reaches any business route: OTP login
+    is now a *secondary* login for an already-proven number, `require_phone_verified`
+    is the gate that unlocks business routes, and P-4 adds a phone deadline on top
+    (`require_phone_current`). This test file is about fleet billing, not about
+    those gates, so it clears them and moves on — the gates themselves are covered
+    by `test_identity_api` and `test_phone_reverify`.
     """
     return client.activate(phone)
 

@@ -202,6 +202,32 @@ class Settings(BaseSettings):
     # built from a default would send users to the wrong host.
     public_base_url: str = "http://127.0.0.1:8000"
 
+    # --- Human verification (Cloudflare Turnstile) ---
+    # Gates registration, login and every "send me a code" endpoint. The secret
+    # is what enables the check: an empty secret disables it with a loud warning
+    # and is refused outright in prod (`_fail_closed` below), because a
+    # bot-protection feature that silently does nothing is worse than one that
+    # was never configured — nobody goes looking for what is not there.
+    #
+    # `turnstile_verify_url` is configurable so a test can point it at a stub,
+    # and so a provider with the same request shape (hCaptcha, Friendly Captcha)
+    # can be swapped in without a code change.
+    turnstile_secret_key: str = ""
+    turnstile_site_key: str = ""  # served to the client; not a secret
+    turnstile_verify_url: str = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+    turnstile_timeout_s: float = 5.0
+    # Optional. When set, a token solved on another hostname is refused even
+    # though Cloudflare accepted it — a token only proves something about the
+    # site it was minted for.
+    turnstile_expected_hostname: str = ""
+
+    # --- Restricted reviewer accounts (task #11) ---
+    # `scripts/ops/create_reviewer_account.py` refuses to create one unless this
+    # is on. A second switch, for the same reason `ALLOW_DEV_OTP` has one: a
+    # credential that bypasses the normal sign-up path should never be one
+    # mistyped environment away from existing.
+    allow_reviewer_account: bool = False
+
     # --- Object storage (P-2: avatars, P-3: licence photos) ---
     # Cloudflare R2 via its S3-compatible API. `endpoint_url` is the account
     # endpoint (`https://<account_id>.r2.cloudflarestorage.com`).
@@ -279,6 +305,21 @@ class Settings(BaseSettings):
                     f"{self.public_base_url!r}. A verification link built on http "
                     "travels in cleartext and points at the wrong host if this is "
                     "still the default."
+                )
+
+            # Human verification. Unlike SMTP this fails *open* at runtime — an
+            # unconfigured secret makes `DisabledHumanVerifier` allow everything
+            # with a warning — so a deploy that forgot the key looks perfectly
+            # healthy while being unprotected. Refuse to start instead.
+            #
+            # Registration and login are the two doors a script tries first, and
+            # every `otp/request` costs a billed WhatsApp message, so this is the
+            # one setting whose absence is both invisible and expensive.
+            if not self.turnstile_secret_key:
+                raise ValueError(
+                    "TURNSTILE_SECRET_KEY must be set when APP_ENV=prod — "
+                    "registration, login and OTP requests would otherwise be open "
+                    "to scripted abuse, and the OTP endpoint bills per message."
                 )
 
             # CORS: the four loopback origins above are a dev convenience, and

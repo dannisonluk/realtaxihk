@@ -274,14 +274,14 @@ class TestLifespanBackgroundJobs:
 
 class TestP1AuthRotation:
     def test_refresh_rotates_and_old_token_dies(self, client):
-        """P1-5: refresh rotation - old token single-use."""
+        """P1-5: refresh rotation - old token single-use.
+
+        `client.otp_login` rather than a bare request/verify: an OTP login is a
+        *secondary* login now, so it refuses a number no account has already
+        proven. The helper arranges that and returns the whole session body.
+        """
         phone = f"+85253{uuid.uuid4().int % 1000000:06d}"
-        client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
-        r = client.post(
-            "/api/v1/auth/otp/verify",
-            json={"phone_e164": phone, "code": client.otp_inbox[phone]},
-        )
-        body = r.json()
+        body = client.otp_login(phone)
         assert body["refresh_token"]
         old_refresh = body["refresh_token"]
 

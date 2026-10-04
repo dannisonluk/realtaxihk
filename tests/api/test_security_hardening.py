@@ -41,14 +41,14 @@ def _settings(**overrides: object) -> Settings:
 
 
 def _login(client, phone: str) -> dict:
-    r = client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
-    assert r.status_code == 200, r.text
-    # SEC-02: the code is never in the response; read it at the notify seam.
-    r = client.post(
-        "/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": client.otp_inbox[phone]}
-    )
-    assert r.status_code == 200, r.text
-    return r.json()
+    """The whole session body for `phone`, via the real OTP login.
+
+    `client.otp_login` arranges the precondition an OTP login now needs — a number
+    some account has already *proven* — and backdates the previous OTP rows so a
+    second sign-in inside one test is possible. SEC-02 is asserted at the notify
+    seam inside it: the code never appears in the response.
+    """
+    return client.otp_login(phone)
 
 
 # --------------------------------------------------------------------------- #
@@ -100,7 +100,12 @@ class TestConfigFailClosed:
     def _prod(**over):
         """A minimal prod config that passes every check except the one under
         test. Named so a failure here reads as "the prod baseline broke", not as
-        the assertion being wrong."""
+        the assertion being wrong.
+
+        Every prod-required setting has to be present here, which is the point:
+        adding a requirement without adding it to the baseline turns this into a
+        failing test rather than a silent extra refusal on some other assertion.
+        """
         base: dict = {
             "_env_file": None,
             "app_env": "prod",
@@ -111,6 +116,7 @@ class TestConfigFailClosed:
             "public_base_url": "https://api.example.com",
             "trusted_proxy_count": 1,
             "cors_origins": ["https://admin.example.com"],
+            "turnstile_secret_key": "a-real-turnstile-secret",
         }
         base.update(over)
         return base
@@ -119,6 +125,18 @@ class TestConfigFailClosed:
         """Guards the tests below: if the baseline itself stopped passing, every
         other assertion in this block would 'pass' for the wrong reason."""
         assert Settings(**self._prod()).app_env == "prod"
+
+    def test_prod_rejects_a_missing_turnstile_secret(self):
+        """The one missing setting that is invisible *and* expensive.
+
+        `DisabledHumanVerifier` fails **open** at runtime — it logs once and
+        allows everything — so a deploy that forgot the key looks healthy while
+        registration, login and every billed `otp/request` are open to a script.
+        Refusing to start is the only way that gap surfaces before an attacker
+        finds it.
+        """
+        with pytest.raises(ValidationError, match="TURNSTILE_SECRET_KEY"):
+            Settings(**self._prod(turnstile_secret_key=""))
 
     def test_prod_rejects_default_cors_origins(self):
         """The four loopback origins are a dev convenience. Leaving them in prod
@@ -419,6 +437,18 @@ _PUBLIC_PATHS = {
     "/api/v1/auth/otp/request",
     "/api/v1/auth/otp/verify",
     "/api/v1/auth/refresh",
+    # The two account doors. Pre-authentication **by definition** — there is no
+    # session yet, so there is no live row for a guard to read, which is why they
+    # cannot carry one. What substitutes is the chain both handlers run before
+    # touching an account: human verification (Turnstile), a per-IP budget, a
+    # per-email budget, and a failed-attempt lockout on the row. A lockout answers
+    # **401 rather than 429**, so it cannot be used to confirm that an account
+    # exists. `register` is additionally the only writer of new `users` rows, and
+    # it discloses a taken email (unavoidable — the address is the credential)
+    # while deliberately *not* checking whether a phone is taken, which would turn
+    # registration into a "is this number registered?" oracle.
+    "/api/v1/auth/register",
+    "/api/v1/auth/login",
     # Admin sign-in. Pre-authentication by definition — there is no account
     # state to read yet, and the second factor is what substitutes for the live
     # guard. Each of these is protected by the challenge token instead:
@@ -836,13 +866,19 @@ class TestOtpIsNeverEchoed:
 
     def test_the_code_still_reaches_the_notify_layer(self, client):
         """Not merely "no code in the response" — the code must actually be sent,
-        otherwise the fix would be indistinguishable from a broken OTP."""
+        otherwise the fix would be indistinguishable from a broken OTP.
+
+        The verify step needs an account that has already proven the number (an
+        OTP login is a *secondary* login now), so `client.sign_in` arranges that
+        and runs the whole request -> notify -> verify path, asserting 200 on the
+        last step. What is asserted here is the middle step: a real six-digit code
+        arrived at the notify layer, which a response-body check could never
+        establish.
+        """
         phone = _phone()
-        client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
+        client.sign_in(phone)
         code = client.otp_inbox[phone]
         assert len(code) == 6 and code.isdigit()
-        r = client.post("/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": code})
-        assert r.status_code == 200
 
     def test_the_code_is_random_not_a_constant(self, client):
         """The suite no longer sets ALLOW_DEV_OTP, so codes must be random."""

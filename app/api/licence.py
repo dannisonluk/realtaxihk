@@ -6,10 +6,15 @@
     GET  /api/v1/drivers/licence/submissions/{id} — one submission
     POST /api/v1/drivers/licence/submissions/{id}/withdraw — cancel a pending one
 
-Every route requires `require_active_user`. Deliberately **not**
-`require_verified_account`: a driver who is mid-KYC has an ACTIVE account but has
-not been approved yet, and gating the licence route behind the *verified* gate
-that the licence itself feeds would make the flow unable to start.
+Every route requires `require_active_user`, and opening a submission additionally
+runs `require_phone_current` — submitting documents is starting new business, so
+it carries the same phone deadline as creating an order. Reads and withdraws do
+not: a driver must always be able to see and cancel what they have already sent.
+
+Deliberately **not** gated on `account_status`. A driver who is mid-KYC has an
+ACTIVE account but has not been approved yet, and gating the licence route behind
+a completeness flag that the licence itself feeds would make the flow unable to
+start — the same circularity that `require_phone_verified` exists to avoid.
 
 The admin decision endpoints live in `admin_licence`, behind `require_admin`.
 Keeping them in a separate router is what makes the authorisation boundary

@@ -42,6 +42,10 @@ ORDERS = "/api/v1/orders"
 REVERIFY = "/api/v1/identity/phone/reverify"
 ME = "/api/v1/identity/me"
 DRIVER_REGISTER = "/api/v1/drivers/register"
+# The bind flow — proving a number on an account that already exists. This is
+# what unlocks calling a taxi, and the only place the first deadline is written.
+PHONE_REQUEST = "/api/v1/identity/phone/request"
+PHONE_CONFIRM = "/api/v1/identity/phone/confirm"
 
 # A body that satisfies OrderCreateIn — every field is inside its ge/le bound.
 ORDER_BODY = {
@@ -96,22 +100,34 @@ def _one(client, sql: str, params: dict | None = None) -> dict:
 def _sign_in(client, phone: str = PHONE) -> str:
     """Phone-OTP login returning an access token.
 
-    Backdates the existing OTP rows first: a code is single-use and a resend
-    cooldown blocks a fresh request, both of which are production behaviour this
-    file does not relax. Backdating is arrangement so a second sign-in in one
-    test is possible at all — see the identical helper in `test_licence_api`.
+    OTP login is a **secondary** login now: `OtpService.verify_otp` refuses a
+    number no account has *proven*, because otherwise a stolen code would sign
+    into whichever account merely *claims* the number. `client.otp_login`
+    arranges that precondition and then runs the genuine request/verify pair.
+
+    It also backdates the previous OTP rows, which a second sign-in in one test
+    needs: a code is single-use and a resend cooldown blocks a fresh request while
+    the old row is recent. Both are production behaviour this file relies on
+    elsewhere, and neither is relaxed for the app under test.
     """
-    _exec(
-        client,
-        "UPDATE otp_codes SET created_at = created_at - interval '10 minutes', "
-        "consumed_at = NULL WHERE phone_e164 = :p",
-        {"p": phone},
-    )
-    client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
+    return client.otp_login(phone)["access_token"]
+
+
+def _bind_phone(client, token: str, phone: str) -> dict:
+    """Prove `phone` on the signed-in account: request a code, then confirm it.
+
+    The unlock path, exercised through its two real endpoints rather than by
+    writing `phone_verified_at`. `otp_inbox` is the notify seam, so the code is
+    read where the app actually sent it.
+    """
+    requested = client.post(PHONE_REQUEST, json={"phone_e164": phone}, headers=_auth(token))
+    assert requested.status_code == 200, requested.text
     code = client.otp_inbox.get(phone, CODE)
-    response = client.post("/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": code})
+    response = client.post(
+        PHONE_CONFIRM, json={"phone_e164": phone, "code": code}, headers=_auth(token)
+    )
     assert response.status_code == 200, response.text
-    return response.json()["access_token"]
+    return response.json()
 
 
 def _auth(token: str) -> dict:
@@ -119,19 +135,26 @@ def _auth(token: str) -> dict:
 
 
 def _activate(client, phone: str, *, username: str | None = None) -> str:
-    """Bring a fresh account to ACTIVE and return a token for it.
+    """Bring a fresh account to the state the *deadline* is measured against.
 
-    P-2 gates on `AccountStatus.UNVERIFIED`, which would refuse everything before
-    the P-4 check ever runs — so a test about the *phone* gate has to clear the
-    *account* gate first, or it would be asserting the wrong refusal.
+    `require_phone_verified` must already be satisfied or the P-4 check is never
+    reached — a test about the deadline would then be asserting the wrong
+    refusal. `client.otp_login` proves the number; the UPDATE completes the
+    profile and pins a fresh deadline, which `_set_due` then moves per test.
     """
     token = _sign_in(client, phone)
     _exec(
         client,
         "UPDATE users SET account_status = 'ACTIVE', phone_verified_at = now(), "
+        "phone_reverify_due_at = now() + make_interval(days => :d), "
         "email = COALESCE(email, :e), email_verified_at = COALESCE(email_verified_at, now()), "
         "username = COALESCE(username, :u) WHERE phone_e164 = :p",
-        {"p": phone, "u": username or ("u" + phone[-6:]), "e": f"{phone[-8:]}@example.hk"},
+        {
+            "p": phone,
+            "u": username or ("u" + phone[-6:]),
+            "e": f"{phone[-8:]}@example.hk",
+            "d": get_settings().phone_reverify_interval_days,
+        },
     )
     return token
 
@@ -209,9 +232,10 @@ _row_seq = 0
 def _user_row(**kwargs) -> User:
     """An unpersisted User for the service-level tests.
 
-    `phone_e164` is unique, so each row gets its own number — a shared constant
-    would make the third `add_all` in a test fail on the index rather than on the
-    assertion.
+    Each row still gets its own number, but no longer because the column is
+    UNIQUE — that constraint was removed on purpose (see `User.phone_e164`), so
+    several accounts may now *claim* the same number. Distinct numbers here keep
+    the rows independently identifiable in the assertions below.
     """
     global _row_seq
     _row_seq += 1
@@ -482,19 +506,23 @@ def test_listing_orders_still_works_while_overdue(client):
     assert response.status_code == 200, response.text
 
 
-def test_an_unverified_account_gets_the_p2_refusal_not_a_phone_one(client):
+def test_an_unproven_phone_gets_the_bind_refusal_not_a_deadline_one(client):
     """The gates are applied in order, and the client renders each differently.
 
-    `require_phone_current` layers on `require_verified_account`. If the phone
-    check ran first, a brand-new account would be told to re-verify a number it
-    has just proven — a confusing and unfixable message, since the re-verify
-    endpoint would work fine.
+    `require_phone_current` layers on `require_phone_verified`. If the deadline
+    check ran first, an account that has never proven a number would be told to
+    re-verify one — a confusing and unfixable message, because `/phone/reverify`
+    proves a number the account *already* has and would have nothing to prove.
+
+    This replaces the old `ACCOUNT_UNVERIFIED` case: registration no longer
+    produces an account that is barred from everything, so the first refusal a
+    new user meets is the one about the phone, not about the account.
     """
-    token = _sign_in(client, PHONE)  # created by OTP; still UNVERIFIED, no email
-    response = client.post(ORDERS, json=ORDER_BODY, headers=_auth(token))
+    body = client.register(email="unproven@example.hk", phone=PHONE)
+    response = client.post(ORDERS, json=ORDER_BODY, headers=_auth(body["access_token"]))
 
     assert response.status_code == 403, response.text
-    assert response.json()["details"]["reason"] == "ACCOUNT_UNVERIFIED"
+    assert response.json()["details"]["reason"] == "PHONE_NOT_VERIFIED"
 
 
 # ---------------------------------------------------------------- #
@@ -635,19 +663,28 @@ def test_logging_in_with_a_fresh_otp_resets_the_clock(client):
     assert _due_at(client, PHONE) > datetime.now(UTC) + timedelta(days=20)
 
 
-def test_a_newly_created_account_gets_a_deadline_not_null(client):
-    """Creation schedules the first window instead of leaving the column empty.
+def test_the_deadline_is_written_by_the_bind_not_by_registration(client):
+    """Proving the number is what schedules the first window.
 
-    A NULL is read as *due* by `evaluate` (correctly, for grandfathered rows), so
-    leaving it unset would make every brand-new account prompt for a re-verify
-    the moment it tries to order.
+    A freshly *registered* account has proven nothing, so it has no window yet —
+    and a NULL deadline is read as *due* by `evaluate`, which is right for a
+    grandfathered row but would make a brand-new account prompt for a re-verify
+    before it has ever verified once. The fix is that the deadline is written by
+    `PhoneBindingService.confirm`, in the same transaction as `phone_verified_at`,
+    and registration deliberately leaves the column empty.
+
+    This used to assert the opposite — that a phone-OTP *sign-in* scheduled the
+    deadline — because an OTP sign-in was also how an account came into being.
     """
-    _sign_in(client, PHONE)
+    body = client.register(email="fresh@example.hk", phone=PHONE)
+    token = body["access_token"]
 
-    row = _one(
-        client,
-        "SELECT phone_reverify_due_at FROM users WHERE phone_e164 = :p",
-        {"p": PHONE},
-    )
-    assert row["phone_reverify_due_at"] is not None
-    assert row["phone_reverify_due_at"] > datetime.now(UTC) + timedelta(days=20)
+    # Registration records a claim, not a proof: no deadline, and no unlock.
+    assert _due_at(client, PHONE) is None
+    assert client.post(ORDERS, json=ORDER_BODY, headers=_auth(token)).status_code == 403
+
+    _bind_phone(client, token, PHONE)
+
+    # Now both halves land together: the proof and the window it opens.
+    assert _due_at(client, PHONE) > datetime.now(UTC) + timedelta(days=20)
+    assert client.post(ORDERS, json=ORDER_BODY, headers=_auth(token)).status_code == 201

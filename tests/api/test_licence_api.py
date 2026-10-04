@@ -48,30 +48,20 @@ ADMIN_QUEUE = "/api/v1/admin/licence/submissions"
 def _sign_in(client, phone: str) -> str:
     """Phone-OTP login, returning an access token.
 
-    A second sign-in for the same phone needs care, because the app protects the
-    OTP table two ways that both get in the way of a test:
+    OTP login is a **secondary** login now. `OtpService.verify_otp` refuses a
+    number that no account has *proven* (`phone_verified_at IS NOT NULL`),
+    because otherwise a stolen code would sign into whichever account merely
+    *claims* the number. `client.otp_login` arranges that precondition, then runs
+    the genuine request/verify pair.
 
-    - an OTP is **single-use** (`consumed_at` is stamped, and a re-verify is
-      refused as "OTP already used");
-    - a **resend cooldown** refuses a fresh `request_otp` while the previous row
-      is recent — so simply re-requesting does not mint a new code.
-
-    The fix is to backdate the existing rows past the cooldown window, then
-    request again. That is arrangement, not a bypass: the production behaviour
-    (single-use, cooldown) is exactly what the other tests in this file rely on,
-    and nothing here relaxes it for the app under test.
+    It also backdates the previous OTP rows, which a second sign-in in one test
+    needs: a code is **single-use** (`consumed_at` is stamped, and a re-verify is
+    refused as "OTP already used") and a **resend cooldown** refuses a fresh
+    `request_otp` while the previous row is recent. That is arrangement, not a
+    bypass: the production behaviour is exactly what the other tests in this file
+    rely on, and nothing here relaxes it for the app under test.
     """
-    _exec(
-        client,
-        "UPDATE otp_codes SET created_at = created_at - interval '10 minutes', "
-        "consumed_at = NULL WHERE phone_e164 = :p",
-        {"p": phone},
-    )
-    client.post("/api/v1/auth/otp/request", json={"phone_e164": phone})
-    code = client.otp_inbox.get(phone, CODE)
-    response = client.post("/api/v1/auth/otp/verify", json={"phone_e164": phone, "code": code})
-    assert response.status_code == 200, response.text
-    return response.json()["access_token"]
+    return client.otp_login(phone)["access_token"]
 
 
 def _auth(token: str) -> dict:

@@ -148,7 +148,15 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
-    phone_e164: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    # A phone number is required at registration but is NOT required to be
+    # proven there, so many accounts may *claim* a number and at most one may
+    # *verify* it. This column was `unique=True, index=True`, and that plain
+    # UNIQUE is a denial-of-registration: whoever types your number first owns
+    # it, and you can no longer sign up at all — a cheap attack, since the
+    # number is public. Uniqueness now applies only to verified rows; see
+    # `__table_args__` at the bottom of this class. The column stays NOT NULL
+    # because the claim itself is mandatory.
+    phone_e164: Mapped[str] = mapped_column(String(20), index=True)
     display_name: Mapped[str | None] = mapped_column(String(80))
     role: Mapped[UserRole] = mapped_column(
         SAEnum(
@@ -206,7 +214,40 @@ class User(Base):
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # A restricted account handed to a store reviewer or an auditor, created by
+    # `scripts/ops/create_reviewer_account.py`. **Non-NULL is the marker** —
+    # there is deliberately no separate boolean, so "this account expires" and
+    # "this account is a reviewer" cannot drift apart.
+    #
+    # The expiry lives in the database rather than in an ops runbook because a
+    # forgotten revocation is the failure mode that matters, and a date the
+    # guard reads on every request cannot be forgotten. `require_active_user`
+    # refuses the account the moment this is in the past, which means the
+    # revocation needs nobody to remember anything.
+    reviewer_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     driver_profile: Mapped[DriverProfile | None] = relationship(back_populates="user")
+
+    __table_args__ = (
+        # Uniqueness on the phone applies only to rows that PROVED the number.
+        #
+        # Registration requires a number but does not verify it, so several
+        # accounts may hold `+85291234567` while exactly one may ever verify it.
+        # The partial predicate is what makes that statement true: without it
+        # this index would be the plain UNIQUE that was just removed.
+        #
+        # It is also what makes *binding* safe. Two accounts proving the same
+        # number at the same moment produce an IntegrityError rather than two
+        # verified owners, so the service-layer "already verified elsewhere"
+        # check is a courtesy message and this index is the authority — the
+        # same division of labour as `uq_refund_pending_per_driver` below.
+        Index(
+            "uq_users_phone_e164_verified",
+            "phone_e164",
+            unique=True,
+            postgresql_where=text("phone_verified_at IS NOT NULL"),
+        ),
+    )
 
 
 class DriverProfile(Base):

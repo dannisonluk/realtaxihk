@@ -21,6 +21,7 @@ __all__ = [
     "EmailConfirmOut",
     "EmailRequestOut",
     "OtpRequestOut",
+    "PhoneBindOut",
     "PhoneReverifyOut",
     "ProfileOut",
     "TokenPairOut",
@@ -38,13 +39,16 @@ class UserOut(BaseModel):
 
 
 class TokenPairOut(BaseModel):
-    """`POST /auth/otp/verify` and `POST /auth/refresh`.
+    """`POST /auth/register`, `POST /auth/login`, `POST /auth/otp/verify`,
+    `POST /auth/refresh`.
 
-    `created` is `true` only on the verify that registered a brand-new account,
-    so the client can show onboarding exactly once. It is **absent** from the
-    refresh response — a refresh never creates anything — which is why
-    `auth_refresh.json` has no `created` key while `auth_verify.json` does.
-    Hence: declared here as optional rather than required.
+    `created` is `true` only on **registration**, so the client can show
+    onboarding exactly once. It is `false` on login and on the secondary OTP
+    login — neither can create an account any more (see `OtpService`) — and it
+    is **absent** from the refresh response, which is why `auth_refresh.json`
+    has no `created` key while `auth_verify.json` does. Hence: declared here as
+    optional rather than required, where `None` means "this route does not say"
+    rather than "not created".
     """
 
     access_token: str
@@ -197,16 +201,29 @@ class EmailConfirmOut(BaseModel):
 class PhoneReverifyOut(ProfileOut):
     """`POST /identity/phone/reverify` — the refreshed profile plus a flag.
 
-    `created` reports whether the OTP that cleared the block **registered a new
-    account** (it goes through the same `OtpService.verify_otp_for_user` as
-    login). It cannot be true on this route — the caller is already
-    authenticated — but the field is spread from that shared return value, so it
-    is declared here rather than dropped. The rest of the body is the profile,
-    which is why this inherits.
+    `created` is always `false` now. It used to report whether the OTP that
+    cleared the block had registered a brand-new account, because this endpoint
+    shared `OtpService.verify_otp` with login — and that shared path is exactly
+    what has been removed: an OTP can no longer create an account at all. The
+    field stays because it is on the wire and the mobile client decodes it. The
+    rest of the body is the profile, which is why this inherits.
     """
 
     verified: bool
     created: bool
+
+
+class PhoneBindOut(ProfileOut):
+    """`POST /identity/phone/confirm` — the profile after a number was proven.
+
+    Inherits `ProfileOut` rather than returning it directly so the client can
+    tell this response apart from `GET /identity/me`. `verified` is redundant
+    with the inherited `phone_verified`, and the redundancy is deliberate: this
+    is the field the caller checks to confirm *its own request* succeeded, while
+    `phone_verified` is a state that could legitimately have been true already.
+    """
+
+    verified: bool
 
 
 class AvatarPresignOut(BaseModel):

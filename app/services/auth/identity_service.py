@@ -2,23 +2,29 @@
 
 What "registration" means here
 ------------------------------
-There is no signup form that creates an account out of nothing. An account is
-born the moment a phone number proves itself with an OTP (`OtpService.verify_otp`
-creates a `users` row with `account_status = UNVERIFIED`). Everything after that
-is *completing a profile and proving an email*, which is why this module has no
-`register()` — the phone is step one and it already works.
+An account is created by `AccountAuthService.register` — email, password, and a
+*claimed* phone number — and not by this module. What is left here is everything
+that happens **after** the account exists: choosing a username, proving the
+email address, proving the phone.
 
-That ordering is deliberate. It means an account always has a verified phone
-before it has anything else, so there is never a half-registered row with no
-reachable owner, and it makes the grandfathering path trivial: every pre-existing
-row is already in the right state, just without a username.
+That ordering is the reverse of what it was. An account used to be born the
+moment a phone number proved itself with an OTP, which is why this module had no
+`register()` — the phone *was* step one. The cost of that shape was that proving
+a phone became a precondition for merely having an account, and that the number
+was simultaneously the identifier and the only secret, so losing it lost the
+account with no recovery path. The phone is now a *capability*
+(`phone_binding_service`), and the email proof here is about recovery and
+notification rather than about being allowed in at all.
 
-The two gates
--------------
-`account_status` is `UNVERIFIED` until **both** an email and a phone are proven.
-The user's requirement was "only verified with OTP and email can be used", so the
-gate is enforced in one place — `require_verified_account` in `app/core/deps.py`
-— rather than scattered across endpoints.
+Where the gates live now
+------------------------
+`account_status` is still `UNVERIFIED` until a username, an email and a phone
+are all proven — but it is now a **profile-completeness flag, not an
+authorisation gate**. The gate that decides whether you may call a taxi is
+`require_phone_verified` in `app/core/deps.py`, which asks only whether a number
+has been proven, because that is the one thing the booking flow actually needs.
+`_promote_if_ready` below stays the single definition of "complete", so the flag
+cannot drift from the profile it describes.
 
 Email is proven by a **link**, not a code
 -----------------------------------------
@@ -94,6 +100,21 @@ def normalize_email(raw: str) -> str:
     return f"{local}@{domain.lower()}"
 
 
+def assert_email(address: str) -> None:
+    """Reject anything that is not a plausible, deliverable address.
+
+    Module-level and public rather than an `IdentityService` staticmethod, which
+    is what it used to be. Registration (`account_service`) now validates the
+    same address through the same rule, and a caller that has to reach for a
+    private name to reuse a rule eventually stops reusing it — at which point
+    there are two email regexes, and relaxing one of them is a hole.
+    """
+    if not _EMAIL_RE.fullmatch(address or ""):
+        raise BusinessRuleError("that does not look like an email address")
+    if len(address) > 254:
+        raise BusinessRuleError("email address is too long")
+
+
 def _hash_token(raw: str) -> str:
     """Plain SHA-256, not argon2.
 
@@ -111,6 +132,32 @@ class ProfileOut:
     username: str
 
 
+def promote_if_ready(user: User) -> None:
+    """`UNVERIFIED` -> `ACTIVE` once the profile is complete.
+
+    The **single** definition of "ready", and it is module-level so that
+    everything which can complete the last piece calls the same one:
+    `confirm_email` and `complete_profile` here, and `PhoneBindingService.confirm`
+    (proving a phone can be what finishes an account). It was a private method,
+    which meant the third caller would have had to import a private name — and
+    the version of this that gets written twice is the version that drifts.
+
+    Note what this is *not*: an authorisation gate. `account_status` describes
+    how complete a profile is; it does not decide what the account may do. The
+    gate that decides whether a booking may start is `require_phone_verified`
+    in `app/core/deps.py`, and keeping the two questions apart is deliberate —
+    conflating them is what made "prove a phone" a precondition for signing in.
+    """
+    ready = (
+        user.phone_verified_at is not None
+        and user.email_verified_at is not None
+        and user.username is not None
+    )
+    if ready and user.account_status == AccountStatus.UNVERIFIED:
+        user.account_status = AccountStatus.ACTIVE
+        logger.info("account activated user_id=%s", user.id)
+
+
 class IdentityService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -126,7 +173,7 @@ class IdentityService:
         `DevEmailProvider`; in prod it only exists in the message.
         """
         address = normalize_email(email)
-        self._assert_email(address)
+        assert_email(address)
 
         # Uniqueness is checked here as well as by the index, so the caller gets
         # a sentence instead of an IntegrityError. The index is still the
@@ -275,28 +322,15 @@ class IdentityService:
     # ------------------------------------------------------------------ #
 
     def _promote_if_ready(self, user: User) -> None:
-        """UNVERIFIED -> ACTIVE once both factors are proven.
+        """Delegates to the module-level `promote_if_ready`.
 
-        Called from both gates, because either may complete last: a user can
-        verify their email before finishing their profile, or the reverse. Doing
-        it in one helper means there is a single definition of "ready" rather
-        than two that can drift.
+        The logic moved out of the class because `PhoneBindingService` needs the
+        same definition, and reaching into a private method from another module
+        is how a second copy of a rule gets written. The method stays because
+        both call sites here are inside this class and read better as
+        `self._promote_if_ready(user)`.
         """
-        ready = (
-            user.phone_verified_at is not None
-            and user.email_verified_at is not None
-            and user.username is not None
-        )
-        if ready and user.account_status == AccountStatus.UNVERIFIED:
-            user.account_status = AccountStatus.ACTIVE
-            logger.info("account activated user_id=%s", user.id)
-
-    @staticmethod
-    def _assert_email(address: str) -> None:
-        if not _EMAIL_RE.fullmatch(address or ""):
-            raise BusinessRuleError("that does not look like an email address")
-        if len(address) > 254:
-            raise BusinessRuleError("email address is too long")
+        promote_if_ready(user)
 
     @staticmethod
     def _assert_username(handle: str) -> None:

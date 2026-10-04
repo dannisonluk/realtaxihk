@@ -1,4 +1,20 @@
-"""OTP: issue (hashed, TTL, resend cooldown, attempt-capped) and verify.
+"""OTP: issue (hashed, TTL, resend cooldown, attempt-capped) and consume.
+
+This module proves **a phone number** and nothing else. It used to also be the
+registration path — `verify_otp` created a `users` row on first success, so
+"verify a phone" and "create an account" were the same act. That is gone.
+Accounts are created by `AccountAuthService.register`, and the two callers here
+are
+
+* the secondary OTP **login** (`verify_otp`), which only ever signs in an
+  account whose number is already verified. It cannot create one, and it cannot
+  sign in an account that merely *claims* the number; and
+* phone **binding** (`phone_binding_service`), which proves a number before
+  attaching it to an account that already exists.
+
+Both go through `consume_code`, so the security properties below apply to both
+without either having to restate them — and, more importantly, without either
+being able to relax one of them on its own.
 
 Security properties:
 - codes stored as sha256(phone:code) — plaintext never persisted;
@@ -23,8 +39,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import re
 import secrets
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -32,11 +48,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.exceptions import BusinessRuleError
-from app.models import OtpCode, User, UserRole
-from app.services.auth.phone_reverify_service import next_deadline
+from app.core.phone import is_hk_phone
+from app.models import OtpCode, User
 from app.services.infra.notify import get_whatsapp_provider
 
-_PHONE_RE = re.compile(r"^\+852\d{8}$")
 _MAX_ATTEMPTS = 5
 _RESEND_COOLDOWN_S = 60
 _DEV_CODE = "123456"  # only used when settings.dev_otp_enabled is explicitly True
@@ -50,10 +65,31 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _as_aware(value: datetime | None) -> datetime | None:
+    """Postgres returns aware datetimes; SQLite and some drivers do not.
+
+    Normalise before comparing rather than raising `TypeError` from inside a
+    comparison — the failure would surface as a 500 on a *login*, which is the
+    worst place to discover a driver difference.
+    """
+    if value is None:
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+@dataclass(frozen=True)
 class AuthResult:
-    def __init__(self, user: User, created: bool):
-        self.user = user
-        self.created = created
+    """The outcome of a secondary OTP login.
+
+    `created` is always `False` and is kept only because it is on the wire —
+    see `TokenPairOut.created`. It used to report whether this verify had
+    registered a brand-new account; an OTP can no longer create one, so the
+    field now reports the truth rather than being removed. Dropping it would
+    change a response the mobile client decodes for no security gain.
+    """
+
+    user: User
+    created: bool = False
 
 
 class OtpService:
@@ -61,8 +97,8 @@ class OtpService:
         self.session = session
 
     async def request_otp(self, phone_e164: str, ttl_seconds: int = 300) -> dict:
-        if not _PHONE_RE.fullmatch(phone_e164 or ""):
-            raise ValueError("phone_e164 must be an HK number in E.164 form (+852XXXXXXXX)")
+        if not is_hk_phone(phone_e164):
+            raise BusinessRuleError("phone must be a Hong Kong number in E.164 form (+852XXXXXXXX)")
 
         cutoff = _now() - timedelta(seconds=_RESEND_COOLDOWN_S)
         recent = (
@@ -101,33 +137,67 @@ class OtpService:
         return {"sent": True, "expires_in": ttl_seconds}
 
     async def verify_otp(self, phone_e164: str, code: str) -> AuthResult:
-        user, created = await self._consume(phone_e164, code)
-        return AuthResult(user=user, created=created)
+        """Secondary login: prove a number that is already verified on an account.
 
-    async def verify_otp_for_user(self, user: User, code: str) -> bool:
+        The `phone_verified_at IS NOT NULL` filter is the entire safety argument
+        for keeping an OTP login at all. The previous version looked the user up
+        by phone alone and *created* one when nothing matched — so anyone who
+        could receive a code for a number became whatever account that number
+        named, and the lookup could not tell "I am proving my own number" from
+        "I am logging in as whoever owns this number". Requiring a prior
+        verification means this path can only re-enter an account that already
+        proved it owns the number, so a stolen OTP reaches nothing that the SIM
+        did not already reach.
+
+        `uq_users_phone_e164_verified` guarantees at most one such row, so
+        `.first()` is not a tie-break between candidates; it is what makes the
+        query total for the type checker.
+        """
+        await self.consume_code(phone_e164, code)
+
+        user = (
+            (
+                await self.session.execute(
+                    select(User).where(
+                        User.phone_e164 == phone_e164,
+                        User.phone_verified_at.is_not(None),
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if user is None:
+            # The code was genuine, so the number is real and reachable — no
+            # account has ever verified it. Saying so leaks nothing: the caller
+            # had to receive a code sent to that number to get here.
+            raise BusinessRuleError(
+                "no account has verified this number — sign in with your email and password"
+            )
+        return AuthResult(user=user)
+
+    async def verify_otp_for_user(self, user: User, code: str) -> None:
         """P-4: prove that `user` still controls the number on their account.
 
-        Returns `created` so the caller can mirror `verify_otp`'s shape, but the
-        point is different: this asserts an *existing* binding rather than
-        establishing one. `verify_otp` looks the user up *by* the phone, so it
-        cannot tell "I am proving my own number" from "I am logging in as whoever
-        owns this number" — and a re-verification endpoint that accepted either
-        would let a stolen OTP move a stranger's deadline, or worse, let a caller
-        act on a row that is not the one their token belongs to.
-
-        `_consume` still creates the row if the number is somehow ownerless;
-        that branch is unreachable from the API, which loads the caller's row
-        first, but leaving the shared helper uniform beats forking it and having
-        two behaviours quietly drift.
+        Different from `verify_otp` in exactly one way, and it is the way that
+        matters: this asserts an *existing* binding rather than establishing
+        one. It takes the number from the row, not from the request, so it
+        cannot be used to move a deadline onto somebody else's number — the
+        caller cannot pass a number at all.
         """
-        found, created = await self._consume(user.phone_e164, code)
-        if found.id != user.id:
-            raise BusinessRuleError("OTP does not belong to this account")
-        return created
+        await self.consume_code(user.phone_e164, code)
 
-    async def _consume(self, phone_e164: str, code: str) -> tuple[User, bool]:
-        if not _PHONE_RE.fullmatch(phone_e164 or ""):
-            raise ValueError("phone_e164 must be an HK number in E.164 form (+852XXXXXXXX)")
+    async def consume_code(self, phone_e164: str, code: str) -> None:
+        """Validate `code` for `phone_e164` and mark it used.
+
+        **Returns nothing, deliberately.** It used to return the `User` it had
+        looked up — or created — by phone, which is precisely what let the two
+        callers above accidentally share a policy that suited neither. The only
+        thing this method establishes is "whoever holds this phone received this
+        code a moment ago". What that is worth is the caller's business.
+        """
+        if not is_hk_phone(phone_e164):
+            raise BusinessRuleError("phone must be a Hong Kong number in E.164 form (+852XXXXXXXX)")
 
         otp = (
             (
@@ -147,7 +217,10 @@ class OtpService:
             raise BusinessRuleError("OTP locked: too many attempts")
         if otp.consumed_at is not None:
             raise BusinessRuleError("OTP already used")
-        if _now() >= otp.expires_at:
+        expires_at = _as_aware(otp.expires_at)
+        # A NULL expiry cannot be trusted, so it counts as expired — the same
+        # fail-closed direction as every other branch here.
+        if expires_at is None or _now() >= expires_at:
             raise BusinessRuleError("OTP expired")
 
         # SEC-28: constant-time compare so the response latency does not leak how
@@ -161,29 +234,8 @@ class OtpService:
             )
 
         otp.consumed_at = _now()
-
-        user = (
-            (await self.session.execute(select(User).where(User.phone_e164 == phone_e164)))
-            .scalars()
-            .first()
-        )
-        if user is not None:
-            return user, False
-
-        # Branched on `user is None` rather than on a separate `created` flag: a
-        # bool copy of the check tells the type checker nothing, so the return
-        # read as `User | None` while the code guarantees a `User`.
-        #
-        # The first deadline is set at creation, not left NULL. A NULL column is
-        # treated as "due" by the P-4 guard (fail-closed for grandfathered rows),
-        # so leaving it empty would make a brand-new account show a spurious
-        # "re-verify your number" prompt on its first order.
-        user = User(
-            phone_e164=phone_e164,
-            role=UserRole.PASSENGER,
-            phone_verified_at=_now(),
-            phone_reverify_due_at=next_deadline(),
-        )
-        self.session.add(user)
+        # Flushed rather than left to the caller's commit: single-use is a
+        # security property of this method, and a caller that forgot to commit
+        # would silently make the code reusable. The caller still commits the
+        # rest of its work.
         await self.session.flush()
-        return user, True
