@@ -128,6 +128,11 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
   若日後要防內部舞弊，需改成申請→批准流程。爭議裁決的 `moves_money` 路徑已加
   FINANCE 角色閘（職責分離第一步），`ADJUSTMENT` 本身仍為單人。
 - **搜尋不逐次審計** —— 高頻讀取，寫滿審計表會淹沒真正的金錢事件。刻意。
+- **`ws_max_connections_total` 與限流計數器都是 per-process** —— `ConnectionRegistry`
+  把計數放在 process 記憶體，所以 N 個 uvicorn worker 會把上限執行 N 次。
+  `docker-compose.prod.yml` 因此把 `--workers` 釘在 1（`API_WORKERS=1`），而**調高
+  它是一個三步走的決定**（重算連線池 → registry 搬去 Redis → 才調 worker），
+  不是一行改動。消費點只有 `app/main.py:254` 一處，該處有註解。
 
 ### C. 已知功能缺口（要寫程式，未排期）
 

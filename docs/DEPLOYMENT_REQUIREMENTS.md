@@ -231,7 +231,7 @@
 | # | 項目 | 現況 | 風險 |
 |---|---|---|---|
 | 1 | **多 instance 的 jobs 去重** | 無開關；`jobs_enabled` 是全域（`app/core/config.py:125`） | 多 instance 會重複 sweep / purge。**單台 VPS 部署不受影響**；橫向擴展前必須處理 |
-| 2 | **`ws_max_connections_total` 是 per-process** | `app/main.py:254` 把它傳給單一 process 的 limiter | 多 worker 時總容量 ×N，與預期不符，需明確決定 |
+| 2 | **`ws_max_connections_total` 是 per-process** | 定義在 `app/core/config.py:164`（2000）→ **全專案唯一消費點** `app/main.py:254` → `ConnectionRegistry(max_total=…)` → 執行點 `app/services/order/trip_service.py:110`（`acquire()` 在 `self._total >= self.max_total` 時回 `False`）。**prod 現時 `API_WORKERS=1`，所以有效上限就是 2000** | 只有把 `API_WORKERS` 調高才會 ×N。這是**已有記錄的刻意取捨**：`docker-compose.prod.yml:83-92` 寫明三步走（重算連線池 → registry 搬去 Redis → 才調 `API_WORKERS`），`app/main.py` 的消費點亦有註解。**單 worker 下不是缺口** |
 | 3 | **`alembic downgrade` 演練** | 未測 | 回滾路徑未驗證 |
 
 **已結案，不要再當成 gap 處理**（此表曾把這四項列為未做，實際已完成）：

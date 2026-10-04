@@ -249,6 +249,14 @@ def create_app() -> FastAPI:
     # own client + pubsub, so a single account could push Redis's client count
     # toward `maxclients` and take the whole platform down with it.
     app.state.trip_hub = TripHub(get_redis())
+    # Both caps are PER PROCESS - this is the only place either is consumed, and
+    # `ConnectionRegistry` keeps its counters in memory. N uvicorn workers
+    # therefore enforce each cap N times over, so the platform-wide ceiling is
+    # `ws_max_connections_total * API_WORKERS`. Prod pins `--workers 1` for
+    # exactly this reason (the three-part route to raising it - redo the DB pool
+    # arithmetic, move the registry to Redis, then raise the worker count - is
+    # written out in docker-compose.prod.yml). Raising the worker count without
+    # reading that is a silent correctness regression, not a capacity win.
     app.state.ws_registry = ConnectionRegistry(
         max_per_user=settings.ws_max_connections_per_user,
         max_total=settings.ws_max_connections_total,
