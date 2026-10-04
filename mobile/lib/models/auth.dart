@@ -1,4 +1,28 @@
+import '../core/network/wire.dart';
 import 'enums.dart';
+
+/// Result of `POST /auth/otp/request` **and** `POST /identity/phone/request`.
+///
+/// Both routes answer with the same `OtpRequestOut` (`{sent, expires_in}`), so
+/// the two callers share one model rather than each inventing a copy.
+///
+/// There is no `dev_code` field, by design (`SEC-02`): the code leaves the
+/// server exactly once, through the WhatsApp provider. In dev the provider logs
+/// it and the fixed code is `123456`; a client must never expect to receive it
+/// in the response body.
+class OtpRequestResult {
+  const OtpRequestResult({required this.sent, required this.expiresIn});
+
+  factory OtpRequestResult.fromJson(Map<String, dynamic> json) => OtpRequestResult(
+    sent: asBool(json['sent'], 'otp.sent'),
+    expiresIn: asInt(json['expires_in'], 'otp.expires_in'),
+  );
+
+  final bool sent;
+
+  /// Seconds the code stays valid.
+  final int expiresIn;
+}
 
 /// The authenticated account, as returned by `GET /api/v1/auth/me` and as the
 /// `user` object inside the login/refresh responses.
@@ -51,4 +75,25 @@ class AuthSession {
   /// `/auth/refresh` omits the key entirely. Read it separately from the raw
   /// body; the absent case and the false case mean different things.
   static bool createdFromJson(Map<String, dynamic> json) => json['created'] as bool? ?? false;
+}
+
+/// A token pair plus the `created` flag, read together off one response body.
+///
+/// [AuthSession.createdFromJson] cannot be called after the fact — the raw map
+/// is gone by the time a repository hands back a session — and the flag cannot
+/// live on [AuthSession] itself: that object is persisted by `SecureTokenStore`,
+/// and "this request registered an account" is a fact about one response, not a
+/// property of the session. Dropping it entirely is what made the old
+/// `AuthController.verifyOtp` hard-code `true` and tell a returning user they
+/// had just signed up.
+class AuthOutcome {
+  const AuthOutcome({required this.session, required this.created});
+
+  factory AuthOutcome.fromJson(Map<String, dynamic> json) =>
+      AuthOutcome(session: AuthSession.fromJson(json), created: AuthSession.createdFromJson(json));
+
+  final AuthSession session;
+
+  /// True only when *this call* created the account.
+  final bool created;
 }

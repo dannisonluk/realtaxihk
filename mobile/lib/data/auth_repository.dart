@@ -1,45 +1,97 @@
 import '../core/network/api_client.dart';
-import '../core/network/wire.dart';
 import '../models/auth.dart';
 
-/// Result of `POST /api/v1/auth/otp/request`.
+/// Sign-in. Owns the three doors into a session and nothing else.
 ///
-/// There is no `dev_code` field, by design (`SEC-02`): the code leaves the
-/// server exactly once, through the WhatsApp provider. In dev the provider logs
-/// it and the fixed code is `123456`; a client must never expect to receive it
-/// in the response body.
-class OtpRequestResult {
-  const OtpRequestResult({required this.sent, required this.expiresIn});
-
-  factory OtpRequestResult.fromJson(Map<String, dynamic> json) => OtpRequestResult(
-    sent: asBool(json['sent'], 'otp.sent'),
-    expiresIn: asInt(json['expires_in'], 'otp.expires_in'),
-  );
-
-  final bool sent;
-
-  /// Seconds the code stays valid.
-  final int expiresIn;
-}
-
+/// The account model is split across three services server-side and this mirrors
+/// it exactly, because the split is the whole point:
+///
+/// | what | where | credential |
+/// |---|---|---|
+/// | create an account | `POST /auth/register` | email + password (+ a phone *claim*) |
+/// | sign in | `POST /auth/login` | email + password |
+/// | sign in, secondary | `POST /auth/otp/verify` | a **already-proven** phone |
+/// | prove a number | `POST /identity/phone/*` | an OTP — see `IdentityRepository` |
+///
+/// A phone number is no longer a login credential in its own right. It is a
+/// claim at registration, a secondary login once proven, and the thing that
+/// unlocks calling a taxi. Proving it lives in [IdentityRepository], not here.
+///
+/// Four routes sit behind the human-verification gate and take a `human_token`
+/// in the request body: `register`, `login`, `auth/otp/request` and
+/// `identity/phone/request`. It is **not** a `Depends`, so it cannot be applied
+/// by default — every caller has to pass it. Under `APP_ENV=prod` a missing
+/// token is a 403 `HUMAN_VERIFICATION_REQUIRED`; dev and test hide that,
+/// because `DisabledHumanVerifier` allows everything.
 class AuthRepository {
   AuthRepository(this._api);
 
   final ApiClient _api;
 
-  /// `POST /auth/otp/request`. Public. Rate-limited per IP **and** per number;
-  /// a 429 carries `Retry-After`, and a 503 means the platform-wide ceiling was
-  /// hit and the endpoint is shedding load for 600s.
+  /// `POST /auth/register` — create an account and sign in immediately (201).
   ///
-  /// ⚠️ **Not production-ready.** The endpoint sits behind the human-verification
-  /// gate (`assert_human` in `app/api/auth.py`) and this call sends no
-  /// `human_token`, so under `APP_ENV=prod` it is refused with 403. Dev and test
-  /// hide it because `DisabledHumanVerifier` allows everything. Needs a Turnstile
-  /// token before the app can log in against production.
-  Future<OtpRequestResult> requestOtp(String phoneE164) async {
+  /// [phoneE164] is **required and unverified**. The number is recorded as a
+  /// claim, not as proof: the new account can sign in and look around at once,
+  /// and must still prove a number before it can call a taxi. That is why this
+  /// does not send a code and does not wait for one.
+  ///
+  /// **The number is not checked for uniqueness here.** A taken *email* is
+  /// disclosed (400, "email already registered"), but a taken phone is not —
+  /// checking it would turn this route into an "is this number registered?"
+  /// oracle. Many accounts may claim a number; exactly one may prove it, and the
+  /// refusal arrives at `identity/phone/confirm` instead.
+  Future<AuthOutcome> register({
+    required String email,
+    required String password,
+    required String phoneE164,
+    String? humanToken,
+  }) async {
+    final Map<String, dynamic> json = await _api.post(
+      '/api/v1/auth/register',
+      data: <String, dynamic>{
+        'email': email,
+        'password': password,
+        'phone_e164': phoneE164,
+        'human_token': ?humanToken,
+      },
+      authenticated: false,
+    );
+    return AuthOutcome.fromJson(json);
+  }
+
+  /// `POST /auth/login` — the primary credential.
+  ///
+  /// A **lockout answers 401, not 429**, and its `code` is `UNAUTHORIZED` — so a
+  /// caller must not branch on the status alone. `AccountLocked` and
+  /// `AccountThrottled` are distinguished server-side by exception type, and
+  /// both surface here as a plain `ApiException`; the message is the only thing
+  /// that says which. See `app/services/auth/account_service.py`.
+  Future<AuthOutcome> login({
+    required String email,
+    required String password,
+    String? humanToken,
+  }) async {
+    final Map<String, dynamic> json = await _api.post(
+      '/api/v1/auth/login',
+      data: <String, dynamic>{'email': email, 'password': password, 'human_token': ?humanToken},
+      authenticated: false,
+    );
+    return AuthOutcome.fromJson(json);
+  }
+
+  /// `POST /auth/otp/request` — send a login code to a proven number.
+  ///
+  /// Rate-limited per IP **and** per number; a 429 carries `Retry-After`, and a
+  /// 503 means the platform-wide ceiling was hit and the endpoint is shedding
+  /// load for 600s.
+  ///
+  /// [humanToken] is required in production. The local rate limits run *before*
+  /// the human check server-side, so a 429 here means the token was never
+  /// looked at.
+  Future<OtpRequestResult> requestOtp(String phoneE164, {String? humanToken}) async {
     final Map<String, dynamic> json = await _api.post(
       '/api/v1/auth/otp/request',
-      data: <String, dynamic>{'phone_e164': phoneE164},
+      data: <String, dynamic>{'phone_e164': phoneE164, 'human_token': ?humanToken},
       authenticated: false,
     );
     return OtpRequestResult.fromJson(json);
@@ -47,23 +99,22 @@ class AuthRepository {
 
   /// `POST /auth/otp/verify` — a **secondary** login, not the primary one.
   ///
-  /// The primary credential is now email + password (`POST /auth/register` and
-  /// `POST /auth/login`, neither of which this app implements yet). This endpoint
-  /// survives so a driver who has proven a number and lost their email can still
-  /// get in with the phone in their hand.
+  /// The primary credential is email + password ([register] and [login]). This
+  /// endpoint survives so someone who has proven a number and lost their email
+  /// can still get in with the phone in their hand.
   ///
   /// It **cannot create an account**, and it **cannot sign in an account that
   /// merely claims the number**: `OtpService.verify_otp` requires
   /// `phone_verified_at IS NOT NULL`. So `created` is effectively always false
-  /// here, and a brand-new user has no path into this app at all — that is the
-  /// missing registration screen, tracked as a known gap.
-  Future<AuthSession> verifyOtp({required String phoneE164, required String code}) async {
+  /// here, and a brand-new user has no path through this route — that is what
+  /// [register] is for.
+  Future<AuthOutcome> verifyOtp({required String phoneE164, required String code}) async {
     final Map<String, dynamic> json = await _api.post(
       '/api/v1/auth/otp/verify',
       data: <String, dynamic>{'phone_e164': phoneE164, 'code': code},
       authenticated: false,
     );
-    return AuthSession.fromJson(json);
+    return AuthOutcome.fromJson(json);
   }
 
   /// `GET /auth/me` — re-validates the stored session on cold start.
