@@ -30,6 +30,11 @@ COMMITTED_DEV_SECRET = "dev-only-secret-change-in-prod-0123456789abcdef-01234567
 # validators for them landed. They have to be listed *and* present in `_PROD_OK`,
 # because two of the new cases work by *removing* a key from it -- and a key
 # inherited from the ambient environment would make "unset" case pass vacuously.
+#
+# TURNSTILE_SECRET_KEY joined with the human-verification change: it is the one
+# prod setting whose absence fails *open* at runtime (`DisabledHumanVerifier`
+# allows everything with a warning), so the "unset" case is the only thing
+# standing between us and a deploy that looks healthy while being unprotected.
 MANAGED = (
     "APP_ENV",
     "ALLOW_DEV_OTP",
@@ -40,6 +45,7 @@ MANAGED = (
     "PUBLIC_BASE_URL",
     "TRUSTED_PROXY_COUNT",
     "CORS_ORIGINS",
+    "TURNSTILE_SECRET_KEY",
 )
 
 # The complete set a prod deploy needs to boot. Kept as one dict so the
@@ -49,6 +55,8 @@ MANAGED = (
 #
 # TRUSTED_PROXY_COUNT=1 is what the documented deploy uses (nginx in front).
 # CORS_ORIGINS must be https:// -- a wildcard or a plain-http entry is refused.
+# TURNSTILE_SECRET_KEY is the site's *secret* key (the site key is public and is
+# not validated here) -- any non-empty value satisfies the validator.
 _PROD_OK = {
     "APP_ENV": "prod",
     "JWT_SECRET_KEY": STRONG_SECRET,
@@ -58,6 +66,7 @@ _PROD_OK = {
     "PUBLIC_BASE_URL": "https://api.hkfastdc.com",
     "TRUSTED_PROXY_COUNT": "1",
     "CORS_ORIGINS": '["https://console.hkfastdc.com"]',
+    "TURNSTILE_SECRET_KEY": "0x4AAAAAAA-real-turnstile-secret",
 }
 
 CASES = [
@@ -131,6 +140,16 @@ CASES = [
         {**_PROD_OK, "CORS_ORIGINS": '["http://console.hkfastdc.com"]'},
         False,
         "https://",
+    ),
+    (
+        # The only fail-closed check whose runtime counterpart fails *open*:
+        # an unconfigured secret boots happily and allows every script through,
+        # so a deploy that forgot the key is indistinguishable from a protected
+        # one until the WhatsApp bill arrives.
+        "prod + TURNSTILE_SECRET_KEY unset",
+        {k: v for k, v in _PROD_OK.items() if k != "TURNSTILE_SECRET_KEY"},
+        False,
+        "TURNSTILE_SECRET_KEY",
     ),
     (
         # "Proper secrets" means *everything* the prod validator demands — not
