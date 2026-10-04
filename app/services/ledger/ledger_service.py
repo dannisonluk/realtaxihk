@@ -41,6 +41,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.exceptions import BusinessRuleError, DuplicateReferenceError
 from app.core.money import MoneyInput
 from app.models import DriverDeposit, DriverProfile, LedgerEntry, LedgerEntryType
@@ -215,7 +216,7 @@ class LedgerService:
                 driver_profile_id=driver_profile.id,
                 balance_hkd=Decimal("0"),
                 held_hkd=Decimal("0"),
-                required_hkd=Decimal("500"),
+                required_hkd=Decimal(get_settings().driver_deposit_default_hkd),
             )
             session.add(deposit)
             await session.flush()

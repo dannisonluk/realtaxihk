@@ -440,7 +440,7 @@ class DisputeService:
                 {"reason": "DISPUTE_RESOLUTION_NOTE_REQUIRED"},
             )
         async with self._session_factory() as session:
-            dispute = await session.get(OrderDispute, dispute_id)
+            dispute = await session.get(OrderDispute, dispute_id, with_for_update=True)
             if dispute is None:
                 raise NotFoundError(f"dispute {dispute_id} not found")
             if dispute.resolution is not None:

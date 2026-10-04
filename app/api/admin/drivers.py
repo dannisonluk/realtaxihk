@@ -23,6 +23,7 @@ from app.api.schemas import (
     DriverPageOut,
     DriverReviewOut,
 )
+from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.deps import Principal, require_admin
 from app.core.money import money_str
@@ -177,7 +178,11 @@ def _deposit_detail_out(dep: DriverDeposit | None) -> dict:
     unconditionally, so a branch that omitted it would leave the "距達標" cell
     undefined on exactly the driver who most needs it — one who has never paid.
     """
-    required = Decimal(dep.required_hkd) if dep is not None else Decimal("500")
+    required = (
+        Decimal(dep.required_hkd)
+        if dep is not None
+        else Decimal(get_settings().driver_deposit_default_hkd)
+    )
     balance = Decimal(dep.balance_hkd) if dep is not None else Decimal(0)
     return {
         "balance_hkd": money_str(balance),

@@ -464,6 +464,9 @@ async def resolve_dispute(
         close=payload.close,
     )
 
+    # The audit row rides the *same* transaction as the resolution. A separate
+    # commit here would leave "resolved but no audit" as a real outcome on a
+    # mid-crash, and this is the one admin module that moves money.
     session = session_factory()
     try:
         await record_audit(

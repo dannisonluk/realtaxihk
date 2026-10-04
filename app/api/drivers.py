@@ -112,7 +112,10 @@ async def my_driver_profile(
     out = _profile_out(profile)
     out["deposit"] = _deposit_out(deposit)
     if deposit is None:
-        out["deposit"] = {"required_hkd": money_str(Decimal("500")), "is_fulfilled": False}
+        out["deposit"] = {
+            "required_hkd": money_str(Decimal(get_settings().driver_deposit_default_hkd)),
+            "is_fulfilled": False,
+        }
     return out
 
 
