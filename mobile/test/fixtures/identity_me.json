@@ -1,0 +1,19 @@
+{
+  "id": "f237e282-9a37-4485-a2e7-4e2065bb0839",
+  "username": null,
+  "given_name": null,
+  "family_name": null,
+  "gender": null,
+  "avatar_key": null,
+  "email": "fixture.passenger@example.com",
+  "email_verified": false,
+  "phone_masked": "+852****0002",
+  "phone_verified": true,
+  "phone_reverify_due_at": "2026-11-03T06:05:46.961276+00:00",
+  "phone_reverify_grace_ends_at": "2026-11-10T06:05:46.961276+00:00",
+  "phone_reverify_due": false,
+  "phone_reverify_blocked": false,
+  "phone_reverify_days_remaining": 29,
+  "account_status": "UNVERIFIED",
+  "role": "PASSENGER"
+}

@@ -3,7 +3,7 @@
   "token_type": "bearer",
   "refresh_token": "<redacted>",
   "user": {
-    "id": "7353bd29-106a-4807-bce2-3e44273f6df8",
+    "id": "f237e282-9a37-4485-a2e7-4e2065bb0839",
     "phone_masked": "+852****0002",
     "role": "PASSENGER"
   }

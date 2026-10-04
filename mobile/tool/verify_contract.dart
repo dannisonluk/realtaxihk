@@ -55,6 +55,7 @@ import 'package:hkfastdc_mobile/models/driver.dart';
 import 'package:hkfastdc_mobile/models/enums.dart';
 import 'package:hkfastdc_mobile/models/fare.dart';
 import 'package:hkfastdc_mobile/models/fleet.dart';
+import 'package:hkfastdc_mobile/models/identity.dart';
 import 'package:hkfastdc_mobile/models/ledger.dart';
 import 'package:hkfastdc_mobile/models/order.dart';
 import 'package:hkfastdc_mobile/models/refund.dart';
@@ -194,24 +195,36 @@ final Map<String, Decoder> _decoders = <String, Decoder>{
   'auth_verify': (Object? body) {
     final Map<String, dynamic> m = asMap(body, 'body');
     final AuthSession session = AuthSession.fromJson(m);
-    _expect(AuthSession.createdFromJson(m), 'first login should report created=true');
-    return 'role=${session.user.role.wire} created=true phone=${session.user.phoneMasked}';
+    // **`created` is false here now, and that flip is the assertion.** The phone
+    // stopped being a login credential: an OTP verify can only *re-enter* an
+    // account that already proved the number, so it can never create one. This
+    // fixture asserted `true` until the auth split — which is precisely the kind
+    // of change a client reading `created` to decide "show the welcome flow"
+    // would have got wrong in production, silently.
+    _expect(
+      !AuthSession.createdFromJson(m),
+      'an OTP verify must report created=false — it cannot create an account',
+    );
+    return 'role=${session.user.role.wire} created=false phone=${session.user.phoneMasked}';
+  },
+  'auth_register': (Object? body) {
+    final Map<String, dynamic> m = asMap(body, 'body');
+    final AuthSession session = AuthSession.fromJson(m);
+    // Registration is now the **only** place `created: true` is produced, so
+    // this fixture carries the claim the retired `auth_verify_new_user` used to
+    // make. It is not a renamed fixture: the endpoint underneath changed.
+    _expect(AuthSession.createdFromJson(m), 'registration must report created=true');
+    _expect(
+      session.user.role == UserRole.passenger,
+      'signup must default to PASSENGER, got ${session.user.role.wire}',
+    );
+    return 'role=PASSENGER created=true phone=${session.user.phoneMasked}';
   },
   'auth_verify_admin': (Object? body) {
     final Map<String, dynamic> m = asMap(body, 'body');
     final AuthSession session = AuthSession.fromJson(m);
     _expect(session.user.role == UserRole.admin, 'expected ADMIN, got ${session.user.role.wire}');
     return 'role=ADMIN created=${AuthSession.createdFromJson(m)}';
-  },
-  'auth_verify_new_user': (Object? body) {
-    final Map<String, dynamic> m = asMap(body, 'body');
-    final AuthSession session = AuthSession.fromJson(m);
-    _expect(AuthSession.createdFromJson(m), 'a brand-new phone must report created=true');
-    _expect(
-      session.user.role == UserRole.passenger,
-      'signup must default to PASSENGER, got ${session.user.role.wire}',
-    );
-    return 'role=PASSENGER created=true';
   },
   'auth_refresh': (Object? body) {
     final Map<String, dynamic> m = asMap(body, 'body');
@@ -226,6 +239,40 @@ final Map<String, Decoder> _decoders = <String, Decoder>{
     // The full number is never returned — only a masked form.
     _expect(user.phoneMasked.contains('*'), 'phone must arrive masked, got ${user.phoneMasked}');
     return 'role=${user.role.wire} phone=${user.phoneMasked}';
+  },
+  'identity_me': (Object? body) {
+    final Profile profile = Profile.fromJson(asMap(body, 'body'));
+    // Captured *before* the profile is completed, deliberately: this is the
+    // state the app reads to decide whether to show the completion screen at
+    // all, so it is the one that has to decode. `username == null` is the
+    // signal, and the phone is already proven because `provision` proved it —
+    // which is what makes this a profile *completeness* question and not an
+    // account-access one.
+    _expect(
+      profile.phoneMasked.contains('*'),
+      'phone must arrive masked, got ${profile.phoneMasked}',
+    );
+    _expect(profile.username == null, 'a fresh fixture profile has no username yet');
+    _expect(
+      profile.accountStatus == AccountStatus.unverified,
+      'an account with no username is UNVERIFIED, got ${profile.accountStatus}',
+    );
+    return 'status=${profile.accountStatus.name} username=null '
+        'verified=${profile.phoneVerified} canCall=${profile.canCallTaxi}';
+  },
+  'identity_profile': (Object? body) {
+    final Profile profile = Profile.fromJson(asMap(body, 'body'));
+    // The **whole** profile comes back, not the echoed username: filling it in
+    // is often what flips `account_status`, and the client has to re-render the
+    // gate it is sitting behind. So the assertions that matter are that the
+    // fields are populated — a body of `{username}` alone would have satisfied
+    // a naive model check while telling the screen nothing.
+    _expect(profile.username == 'fixture-passenger', 'got username ${profile.username}');
+    _expect(profile.givenName == 'Ka Ming', 'got given_name ${profile.givenName}');
+    _expect(profile.familyName == 'Chan', 'got family_name ${profile.familyName}');
+    _expect(profile.displayName == 'Ka Ming Chan', 'got displayName ${profile.displayName}');
+    return 'username=${profile.username} display=${profile.displayName} '
+        'status=${profile.accountStatus.name}';
   },
 
   // ---- errors: the envelope every failure must parse -----------------------

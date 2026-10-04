@@ -2,10 +2,10 @@
   "access_token": "<redacted>",
   "token_type": "bearer",
   "refresh_token": "<redacted>",
-  "created": false,
+  "created": true,
   "user": {
-    "id": "f237e282-9a37-4485-a2e7-4e2065bb0839",
-    "phone_masked": "+852****0002",
+    "id": "1357bfec-8b10-4737-a3f1-e2ae359ef73f",
+    "phone_masked": "+852****0003",
     "role": "PASSENGER"
   }
 }

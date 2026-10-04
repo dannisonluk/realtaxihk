@@ -1,13 +1,13 @@
 {
   "items": [
     {
-      "id": 57,
+      "id": 74,
       "entry_type": "DEPOSIT_TOPUP",
       "amount_hkd": "500.00",
       "balance_after_hkd": "500.00",
       "order_id": null,
       "note": "fixture top-up",
-      "created_at": "2026-09-30T04:17:33.407279+00:00"
+      "created_at": "2026-10-04T06:05:47.315265+00:00"
     }
   ],
   "next_cursor": null

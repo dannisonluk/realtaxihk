@@ -120,14 +120,35 @@
       "vehicle_reg_mark": "SM1234"
     },
     {
-      "id": "a313c32f-083b-4812-97f0-fb50477de078",
+      "id": "82748d8f-66d7-42f5-9b1c-10070b4cbef6",
+      "status": "PENDING_KYC",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "TD77818",
+      "vehicle_reg_mark": "ZZ4818"
+    },
+    {
+      "id": "4769cdcd-718b-4a6f-a09e-768ea853edb5",
+      "status": "DEPOSIT_REQUIRED",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "TD77870",
+      "vehicle_reg_mark": "ZZ4870"
+    },
+    {
+      "id": "ac62adc5-cc5f-4cc4-92a3-1547d981fd3a",
+      "status": "PENDING_KYC",
+      "taxi_type": "URBAN",
+      "taxi_driver_plate_no": "123456",
+      "vehicle_reg_mark": "SM1234"
+    },
+    {
+      "id": "0ec3389a-53db-4416-b85b-4f8d53f53c32",
       "status": "PENDING_KYC",
       "taxi_type": "URBAN",
       "taxi_driver_plate_no": "123456",
       "vehicle_reg_mark": "AB1234"
     }
   ],
-  "total": 18,
+  "total": 21,
   "limit": 50,
   "offset": 0
 }
