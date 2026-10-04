@@ -66,22 +66,50 @@ ProcessPackageException: ProcessException: 所有的管道例項都在使用中�
       at _DefaultProcessUtils.runSync (package:flutter_tools/src/base/process.dart:484)
 ```
 
-**Gradle itself is unaffected, so call it directly and the APK does build here.**
-Verified on 2026-10-03, and again on 2026-10-04 with the brand assets in place: a
-~182 MB universal `app-debug.apk` (arm64-v8a / armeabi-v7a / x86_64), package
-`com.hkfastdc.mobile`, `minSdk 24 / targetSdk 36`, with the geolocator and
+Calling Gradle directly gets one layer further — the Flutter Gradle plugin passes
+`--no-version-check`, so the CLI's own version check is skipped — but it does not
+get all the way. `:app:compileFlutterBuildDebug` shells out to `flutter assemble`,
+and *that* has to spawn two more processes: the kernel compiler
+(`frontend_server_aot.dart.snapshot`) and the native-assets build hook
+(`cmd.exe /c dart compile kernel … objective_c/hook/build.dart`). Both hit the
+same wall:
+
+```
+CreateFile failed 231 (所有的管道例項都在使用中。)
+Target kernel_snapshot_program failed: ProcessException: 所有的管道例項都在使用中。
+```
+
+So **neither route builds the APK here**, and nothing available locally can see
+`res/`, the `assets:` block, or the Flutter plugin set.
+
+It has worked before, and that is the part worth remembering. The same command
+produced a ~182 MB universal `app-debug.apk` (arm64-v8a / armeabi-v7a / x86_64),
+package `com.hkfastdc.mobile`, `minSdk 24 / targetSdk 36`, with the geolocator and
 network permissions merged in and `com.google.android.geo.API_KEY` resolved to
-empty as expected.
+empty — on 2026-10-03, and again on 2026-10-04 00:44. `ERROR_PIPE_BUSY` is
+resource exhaustion, not a policy refusal: the same command succeeds or fails
+depending on how many pipe instances the host has free at that moment. **Treat it
+as flaky, not as permanently broken, and retry before concluding anything.**
 
 ```bash
 cd mobile/android
 ./gradlew :app:assembleDebug    # → mobile/build/app/outputs/flutter-apk/app-debug.apk
 ```
 
-The Flutter Gradle plugin reads `flutter.sdk` from `local.properties` and drives
-`flutter assemble` itself, so this is the same build `flutter build apk --debug`
-would run — only the CLI's version check is skipped. On a host or in CI, either
-command works.
+One setting does help, and is worth knowing: `FLUTTER_SUPPRESS_ANALYTICS=true`.
+The analytics path on Windows runs `cmd.exe /c ver`, and it runs it *while the
+tool is already unwinding* — so it replaces the real error with a crash report.
+Without the variable, the run above reported only `flutter.bat finished with
+non-zero exit value 1` plus a `flutter_02.log`; with it set, the same build named
+the two processes that actually failed. That is the difference between a crash
+report and a diagnostic.
+
+**CI is where this actually gets checked.** The `mobile` job runs `flutter pub get`
+— which is what writes the plugin list — and then `flutter build apk --debug`, so
+on a Linux runner that step is the thing that proves `webview_flutter` resolves and
+that `res/` and the `assets:` block are intact. Locally you get four green Dart
+gates and no build at all; until CI has run on a commit, anything plugin- or
+resource-shaped in it is resolved but unproven.
 
 Two things to settle before a release build means anything:
 
@@ -138,13 +166,26 @@ two are errors: AGP 9 deprecates the old DSL, but Flutter's template pins
 path and the notice is a warning. The footer counts warnings and errors together.
 
 The Dart source is verified too, and all of it passes: the four commands above
-(`tool/dart_check.py` reports 58 files / 0 diagnostics), `tool/run_tests.dart`
-(97 assertions) and `tool/verify_contract.dart` (54 fixtures, 0 failures).
+(`tool/dart_check.py` reports 68 files / 0 diagnostics), `tool/run_tests.dart`
+(127 cases) and `tool/verify_contract.dart` (54 fixtures, 0 failures).
 
-None of those four can see `res/` or the `assets:` block — the Dart analyzer does
-not read Android resources, and the two scripts never load an image. Only the
-Gradle build does, which is why `./gradlew :app:assembleDebug` is a gate rather
-than just a packaging step.
+What none of the four can see: `res/`, the `assets:` block, and the Flutter plugin
+set. The Dart analyzer does not read Android resources, and the two scripts never
+load an image or a Gradle project. A Gradle build is the only thing that resolves
+them — which is why `./gradlew :app:assembleDebug` is a gate rather than just a
+packaging step, and why adding a plugin (`webview_flutter`, for the Turnstile
+challenge) is verified there and nowhere else. Since that gate cannot run here,
+`webview_flutter` is currently **resolved but not proven**.
+
+There is a second, quieter trap in the same area. `.flutter-plugins-dependencies`
+is what the Flutter Gradle plugin reads to decide which plugin subprojects to
+include, and **only `flutter pub get` regenerates it — `dart pub get` does not.**
+The file is gitignored, and after adding `webview_flutter` it still lists no
+`webview_flutter_android`, so a Gradle build on this machine would produce an APK
+with no WebView implementation inside it: a failure that surfaces at runtime, on
+the login screen, rather than at build time. CI is fine (its `flutter pub get`
+writes the file), but if you build locally after touching `pubspec.yaml`, check
+that file before believing the APK.
 
 ## Branding
 
@@ -320,6 +361,33 @@ Cleartext HTTP is permitted only for `10.0.2.2`, `localhost` and `127.0.0.1`
 (`android/app/src/main/res/xml/network_security_config.xml`). Anything else must
 be HTTPS — the refresh token is a bearer credential.
 
+**Turnstile site key.** Registration, login, the OTP send and the phone-bind send
+are all behind Cloudflare Turnstile, and **no endpoint serves the site key**:
+`turnstile_site_key` exists in `app/core/config.py` but is exposed by no route, so
+the app can only learn it at build time.
+
+```bash
+--dart-define=TURNSTILE_SITE_KEY=0x4AAAAAAA...
+--dart-define=TURNSTILE_BASE_URL=https://hkfastdc.com/   # optional, this is the default
+```
+
+`TURNSTILE_BASE_URL` is the origin the widget is loaded under, and it decides
+which hostname Cloudflare mints the token for. It must be on the site key's
+allowed-domain list, and it is **not** the API host.
+
+Three behaviours worth knowing:
+
+* **No site key in a debug build** → the challenge is not rendered at all, and no
+  `human_token` is sent. That is the normal development state, because
+  `DisabledHumanVerifier` allows everything server-side.
+* **No site key in a release build** → a visible red panel naming the missing
+  define, plus a reported error. A release must not ship a sign-in form that
+  cannot work. `resolveTurnstileMode` is the entire rule and is unit-tested.
+* **A token is single-use**, so every form resets the challenge after a submit
+  (`TurnstileChallengeState.reset`). Without that the box still reads "Success"
+  while the form holds a spent token, and the retry is refused for a reason the
+  user cannot see.
+
 ## Credentials
 
 The session lives in the platform keystore, never in `SharedPreferences`:
@@ -339,14 +407,29 @@ an already-rotated token and log the user out.
 
 ## Signing in during development
 
-The backend refuses the dev OTP rail when `APP_ENV=prod`, and the code is never
-echoed in a response (`SEC-02`). For local work:
+Three doors, and only the first is the primary one:
+
+| Door | Route | Credential |
+|---|---|---|
+| Log in | `/login` | email + password |
+| Register | `/login/register` | email + password + a phone number (**claimed**, not proven) |
+| Phone login | `/login/phone` → `/login/otp` | an **already-proven** number + a code |
+
+A phone number is no longer a login credential in its own right. It is a claim at
+registration, a secondary login once proven, and the thing that unlocks calling a
+taxi. Proving it is a separate step in the account area — `/phone/unlock`, reached
+from the account screen — and it is **not** a precondition for having an account.
+
+The code is never echoed in a response (`SEC-02`), so for local work the dev rail
+is what makes the OTP screens usable at all:
 
 ```bash
 ALLOW_DEV_OTP=true uvicorn app.main:app --port 8000
 ```
 
-then log in with any `+852` number and the code `123456`.
+then use any `+852` number and the code `123456`. Registration and the email +
+password login need no such switch, but they do need a Turnstile token once
+`APP_ENV=prod` — see Configuration.
 
 ## Tests
 
@@ -354,10 +437,10 @@ then log in with any `+852` number and the code `123456`.
 dart --packages=.dart_tool/package_config.json tool/run_tests.dart
 ```
 
-97 assertions over the code with no Flutter dependency: money and date
-formatting, the wire decoders, the enums, the error envelope, websocket frames,
-pagination, the models (including the fleet shapes), and the router redirect
-rules.
+127 cases over the code with no Flutter dependency: money and date formatting, the
+wire decoders, the enums, the error envelope, websocket frames, pagination, the
+models (including the fleet and profile shapes), the router redirect rules, the
+password policy, the HK phone format, and the Turnstile widget protocol.
 
 Formatting is `dart format --line-length 100` — the flag matters, the repo is
 written at 100 columns and the tool defaults to 80, which would reformat every
@@ -379,13 +462,14 @@ so it is worth testing directly rather than by driving the UI.
 ```
 lib/
   core/       config, network (client, error envelope, wire decoders),
-              storage, formatting, theme, location
+              storage, formatting, theme, location, security (password policy),
+              human (the Turnstile seam), phone (the HK number format)
   models/     one file per response shape, decoded from the wire
   data/       repositories — one per API area, thin over ApiClient
   state/      Riverpod providers and the auth controller
   router/     go_router configuration and the role redirect
   features/   screens, grouped by role (`passenger/`, `driver/`, `admin/`,
-              `fleet/`), plus shared widgets
+              `fleet/`, `auth/`), plus shared widgets
 branding/
   source/     the two 2048px posters as supplied — the only hand-edited input
 assets/
@@ -397,28 +481,45 @@ tool/
   verify_contract.dart      decode every fixture with the real models
 ```
 
+Two files are split purely so the tests can reach them: `core/human/` is a
+protocol file with no Flutter import plus a widget file that has one, and
+`core/security/password_policy.dart` mirrors `app/core/passwords.py` without
+touching a `BuildContext`. `tool/run_tests.dart` runs on the plain VM, so anything
+it imports must not reach `package:flutter`.
+
 ## Known gaps
 
 * No **widget** tests — the harness that would run them (`flutter test`) does not
   work here, and there is no headless alternative without the Flutter tool.
   Everything testable without a widget tree is covered by `tool/run_tests.dart`.
+* **The Turnstile WebView is unverified at runtime — and so is the plugin behind
+  it.** The challenge is rendered by `WebViewWidget`
+  (`lib/core/human/turnstile.dart`), which needs a platform view and a real
+  Cloudflare key; neither exists in this sandbox. What *is* verified: the message
+  protocol (`parseTurnstileSignal`), the build-mode decision
+  (`resolveTurnstileMode`), and the rendered page. What is **not**: that
+  `webview_flutter` actually reaches an APK — that needs the Gradle build, which
+  cannot run here (see Building an APK). `dart pub get` did put
+  `webview_flutter` and `webview_flutter_android` into `pubspec.lock`, but the
+  Android plugin list Gradle reads is a separate file that only `flutter pub get`
+  writes. Whether Cloudflare **accepts** the token additionally depends on the
+  site key's allowed-domain list containing the host in `TURNSTILE_BASE_URL`.
 * Push notifications are not wired up; the trip screen polls instead.
-* **The app never calls `/api/v1/identity/*`.** There is no registration screen,
-  no email + password screen, and no phone-unlock screen. Login is now email +
-  password (`POST /auth/register`, `POST /auth/login`); the app implements only
-  the **secondary** phone-OTP login, and `otp/verify` refuses any number that has
-  not already been proven — so a brand-new user has no way into the app at all.
-  Proving a number is what unlocks calling a taxi (`require_phone_verified`), so
-  on a real device browsing works while **creating an order, grabbing one, or
-  going online returns 403 `PHONE_NOT_VERIFIED`**. See
-  `docs/QA_TEST_ENVIRONMENT.md` section 6 for the supported way to complete an
-  account while this is missing.
-* **`otp/request` sends no `human_token`**, so under `APP_ENV=prod` the app's
-  first login step is refused with 403 (`HUMAN_VERIFICATION_REQUIRED`). Dev hides
-  it because `DevHumanVerifier` accepts everything (and `DisabledHumanVerifier`
-  fails open when the secret is merely empty). Needs the Cloudflare Turnstile SDK
-  wired into all four gated doors — `register`, `login`, `auth/otp/request` and
-  `identity/phone/request`.
-* **`/identity/phone/reverify` (the P-4 monthly re-verification) is likewise
-  unimplemented**, so an overdue number surfaces a raw 403 `PHONE_REVERIFY_DUE`
-  with no way to fix it from inside the app.
+* **No profile-completion screen.** `POST /identity/profile` wants a username, a
+  given name and a family name, and nothing in the app calls it — so a registered
+  account has `username IS NULL` and the account screen falls back to the masked
+  phone. Registration deliberately does not collect a name: that would be a fourth
+  required field on a form whose whole point is being short.
+* **No change-password or forgotten-password flow.** There is no
+  `POST /auth/password/*` on the server either, so this is a backend gap as much
+  as a client one.
+* **`GET /identity/me` is not in `test/fixtures/`.** `Profile` is decoded in
+  `tool/run_tests.dart` against a hand-built body instead, so the fixture loop —
+  the check that runs the real decoder over the real bytes — does not cover it.
+  Closing that needs a case in `scripts/dev/gen_mobile_fixtures.py` plus a decoder
+  in `tool/verify_contract.dart`, and the generator needs the API running.
+* **A reviewer account that has expired still gets a session from `/auth/login`
+  if it was signed in before the expiry.** Cold start is handled — a 403
+  `REVIEWER_ACCOUNT_EXPIRED` from `/auth/me` clears the stored session rather than
+  leaving the splash on a retry that can never work — but the login route itself
+  is the authoritative check and this is the client's half of it.
