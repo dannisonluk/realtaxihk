@@ -2,10 +2,10 @@
  * Admin sign-in.
  *
  * Two steps, matching the API: request a code, then verify it. Signup always
- * creates a PASSENGER (`app/services/otp_service.py`), so an admin account has to
- * be granted out of band — `scripts/ops/create_admin.py`. This screen therefore
- * checks the role and refuses a non-admin rather than letting them in to watch
- * every request 403.
+ * creates a PASSENGER (`app/services/auth/account_service.py`), so an admin
+ * account has to be granted out of band — `scripts/ops/create_admin.py`. This
+ * screen therefore checks the role and refuses a non-admin rather than letting
+ * them in to watch every request 403.
  */
 
 import { api, ApiError, CODE } from '../api.js';

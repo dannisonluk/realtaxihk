@@ -30,6 +30,12 @@ class AuthRepository {
   /// `POST /auth/otp/request`. Public. Rate-limited per IP **and** per number;
   /// a 429 carries `Retry-After`, and a 503 means the platform-wide ceiling was
   /// hit and the endpoint is shedding load for 600s.
+  ///
+  /// ⚠️ **Not production-ready.** The endpoint sits behind the human-verification
+  /// gate (`assert_human` in `app/api/auth.py`) and this call sends no
+  /// `human_token`, so under `APP_ENV=prod` it is refused with 403. Dev and test
+  /// hide it because `DisabledHumanVerifier` allows everything. Needs a Turnstile
+  /// token before the app can log in against production.
   Future<OtpRequestResult> requestOtp(String phoneE164) async {
     final Map<String, dynamic> json = await _api.post(
       '/api/v1/auth/otp/request',
@@ -39,10 +45,18 @@ class AuthRepository {
     return OtpRequestResult.fromJson(json);
   }
 
-  /// `POST /auth/otp/verify` — the only way to obtain a session.
+  /// `POST /auth/otp/verify` — a **secondary** login, not the primary one.
   ///
-  /// The phone is not required to exist beforehand: a first-time number is
-  /// created as a PASSENGER and `created` comes back true.
+  /// The primary credential is now email + password (`POST /auth/register` and
+  /// `POST /auth/login`, neither of which this app implements yet). This endpoint
+  /// survives so a driver who has proven a number and lost their email can still
+  /// get in with the phone in their hand.
+  ///
+  /// It **cannot create an account**, and it **cannot sign in an account that
+  /// merely claims the number**: `OtpService.verify_otp` requires
+  /// `phone_verified_at IS NOT NULL`. So `created` is effectively always false
+  /// here, and a brand-new user has no path into this app at all — that is the
+  /// missing registration screen, tracked as a known gap.
   Future<AuthSession> verifyOtp({required String phoneE164, required String code}) async {
     final Map<String, dynamic> json = await _api.post(
       '/api/v1/auth/otp/verify',

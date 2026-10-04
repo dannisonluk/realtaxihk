@@ -46,7 +46,9 @@ class AuthSession {
   final String refreshToken;
   final AppUser user;
 
-  /// `/auth/verify` returns `created` (true when the phone signed up just now);
-  /// `/auth/refresh` does not. Read it separately from the raw body.
+  /// `created` is true when the request **registered** an account — so
+  /// `/auth/register` returns `true`, `/auth/login` returns `false`, and
+  /// `/auth/refresh` omits the key entirely. Read it separately from the raw
+  /// body; the absent case and the false case mean different things.
   static bool createdFromJson(Map<String, dynamic> json) => json['created'] as bool? ?? false;
 }

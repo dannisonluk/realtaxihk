@@ -9,8 +9,15 @@ import '../../router/app_router.dart';
 import '../../state/providers.dart';
 import '../shared/widgets.dart';
 
-/// Phone entry. WhatsApp OTP only — there is no password anywhere in the
-/// backend, and no endpoint that returns an existing user's number.
+/// Phone entry — the **secondary** login.
+///
+/// The primary credential is email + password (`POST /auth/register` /
+/// `POST /auth/login`); this app has no screen for either yet, so this is the
+/// only door it currently has. Only an **already-verified** number can pass:
+/// `OtpService.verify_otp` requires `phone_verified_at IS NOT NULL`, so an
+/// unproven number is refused rather than turned into a new account. Proving a
+/// number is what unlocks calling a taxi (`/identity/phone/*`), and it is not a
+/// precondition for having an account.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -114,7 +121,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
               const SizedBox(height: AppTheme.space4),
               Text(
-                '新號碼會自動註冊為乘客帳戶。',
+                '只支援已驗證的號碼登入；新號碼不會在此建立帳戶。',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
