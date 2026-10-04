@@ -20,6 +20,37 @@ enum UserRole {
       _decode(values, (UserRole v) => v.wire, value, 'UserRole');
 }
 
+/// Whether an account may be used at all (`app/models/user.py::AccountStatus`).
+///
+/// Distinct from `is_active`, which is the admin's ban switch: this is the
+/// *self-service* lifecycle. An account registers, proves an email and a phone,
+/// and only then reads ACTIVE.
+///
+/// **It is a completeness flag, not a gate.** Nothing refuses on it any more:
+/// signing in works while UNVERIFIED, and calling a taxi is gated on the phone
+/// alone (`require_phone_verified`). So this decides what the profile screen
+/// *says*, never what the API allows — do not turn it into a client-side gate,
+/// because the server would disagree and the user would be stuck on a screen the
+/// backend was happy to serve.
+enum AccountStatus {
+  unverified('UNVERIFIED'),
+  active('ACTIVE'),
+  suspended('SUSPENDED');
+
+  const AccountStatus(this.wire);
+
+  final String wire;
+
+  static AccountStatus fromWire(String value) =>
+      _decode(values, (AccountStatus v) => v.wire, value, 'AccountStatus');
+
+  String get labelZh => switch (this) {
+    AccountStatus.unverified => '未完成驗證',
+    AccountStatus.active => '已啟用',
+    AccountStatus.suspended => '已停權',
+  };
+}
+
 enum DriverStatus {
   pendingKyc('PENDING_KYC'),
   depositRequired('DEPOSIT_REQUIRED'),

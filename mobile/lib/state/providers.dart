@@ -9,6 +9,7 @@ import '../data/auth_repository.dart';
 import '../data/driver_repository.dart';
 import '../data/fare_repository.dart';
 import '../data/fleet_repository.dart';
+import '../data/identity_repository.dart';
 import '../data/order_repository.dart';
 import '../data/trip_repository.dart';
 import '../models/auth.dart';
@@ -29,6 +30,13 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((Ref ref) {
 
 final Provider<AuthRepository> authRepositoryProvider = Provider<AuthRepository>(
   (Ref ref) => AuthRepository(ref.watch(apiClientProvider)),
+);
+
+/// Sign-in's sibling: the profile, and the phone unlock that calling a taxi
+/// needs. Separate from [authRepositoryProvider] because proving a number is a
+/// different operation from signing in — see `data/identity_repository.dart`.
+final Provider<IdentityRepository> identityRepositoryProvider = Provider<IdentityRepository>(
+  (Ref ref) => IdentityRepository(ref.watch(apiClientProvider)),
 );
 
 final Provider<FareRepository> fareRepositoryProvider = Provider<FareRepository>(

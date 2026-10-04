@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/network/api_exception.dart';
 import '../data/driver_repository.dart';
 import '../models/admin.dart';
+import '../models/auth.dart';
 import '../models/driver.dart';
 import '../models/enums.dart';
 import '../models/fleet.dart';
+import '../models/identity.dart';
 import '../models/ledger.dart';
 import '../models/order.dart';
 import '../models/refund.dart';
@@ -17,6 +19,26 @@ import 'providers.dart';
 /// goes through a repository call followed by `ref.invalidate(...)` on the
 /// relevant provider, so there is exactly one code path that mutates the server
 /// and one that reads it back.
+
+/// The caller's own profile: the phone's proven state, and the P-4 re-verification
+/// deadlines. Null while signed out.
+///
+/// Kept apart from [currentUserProvider], which holds the three fields a token
+/// response carries. Only this one knows whether a number has been **proven**,
+/// so it is the source the unlock gate and the account screen read.
+///
+/// It **watches the session**, so signing in or out rebuilds it: a cached profile
+/// belongs to whoever was signed in when it was fetched, and a new account
+/// showing the previous account's proven phone would be a real leak of state, not
+/// just a stale render. Invalidate it by hand after a `/identity/phone/*` call
+/// that the caller does not otherwise re-render from.
+final FutureProvider<Profile?> profileProvider = FutureProvider<Profile?>((Ref ref) async {
+  final AppUser? user = ref.watch(currentUserProvider);
+  if (user == null) {
+    return null;
+  }
+  return ref.watch(identityRepositoryProvider).me();
+});
 
 /// The caller's driver profile, or null when they have none.
 ///
