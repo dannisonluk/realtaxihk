@@ -1133,6 +1133,33 @@ Notable because it is the highest-privilege path in the system. Verified sound:
 - Server datetimes are all tz-aware, so the client's `.toLocal()` is correct.
 - Client mirrors of WS close codes (4401/4403/4404/4408), tick rate (2/s, burst 5),
   the HK phone pattern and the mask shape all match the server.
+- **`alembic/versions/` — 12/12, chain verified linear.** Every revision id appears
+  exactly once as a `down_revision`, there is a single head (`b7d4e1c9a3f2`), and all
+  twelve `downgrade()` bodies contain real `op.*` calls. *Honest scope:* the downgrades
+  were checked for **presence, not executed** — running them would need a scratch
+  database, and the one that matters (`b7d4e1c9a3f2`) documents that it fails loudly on
+  duplicate claims by design.
+- **`b7d4e1c9a3f2_claimed_phone_and_reviewer_expiry.py` — read in full, and it is the
+  best-reasoned migration in the tree.** It drops the plain UNIQUE on
+  `users.phone_e164` *because* uniqueness there was a denial-of-registration vector
+  (a phone number is public, so the first claimer would lock out the real owner), and
+  puts the guarantee back as a **partial** unique index
+  (`uq_users_phone_e164_verified … WHERE phone_verified_at IS NOT NULL`) where it
+  actually means something. The module docstring states the downgrade hazard instead of
+  hiding it. No finding.
+- **The partial index's contract is honoured at both lookup sites that depend on it** —
+  this is the part worth having checked, because dropping a UNIQUE is exactly the change
+  that turns a later `scalar_one_or_none()` into a 500:
+  - `app/services/auth/otp_service.py:157-167` — the secondary OTP login filters
+    `phone_verified_at.is_not(None)`, i.e. precisely the index predicate, so at most one
+    row can match, and the docstring says so in as many words (".first() is not a
+    tie-break between candidates; it is what makes the query total for the type
+    checker").
+  - `app/services/auth/phone_binding_service.py:115-125` — `_assert_unclaimed` filters
+    the same predicate plus `User.id != user.id`, so `scalar_one_or_none()` cannot see
+    two rows; the race is then caught a second time by `except IntegrityError` at
+    `:100`, which turns a lost race into a `BusinessRuleError` rather than a 500.
+  Pre-check *and* constraint backstop, both present. Verified clean.
 
 ## NEW-29 — MEDIUM — `.env.example` advertises a bind-address control that no code reads
 
