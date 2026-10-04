@@ -316,8 +316,8 @@ cd mobile/android && ./gradlew :app:assembleDebug
 
 | 缺什麼 | 403 的 `reason` | 客戶端該做什麼 |
 |---|---|---|
-| 沒驗證過電話 | `PHONE_NOT_VERIFIED` | 顯示「驗證號碼以解鎖叫車」，導去 `/identity/phone/*` |
-| 驗證過但逾期（P-4 月檢） | `PHONE_REVERIFY_DUE` | 顯示「重新驗證」，附上 `phone_reverify_due_at` |
+| 沒驗證過電話 | `PHONE_NOT_VERIFIED` | 顯示「驗證號碼以解鎖叫車」，導去 `/identity/phone/*`（App 是 `/phone/unlock`） |
+| 驗證過但逾期（P-4 月檢） | `PHONE_REVERIFY_DUE` | 顯示「重新驗證」，附上 `phone_reverify_due_at`；App 走同一畫面但用 `reverify` 端點 |
 
 ```json
 {"code": "FORBIDDEN",
@@ -368,23 +368,52 @@ curl -s $API/identity/me -H "authorization: Bearer $TOKEN"
 > `phone_reverify_due_at` 的地方，而 `evaluate()` 把 NULL 期限讀成「已逾期」。只改一半
 > 會造出一列「電話已驗證、但立刻被判定逾期」的資料，症狀看起來毫不相關。
 
-### 6.5 已知缺口：App 還沒有電話解鎖畫面
+### 6.5 App 的覆蓋範圍（2026-10-04 起：三個入口已分開）
 
-後端的解鎖路徑通了，但 `mobile/lib/` 還沒有呼叫 `/identity/phone/*` 的畫面，也沒有
-email + 密碼的註冊／登入畫面。所以真機上跑 APK 的實際覆蓋範圍是：
+登入與電話驗證在 App 裡是分開的，電話驗證只是「解鎖叫車」的條件：
 
-| 流程 | 狀態 |
+| 流程 | App 路由 | 狀態 |
+|---|---|---|
+| 註冊（email + 密碼 + **聲稱**電話） | `/login/register` | ✅ |
+| 主要登入（email + 密碼） | `/login` | ✅ |
+| 次要登入（已驗證號碼 + OTP） | `/login/phone` | ✅ |
+| 解鎖叫車（綁定並驗證電話） | `/phone/unlock` | ✅ |
+
+`/phone/unlock` **刻意不放在 `/login` 之下**：`resolveRedirect` 會把已登入的使用者趕離
+所有 `/login` 路徑，而需要解鎖的正是「已登入但未驗證」的帳號 —— 放在那裡等於對唯一需要
+它的帳號隱形。它掛在 root navigator 上，可從乘客帳戶頁、司機帳戶頁，以及流程中途的 403
+抵達。
+
+App 只在**真的會被擋的兩個動作**之後主動提議解鎖：乘客叫車（`POST /orders`）與司機的
+工作畫面。走同一條 guard 鏈的其他動作（例如司機牌照）目前只顯示伺服器回傳的訊息。**估價
+沒有被擋**（`GET /fare/estimate` 不在 guard 鏈上），所以未驗證的帳號照樣看得到價錢 ——
+App 不會在那裡假裝有一道牆。
+
+真機跑 APK 前要處理的一件事：
+
+| 事項 | 做法 |
 |---|---|
-| 已驗證號碼者的登入、看行程、看帳戶、看歷史 | ✅ 可用 —— 但**只在 dev**，見下表最後一行 |
-| **新用戶註冊** | ❌ App 沒有註冊畫面；`otp/verify` 也不再建立帳號 |
-| **建立訂單、接單、上線** | ❌ 403 `PHONE_NOT_VERIFIED`，而 App 沒有解鎖畫面 |
-| **正式環境的登入第一步（`otp/request`）** | ❌ 403 `HUMAN_VERIFICATION_REQUIRED`，App 不帶 `human_token` |
+| **Turnstile site key** | **沒有任何端點提供它**（`app/core/config.py` 定義了 `turnstile_site_key`，但沒有 route 回傳），所以只能用 build-time define：`--dart-define=TURNSTILE_SITE_KEY=0x4AAAAAAA...`，必要時配 `--dart-define=TURNSTILE_BASE_URL=https://<site key 允許的網域>/` |
+| **release build 沒帶 key** | App 刻意顯示錯誤面板而不是登入表單。正式環境 `TURNSTILE_SECRET_KEY` fail-closed，每個請求都會 403 —— 讓使用者對著一個永遠失敗的按鈕，比當場說明更糟 |
 
-要測叫車流程目前有兩條路：用 6.4 的 curl 解鎖（推薦 —— 它同時驗證了後端的正式流程），
-或者用 6.6 的審查者帳號（建立時就已驗證，完全不用解鎖）。
+> **`TURNSTILE_BASE_URL` 決定 token 是為哪個網域簽發的。** Cloudflare 驗的是 origin，
+> 所以它必須在 site key 的 allowed-domain 清單上 —— 不一定是 API 的網域。
 
-補上 App 的註冊／登入／解鎖畫面、以及 Turnstile token，是**App 的功能缺口**，不是後端
-的問題。三條都記在 [`WORK_SUMMARY.md`](WORK_SUMMARY.md) §4C。
+#### 還缺什麼
+
+* **沒有補完個人資料的畫面。** `POST /identity/profile` 要 username／given name／family
+  name，而 App 沒有任何地方呼叫它，所以註冊出來的帳號 `username IS NULL`。註冊刻意不收
+  姓名 —— 那會在一個以「短」為目的的表格上加第四個必填欄位。
+* **沒有改密碼／忘記密碼流程。** 後端也沒有 `POST /auth/password/*`，所以這同時是後端
+  缺口，不只是 App 的。
+* **Turnstile 的 WebView 沒有在真機驗證過**，`webview_flutter` 是否真的進得了 APK 也
+  沒有在本機驗證過（本機的 Gradle build 跑不完，見
+  [`../mobile/README.md`](../mobile/README.md) 的 Building an APK）。CI 的
+  `flutter build apk --debug` 是唯一會驗到這件事的地方。
+* 這幾條連同其他記在 [`WORK_SUMMARY.md`](WORK_SUMMARY.md) §4C。
+
+要測叫車流程仍然可以用 6.4 的 curl（推薦 —— 它同時驗證了後端的正式流程），或者用 6.6 的
+審查者帳號（建立時就已驗證，完全不用解鎖）。
 
 ### 6.6 審查者帳號：已驗證、會自己過期、動不了錢
 
@@ -474,8 +503,10 @@ REVIEWER_PASSWORD='...'      # 不放在 argv：那會進 shell history 與 proc
     `identity/phone/request`。** `APP_ENV=dev`/`test` 走 `DevHumanVerifier`（全放行），
     所以本機不會擋；但一個沒有 `TURNSTILE_SECRET_KEY` 的**正式**部署會拒絕啟動
     （`_fail_closed`）。前端要帶 `human_token` 欄位，被擋時回 403
-    `HUMAN_VERIFICATION_REQUIRED`。**手機 App 現時不帶這個欄位**，所以正式環境
-    第一步就 403 —— 見第 6.5 節。
+    `HUMAN_VERIFICATION_REQUIRED`。**注意 `otp/verify`、`phone/confirm`、
+    `phone/reverify` 刻意不在名單上** —— 它們的驗證碼本身已經有五次上限與 per-IP
+    限流，在人和自己的六位數字之間放一個 CAPTCHA 是最敵意的位置。App 現在會帶這個
+    欄位，但 site key 是 build-time define —— 見第 6.5 節。
 
 ---
 

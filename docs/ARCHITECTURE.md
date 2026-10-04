@@ -508,9 +508,14 @@ per-IP 限流，在一個人和他的 6 位數字之間塞 CAPTCHA 是最敵意�
 所以漏填的部署跑起來完全正常、看起來完全健康 —— 這正是它必須在 `APP_ENV=prod`
 啟動時直接拒絕的原因（§5），也是 `prod_boot_drill.py` 第 12 個案例存在的理由。
 
-> ⚠️ **已知缺口**：手機 App 的 `requestOtp` 目前**不帶** `human_token`，所以在
-> `APP_ENV=prod` 下第一步就會被 403 拒絕（dev 因為 fail open 而看不出來）。App
-> 也還沒有註冊／登入畫面。兩者都記在 [`WORK_SUMMARY.md`](WORK_SUMMARY.md) §4C。
+> **App 已接上這道閘**（2026-10-04）：三個入口（`/login`、`/login/register`、
+> `/login/phone`）與 `/phone/unlock` 都會帶 `human_token`，由
+> `mobile/lib/core/human/` 的 WebView 挑戰產生。**但 site key 是 build-time
+> `--dart-define=TURNSTILE_SITE_KEY`** —— 沒有任何端點提供它（`turnstile_site_key`
+> 定義在 `app/core/config.py` 但沒有 route 回傳），所以**換 key 要重新出 build**。
+> 而 release build 沒帶 key 時，App 會刻意顯示錯誤面板而不是登入表單：讓使用者對著
+> 一個永遠失敗的按鈕，比當場說明更糟。剩下未做的記在
+> [`WORK_SUMMARY.md`](WORK_SUMMARY.md) §4C。
 
 ---
 
