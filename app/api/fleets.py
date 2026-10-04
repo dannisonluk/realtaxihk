@@ -28,6 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.api.admin._roles import _require_finance
 from app.api.schemas import (
     FleetMemberListOut,
     FleetMemberRowOut,
@@ -243,7 +244,7 @@ async def fleet_settlement(
 @admin_router.post("", status_code=status.HTTP_201_CREATED, response_model=FleetOut)
 async def create_fleet(
     payload: FleetCreateIn,
-    admin: Principal = Depends(require_admin),
+    admin: Principal = Depends(_require_finance),
     session: AsyncSession = Depends(get_session),
 ):
     fleet = await FleetService(session).create(
@@ -295,7 +296,7 @@ async def admin_fleet_detail(
 async def update_fleet(
     fleet_id: uuid.UUID,
     payload: FleetUpdateIn,
-    admin: Principal = Depends(require_admin),
+    admin: Principal = Depends(_require_finance),
     session: AsyncSession = Depends(get_session),
 ):
     service = FleetService(session)
@@ -331,7 +332,7 @@ async def admin_fleet_members(
 async def add_fleet_member(
     fleet_id: uuid.UUID,
     payload: FleetMemberIn,
-    admin: Principal = Depends(require_admin),
+    admin: Principal = Depends(_require_finance),
     session: AsyncSession = Depends(get_session),
 ):
     service = FleetService(session)
@@ -352,7 +353,7 @@ async def add_fleet_member(
 async def remove_fleet_member(
     fleet_id: uuid.UUID,
     driver_profile_id: uuid.UUID,
-    admin: Principal = Depends(require_admin),
+    admin: Principal = Depends(_require_finance),
     session: AsyncSession = Depends(get_session),
 ):
     """Take a driver off the roster.
@@ -385,7 +386,7 @@ async def admin_fleet_settlement(
 async def run_fleet_settlement(
     fleet_id: uuid.UUID,
     period: Annotated[str | None, Query(pattern=r"^\d{4}-W\d{2}$")] = None,
-    admin: Principal = Depends(require_admin),
+    admin: Principal = Depends(_require_finance),
     session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
 ):
     """Charge this fleet's members their weekly fee.

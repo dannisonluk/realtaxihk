@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.admin._roles import _require_operations
 from app.api.schemas import (
     LicenceDecisionOut,
     LicenceQueueOut,
@@ -130,7 +131,7 @@ async def submission_detail(
 async def decide_submission(
     submission_id: uuid.UUID,
     payload: DecideIn,
-    admin: Principal = Depends(require_admin),
+    admin: Principal = Depends(_require_operations),
     session: AsyncSession = Depends(get_session),
 ):
     """Approve or reject one submission. Terminal — a second call is refused.
