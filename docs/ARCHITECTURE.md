@@ -363,13 +363,21 @@ _MIN_SECRET_DISTINCT = 8      # `"x" * 64` 會被拒絕
 | 7 | `CORS_ORIGINS` 含明文 http origin |
 | 8 | `SMTP_HOST` / `SMTP_FROM` 未設 |
 | 9 | `TRUSTED_PROXY_COUNT < 1` |
+| 10 | `TURNSTILE_SECRET_KEY` 未設 |
 
-這幾條由 `scripts/verify/prod_boot_drill.py` 用 **11 個案例**守住
-（1 個正常啟動 + 10 個必須拒絕）。
+第 10 條是這一組裡**唯一「執行期會 fail open」**的：`human.py` 的
+`DisabledHumanVerifier` 在密鑰為空時只印一次警告然後**放行全部請求**，所以漏填的
+部署跑起來完全正常，直到 WhatsApp 帳單到。它因此必須在啟動時就拒絕。
+
+這幾條由 `scripts/verify/prod_boot_drill.py` 用 **12 個案例**守住
+（1 個正常啟動 + 11 個必須拒絕）。
 
 ---
 
-## 6. RBAC：排名比較，不是集合成員
+## 6. 身份與權限：管理員 RBAC，以及用戶身份模型
+
+前半是**管理員**的權限分層；後半（6.3 起）是**用戶**的身份模型 —— 兩者刻意用不同
+的表、不同的憑證，唯一共用的是「權威來自資料庫那一行」這個原則。
 
 `AdminRole` 有四級而不是三級，因為有**兩個**職責分離要表達：
 
@@ -398,7 +406,7 @@ SUPPORT(0) < OPERATIONS(1) < FINANCE(2) < SUPER_ADMIN(3)
 # 日後加在底層的角色，碰不到它上面的任何東西。
 ```
 
-### 兩個很容易混淆的欄位
+### 6.1 兩個很容易混淆的欄位
 
 | 欄位 | 意思 | 值 |
 |---|---|---|
@@ -411,7 +419,7 @@ SUPPORT(0) < OPERATIONS(1) < FINANCE(2) < SUPER_ADMIN(3)
 而且 `require_role` 是 dependency **factory，必須是 `def` 而非 `async def`**
 （協程物件會在 FastAPI 註冊時被拒）。
 
-### 權威是資料庫那一行，不是 token 裡的 claim
+### 6.2 權威是資料庫那一行，不是 token 裡的 claim
 
 ```python
 # 每個 request 都重讀 admin_accounts，不信 token 的 claim。
@@ -419,6 +427,90 @@ SUPPORT(0) < OPERATIONS(1) < FINANCE(2) < SUPER_ADMIN(3)
 # 角色需求取決於請求內容時（例如爭議裁決），用 deps.live_admin_role()
 # ——row 不存在就 fail closed。
 ```
+
+### 6.3 用戶身份：電話不再是登入憑證
+
+舊模型是 `POST /auth/otp/verify` **同時**註冊與登入，電話號碼是唯一憑證。結果是
+新用戶第一件被要求做的事，就是證明一個從來沒有人叫他提供的號碼。
+
+現在拆成三件事，各有各的服務：
+
+| 服務 | 職責 | 端點 |
+|---|---|---|
+| `AccountAuthService` | email + 密碼的註冊與登入 | `POST /auth/register`、`POST /auth/login` |
+| `OtpService` | 證明「號碼在我手上」；**次要**登入 | `POST /auth/otp/request`、`POST /auth/otp/verify` |
+| `PhoneBindingService` | 在既有帳號上綁定並證明號碼 ＝ **解鎖 call車** | `/identity/phone/request`、`/identity/phone/confirm` |
+
+閘鏈，每一道只擋一件事：
+
+```
+require_active_user      → 讀取（帳號在不在、是不是已過期的審查者）
+require_phone_verified   → 開始生意      reason: PHONE_NOT_VERIFIED
+require_phone_current    → 月度重驗軟阻擋 reason: PHONE_REVERIFY_DUE
+```
+
+`require_verified_account` 與 `ACCOUNT_UNVERIFIED` 已**刪除**。`account_status` 還在，
+但它只是一個資料齊全度旗標，**不擋任何東西**。
+
+**註冊時電話是「聲稱」，不是「證明」**，這一點有三個直接後果：
+
+- 多個帳號可以聲稱同一個號碼，**只有一個能證明它** —— 靠 partial unique index
+  `UNIQUE (phone_e164) WHERE phone_verified_at IS NOT NULL`
+  （`uq_users_phone_e164_verified`）。原本的普通 UNIQUE 是一個**拒絕註冊**的攻擊
+  面：任何人先用你的號碼註冊，你就永遠註冊不了。
+- 註冊**不檢查**號碼有沒有被佔用。檢查等於免費送人一個「這個號碼註冊過沒有」的
+  oracle。電郵被佔用**會**如實回報，因為電郵本身就是憑證，無法不說。
+- `otp/verify` 因此**只接受已驗證的號碼**（`phone_verified_at IS NOT NULL`），
+  所以它不能建立帳號，也不能登入一個只是「聲稱」了號碼的帳號 —— 被偷的驗證碼
+  到不了 SIM 卡本身到不了的地方。
+
+### 6.4 鎖定回 401，不回 429
+
+密碼連續錯 5 次鎖 15 分鐘。回應刻意是 **401 而非 429**：429 會區分「這個帳號被鎖」
+與「這個 IP 被限流」，等於確認該帳號存在、而且已經被猜到觸發鎖定。
+
+實作上有個容易踩的點：`AccountLocked` **繼承** `AccountThrottled`，所以
+`app/api/auth.py::_run` 必須**先** catch `AccountLocked`。順序反了，鎖定就會變成
+429 —— 而且沒有測試會紅，除非有人專門問這條。狀態碼由**例外型別**決定，不是由
+訊息文字（舊版是 `429 if "too many" in str(exc) else 401`，等於讓一個安全相關的
+狀態碼取決於英文措辭）。
+
+### 6.5 審查者帳號：`reviewer_expires_at IS NOT NULL` 本身就是標記
+
+給外部審查者（app store 審查、合規檢查）用的受限帳號，由
+`scripts/ops/create_reviewer_account.py` 建立，且要 `ALLOW_REVIEWER_ACCOUNT=true`。
+
+刻意**不設**獨立的 boolean：讓「有到期日」與「是審查者」是同一件事，兩者就沒有
+drift 的空間。過期後由 `require_active_user` 與 `require_live_principal` 兩道閘
+回 403 `REVIEWER_ACCOUNT_EXPIRED`。
+
+它在建立時就已把 `phone_verified_at` 寫齊（否則每一道閘都排在它前面，審查者會
+卡在註冊流程），但**不能動錢**、**打不開後台**。詳見
+[`QA_TEST_ENVIRONMENT.md`](QA_TEST_ENVIRONMENT.md) §6.6。
+
+### 6.6 真人驗證：唯一在執行期 fail open 的設定
+
+Cloudflare Turnstile（`app/services/infra/human.py`）掛在**四道門**：`register`、
+`login`、`auth/otp/request`，以及 `identity/phone/request`（綁定電話 —— 它同樣會
+發一條計費訊息）。**不掛** `otp/verify` —— 那裡的驗證碼本身已有 5 次上限與
+per-IP 限流，在一個人和他的 6 位數字之間塞 CAPTCHA 是最敵意的位置。
+
+兩個容易看漏的實作細節：
+
+- **順序是刻意的**：本地限流**先**跑，真人驗證**後**跑（見 `otp_request`）。
+  `assert_human` 是一次對外 HTTPS 呼叫，放前面等於讓一個位址使我們做無限次外呼。
+- **`assert_human` 是普通函式、由每條路由自己呼叫，不是 `Depends`** —— 因為 token
+  在 request body 裡，而每個 body 形狀不同，dependency 讀不到它不知道的欄位。
+  代價是這道閘**不是 default-deny**：日後新增一條會建資料或發計費訊息的路由，
+  必須**刻意**加上它，而不是自動繼承。
+
+`TURNSTILE_SECRET_KEY` 為空時 `DisabledHumanVerifier` **放行一切**，只印一次警告。
+所以漏填的部署跑起來完全正常、看起來完全健康 —— 這正是它必須在 `APP_ENV=prod`
+啟動時直接拒絕的原因（§5），也是 `prod_boot_drill.py` 第 12 個案例存在的理由。
+
+> ⚠️ **已知缺口**：手機 App 的 `requestOtp` 目前**不帶** `human_token`，所以在
+> `APP_ENV=prod` 下第一步就會被 403 拒絕（dev 因為 fail open 而看不出來）。App
+> 也還沒有註冊／登入畫面。兩者都記在 [`WORK_SUMMARY.md`](WORK_SUMMARY.md) §4C。
 
 ---
 
@@ -543,7 +635,7 @@ stdio，所以在這個沙盒裡 `dart analyze` / `flutter test` 全部會
 | 8 | 每個 enum 欄位有 DB CHECK 約束 | `test_enum_check_constraints.py` + `test_migration_schema_parity.py` |
 | 9 | 金額 wire 格式 2 dp、跳錶 1 dp、比率 2 dp half-up | `test_money_wire.py` |
 | 10 | `X-Forwarded-For` 只從右邊算 hop | `test_security_hardening.py::TestForwardedFor` |
-| 11 | `APP_ENV` 未設／非白名單 → 啟動失敗 | `prod_boot_drill.py`（11 案例） |
+| 11 | `APP_ENV` 未設／非白名單 → 啟動失敗 | `prod_boot_drill.py`（12 案例） |
 | 12 | prod 下每個必填設定缺失 → 拒絕啟動 | 同上 |
 | 13 | 深圳灣口岸區在境內，蛇口在境外 | `test_hk_bounds.py`（87 條） |
 | 14 | `response_model` 不丟失任何夹具的鍵 | `audit_response_models.py`（68 blocks） |
@@ -551,6 +643,11 @@ stdio，所以在這個沙盒裡 `dart analyze` / `flutter test` 全部會
 | 16 | 遷移可以在沒有 PostGIS 的 Postgres 上跑 | `test_migration_schema_parity.py` |
 | 17 | 腳本不自算 repo root 深度 | `test_scripts_root.py`（26 條） |
 | 18 | 路徑測試在 POSIX 與 Windows 皆成立 | `test_db_backup.py::TestShellPaths` |
+| 19 | 一個電話號碼只能被**一個**帳號證明 | `test_phone_binding_api.py` + `test_migration_schema_parity.py` |
+| 20 | 註冊不透露「此號碼已被註冊」（只透露電郵） | `test_auth_api.py` |
+| 21 | 密碼連錯 5 次鎖 15 分鐘，且回 **401 而非 429** | `test_auth_api.py` + `test_account_policy.py` |
+| 22 | 審查者帳號過期後每道閘都回 403 `REVIEWER_ACCOUNT_EXPIRED` | `test_reviewer_account.py` |
+| 23 | 真人驗證閘只管註冊／登入／OTP 請求，不管 `otp/verify` | `test_auth_api.py` |
 
 ---
 

@@ -253,11 +253,12 @@ These are not bugs to fix in the client; they are shapes the client was built
 around. Each is documented at the call site.
 
 * **`UserRole.DRIVER` is never assigned.** Signup always creates `PASSENGER`
-  (`app/services/otp_service.py`), and `POST /drivers/register` only creates a
-  `DriverProfile`. Driver capability is gated entirely on `DriverProfile.status`
-  — there are 19 `require_active_user` driver routes and zero role-gated ones.
-  So routing keys off admin-vs-not (`lib/router/app_router.dart`), and driver
-  mode is entered from the account screen (`lib/features/shared/account_screen.dart`).
+  (`app/services/auth/account_service.py`), and `POST /drivers/register` only
+  creates a `DriverProfile`. Driver capability is gated entirely on
+  `DriverProfile.status` — there are 19 `require_active_user` driver routes and
+  zero role-gated ones. So routing keys off admin-vs-not
+  (`lib/router/app_router.dart`), and driver mode is entered from the account
+  screen (`lib/features/shared/account_screen.dart`).
 * **Trip lifecycle events are never published.** `TripHub.publish()` is only
   reachable from location ticks, so a passive passenger socket never learns that
   a driver grabbed the order. `TripTrackingScreen` therefore polls
@@ -402,13 +403,22 @@ tool/
   work here, and there is no headless alternative without the Flutter tool.
   Everything testable without a widget tree is covered by `tool/run_tests.dart`.
 * Push notifications are not wired up; the trip screen polls instead.
-* **The app never calls `/api/v1/identity/*`.** There is no email screen and no
-  username screen. The backend requires all three of phone + email + username
-  before an account may start business (`require_verified_account`), and OTP
-  login supplies only the phone — so on a real device, browsing works while
-  **creating an order, grabbing one, or going online returns 403
-  `ACCOUNT_UNVERIFIED`**. See `docs/QA_TEST_ENVIRONMENT.md` section 6 for the
-  supported way to complete an account while this is missing.
+* **The app never calls `/api/v1/identity/*`.** There is no registration screen,
+  no email + password screen, and no phone-unlock screen. Login is now email +
+  password (`POST /auth/register`, `POST /auth/login`); the app implements only
+  the **secondary** phone-OTP login, and `otp/verify` refuses any number that has
+  not already been proven — so a brand-new user has no way into the app at all.
+  Proving a number is what unlocks calling a taxi (`require_phone_verified`), so
+  on a real device browsing works while **creating an order, grabbing one, or
+  going online returns 403 `PHONE_NOT_VERIFIED`**. See
+  `docs/QA_TEST_ENVIRONMENT.md` section 6 for the supported way to complete an
+  account while this is missing.
+* **`otp/request` sends no `human_token`**, so under `APP_ENV=prod` the app's
+  first login step is refused with 403 (`HUMAN_VERIFICATION_REQUIRED`). Dev hides
+  it because `DevHumanVerifier` accepts everything (and `DisabledHumanVerifier`
+  fails open when the secret is merely empty). Needs the Cloudflare Turnstile SDK
+  wired into all four gated doors — `register`, `login`, `auth/otp/request` and
+  `identity/phone/request`.
 * **`/identity/phone/reverify` (the P-4 monthly re-verification) is likewise
-  unimplemented**, so an overdue number surfaces a raw 403 with no way to fix it
-  from inside the app.
+  unimplemented**, so an overdue number surfaces a raw 403 `PHONE_REVERIFY_DUE`
+  with no way to fix it from inside the app.

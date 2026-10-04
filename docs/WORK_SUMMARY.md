@@ -27,18 +27,18 @@
   `git rev-list --count origin/main..HEAD` —— 而 **0 的意思是 HEAD 等於
   origin/main**（即所有改動都未 commit），**不是**「都推上去了」。
 
-- **現時狀態**：`pytest` **961 passed / 0 failed / 0 error / 0 skipped**（以
-  `--junit-xml` 讀，39 個模組）·
-  > 📌 **文檔原本寫的 955 早就過期了。** 上一個 commit `bab78b9` 加了 2 條 licence
-  > 測試但沒有同步文檔。實測：`HEAD` 是 **957**，加上
-  > `tests/infra/test_money_input_annotations.py` 的 3 條 money 註解守衛後是 **960**。
-  > 此數字為 2026-10-03 實跑（6m59s，`--junit-xml` 讀出）。
-  `ruff check` clean · `ruff format --check` clean ·
+- **現時狀態**：`pytest` **1060 passed / 0 failed / 0 error / 0 skipped**（以
+  `--junit-xml` 讀，44 個 `test_*.py` 模組）·
+  > 📌 **這一批由 964 起點修掉 108 個失敗**（登入／註冊與電話驗證分離的改動，
+  > 見 §4C）。舊文檔寫的 961 對應的是改動前的 `HEAD`。此數字為 2026-10-04 實跑
+  > （`.tmp/full4.xml` 讀出，與 `--collect-only` 的 1060 一致）。
+  `ruff check` **只剩 `app/api/fleets.py` 的 2 條**（`I001` + `F401`，那是用戶自己
+  未 staged 的改動，刻意不動）· `ruff format --check` clean（184 files）·
   console `tsc` clean + **69 vitest passed（9 files）** · `npm run build` 主包
   468.49 kB（gzip 146.50 kB）＋地圖分包 155.70 kB（gzip 45.58 kB，按需載入）·
   Dart **97 passed** · contract **54 fixtures decoded, 0 failure** ·
   `dart_check` 58 files, 0 diagnostics · `audit_layout` **52 renders clean** ·
-  `tool/check_contrast.py` OK · API **82 paths / 89 operations，全部已声明
+  `tool/check_contrast.py` OK · API **86 paths / 93 operations，全部已声明
   response model** · fixture↔schema 审计 **68/68 块无数据丢失** ·
   pyright（1.1.408）`app/` + `scripts/` + `tests/` **0 errors** —— `tests/` 原有
   140 條，2026-10-03 清零（見 §7）。
@@ -53,7 +53,7 @@
 
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **82 paths / 89 operations** · 961 tests |
+| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **86 paths / 93 operations** · 1060 tests |
 | Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**21 個畫面**，三角色）；品牌資產由 `tool/gen_branding_assets.py` 由 `branding/source/` 的原圖產生 | ✅ 97 tests · APK BUILD SUCCESSFUL |
 | Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/legacy/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **69 vitest** · UI verifier PASS |
 
@@ -80,7 +80,7 @@ uv run mypy                                            # types; no DB needed（�
 # tests/ 或 scripts/ 時，需要臨時 pyrightconfig.json：
 #   {"venvPath":".","venv":".venv","pythonVersion":"3.12"}   ← 用完即刪，不要入 repo
 npx --yes pyright@1.1.408 app/ scripts/ tests/         # 現為 0 errors
-uv run pytest -q                                       # 961 passed（用 --junit-xml 讀，見下）
+uv run pytest -q                                       # 1060 passed（用 --junit-xml 讀，見下）
 uv run python scripts/verify/audit_response_models.py  # 68 块夹具 vs response_model，0 丢失
 cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run --no-file-parallelism --pool=forks
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
@@ -129,10 +129,11 @@ cd mobile/android && ./gradlew :app:assembleDebug
 
 | 缺口 | 影響 | 為什麼現在是這樣 |
 |---|---|---|
-| **App 完全沒有實作 `/api/v1/identity/*`** | 後端要求 `phone + email + username` 三樣齊全才放行 `POST /orders`／`grab`／`drivers/location`；App 只做得到電話。**所以在真機上：登入、看行程、看帳戶都正常，但叫車、接單、上線一律 403 `ACCOUNT_UNVERIFIED`** | 後端閘是刻意設計（`require_verified_account`，單一強制點）；缺的是 App 端的電郵／使用者名稱畫面。`mobile/lib/` 現時零處呼叫 `/identity/*` |
+| **App 的 `otp/request` 不帶 `human_token` → 正式環境 403（最急）** | `app/api/auth.py::otp_request` 在限流之後呼叫 `assert_human(...)`，而 App 的 `AuthRepository.requestOtp` 只送 `phone_e164`。**在 `APP_ENV=prod` 下，App 登入的第一步直接被 403 拒絕。** dev 完全看不出來，因為 `DisabledHumanVerifier` 放行一切 | 真人驗證是後加的（與下面第 2 條同一批）。App 端要接 Turnstile SDK，並在**三個門**（`register`／`login`／`otp/request`）都帶 token。**APK 目前測不出這個，因為測試指向 dev** |
+| **App 沒有任何註冊／登入／解鎖畫面** | 登入已改為 email + 密碼，而 App 只會 `otp/request` + `otp/verify`。而 `otp/verify` 現在**只接受已驗證過的號碼**，所以**新用戶在 App 完全無法建立帳號**；已註冊者仍能用電話 OTP 登入（次要登入刻意保留）。叫車／接單／上線一律 403 `PHONE_NOT_VERIFIED` | 後端閘改為 `require_phone_verified`（單一強制點：只擋「開始生意」），`account_status` **不再是閘**。缺的是 App 端整組 `/identity/phone/*` 與 email／密碼畫面。`mobile/lib/` 現時零處呼叫 `/identity/*` |
 | **`serve_and_probe.py` 把 uvicorn 寫死在 `127.0.0.1`** | 真機連不到 API，而 `APP_HOST=0.0.0.0` 對它**無效**（沒有任何 dev 啟動腳本讀那個設定）。現時要手動 `adb reverse tcp:8000 tcp:8000` | 不是 bug（本機開發預設綁 loopback 是對的），是 dev 工具缺口。要修就是讓該腳本接受 `--host` |
-| **沒有「一鍵補齊測試帳號驗證」的 ops 腳本** | 每次要新開一個能叫車的測試帳號，都要手打 4 條 curl（見 `QA_TEST_ENVIRONMENT.md` §6.4） | 刻意**先不做**：那 4 條 curl 走的正是正式流程，等於順手驗證了後端。加一條捷徑腳本會令這條路徑**無人再跑**。若日後要頻繁重跑，再加 `scripts/ops/` 腳本，但必須走 service 層而不是 `UPDATE users` |
-| **App 未實作 `/identity/phone/reverify`（P-4 月度重驗）** | 電話重驗到期後，App 只會看到 403 `PHONE_REVERIFY_DUE` 而沒有處理畫面 | 與上面第一條同源：`/identity/*` 整組未接。P-4 是軟性阻擋（只擋「開始新生意」），所以現階段影響有限 |
+| **沒有「一鍵造一個能叫車的帳號」的 ops 腳本** | 每次要新開一個能叫車的測試帳號，都要依序打 3 個端點（`/auth/register` → `/identity/phone/request` → `/identity/phone/confirm`，見 `QA_TEST_ENVIRONMENT.md` §6.4） | 刻意**先不做**：這 3 步走的正是正式流程，等於順手驗證了後端。**注意「審查者帳號」已有 ops 腳本**（`scripts/ops/create_reviewer_account.py`，有到期日、不能動錢，見 §6.6），但它解決的是「給外部審查者一個能登入的帳號」，**不是**這條。若日後要頻繁重跑，再加 `scripts/ops/` 腳本，但必須走 service 層而不是 `UPDATE users` |
+| **App 未實作 `/identity/phone/reverify`（P-4 月度重驗）** | 電話重驗到期後，App 只會看到 403 `PHONE_REVERIFY_DUE` 而沒有處理畫面 | 與上面第 2 條同源：`/identity/*` 整組未接。P-4 是軟性阻擋（只擋「開始新生意」），所以現階段影響有限 |
 
 ### D. 已結案（保留以免重複處理）
 
@@ -228,7 +229,10 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 ## 8. 一頁看完
 
 ```
-✅ 後端 82 paths / 89 ops / 961 tests / ruff lint + format clean — 生產就緒
+✅ 後端 86 paths / 93 ops / 1060 tests / ruff format clean — 生產就緒
+✅ 登入改為 email + 密碼；電話只解鎖 call車（`PHONE_NOT_VERIFIED`）；鎖定回 401
+✅ auth 三面 rate limit + Cloudflare Turnstile（prod 缺密鑰拒啟動）+ 受限審查者帳號
+⚠️ App 未接新登入流程，且 `otp/request` 未帶 `human_token` → prod 首步 403（見 §4C）
 ✅ mobile 21 畫面 / 97 tests / 0 diagnostics      — 三角色完整
 ✅ admin-web React / 69 vitest / typecheck + build clean / UI verifier PASS
 ✅ 後台治理：四級 RBAC（rank 比較、live row 為權威）+ 審計覆蓋金錢／狀態改動

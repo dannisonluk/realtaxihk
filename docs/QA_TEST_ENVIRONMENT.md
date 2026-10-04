@@ -82,8 +82,13 @@ Linux／macOS 把 `.venv/Scripts/python` 換成 `.venv/bin/python`。
 > `APP_ENV=prod` **不是**「假裝正式環境」的開關。它會令 app 在啟動時拒絕一整套
 > dev 預設值（JWT 密鑰、`POSTGRES_PASSWORD`、`ALLOW_DEV_OTP`、
 > `PUBLIC_BASE_URL` 必須 https、`CORS_ORIGINS` 不得含純 http、
-> `SMTP_HOST`／`SMTP_FROM` 必須設定、`TRUSTED_PROXY_COUNT` ≥ 1）。
-> 想驗正式啟動行為，用 `scripts/verify/prod_boot_drill.py`，它逐條驗這 11 種情形。
+> `SMTP_HOST`／`SMTP_FROM` 必須設定、`TRUSTED_PROXY_COUNT` ≥ 1、
+> `TURNSTILE_SECRET_KEY` 必須設定）。
+> 想驗正式啟動行為，用 `scripts/verify/prod_boot_drill.py`，它逐條驗這 12 種情形。
+>
+> `TURNSTILE_SECRET_KEY` 是這一組裡**唯一「執行期會 fail open」**的設定：沒設的話
+> `DisabledHumanVerifier` 只印一條警告就放行全部請求，所以部署漏填的服務看起來
+> 完全健康。這正是啟動時必須直接拒絕、而不能只靠執行期行為判定的原因。
 
 ---
 
@@ -251,23 +256,39 @@ cd mobile/android && ./gradlew :app:assembleDebug
 
 ---
 
-## 6. 手機 App 首次登入：兩道牆
+## 6. 手機 App 首次登入：登入與叫車解鎖是兩件事
 
-### 6.1 電話驗證**就是**登入，沒有「跳過」這回事
+### 6.1 登入用電郵加密碼，電話只用來解鎖「call車」
 
-App 沒有密碼 —— 整個後端都沒有密碼登入。`/api/v1/auth/otp/verify` 是唯一的入口，
-所以「一開始就要電話 verify」不是一道額外的閘，**它就是門口本身**，沒有測試開關可以
-繞過，這是刻意的。
+> **這一節在 2026-10-03 改寫。** 舊版是「電話驗證**就是**登入」——`POST /auth/otp/verify`
+> 同時負責註冊與登入，電話號碼既是身分也是唯一的秘密。掉了號碼就等於掉了帳號，而且
+> 新使用者遇到的第一件事，是被要求證明一個沒人問過他的號碼。那個模型已經拆掉。
 
-但「要電話驗證」不等於「要真電話」：
+現在是幾個獨立的動作：
+
+| 動作 | 端點 | 需要什麼 |
+|---|---|---|
+| **有帳號** | `POST /auth/register` | email + 密碼 + 一個**聲稱**的電話（不驗證） |
+| **登入** | `POST /auth/login` | email + 密碼 |
+| **解鎖 call車** | `POST /identity/phone/request` → `/identity/phone/confirm` | 已登入 + 能收到那個號碼的 OTP |
+| 次要登入 | `POST /auth/otp/verify` | 一個**已經被某帳號驗證過**的號碼 + OTP |
+
+所以「一開始就要電話 verify」不再是事實：新註冊的帳號**可以立刻登入、看行程、改個人
+資料**，只有建立訂單／接單／上線會被擋，理由是 `403 PHONE_NOT_VERIFIED`，客戶端據此
+顯示「驗證號碼以解鎖叫車」。
+
+`/auth/otp/verify` 還在，但它**不能**註冊，也**不能**登入一個只是「聲稱」該號碼的
+帳號 —— 它要求 `phone_verified_at IS NOT NULL`。這是留著這個端點唯一的理由：一個
+被偷走的 OTP 只能到達 SIM 卡本來就到的帳號。
+
+電話要真號碼嗎？不用：
 
 | 你想要 | 做法 |
 |---|---|
 | 一個固定的驗證碼 | `.env` 設 `ALLOW_DEV_OTP=true` → 永遠是 `123456` |
 | 用真號碼但不想等 WhatsApp | 讀 API 日誌的 `[WHATSAPP:dev] OTP <code> -> +852****4567`（需 `LOG_LEVEL=INFO`） |
-| 一個號碼 | 任何 `+852` + 8 位都可以，第一次驗證時自動註冊（見 3.1） |
-
-換句話說：**登入這一關不需要繞，因為它本來就不是真的在發訊息。**
+| 一個號碼 | 任何 `+852` + 8 位都可以，但 `+8520000xxxx` 除外 —— 那是審查者帳號的保留區（見 6.6） |
+| 完全跳過解鎖 | 用審查者帳號，見 **6.6**：它建立時就是已驗證的 |
 
 ### 6.2 第一道牆：真機連不到你的 API
 
@@ -286,97 +307,122 @@ App 沒有密碼 —— 整個後端都沒有密碼登入。`/api/v1/auth/otp/ve
 > `--no-proxy-headers` 不是可選的裝飾：少了它，uvicorn 會相信來自 `127.0.0.1` 的
 > `X-Forwarded-For`，每一個 IP 速率限制就變成可偽造（SEC-31）。
 
-### 6.3 第二道牆：登入之後帳號仍然是 `UNVERIFIED`
+### 6.3 第二道牆：登入了，但還沒驗證電話
 
 這一處**最容易被誤判成 bug**。
 
-OTP 只證明電話。剛註冊的帳號 `account_status` 是 `UNVERIFIED`，而
-`require_verified_account`（`app/core/deps.py:243`）要求**三樣齊全**才放行：
+登入成功不等於可以叫車。`POST /orders`、`/orders/{id}/grab`、`/drivers/location` 掛的是
+`require_phone_current`，而它底下還有一層 `require_phone_verified`：
 
-| 缺什麼 | 403 的 `missing` 會列出 |
-|---|---|
-| `username` 未設 | `"profile"` |
-| `email_verified_at` 為空 | `"email"` |
-| `phone_verified_at` 為空 | `"phone"` |
-
-OTP 登入已經設好 `phone_verified_at`，所以實際上 `missing` 是 `["profile","email"]`。
-
-被這道閘擋住的是**開始新生意**的路由，也就是掛 `require_phone_current` 的那幾條：
-
-| 路由 | 守門依賴 | UNVERIFIED 時 |
+| 缺什麼 | 403 的 `reason` | 客戶端該做什麼 |
 |---|---|---|
-| `POST /api/v1/orders`（建立訂單） | `require_phone_current` | **403 `ACCOUNT_UNVERIFIED`** |
-| `POST /api/v1/orders/{id}/grab`（接單） | `require_phone_current` | **403** |
-| `POST /api/v1/drivers/location`（上線） | `require_phone_current` | **403** |
-| 其餘（查訂單、行程、`/identity/*`、`/drivers/register`） | `require_active_user` | 正常 |
-
-403 的 body 是機器可讀的，客戶端要靠 `reason` 分辨「去補資料」與「去收信」：
+| 沒驗證過電話 | `PHONE_NOT_VERIFIED` | 顯示「驗證號碼以解鎖叫車」，導去 `/identity/phone/*` |
+| 驗證過但逾期（P-4 月檢） | `PHONE_REVERIFY_DUE` | 顯示「重新驗證」，附上 `phone_reverify_due_at` |
 
 ```json
-{"detail": {"message": "account verification is incomplete",
-            "reason": "ACCOUNT_UNVERIFIED",
-            "missing": ["profile", "email"]}}
+{"code": "FORBIDDEN",
+ "message": "verify a phone number to call a taxi",
+ "details": {"reason": "PHONE_NOT_VERIFIED"}}
 ```
 
-**而手機 App 目前沒有處理這個狀態的畫面。** `mobile/lib/` 完全沒有呼叫
-`/api/v1/identity/*` —— 沒有電郵輸入畫面，也沒有使用者名稱畫面。所以在 APK 上按
-「叫車」只會拿到一個 403，然後顯示一句錯誤。這是**已知缺口**，見 6.5。
+> **`account_status` 不再是閘。** 它現在只是「資料齊不齊」的旗標（console 會顯示它），
+> `require_active_user` 從不讀它。舊版的 `require_verified_account` 與
+> `ACCOUNT_UNVERIFIED` 已經刪除 —— 所以「登入之後什麼都被擋」這個現象不會再出現。
 
-### 6.4 用「支援的路徑」通過它（四步）
+### 6.4 用「支援的路徑」解鎖（三步）
 
-`/identity/*` 全部由 `require_active_user` 守門 —— 未驗證的帳號**可以**呼叫它們。
-所以這條路本來就是通的，而且它就是正式流程本身，不是測試後門。
+`/identity/*` 全部由 `require_active_user` 守門 —— 未驗證電話的帳號**可以**呼叫它們。
+這條路就是正式流程本身，不是測試後門。
 
 ```bash
 API=http://127.0.0.1:8000/api/v1
-PHONE=+85290000001          # 任何 +852 + 8 位都可以
+PHONE=+85290000001          # 任何 +852 + 8 位都可以（+8520000xxxx 除外）
+EMAIL=qa@example.com
+PASS='Qa-Test-Passw0rd-9'   # 至少 12 字元，見 app/core/passwords.py
 
-# 1. 拿 token（ALLOW_DEV_OTP=true 時驗證碼固定為 123456）
-curl -s $API/auth/otp/request -H 'content-type: application/json' \
-     -d "{\"phone\":\"$PHONE\"}"
-TOKEN=$(curl -s $API/auth/otp/verify -H 'content-type: application/json' \
-     -d "{\"phone\":\"$PHONE\",\"code\":\"123456\"}" \
+# 1. 註冊 —— 電話只是聲稱，不驗證
+TOKEN=$(curl -s $API/auth/register -H 'content-type: application/json' \
+     -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\",\"phone_e164\":\"$PHONE\"}" \
      | .venv/Scripts/python -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
 
-# 2. 設 username —— 這一步補上 missing 裡的 "profile"
-curl -s $API/identity/profile -H "authorization: Bearer $TOKEN" \
+# 2. 要一個 OTP 給那個號碼（ALLOW_DEV_OTP=true 時固定是 123456）
+curl -s $API/identity/phone/request -H "authorization: Bearer $TOKEN" \
+     -H 'content-type: application/json' -d "{\"phone_e164\":\"$PHONE\"}"
+
+# 3. 確認 —— 這一步才把號碼綁上，並開始 P-4 的月檢時鐘
+curl -s $API/identity/phone/confirm -H "authorization: Bearer $TOKEN" \
      -H 'content-type: application/json' \
-     -d '{"username":"qatester","given_name":"QA","family_name":"Tester"}'
-
-# 3. 要一封驗證信，再從日誌撈連結（dev 只印日誌，不真的寄）
-curl -s $API/identity/email/request -H "authorization: Bearer $TOKEN" \
-     -H 'content-type: application/json' -d '{"email":"qa@example.com"}'
-grep -o 'verify-email?token=[A-Za-z0-9_-]*' .tmp/uvicorn.log | tail -1
-
-# 4. 把 ?token= 之後那串貼回去
-curl -s $API/identity/email/confirm -H 'content-type: application/json' \
-     -d '{"token":"<貼上>"}'
+     -d "{\"phone_e164\":\"$PHONE\",\"code\":\"123456\"}"
+# → "verified": true, "phone_verified": true, "phone_reverify_due_at": "..."
 ```
 
-驗一下狀態真的翻了：
+之後叫車就通了。驗一下：
 
 ```bash
 curl -s $API/identity/me -H "authorization: Bearer $TOKEN"
-# → "account_status":"ACTIVE", "email_verified":true, "phone_verified":true
+# → "phone_verified": true, "phone_reverify_blocked": false
 ```
 
-> **不要自己去 `UPDATE users SET account_status='ACTIVE'`。**
-> `_promote_if_ready`（`identity_service.py:277`）是**唯一**定義「齊了沒有」的地方，
-> 兩道閘共用它。手改會造出一列「狀態寫著 ACTIVE、但三樣有缺」的資料，而那一列之後
-> 會在任何一道閘上以一個看起來毫不相關的錯誤炸掉。
+> **不要自己去 `UPDATE users SET phone_verified_at = now()`。**
+> `PhoneBindingService.confirm` 是唯一同時寫 `phone_verified_at` 與
+> `phone_reverify_due_at` 的地方，而 `evaluate()` 把 NULL 期限讀成「已逾期」。只改一半
+> 會造出一列「電話已驗證、但立刻被判定逾期」的資料，症狀看起來毫不相關。
 
-### 6.5 已知缺口：App 做不到自己的 onboarding
+### 6.5 已知缺口：App 還沒有電話解鎖畫面
 
-後端要求三樣齊全，而 App 只做得到一樣（電話）。所以在真機上跑 APK 的實際覆蓋範圍是：
+後端的解鎖路徑通了，但 `mobile/lib/` 還沒有呼叫 `/identity/phone/*` 的畫面，也沒有
+email + 密碼的註冊／登入畫面。所以真機上跑 APK 的實際覆蓋範圍是：
 
 | 流程 | 狀態 |
 |---|---|
-| 登入、看行程、看帳戶、看歷史 | ✅ 可用 |
-| **建立訂單、接單、上線** | ❌ 403（帳號未驗證），而 App 沒有補齊的畫面 |
+| 已驗證號碼者的登入、看行程、看帳戶、看歷史 | ✅ 可用 —— 但**只在 dev**，見下表最後一行 |
+| **新用戶註冊** | ❌ App 沒有註冊畫面；`otp/verify` 也不再建立帳號 |
+| **建立訂單、接單、上線** | ❌ 403 `PHONE_NOT_VERIFIED`，而 App 沒有解鎖畫面 |
+| **正式環境的登入第一步（`otp/request`）** | ❌ 403 `HUMAN_VERIFICATION_REQUIRED`，App 不帶 `human_token` |
 
-要測叫車流程目前只有兩條路：用 6.4 的 curl 把帳號補齊（推薦 —— 它同時驗證了後端的
-正式流程），或者補上 App 的電郵與使用者名稱畫面（那是 **App 的功能缺口**，不是後端
-的問題）。
+要測叫車流程目前有兩條路：用 6.4 的 curl 解鎖（推薦 —— 它同時驗證了後端的正式流程），
+或者用 6.6 的審查者帳號（建立時就已驗證，完全不用解鎖）。
+
+補上 App 的註冊／登入／解鎖畫面、以及 Turnstile token，是**App 的功能缺口**，不是後端
+的問題。三條都記在 [`WORK_SUMMARY.md`](WORK_SUMMARY.md) §4C。
+
+### 6.6 審查者帳號：已驗證、會自己過期、動不了錢
+
+App Store / Play 審查，或者外部審計，需要一個能用的帳號 —— 但不該是一個能做其他任何事
+的帳號。用 `scripts/ops/create_reviewer_account.py` 建一個：
+
+```bash
+# .env 或環境變數
+ALLOW_REVIEWER_ACCOUNT=true
+REVIEWER_PASSWORD='...'      # 不放在 argv：那會進 shell history 與 process table
+
+.venv/Scripts/python.exe scripts/ops/create_reviewer_account.py \
+    --email reviewer@example.com --days 14 --yes
+
+# 列出全部，或提早撤銷
+.venv/Scripts/python.exe scripts/ops/create_reviewer_account.py --list
+.venv/Scripts/python.exe scripts/ops/create_reviewer_account.py --revoke reviewer@example.com
+```
+
+它拿到什麼、拿不到什麼：
+
+| | |
+|---|---|
+| **可以** | 用 `POST /auth/login`（email + 密碼）登入，看行程，**建立訂單** |
+| **不可以動錢** | 結構上不行，不是政策上不行。價值只經 `driver_profiles.deposit` 與 append-only 的 `ledger_entries` 流動，兩者都掛在司機檔案上，而司機檔案需要**管理員**的 KYC 決定與**管理員**的入金 |
+| **不可以開後台** | 後台認的是 `admin_accounts`（另一張表、強制 TOTP）。`users` 的一列無論 `role` 寫什麼都不是管理員 |
+| **會自己失效** | `reviewer_expires_at` 在**每一個**已認證請求上由 `require_active_user` 檢查，過期即 `403 REVIEWER_ACCOUNT_EXPIRED`，不需要任何人記得去撤銷 |
+
+限制與注意：
+
+- **密碼只出現一次。** 腳本不儲存也不顯示它；掉了就 `--revoke` 再建一個。
+- **`--days` 是硬期限。** 過了就失效，包括已經發出的 access token（最壞情況受限於
+  `ACCESS_TOKEN_EXPIRE_MINUTES`）。
+- **號碼取自保留區 `+8520000xxxx`**，那不是 OFCA 配發的號段，所以不會撞到真人。它不
+  需要能收訊，因為帳號建立時就已驗證。
+- **`APP_ENV=prod` 額外要求 `--yes`**，與 `ALLOW_DEV_OTP` 同一個形狀：一個繞過正常
+  註冊流程的憑證，不該只差一個打錯的環境變數就存在。
+- **`.env.example` 的 `ALLOW_REVIEWER_ACCOUNT` 預設是 `false`。**
 
 ---
 
@@ -387,7 +433,7 @@ curl -s $API/identity/me -H "authorization: Bearer $TOKEN"
 | `scripts/verify/verify_api.py` | 一次性 API 冒煙測試 |
 | `scripts/verify/live_smoke.py` | 對執行中的 API 做端到端冒煙 |
 | `scripts/verify/security_verify.py` | 安全控制的實跑驗證 |
-| `scripts/verify/prod_boot_drill.py` | 逐條驗證 11 種「正式環境必須拒絕啟動」的情形 |
+| `scripts/verify/prod_boot_drill.py` | 逐條驗證 12 種「正式環境必須拒絕啟動」的情形（含一條正常啟動） |
 | `scripts/dev/serve_and_probe.py` | 背景起 uvicorn 並等 health 通過 |
 | `scripts/dev/stop_server.py` | 停掉它 |
 
@@ -418,8 +464,18 @@ curl -s $API/identity/me -H "authorization: Bearer $TOKEN"
 11. **`serve_and_probe.py` 把 API 綁在 `127.0.0.1`，`APP_HOST` 對它無效。** 真機
     要麼 `adb reverse tcp:8000 tcp:8000`，要麼自己起 `uvicorn --host 0.0.0.0`。
     見第 6.2 節。
-12. **OTP 登入成功 ≠ 帳號可用。** 新帳號是 `UNVERIFIED`，建立訂單／接單／上線會
-    回 403 `ACCOUNT_UNVERIFIED`，而**手機 App 沒有補齊驗證的畫面**。見第 6 節。
+12. **登入成功 ≠ 可以叫車。** 新帳號只是「聲稱」了電話；建立訂單／接單／上線會回
+    403 `PHONE_NOT_VERIFIED`，要先去 `/identity/phone/*` 驗證號碼。`account_status`
+    **不是閘**，它只是資料齊全度的旗標。見第 6 節。
+13. **登入連續錯 5 次鎖 15 分鐘，而且回的是 401 不是 429。** 這是刻意的：429 會洩漏
+    「這個帳號存在、而且被猜到觸發鎖定」。看到 `account temporarily locked` 就等
+    `LOCKOUT_MINUTES`，或直接清掉該列的 `locked_until` 與 `failed_login_count`。
+14. **四條路由現在要過 Turnstile：`register`、`login`、`auth/otp/request`、
+    `identity/phone/request`。** `APP_ENV=dev`/`test` 走 `DevHumanVerifier`（全放行），
+    所以本機不會擋；但一個沒有 `TURNSTILE_SECRET_KEY` 的**正式**部署會拒絕啟動
+    （`_fail_closed`）。前端要帶 `human_token` 欄位，被擋時回 403
+    `HUMAN_VERIFICATION_REQUIRED`。**手機 App 現時不帶這個欄位**，所以正式環境
+    第一步就 403 —— 見第 6.5 節。
 
 ---
 

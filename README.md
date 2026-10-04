@@ -117,7 +117,7 @@ cp .env.example .env          # adjust if needed; see §8.2 Configuration
 # 4. run + verify
 .venv/Scripts/python scripts/dev/serve_and_probe.py   # detached uvicorn + health wait
 .venv/Scripts/python scripts/verify/verify_api.py     # one-shot API smoke
-.venv/Scripts/python -m pytest -q                     # 961 tests
+.venv/Scripts/python -m pytest -q                     # 1060 tests
 uv run ruff check . && uv run ruff format --check .
 ```
 
@@ -229,7 +229,9 @@ All routes under `/api/v1` unless noted. Auth = `Authorization: Bearer <access J
 
 | Area | Endpoints |
 |---|---|
-| **Auth** | `POST /auth/otp/request` · `POST /auth/otp/verify` · `POST /auth/refresh` · `POST /auth/logout` · `GET /auth/me` |
+| **Auth — account** | `POST /auth/register` · `POST /auth/login` · `POST /auth/refresh` · `POST /auth/logout` · `GET /auth/me` |
+| **Auth — phone OTP** | `POST /auth/otp/request` · `POST /auth/otp/verify` (secondary login for an *already-proven* number) |
+| **Identity** | `GET /identity/me` · `POST /identity/profile` · `GET /identity/username-check` · `POST /identity/email/request` · `POST /identity/email/confirm` · `POST /identity/phone/request` · `POST /identity/phone/confirm` · `POST /identity/phone/reverify` · `POST /identity/avatar/uploads` |
 | **Drivers** | `POST /drivers/register` · `GET /drivers/me` · `GET /drivers/me/ledger` |
 | **Fare** | `POST /fare/estimate` |
 | **Orders** | `POST /orders` · `GET /orders/nearby` · `GET /orders` · `GET /orders/{id}` · `POST /orders/{id}/grab` · `.../arrive` · `.../start` · `.../complete` · `.../cancel` |
@@ -534,7 +536,7 @@ These answer questions, they do not just exercise code:
 
 ```bash
 .venv/Scripts/python scripts/verify/audit_response_models.py   # 68 blocks, OK
-.venv/Scripts/python scripts/verify/prod_boot_drill.py         # 11 fail-fast cases
+.venv/Scripts/python scripts/verify/prod_boot_drill.py         # 12 fail-fast cases
 .venv/Scripts/python scripts/verify/live_smoke.py              # 9-check E2E
 .venv/Scripts/python scripts/verify/security_verify.py         # re-run every finding
 .venv/Scripts/python scripts/verify/security_probe.py all      # original attack probe
@@ -603,7 +605,7 @@ than run insecure.
   `POSTGRES_PASSWORD` still hold dev defaults · `ALLOW_DEV_OTP` is set ·
   `PUBLIC_BASE_URL` is not `https://` · `CORS_ORIGINS` is unset, `*`, or
   contains a plain-http origin · `SMTP_HOST`/`SMTP_FROM` are unset ·
-  `TRUSTED_PROXY_COUNT < 1`.
+  `TRUSTED_PROXY_COUNT < 1` · `TURNSTILE_SECRET_KEY` is unset.
 - The deterministic dev OTP (`123456`) needs **both** a non-prod env and an
   explicit `ALLOW_DEV_OTP=true`.
 - `TRUSTED_PROXY_COUNT` controls how `X-Forwarded-For` is read (`0` = ignore it
@@ -614,7 +616,7 @@ than run insecure.
 > `X-Forwarded-For` 由**右邊**數 hop。取最左邊等於取攻擊者控制的那一段，
 > 會令所有 IP 速率限制失效（SEC-07）。
 
-`scripts/verify/prod_boot_drill.py` verifies all 11 of these cases.
+`scripts/verify/prod_boot_drill.py` verifies all 12 of these cases.
 
 ### 8.3 Backups
 
