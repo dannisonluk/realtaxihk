@@ -4,6 +4,28 @@ Scope: the buckets that the first pass did not cover line-by-line.
 Method: read every file, verify each claim against the other two deliverables before writing it down.
 Status: IN PROGRESS.
 
+## Fixed in this pass — 2026-10-05
+
+| finding | site | fix |
+|---|---|---|
+| **NEW-22** (HIGH) | `app/api/admin/accounts.py:199-233`, `app/services/admin/admin_account_service.py:225` | `reset_admin_password` now revokes **both** halves of the session — the refresh rows inside the same transaction, then the access-token epoch in Redis — and reports `sessions_revoked: True`. That is what the response schema docstring already asserted ("the reset also ejected anyone already signed in") and what `AccountsPage.tsx:161` already branched on. The service docstring no longer claims to revoke. |
+| **NEW-19** (LOW) | `app/api/admin/drivers.py`, `app/api/fleets.py` | An unrecognised `status_filter` is now a **400** with `reason: UNKNOWN_STATUS` and an `allowed` list built from the enum — the shape `/admin/orders` already used. Was a 500. Enum-derived, so the list cannot drift from the column. |
+| **NEW-20** (LOW) | `app/api/admin/drivers.py` | `total` now carries the page's predicate. `FleetService.list_page` and `/admin/refunds` already did; this route was the odd one out. |
+
+Tests added with the fixes — `tests/api/test_admin_drivers.py` (new file, 3 tests),
+`tests/api/test_fleets.py` (2 tests), and
+`tests/api/test_admin_accounts.py::TestPasswordReset::test_reset_revokes_the_sessions_it_reports`,
+which asserts the revocation by **using** the stale token afterwards (exercising the real
+Redis epoch on the hot path) rather than by checking that a key exists.
+
+**Deliberately not fixed**, because each needs an owner decision rather than a patch:
+
+- **NEW-22, second half** — nothing in the app can set an admin `is_active = False`, so
+  `require_admin`'s check never fires. Closing it means a new endpoint, an audit event, and a
+  console control: three deliverables, one decision.
+- **N-1** — the SoD rank semantics (finance ⊃ operations). Three documented options; the
+  choice changes who may act, so it is not mine to make.
+
 ---
 
 ## NEW-1 — HIGH — mobile mirrors the service-area box the server deliberately abandoned
@@ -1111,6 +1133,66 @@ Notable because it is the highest-privilege path in the system. Verified sound:
 - Server datetimes are all tz-aware, so the client's `.toLocal()` is correct.
 - Client mirrors of WS close codes (4401/4403/4404/4408), tick rate (2/s, burst 5),
   the HK phone pattern and the mask shape all match the server.
+
+## NEW-29 — MEDIUM — `.env.example` advertises a bind-address control that no code reads
+
+`.env.example:7` ships `APP_HOST=0.0.0.0`, three lines above the real control at `:14`
+(`APP_BIND_IP=127.0.0.1`, carrying the SEC-31 comment). Nothing reads `APP_HOST`:
+
+- `Settings.app_host` / `Settings.app_port` (`app/core/config.py:44-45`) have **zero
+  readers** — found by sweeping every field declared in `Settings` against `app/`. The
+  container hardcodes the bind instead: `docker-compose.yml:92`
+  `uvicorn … --host 0.0.0.0 --port 8000`.
+- `docker-compose.yml:88` publishes `${APP_BIND_IP:-127.0.0.1}:${APP_PORT:-8000}` — so
+  `APP_PORT` *is* honoured (by compose, not by the app) while `APP_HOST` is honoured by
+  nobody.
+
+**Consequence** — the operator who wants the API on all interfaces edits the line that
+looks like the control and gets nothing. The operator whose proxy lives on another host
+sets `APP_HOST=0.0.0.0`, watches the container come up clean, and has a loopback-only
+bind with no error anywhere. The direction is fail-*safe* (the SEC-31 default holds),
+which is why this is MEDIUM rather than higher — but a security-relevant setting that
+silently ignores its documented name is how the next misconfiguration gets written.
+
+**Fix** — delete `APP_HOST`/`APP_PORT` from `.env.example:7-8` and the dead
+`app_host`/`app_port` fields, or point the example at `APP_BIND_IP`. One name, one
+meaning.
+
+## NEW-30 — LOW — `turnstile_site_key` is documented as "served to the client"; nothing serves it
+
+`app/core/config.py:216` — `turnstile_site_key: str = ""  # served to the client; not a
+secret`. The comment is a contract, and it is unmet: every `site_key` in `app/` outside
+`config.py` is exactly one hit, `TURNSTILE_TEST_SITE_KEY`
+(`app/services/infra/human.py:52`), which is a test constant. No endpoint, no response
+model, no bootstrap payload carries the value.
+
+The secret half *is* wired (`human.py:116`), so the server can verify a challenge — it
+just never hands a client the site key needed to raise one. Harmless today, because the
+clients carry their own build-time key the same way
+`mobile/lib/core/config/app_config.dart:27` carries the Maps key, so this is drift in a
+comment rather than a broken flow. Worth fixing because "served to the client" is
+exactly the kind of sentence the next reader trusts.
+
+## Refuted in the dead-config sweep
+
+Sweeping **every** field declared in `Settings` for readers turned up four more
+zero-reader names. Three are honest backlog rather than defects, and the sweep is only
+worth anything if that is written down:
+
+- `fcm_credentials_json` (`config.py:183`) — dead, and `get_fcm_provider()`
+  (`app/services/infra/notify.py:134`) has **zero callers** across `app/`, `tests/` and
+  `scripts/`. Push is documented as unbuilt in three places, though
+  (`docs/WORK_SUMMARY.md:118`, `docs/DEPLOYMENT_REQUIREMENTS.md:193` — "無推送",
+  `docs/DEPLOY_TARGET_DECISION.md:141`), and the mobile carries no Firebase dependency
+  at all. A stub sitting behind an honest "not built yet" is not a finding. **INFO.**
+- `google_maps_api_key` (`config.py:178`) — dead, and labelled in place:
+  `# P2-3: route/distance integration, not wired yet`. Same verdict. **INFO.**
+- `allow_dev_otp`, `allow_reviewer_account` — flagged as zero-reader *within `app/`*,
+  but read by `tests/api/test_security_hardening.py:85` and
+  `scripts/ops/create_reviewer_account.py:156`. That is the sweep's scope limit, not a
+  defect. **Refuted.**
+- `postgres_host/port/user/password/db` — read by `scripts/ops/db_backup.py:142` and
+  `scripts/verify/security_probe.py:57`. **Refuted.**
 
 ## Open
 - `app/core/hk_bounds.py` rest of the polygon (only the docstring + gate read so far).

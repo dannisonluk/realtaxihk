@@ -75,10 +75,26 @@ async def list_drivers(
     session: AsyncSession = Depends(get_session),
 ):
     q = select(DriverProfile).order_by(DriverProfile.created_at)
+    count_q = select(func.count()).select_from(DriverProfile)
     if status_filter:
-        q = q.where(DriverProfile.status == DriverStatus(status_filter))
+        try:
+            status = DriverStatus(status_filter)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "unknown driver status",
+                    "reason": "UNKNOWN_STATUS",
+                    "allowed": [s.value for s in DriverStatus],
+                },
+            ) from None
+        q = q.where(DriverProfile.status == status)
+        # The count carries the page's predicate. Counting the whole table while
+        # returning a filtered page makes `total` describe a set the caller never
+        # asked for, and the console sizes its pager from it.
+        count_q = count_q.where(DriverProfile.status == status)
     rows = (await session.execute(q.limit(limit).offset(offset))).scalars().all()
-    total = (await session.execute(select(func.count()).select_from(DriverProfile))).scalar_one()
+    total = (await session.execute(count_q)).scalar_one()
     return {
         "items": [
             {

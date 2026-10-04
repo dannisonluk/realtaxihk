@@ -229,6 +229,41 @@ class TestFleetManagement:
         # so the endpoint must default it to 0 rather than crash on a missing key.
         assert counts[empty["id"]] == 0
 
+    def test_unknown_status_filter_is_a_400_not_a_500(self, client):
+        """`FleetStatus(status_filter)` raised `ValueError`, and the app has no
+        `ValueError` handler, so a caller typo came back as a 500. Same shape as
+        `/admin/orders`: a client error is a 400, and the allowed list is built
+        from the enum so it cannot drift from the values the column holds."""
+        r = client.get(
+            "/api/v1/admin/fleets",
+            headers=_admin_headers(client),
+            params={"status_filter": "NOT_A_STATUS"},
+        )
+        assert r.status_code == 400, r.text
+        details = r.json()["details"]
+        assert details["reason"] == "UNKNOWN_STATUS"
+        assert "SUSPENDED" in details["allowed"]
+
+    def test_status_filter_narrows_the_listing(self, client):
+        _mk_fleet(client, "在用車隊", license_no="FLEET-ON")
+        gone = _mk_fleet(client, "解散車隊", license_no="FLEET-OFF")
+        r = client.patch(
+            f"/api/v1/admin/fleets/{gone['id']}",
+            headers=_admin_headers(client),
+            json={"status": "DISSOLVED"},
+        )
+        assert r.status_code == 200, r.text
+
+        r = client.get(
+            "/api/v1/admin/fleets",
+            headers=_admin_headers(client),
+            params={"status_filter": "DISSOLVED"},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["total"] == 1
+        assert [i["status"] for i in body["items"]] == ["DISSOLVED"]
+
     def test_updating_a_fleet_changes_the_discount(self, client):
         fleet = _mk_fleet(client, "調整車隊", discount="0")
         r = client.patch(

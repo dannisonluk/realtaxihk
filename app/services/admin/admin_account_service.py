@@ -223,7 +223,12 @@ class AdminAccountService:
         return account, previous
 
     async def reset_password(self, *, account_id: uuid.UUID, new_password: str) -> AdminAccount:
-        """Set a new password and revoke everything that was already issued.
+        """Set a new password. The calling route revokes the sessions.
+
+        Revocation is deliberately not performed here: killing access tokens
+        needs the Redis handle that epochs live in, and this service holds only a
+        database session. `reset_admin_password` does it, in the same transaction
+        as the refresh-token family revocation.
 
         Clearing `failed_login_count` / `locked_until` is part of the operation,
         not a courtesy: a reset is what you do for someone who is locked out,

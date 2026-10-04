@@ -267,7 +267,19 @@ async def list_fleets(
     admin: Principal = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
-    fleet_status = FleetStatus(status_filter) if status_filter else None
+    fleet_status = None
+    if status_filter:
+        try:
+            fleet_status = FleetStatus(status_filter)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "unknown fleet status",
+                    "reason": "UNKNOWN_STATUS",
+                    "allowed": [s.value for s in FleetStatus],
+                },
+            ) from None
     service = FleetService(session)
     rows, total = await service.list_page(status=fleet_status, limit=limit, offset=offset)
     # One grouped COUNT for the whole page. A `active_member_count` per fleet is

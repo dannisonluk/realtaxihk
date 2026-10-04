@@ -24,8 +24,10 @@ from app.api.schemas import (
 )
 from app.core.db import get_session
 from app.core.deps import Principal
+from app.core.token_revocation import revoke_user_tokens
 from app.models import AdminAccount, AdminRole
 from app.services.admin.admin_account_service import AdminAccountService
+from app.services.admin.admin_refresh_service import AdminRefreshService
 from app.services.admin.audit_service import (
     EV_ADMIN_ACCOUNT_CREATE,
     EV_ADMIN_PASSWORD_RESET,
@@ -208,12 +210,20 @@ async def reset_admin_password(
         payload={"account_id": str(account.id), "account_username": account.username},
         request=request,
     )
+    # A password reset is what you do when a credential is compromised or an
+    # operator leaves, so leaving the old sessions alive defeats the operation.
+    # Revoke the same two things `/admin/auth/logout` does (SEC-18):
+    #   * the refresh rows, inside this transaction, so the family cannot rotate
+    #     and the revocation commits atomically with the password change;
+    #   * the access-token epoch in Redis, so tokens already minted die now
+    #     instead of surviving their remaining 15 minutes.
+    # The Redis step fails open by design (`app/core/token_revocation.py`), so the
+    # guarantee is: the refresh family is gone the moment this returns, and every
+    # access token is dead within `ACCESS_TOKEN_EXPIRE_MINUTES` at the very worst.
+    await AdminRefreshService(session).revoke_all_for_admin(account.id)
     await session.commit()
+    await revoke_user_tokens(request.app.state.auth_redis, account.id)
     return {
         "id": str(account.id),
-        # The access token is a signed JWT with no server-side session store, so
-        # the reset cannot revoke tokens already in flight. Saying so is the
-        # honest answer; a boolean that always reads `true` would train the
-        # operator to believe a claim the system cannot make.
-        "sessions_revoked": False,
+        "sessions_revoked": True,
     }

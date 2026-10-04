@@ -519,6 +519,49 @@ class TestPasswordReset:
         assert "New-Harbour-Kite-4xZ" not in blob
         assert "$argon2" not in blob
 
+    async def test_reset_revokes_the_sessions_it_reports(self, client):
+        """The route reports `sessions_revoked: true`, so it has to be true.
+
+        A reset is what you do when a credential is compromised or an operator
+        leaves, and a reset that leaves the old sessions alive does neither. The
+        console branches on this boolean (`AccountsPage.tsx`) to tell the operator
+        which of the two happened, so a `true` that was not earned is worse than
+        no field at all.
+
+        Both halves of the revocation are checked, and neither by asserting that
+        a Redis key exists:
+
+          * the access token already in the caller's hand — used *after* the
+            reset, which exercises the real epoch through
+            `deps.assert_not_revoked` on the hot path;
+          * the refresh rows, so the family cannot rotate a new session.
+        """
+        target = client.admin_headers(role="SUPPORT")
+        # Copied before the reset: these headers *are* the session already in
+        # flight that this test is about.
+        already_issued = dict(target)
+
+        r = client.post(
+            f"/api/v1/admin/accounts/{target.admin_id}/password/reset",
+            headers=client.admin_headers(),
+            json={"new_password": "New-Harbour-Kite-4xZ"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["sessions_revoked"] is True
+
+        # The access token that resolved a principal a moment ago no longer does.
+        stale = client.get("/api/v1/auth/me", headers=already_issued)
+        assert stale.status_code == 401, stale.text
+
+        # And the refresh family is stamped rather than left rotatable.
+        rows = await _fetch(
+            client,
+            "SELECT revoked_at FROM admin_refresh_tokens WHERE admin_id = CAST(:i AS uuid)",
+            {"i": target.admin_id},
+        )
+        assert rows, "the login walked the real flow, so refresh rows exist"
+        assert all(row["revoked_at"] is not None for row in rows), rows
+
     async def test_lower_roles_cannot_reset_a_password(self, client):
         target = client.admin_headers(role="SUPPORT")
         r = client.post(
