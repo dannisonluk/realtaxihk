@@ -66,6 +66,15 @@
 - `tests/api/test_security_hardening.py` public destinations path 已在 `69c4484` commit
 - `app/models/premium.py` 已 revert 返 HEAD（冇 duplicate class／冇多餘 import），混亂區已清
 
+### 已識別 slice（等我哋其中一方認領）
+
+- **Phase 2 fixed-fare platform fee ledger 未實作**：`LedgerEntryType` 冇 `FIXED_RIDE_FEE`，全 repo 只有
+  `docs/FEATURE_EXPANSION_2026-10-05.md` 提過 `fixed:{order_id}`。正確做法係喺 order `COMPLETED`
+  後用 `LedgerService.append(..., entry_type=FIXED_RIDE_FEE, amount_hkd=-platform_fee_hkd,
+  reference=f"fixed:{order_id}")`。
+- **Migration 衝突注意**：因為 recurring migration `7a1b2c3d4e5f` 未 commit，任何新 enum migration
+  要等 recurring 入 main chain 先接住佢；唔好而家開第二個 head。
+
 ### 混亂區 / 請勿亂改
 
 以下檔案現時 worktree 有未 commit 改動，可能同時被兩個 agent 郁過。等確認後先好處理：
@@ -100,3 +109,4 @@
 
 - 2026-10-05（本 agent，建立檔）
 - 2026-10-05（其他 agent：migration deep scan 完成並 commit `69c4484`／`e5454e5`；已更新本檔進度）
+- 2026-10-05（記錄 fixed-fare fee ledger gap 待接手）
