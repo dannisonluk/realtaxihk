@@ -363,8 +363,11 @@ async def nearby_orders(
     for key in wants:
         if key == _ANIMAL_KEY:
             # `IS NOT NULL` on the JSONB key, not a boolean cast: an animal is
-            # an object, and "carries one" is the only sensible reading.
-            q = q.where(Order.requirements_json[_ANIMAL_KEY].is_not(None))
+            # an object, and "carries one" is the only sensible reading. A JSON
+            # `null` (what `model_dump()` writes for an absent animal) is a
+            # present *value*, so it satisfies `IS NOT NULL` and must not: only
+            # a real object can be promised.
+            q = q.where(Order.requirements_json[key].astext.is_not(None))
         else:
             # `requirements_json` is NULL for an order with no requirements, so
             # the cast yields NULL and the predicate is not satisfied —
@@ -373,10 +376,16 @@ async def nearby_orders(
             q = q.where(Order.requirements_json[key].as_boolean().is_(True))
     for key in avoids:
         if key == _ANIMAL_KEY:
-            # Missing key -> the JSONB extraction is NULL, `IS NULL` holds, so
-            # the order stays in the result. That is the wanted reading:
-            # "no pets in my car" must not hide orders that never mentioned one.
-            q = q.where(Order.requirements_json[_ANIMAL_KEY].is_(None))
+            # `astext` is what makes this correct. `RideRequirementsIn` has a
+            # default for every field, so `model_dump()` serialises `animal:
+            # null` onto orders that never carried one — and in JSONB a `null`
+            # is a value, so a bare `-> 'animal' IS NULL` is *false* for it and
+            # the driver's 「可載寵物」 chip would hide orders that merely asked
+            # for a silent ride. Casting to text collapses both the absent key
+            # and the JSON null to SQL NULL, which is the reading wanted here:
+            # "no pets in my car" must hide exactly the orders that announced
+            # an animal, and nothing else.
+            q = q.where(Order.requirements_json[key].astext.is_(None))
         else:
             q = q.where(Order.requirements_json[key].as_boolean().is_not(True))
     orders = (await session.execute(q)).scalars().all()

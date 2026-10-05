@@ -358,6 +358,30 @@ class TestRequirementFilter:
         assert _ids(body) == {plain["id"]}
         assert pet["id"] not in _ids(body)
 
+    def test_exclude_animal_keeps_orders_that_never_mentioned_one(self, client):
+        """A JSON `null` is not a missing key, and only the latter means "no pet".
+
+        `RideRequirementsIn.model_dump()` serialises every field, so an order
+        that asked only for a silent ride still stores `"animal": null` in
+        `requirements_json`. JSON `null` is a present *value*, so a bare
+        `-> 'animal' IS NULL` is false for it — and the driver's 「可載寵物」
+        chip would hide orders that never mentioned a pet at all. Only a real
+        animal object may be excluded.
+        """
+        d = _driver(client, 40036)
+        h = _go_online(client, d)
+        silent_only = _order(client, _passenger(client, 40037), requirements={"silent_ride": True})
+        no_requirements = _order(client, _passenger(client, 40038))
+        pet = _order(
+            client,
+            _passenger(client, 40039),
+            requirements={"animal": {"kind": "CAT", "height_cm": 25, "weight_kg": 4}},
+        )
+        status, body = _nearby(client, h, excludes="animal")
+        assert status == 200, body
+        assert _ids(body) == {silent_only["id"], no_requirements["id"]}
+        assert pet["id"] not in _ids(body)
+
     def test_an_order_without_requirements_matches_only_the_neutral_query(self, client):
         """A missing `requirements` object is not "asked for nothing" by accident.
 
