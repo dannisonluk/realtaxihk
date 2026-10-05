@@ -36,6 +36,11 @@
 - 已完成：
   - `docs/FEATURE_EXPANSION_2026-10-05.md`（integrated backlog）
   - Phase 1 特選目的地/司機屬性：`app/models/premium.py`（基礎版已 commit，但現時 worktree 有後續改動，見下）
+  - 已完成：Phase 1 fixtures + contract pins：
+    - `mobile/test/fixtures/order_with_requirements.json`、`driver_payment_methods.json`、`driver_payment_methods_read.json`
+    - `scripts/dev/gen_mobile_fixtures.py`：order 加 requirements / payment_preference；driver payment methods capture；reset 先清 RESTRICT deposit/refund rows
+    - `scripts/verify/audit_response_models.py` / `mobile/tool/verify_contract.dart`：新增 fixture 全部 pin 到
+    - 驗證：`audit_response_models.py` 72 blocks OK；`dart run tool/verify_contract.dart` 59 fixtures 0 failure
   - `app/api/destinations.py`、`app/api/admin/destinations.py`、`app/api/driver_attributes.py`、`app/core/region.py`
   - migration `5c8b2f0a1e43_premium_destinations_driver_attributes.py`
   - `tests/api/test_premium_destinations.py`、`tests/api/test_order_attributes.py`
@@ -117,3 +122,4 @@
 - 2026-10-05（記錄 fixed-fare fee ledger gap 待接手）
 - 2026-10-05（本 agent：幫 recurring WIP 清 import/constraint blocker，留喺 worktree 唔 commit；fixed-fare ledger 等 recurring migration 入 main 先接）
 - 2026-10-05（本 agent：recurring rides backend 已完成並 commit；API prefix `/api/v1/recurring-rides`、background `recurring_mint`、migration `7a1b2c3d4e5f`；測試 47 passed；full suite 內 analytics/fare_mode 相關 43 failures 係其他 agent WIP 引起，未有動佢啲檔）
+- 2026-10-05（本 agent：Phase 1 fixtures + contract pins 完成，未 commit；generator reset 修正 RESTRICT deposit/refund 清理）

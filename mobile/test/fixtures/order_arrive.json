@@ -1,5 +1,5 @@
 {
-  "id": "75b349e8-d485-4da7-8ed3-d15e17c847fb",
+  "id": "b8700fe3-761d-4f6e-8039-64b102e48eeb",
   "status": "DRIVER_ARRIVED",
   "taxi_type": "URBAN",
   "fare": {
@@ -30,9 +30,40 @@
         "name_zh": "過海回程費",
         "amount": "25.0"
       }
-    ]
+    ],
+    "fare_mode": null,
+    "driver_price_hkd": null,
+    "platform_fee_hkd": null,
+    "passenger_price_hkd": null
   },
   "estimated_total_hkd": "130.20",
   "completed_at": null,
-  "created_at": "2026-10-04T06:05:47.020897+00:00"
+  "created_at": "2026-10-05T05:06:58.590069+00:00",
+  "requirements": {
+    "animal": {
+      "kind": "small dog in carrier",
+      "height_cm": "25",
+      "weight_kg": "6.2"
+    },
+    "no_smoke": true,
+    "no_perfume": false,
+    "silent_ride": true,
+    "no_radio_music": true
+  },
+  "payment_preference": [
+    "CASH",
+    "OCTOPUS"
+  ],
+  "driver_payment_methods": [
+    "CASH",
+    "OCTOPUS"
+  ],
+  "premium_destination": null,
+  "destination_area": "KOWLOON",
+  "pickup_area": "KOWLOON",
+  "fare_mode": "METER",
+  "fixed_offer_id": null,
+  "driver_price_hkd": null,
+  "platform_fee_hkd": null,
+  "passenger_price_hkd": null
 }

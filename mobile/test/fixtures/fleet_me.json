@@ -1,6 +1,6 @@
 {
   "fleet": {
-    "id": "7111de26-1268-4bc7-a3a3-2dd3159f45d2",
+    "id": "e01f24f1-d6aa-4ec1-8156-bf2b1e303d71",
     "name": "星群的士",
     "license_no": "FLEET-STAR-001",
     "status": "ACTIVE",
@@ -8,11 +8,11 @@
     "contact_name": "陳先生",
     "contact_phone": "+85222334455",
     "note": null,
-    "created_at": "2026-10-04T06:05:47.532936+00:00",
+    "created_at": "2026-10-05T05:06:59.339224+00:00",
     "member_count": 1
   },
   "membership": {
     "member_role": "MEMBER",
-    "joined_at": "2026-10-04T06:05:47.556476+00:00"
+    "joined_at": "2026-10-05T05:06:59.363721+00:00"
   }
 }

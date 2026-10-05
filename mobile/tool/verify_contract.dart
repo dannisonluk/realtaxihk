@@ -52,6 +52,7 @@ import 'package:hkfastdc_mobile/core/network/wire.dart';
 import 'package:hkfastdc_mobile/models/admin.dart';
 import 'package:hkfastdc_mobile/models/auth.dart';
 import 'package:hkfastdc_mobile/models/driver.dart';
+import 'package:hkfastdc_mobile/models/driver_attributes.dart';
 import 'package:hkfastdc_mobile/models/enums.dart';
 import 'package:hkfastdc_mobile/models/fare.dart';
 import 'package:hkfastdc_mobile/models/fleet.dart';
@@ -349,6 +350,15 @@ final Map<String, Decoder> _decoders = <String, Decoder>{
         'tunnels=${order.fare.tunnels.map((Tunnel t) => t.wire).join(",")}';
   },
   'order_detail': (Object? body) => _order(body, status: OrderStatus.broadcasting).status.wire,
+  'order_with_requirements': (Object? body) {
+    final Order order = _order(body, status: OrderStatus.broadcasting);
+    _expect(
+      order.requirements != null,
+      'an order created with requirements must retain them',
+    );
+    return '${order.status.wire} req=${order.requirements?.length} '
+        'pay=${order.paymentPreference.join(",")}';
+  },
   'order_grabbed': (Object? body) => _order(body, status: OrderStatus.accepted).status.wire,
   'order_arrive': (Object? body) => _order(body, status: OrderStatus.driverArrived).status.wire,
   'order_start': (Object? body) => _order(body, status: OrderStatus.inTrip).status.wire,
@@ -423,6 +433,21 @@ final Map<String, Decoder> _decoders = <String, Decoder>{
     _expect(deposit.isFulfilled, 'is_fulfilled should be true once funded');
     return '${profile.status.wire} balance=${deposit.balanceHkd.hkd} '
         'required=${deposit.requiredHkd.hkd} fulfilled=${deposit.isFulfilled}';
+  },
+  'driver_payment_methods': (Object? body) {
+    final DriverPaymentMethods methods =
+        DriverPaymentMethods.fromJson(asMap(body, 'body'));
+    _expect(
+      methods.methods.contains('CASH'),
+      'the driver should declare CASH, got ${methods.methods.join(",")}',
+    );
+    return 'methods=${methods.methods.join(",")}';
+  },
+  'driver_payment_methods_read': (Object? body) {
+    final DriverPaymentMethods methods =
+        DriverPaymentMethods.fromJson(asMap(body, 'body'));
+    _expect(methods.methods.isNotEmpty, 'the read path should return methods');
+    return 'methods=${methods.methods.join(",")}';
   },
   'driver_location': (Object? body) {
     final Map<String, dynamic> m = asMap(body, 'body');

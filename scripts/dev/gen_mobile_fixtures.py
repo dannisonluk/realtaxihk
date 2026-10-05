@@ -169,11 +169,13 @@ def reset_dev_state() -> None:
     from app.core.config import get_settings
     from app.core.db import dispose_engine, get_session_factory
     from app.models import (
+        DriverDeposit,
         DriverProfile,
         Fleet,
         LedgerEntry,
         Order,
         OtpCode,
+        RefundRequest,
         RefreshToken,
         User,
     )
@@ -204,7 +206,14 @@ def reset_dev_state() -> None:
             )
             await session.execute(delete(RefreshToken).where(RefreshToken.user_id.in_(user_ids)))
             await session.execute(delete(OtpCode).where(OtpCode.phone_e164.in_(TEST_PHONES)))
-            # CASCADE handles driver_profiles -> driver_deposits, refund_requests.
+            # RefundRequests and deposits are RESTRICT (money must not
+            # disappear under a driver row), so clear them before the profile.
+            await session.execute(
+                delete(RefundRequest).where(RefundRequest.driver_profile_id.in_(profile_ids))
+            )
+            await session.execute(
+                delete(DriverDeposit).where(DriverDeposit.driver_profile_id.in_(profile_ids))
+            )
             await session.execute(delete(User).where(User.phone_e164.in_(TEST_PHONES)))
             # CASCADE handles fleets -> fleet_memberships, fleet_settlement_runs.
             # After the users, so a membership row is already gone with its
@@ -698,12 +707,34 @@ def _capture(record: Any) -> None:  # a linear capture sequence
             "tip": "5",
             "tunnels": ["cross_harbour"],
             "crosses_harbour": True,
+            "requirements": {
+                "silent_ride": True,
+                "no_radio_music": True,
+                "no_smoke": True,
+                "no_perfume": False,
+                "animal": {
+                    "kind": "small dog in carrier",
+                    "height_cm": "25",
+                    "weight_kg": "6.2",
+                },
+            },
+            "payment_preference": ["CASH", "OCTOPUS"],
         },
         token=passenger_token,
     )
     assert status == 201, order
     record("order_created", "POST /api/v1/orders (201)", order)
     order_id = order["id"]
+
+    # Same order, same route — this is the shape with Phase 1 fields populated,
+    # pinned separately so `GET /orders/{id}` cannot regress to dropping them.
+    status, requirements_order = req(
+        "GET",
+        f"/api/v1/orders/{order_id}",
+        token=passenger_token,
+    )
+    assert status == 200, requirements_order
+    record("order_with_requirements", "GET /api/v1/orders/{id}", requirements_order)
 
     status, detail = req("GET", f"/api/v1/orders/{order_id}", token=passenger_token)
     assert status == 200, detail
@@ -789,7 +820,36 @@ def _capture(record: Any) -> None:  # a linear capture sequence
     assert status == 200, driver_me
     record("driver_me", "GET /api/v1/drivers/me (ACTIVE, funded)", driver_me)
 
+    # The driver declares the methods the passenger's `payment_preference`
+    # will be matched against. Both routes are captured because one is the
+    # write path and the other is what `/orders` copies from.
+    status, payment_methods = req(
+        "PUT",
+        "/api/v1/drivers/me/payment-methods",
+        {"methods": ["CASH", "OCTOPUS"]},
+        token=driver_token,
+    )
+    assert status == 200, payment_methods
+    record(
+        "driver_payment_methods",
+        "PUT /api/v1/drivers/me/payment-methods (methods set)",
+        payment_methods,
+    )
+
+    status, payment_methods_read = req(
+        "GET",
+        "/api/v1/drivers/me/payment-methods",
+        token=driver_token,
+    )
+    assert status == 200, payment_methods_read
+    record(
+        "driver_payment_methods_read",
+        "GET /api/v1/drivers/me/payment-methods",
+        payment_methods_read,
+    )
+
     # ---- driver works the order ----------------------------------------
+        # ---- driver works the order ----------------------------------------
     status, located = req(
         "POST",
         "/api/v1/drivers/location",
