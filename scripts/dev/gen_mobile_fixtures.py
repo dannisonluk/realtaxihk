@@ -740,6 +740,17 @@ def _capture(record: Any) -> None:  # a linear capture sequence
     assert status == 200, detail
     record("order_detail", "GET /api/v1/orders/{order_id}", detail)
 
+    # The frozen receipt document. Captured from the shape a client actually
+    # reads (the JSON), not the `.txt` variant — the text body is a rendering of
+    # the same snapshot and has no decoder of its own.
+    status, receipt = req(
+        "POST",
+        f"/api/v1/orders/{order_id}/receipt",
+        token=passenger_token,
+    )
+    assert status == 201, receipt
+    record("order_receipt", "POST /api/v1/orders/{id}/receipt (201)", receipt)
+
     status, page = req("GET", "/api/v1/orders?role=passenger&limit=20", token=passenger_token)
     assert status == 200, page
     record("orders_page", "GET /api/v1/orders?role=passenger", page)

@@ -451,6 +451,17 @@ class Order(Base):
     driver_price_hkd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     platform_fee_hkd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     passenger_price_hkd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    # Receipt request. The passenger may ask for a receipt at any point in the
+    # order's life; the *document* is frozen into `receipt_snapshot_json` at the
+    # moment of asking and never recomputed, so a later tariff change or ledger
+    # adjustment cannot rewrite a receipt the passenger already holds (Cap. 374D:
+    # the platform is an intermediary, so its record of the fare must be as
+    # immutable as the fare snapshot itself).
+    receipt_requested: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    receipt_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    receipt_snapshot_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # Broadcast config
     broadcast_radius_km: Mapped[Decimal] = mapped_column(Numeric(4, 1), default=3.0)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

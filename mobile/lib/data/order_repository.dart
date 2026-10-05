@@ -1,5 +1,6 @@
 import '../core/network/api_client.dart';
 import '../models/order.dart';
+import '../models/receipt.dart';
 
 /// Every order endpoint, from both sides of the trip.
 ///
@@ -99,5 +100,22 @@ class OrderRepository {
       data: <String, dynamic>{'reason': reason},
     );
     return Order.fromJson(json);
+  }
+
+  /// `POST /orders/{id}/receipt` — issue the receipt, idempotently.
+  ///
+  /// Server-side this freezes the document on first call and returns the stored
+  /// copy afterwards, so calling it twice cannot change what the receipt says.
+  /// The server decides who may read it (the two parties or an admin) — a 403 is
+  /// the answer, not a client-side check.
+  Future<Receipt> requestReceipt(String orderId) async {
+    final Map<String, dynamic> json = await _api.post('/api/v1/orders/$orderId/receipt');
+    return Receipt.fromJson(json);
+  }
+
+  /// `GET /orders/{id}/receipt` — read the receipt (freezing it on first read).
+  Future<Receipt> receipt(String orderId) async {
+    final Map<String, dynamic> json = await _api.get('/api/v1/orders/$orderId/receipt');
+    return Receipt.fromJson(json);
   }
 }

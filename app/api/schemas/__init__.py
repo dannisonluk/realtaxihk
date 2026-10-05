@@ -162,6 +162,7 @@ from app.api.schemas.premium import (
     PremiumDestinationListOut,
     PremiumDestinationOut,
 )
+from app.api.schemas.receipt import ReceiptOut
 from app.api.schemas.recurring import RecurringRideListOut, RecurringRideOut
 
 __all__ = [
@@ -249,6 +250,7 @@ __all__ = [
     "PremiumDestinationOut",
     "PresignedUploadOut",
     "ProfileOut",
+    "ReceiptOut",
     "RecurringRideListOut",
     "RecurringRideOut",
     "RefundDecisionOut",

@@ -100,9 +100,17 @@
 
 ### 本 agent 擬做
 
-- 重複行程 / recurring rides（backend + migration + API + mobile mirror）：
-  - 會用全新檔案 `app/models/recurring.py`、`app/api/recurring.py`、migration，避免撞現有檔案。
-  - 唔會改 `app/models/user.py`、`app/models/fixed_offer.py`、`app/services/order/*`、`mobile/lib/models/order.dart`，除非此檔確認由本 agent 接管。
+- **【2026-10-05 完成】收據要求 + 車內環境 mobile UI**（見下面「已完成」段；本輪 commit）
+  - 更正：最後**冇需要**改 `mobile/lib/state/data_providers.dart`（`driverEnvironmentProvider` 已存在）同 `mobile/lib/data/driver_repository.dart`（`environment()`／`setEnvironment()` 已存在）——兩者都係 HEAD 已有。
+  - 但**有**改 `app/models/user.py`（加 3 個 receipt 欄位），因為收據要 freeze 落 order；`app/api/orders.py` 冇改（收據 endpoint 住新檔 `app/api/receipts.py`）。
+  - 實際郁過嘅對方 WIP 檔只有 2 個，各加 1 段：
+    - `mobile/lib/router/routing_rules.dart`（加 `Routes.driverEnvironment`）
+    - `mobile/lib/router/app_router.dart`（加 import + 1 個 GoRoute）
+
+- 已完成：重複行程 / recurring rides（backend + migration + API；commit `912ac50`）：
+  - `app/models/recurring.py`、`app/api/recurring.py`、`app/services/recurring/recurring_service.py`、migration `7a1b2c3d4e5f`
+  - **mobile mirror 未做**（等 mobile 衝突區清咗先）
+  - 唔會改 `app/models/user.py`、`app/models/fixed_offer.py`、`app/services/order/*`，除非此檔確認由本 agent 接管。
 
 ### 其他 agent（本 agent 已做）
 
@@ -126,3 +134,10 @@
 - 2026-10-05（本 agent：Phase 1 fixtures + contract pins 完成，已 commit `4b868f7`；generator reset 修正 RESTRICT deposit/refund 清理）
 - 2026-10-05（本 agent：audit owner 決策落地——N-1 接受 rank hierarchy + docstring 全套；NEW-18/NEW-29/NEW-30/M-M-1/M-M-4 已修；test 56 passed、ruff 0）
 - 2026-10-05（本 agent：fixed-fare platform fee ledger 完成——`FIXED_RIDE_FEE`、`reference_for_fixed_ride`、`order_complete` append、migration `042a7bc3e54c`；`alembic upgrade head` 已跑，fixed-fare/parity tests 9 passed）
+- 2026-10-05（本 agent：**收據（backend + mobile mirror）+ 車內環境 mobile UI 完成**）
+  - `POST|GET /api/v1/orders/{id}/receipt`（JSON）+ `GET .../receipt.txt`（純文字下載）；idempotent freeze、當事人限制（403/404 不可分辨）
+  - 新檔：`app/api/receipts.py`、`app/api/schemas/receipt.py`、`app/services/receipt/`、migration `5e1a9c7d4b02`、`mobile/lib/models/receipt.dart`、`mobile/lib/features/driver/driver_environment_screen.dart`、`tests/api/test_order_receipts.py`
+  - 改動：`app/models/user.py`（+3 欄位）、`app/api/router.py`、`app/api/schemas/__init__.py`、`mobile/lib/data/order_repository.dart`、`mobile/tool/verify_contract.dart`、`scripts/dev/gen_mobile_fixtures.py`、`scripts/verify/audit_response_models.py`、`mobile/test/fixtures/manifest.json` + 新 fixture `order_receipt.json`
+  - 車內環境 UI 掛喺 driver account screen（唔郁 `driver_jobs_screen.dart`，避免同 sibling 撞）
+  - **fixture generator 會重寫全部 fixtures 嘅 UUID/時間戳**：已 `git checkout -- mobile/test/fixtures/` 還原 churn，只保留新 fixture + manifest 一行
+  - 驗證：receipt tests 7 passed；receipt+orders+attributes+premium+fixed-fare+hardening 56 passed；`verify_contract.dart` 60 fixtures 0 failure；`audit_response_models.py` OK；ruff 0；mypy 124 files 0；`flutter analyze` 我嘅檔 0 issue

@@ -1,0 +1,68 @@
+{
+  "order_id": "75d65d52-5923-4caf-aa79-8f915a367b86",
+  "issued_at": "2026-10-05T06:27:15.574469+00:00",
+  "status": "BROADCASTING",
+  "taxi_type": "URBAN",
+  "fare_mode": "METER",
+  "pickup_address": "Central",
+  "dropoff_address": "Causeway Bay",
+  "distance_km": "6.400",
+  "pickup_area": "KOWLOON",
+  "destination_area": "KOWLOON",
+  "premium_destination": null,
+  "total_hkd": "130.20",
+  "fare": {
+    "tip": "5.0",
+    "tunnels": [
+      "cross_harbour"
+    ],
+    "meter_fare": "75.2",
+    "surcharges": [
+      {
+        "code": "tunnel_cross_harbour",
+        "amount": "25.0",
+        "name_en": "Cross-harbour tunnel (CHT/EHC/WHC)",
+        "name_zh": "過海隧道（紅隧/東隧/西隧）"
+      },
+      {
+        "code": "cross_harbour_return",
+        "amount": "25.0",
+        "name_en": "Cross-harbour return fee",
+        "name_zh": "過海回程費"
+      }
+    ],
+    "total_fare": "130.2",
+    "is_estimate": true,
+    "disclaimer_en": "Fare estimate for reference only. The platform is an information intermediary; the final fare is settled voluntarily between passenger and driver (Cap. 374D). Tolls and surcharges depend on the actual route taken.",
+    "disclaimer_zh": "車費估價僅供參考。平台僅屬資訊中介，最終車資由乘客與司機自願協商確認（香港法例第374D章）。隧道費及附加費視乎實際路線而定。",
+    "tariff_version": "meter:2024-07-14;tolls:2025-09-21",
+    "crosses_harbour": true,
+    "discount_percent": "0",
+    "surcharges_total": "50.0",
+    "meter_after_discount": "75.2"
+  },
+  "fixed_fare": null,
+  "requirements": {
+    "animal": {
+      "kind": "small dog in carrier",
+      "height_cm": "25",
+      "weight_kg": "6.2"
+    },
+    "no_smoke": true,
+    "no_perfume": false,
+    "silent_ride": true,
+    "no_radio_music": true
+  },
+  "payment_preference": [
+    "CASH",
+    "OCTOPUS"
+  ],
+  "driver_payment_methods": [],
+  "passenger_name": "Ka Ming",
+  "tariff_version": "meter:2024-07-14;tolls:2025-09-21",
+  "created_at": "2026-10-05T06:27:15.488797+00:00",
+  "completed_at": null,
+  "text": "hkfastdc.com — 車費收據 / Fare Receipt\n========================================\n訂單編號 Order ID : 75d65d52-5923-4caf-aa79-8f915a367b86\n簽發時間 Issued   : 2026-10-05T06:27:15.574469+00:00\n狀態 Status       : BROADCASTING\n的士類型 Taxi     : URBAN\n收費模式 Mode     : METER\n\n上車 Pickup  : Central\n落車 Dropoff : Causeway Bay\n距離 Distance: 6.400 km\n\n車費明細 / Fare breakdown\n  錶費 Meter            : HK$ 75.2\n  過海隧道（紅隧/東隧/西隧） : HK$ 25.0\n  過海回程費 : HK$ 25.0\n  貼士 Tip              : HK$ 5.0\n  附加費合計 Surcharges : HK$ 50.0\n  總額 Total            : HK$ 130.2\n\n行程要求 / Ride requirements\n  - 完全靜音 Silent ride\n  - 無電台／音樂 No radio/music\n  - 無煙 No smoke\n  - 動物 Animal: small dog in carrier (25 cm, 6.2 kg)\n\n付款方式 / Payment\n  乘客要求 Requested : CASH, OCTOPUS\n  （付款方式為偏好／聲明，非平台保證 / preference, not a platform guarantee）\n\n收費標準版本 Tariff version: meter:2024-07-14;tolls:2025-09-21\n\n本收據由 hkfastdc.com 平台發出。平台僅屬資訊中介（非承運人），車資為下單時凍結之估價，實際車資由乘客與司機自願協商確認（香港法例第374D章）。\nThis receipt is issued by the hkfastdc.com platform. The platform is an information intermediary (not a carrier). The fare shown is the estimate frozen when the order was created; the final fare is settled voluntarily between passenger and driver (Cap. 374D).\n",
+  "disclaimer_zh": "本收據由 hkfastdc.com 平台發出。平台僅屬資訊中介（非承運人），車資為下單時凍結之估價，實際車資由乘客與司機自願協商確認（香港法例第374D章）。",
+  "disclaimer_en": "This receipt is issued by the hkfastdc.com platform. The platform is an information intermediary (not a carrier). The fare shown is the estimate frozen when the order was created; the final fare is settled voluntarily between passenger and driver (Cap. 374D)."
+}

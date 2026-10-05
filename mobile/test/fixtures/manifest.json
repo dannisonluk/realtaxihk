@@ -11,6 +11,7 @@
     "order_created": "POST /api/v1/orders (201)",
     "order_with_requirements": "GET /api/v1/orders/{id}",
     "order_detail": "GET /api/v1/orders/{order_id}",
+    "order_receipt": "POST /api/v1/orders/{id}/receipt (201)",
     "orders_page": "GET /api/v1/orders?role=passenger",
     "orders_nearby": "GET /api/v1/orders/nearby",
     "trip_location": "GET /api/v1/trips/{order_id}/location",

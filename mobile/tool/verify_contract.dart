@@ -59,6 +59,7 @@ import 'package:hkfastdc_mobile/models/fleet.dart';
 import 'package:hkfastdc_mobile/models/identity.dart';
 import 'package:hkfastdc_mobile/models/ledger.dart';
 import 'package:hkfastdc_mobile/models/order.dart';
+import 'package:hkfastdc_mobile/models/receipt.dart';
 import 'package:hkfastdc_mobile/models/refund.dart';
 import 'package:hkfastdc_mobile/models/trip.dart';
 
@@ -360,6 +361,18 @@ final Map<String, Decoder> _decoders = <String, Decoder>{
         'pay=${order.paymentPreference.join(",")}';
   },
   'order_grabbed': (Object? body) => _order(body, status: OrderStatus.accepted).status.wire,
+  // A receipt is a frozen document, not a live view: the decoder asserts the
+  // rendered `text` is present and that it is about *this* order, which is the
+  // one property a client actually relies on.
+  'order_receipt': (Object? body) {
+    final Receipt receipt = Receipt.fromJson(asMap(body, 'body'));
+    _expect(receipt.text.isNotEmpty, 'a receipt must carry its rendered text');
+    _expect(
+      receipt.text.contains(receipt.orderId),
+      'the rendered receipt must name its own order',
+    );
+    return '${receipt.status} total=${receipt.totalHkd.hkd} fixed=${receipt.isFixedFare}';
+  },
   'order_arrive': (Object? body) => _order(body, status: OrderStatus.driverArrived).status.wire,
   'order_start': (Object? body) => _order(body, status: OrderStatus.inTrip).status.wire,
   'order_complete': (Object? body) {
