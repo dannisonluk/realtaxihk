@@ -111,6 +111,7 @@ class _BalanceCard extends StatelessWidget {
             MoneyText(
               latest?.balanceAfterHkd ?? const Money('0.0'),
               style: theme.textTheme.displaySmall,
+              signed: true,
             ),
             const SizedBox(height: AppTheme.space2),
             Text(

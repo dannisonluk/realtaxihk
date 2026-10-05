@@ -697,6 +697,17 @@ final Map<String, Decoder> _decoders = <String, Decoder>{
     _expect(!error.isFatal, 'READ_ONLY must not be fatal');
     return 'error code=${error.code} fatal=${error.isFatal} msg=${error.messageZh}';
   },
+  'ws_outside_hk_error': (Object? body) {
+    final TripEvent event = TripEvent.fromJson(asMap(body, 'ws'));
+    _expect(event is TripErrorEvent, 'expected an error frame, got ${event.runtimeType}');
+    final TripErrorEvent error = event as TripErrorEvent;
+    // The server's refusal vocabulary, not the old client-side BAD_LOCATION
+    // guess. This is the frame that actually tells a driver to stop pushing.
+    _expect(error.code == 'OUTSIDE_HK', 'expected OUTSIDE_HK, got ${error.code}');
+    _expect(error.isFatal, 'OUTSIDE_HK must be fatal');
+    _expect(error.messageZh == '座標不在香港範圍內', 'unexpected OUTSIDE_HK message: ${error.messageZh}');
+    return 'error code=${error.code} fatal=${error.isFatal} msg=${error.messageZh}';
+  },
 };
 
 // ---------------------------------------------------------------------------

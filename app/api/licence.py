@@ -46,7 +46,7 @@ from app.core.db import get_session
 from app.core.deps import Principal, require_active_user, require_phone_current
 from app.core.exceptions import BusinessRuleError
 from app.models import DocumentKind
-from app.services.licence.licence_service import MAX_SUBMISSIONS_PER_DAY, LicenceService
+from app.services.licence.licence_service import MAX_SUBMISSIONS_PER_ROLLING_24H, LicenceService
 
 logger = logging.getLogger("realtaxihk.licence")
 
@@ -184,7 +184,7 @@ async def list_my_submissions(
         "items": [s.as_dict() for s in items],
         "current_submission_id": str(current.id) if current else None,
         "driver_status": profile.status.value,
-        "max_submissions_per_day": MAX_SUBMISSIONS_PER_DAY,
+        "max_submissions_per_rolling_24h": MAX_SUBMISSIONS_PER_ROLLING_24H,
         "required_document_kinds": [
             k.value for k in (DocumentKind.DRIVER_LICENCE, DocumentKind.TAXI_DRIVER_PASS)
         ],

@@ -177,6 +177,8 @@ class SettlementPreview {
     required this.tampered,
     required this.skippedNoDepositAccount,
     required this.wouldGoNegative,
+    required this.wouldChargeDriverIds,
+    required this.wouldGoNegativeDriverIds,
     required this.shortfallTotalHkd,
     required this.totalChargeHkd,
     required this.confirmToken,
@@ -196,6 +198,14 @@ class SettlementPreview {
       'preview.skipped_no_deposit_account',
     ),
     wouldGoNegative: asInt(json['would_go_negative'], 'preview.would_go_negative'),
+    wouldChargeDriverIds: asStringListOrEmpty(
+      json['would_charge_driver_ids'],
+      'preview.would_charge_driver_ids',
+    ),
+    wouldGoNegativeDriverIds: asStringListOrEmpty(
+      json['would_go_negative_driver_ids'],
+      'preview.would_go_negative_driver_ids',
+    ),
     shortfallTotalHkd: Money.parse(json['shortfall_total_hkd']),
     totalChargeHkd: Money.parse(json['total_charge_hkd']),
     confirmToken: asString(json['confirm_token'], 'preview.confirm_token'),
@@ -214,6 +224,13 @@ class SettlementPreview {
   final int tampered;
   final int skippedNoDepositAccount;
   final int wouldGoNegative;
+
+  /// The driver ids the server would actually charge, in preview order.
+  final List<String> wouldChargeDriverIds;
+
+  /// The subset of [wouldChargeDriverIds] whose balances would go negative.
+  final List<String> wouldGoNegativeDriverIds;
+
   final Money shortfallTotalHkd;
   final Money totalChargeHkd;
 

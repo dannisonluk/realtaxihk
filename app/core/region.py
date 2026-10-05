@@ -46,6 +46,7 @@ def is_valid_area(code: str) -> bool:
     """True when `code` is one of the stable wire codes above."""
     return code in ALL_AREAS
 
+
 # Airport points for the coarse area test (Airport Express / T1/T2 / SkyCity).
 _AIRPORT_POINTS = ((22.308, 113.9185), (22.315, 113.935), (22.321, 113.944))
 _AIRPORT_RADIUS_KM = 2.0

@@ -175,8 +175,8 @@ def reset_dev_state() -> None:
         LedgerEntry,
         Order,
         OtpCode,
-        RefundRequest,
         RefreshToken,
+        RefundRequest,
         User,
     )
 
@@ -860,7 +860,7 @@ def _capture(record: Any) -> None:  # a linear capture sequence
     )
 
     # ---- driver works the order ----------------------------------------
-        # ---- driver works the order ----------------------------------------
+    # ---- driver works the order ----------------------------------------
     status, located = req(
         "POST",
         "/api/v1/drivers/location",

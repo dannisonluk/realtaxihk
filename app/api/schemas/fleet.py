@@ -119,6 +119,7 @@ class FleetSettlementRowOut(BaseModel):
     member_count: int
     charged: int
     skipped: int
+    skipped_no_deposit_account: int
     failed: int
     tampered: int
     collected_hkd: str
@@ -149,6 +150,7 @@ class FleetSettlementRunOut(BaseModel):
     member_count: int
     charged: int
     skipped: int
+    skipped_no_deposit_account: int
     failed: int
     tampered: int
     collected_hkd: str

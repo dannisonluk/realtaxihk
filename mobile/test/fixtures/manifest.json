@@ -58,6 +58,7 @@
     "ws_driver_ack": "WS /ws/trip/{id} driver reply to a tick",
     "ws_location_tick": "WS /ws/trip/{id} passenger receives",
     "ws_read_only_error": "WS /ws/trip/{id} passenger push rejected",
+    "ws_outside_hk_error": "WS /ws/trip/{id} driver tick outside HK refused",
     "auth_refresh": "POST /api/v1/auth/refresh",
     "auth_refresh_replay": "POST /api/v1/auth/refresh replayed (401)",
     "error_otp_bad_code": "POST /api/v1/auth/otp/verify with a wrong code (400)",

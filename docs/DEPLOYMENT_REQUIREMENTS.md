@@ -95,7 +95,7 @@
 | 項目 | 要求 |
 |---|---|
 | Dart SDK | **3.12.0**（實測） |
-| 狀態 | `flutter` **CLI 無法在此機器執行**（`ERROR_PIPE_BUSY`）；**但 Gradle 不受影響** → APK 用 `cd mobile/android && ./gradlew :app:assembleDebug` 建得到。測試走 `dart tool/run_tests.dart` |
+| 狀態 | `flutter` CLI 需要可用 SDK；本機曾遇 `ERROR_PIPE_BUSY`，**改為直接跑 `dart`**（`dart tool/run_tests.dart`、`dart analyze`）即可，唔需要 Flutter CLI；APK 用 `cd mobile/android && ./gradlew :app:assembleDebug` |
 | 部署 | 經 App Store / Play Store；**不屬後端部署範圍** |
 
 ---
@@ -241,7 +241,7 @@
 | Admin console 無 refresh token | ✅ `/api/v1/admin/auth/refresh` 已通（HttpOnly cookie + CSRF double-submit），見 `SECURITY.md` SEV-1 |
 | Console TOTP 無 QR 圖 | ✅ `qrcode.react` 在本機渲染 SVG，secret 不經第三方；已用獨立解碼器驗證，見 `ADMIN_AUTH.md` 缺口 #1 |
 | `/auth/refresh` 對 admin token | ✅ 同第一項 |
-| `ruff format` 未過 | ✅ 全樹已格式化（184 files），CI 已加 `ruff format --check` gate 防復發 |
+| `ruff format` 未過 | ✅ 全樹已格式化（212 files；`ruff check` 只餘 1 個 E501 在 sibling WIP 的 `admin-web/serve.py`），CI 已加 `ruff format --check` gate 防復發 |
 
 ---
 
@@ -250,7 +250,7 @@
 > 這是一個**有狀態、長連線、需要 PostGIS** 的 Python 單體 +
 > 一個**純靜態** React console。最小可行部署 = 一台 4 vCPU / 8 GB VPS
 > （HK/SG）+ 現有 compose + 一個 Caddy。真正會咬人的不是硬體，
-> 是 §3.1 那五個**缺失即啟動失敗**的變數，與 §5 的 7 項 gap。
+> 是 §3.1 那五個**缺失即啟動失敗**的變數，與 §5 的 3 項 gap。
 
 ---
 

@@ -323,8 +323,7 @@ async def nearby_orders(
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    f"unknown {name}: {unknown}; expected one of "
-                    f"{sorted(_ALL_REQUIREMENT_KEYS)}"
+                    f"unknown {name}: {unknown}; expected one of {sorted(_ALL_REQUIREMENT_KEYS)}"
                 ),
             )
 

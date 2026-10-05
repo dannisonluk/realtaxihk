@@ -192,6 +192,7 @@ class FleetSettlementRun {
     required this.memberCount,
     required this.charged,
     required this.skipped,
+    required this.skippedNoDepositAccount,
     required this.failed,
     required this.tampered,
     required this.collectedHkd,
@@ -206,6 +207,10 @@ class FleetSettlementRun {
     memberCount: asInt(json['member_count'], 'fleet_settlement.member_count'),
     charged: asInt(json['charged'], 'fleet_settlement.charged'),
     skipped: asInt(json['skipped'], 'fleet_settlement.skipped'),
+    skippedNoDepositAccount: asIntOrNull(
+      json['skipped_no_deposit_account'],
+      'fleet_settlement.skipped_no_deposit_account',
+    ) ?? 0,
     failed: asInt(json['failed'], 'fleet_settlement.failed'),
     tampered: asInt(json['tampered'], 'fleet_settlement.tampered'),
     collectedHkd: Money.parse(json['collected_hkd']),
@@ -229,6 +234,11 @@ class FleetSettlementRun {
 
   final int charged;
   final int skipped;
+
+  /// Billable members whose account had no deposit ledger entry — excluded
+  /// before charging, separate from [skipped] so the two are not conflated.
+  final int skippedNoDepositAccount;
+
   final int failed;
 
   /// The one to watch: the ledger reference for this week is held by an entry

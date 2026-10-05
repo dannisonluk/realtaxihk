@@ -419,6 +419,7 @@ class FleetSettlementService:
             )
 
         charged = skipped = failed = tampered = 0
+        skipped_no_deposit_account = 0
         collected = Decimal("0")
 
         for driver_id in member_ids:
@@ -466,7 +467,7 @@ class FleetSettlementService:
                         .first()
                     )
                     if deposit is None:
-                        skipped += 1
+                        skipped_no_deposit_account += 1
                         continue
 
                     if per_member > 0:
@@ -519,6 +520,7 @@ class FleetSettlementService:
             "member_count": len(member_ids),
             "charged": charged,
             "skipped": skipped,
+            "skipped_no_deposit_account": skipped_no_deposit_account,
             "failed": failed,
             "tampered": tampered,
             "collected_hkd": money_str(collected),
@@ -548,6 +550,7 @@ class FleetSettlementService:
                 run.member_count = len(member_ids)
                 run.charged = charged
                 run.skipped = skipped
+                run.skipped_no_deposit_account = skipped_no_deposit_account
                 run.failed = failed
                 run.tampered = tampered
                 run.collected_hkd = collected
@@ -576,6 +579,7 @@ class FleetSettlementService:
                 run.member_count = len(member_ids)
                 run.charged = charged
                 run.skipped = skipped
+                run.skipped_no_deposit_account = skipped_no_deposit_account
                 run.failed = failed
                 run.tampered = tampered
                 run.collected_hkd = collected

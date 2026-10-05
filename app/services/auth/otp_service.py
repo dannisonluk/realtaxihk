@@ -54,6 +54,10 @@ from app.services.infra.notify import get_whatsapp_provider
 
 _MAX_ATTEMPTS = 5
 _RESEND_COOLDOWN_S = 60
+# A phone-wide attempt window rather than a per-row one: a fresh code must not
+# reset the budget an attacker already spent on the previous code. Kept in sync
+# with the default TTL so expired rows fall out of the count.
+_ATTEMPT_WINDOW_S = 300
 _DEV_CODE = "123456"  # only used when settings.dev_otp_enabled is explicitly True
 
 
@@ -96,11 +100,30 @@ class OtpService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    async def _recent_phone_attempts(self, phone_e164: str) -> int:
+        """Sum wrong attempts on recent codes for one phone."""
+        cutoff = _now() - timedelta(seconds=_ATTEMPT_WINDOW_S)
+        rows = (
+            (
+                await self.session.execute(
+                    select(OtpCode.attempts).where(
+                        OtpCode.phone_e164 == phone_e164,
+                        OtpCode.created_at >= cutoff,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return sum(rows)
+
     async def request_otp(self, phone_e164: str, ttl_seconds: int = 300) -> dict:
         if not is_hk_phone(phone_e164):
             raise BusinessRuleError("phone must be a Hong Kong number in E.164 form (+852XXXXXXXX)")
 
         cutoff = _now() - timedelta(seconds=_RESEND_COOLDOWN_S)
+        if await self._recent_phone_attempts(phone_e164) >= _MAX_ATTEMPTS:
+            raise BusinessRuleError("OTP locked: too many attempts")
         recent = (
             (
                 await self.session.execute(
@@ -213,7 +236,8 @@ class OtpService:
         )
         if otp is None:
             raise BusinessRuleError("OTP not found — request a code first")
-        if otp.attempts >= _MAX_ATTEMPTS:
+        phone_attempts = await self._recent_phone_attempts(phone_e164)
+        if phone_attempts >= _MAX_ATTEMPTS:
             raise BusinessRuleError("OTP locked: too many attempts")
         if otp.consumed_at is not None:
             raise BusinessRuleError("OTP already used")
@@ -230,7 +254,7 @@ class OtpService:
             await self.session.flush()
             raise BusinessRuleError(
                 "Invalid OTP code",
-                {"attempts_remaining": _MAX_ATTEMPTS - otp.attempts},
+                {"attempts_remaining": max(0, _MAX_ATTEMPTS - phone_attempts - 1)},
             )
 
         otp.consumed_at = _now()

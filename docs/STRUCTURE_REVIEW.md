@@ -116,8 +116,8 @@
 
 | 檔案 | 現況 |
 |---|---|
-| `mobile/tool/run_tests.dart` | **97 passed, 0 failed** |
-| `mobile/tool/verify_contract.dart` | **54 fixture(s) decoded, 0 failure(s)** |
+| `mobile/tool/run_tests.dart` | **見 `dart tool/run_tests.dart` 即時輸出**（會隨新測試變動，唔好寫死數字） |
+| `mobile/tool/verify_contract.dart` | **見即時輸出**（fixture 數量會隨 `manifest.json` 增長；基線係 56+ fixtures，0 failure） |
 
 harness 自己的 docstring 已經寫明它是「遷移清單」；10 個 `_xTests()` 函式就是
 10 個目標檔案的骨架。`dart_check.py` 要保留 —— 它是本機唯一能做的靜態檢查。

@@ -58,11 +58,13 @@ logger = logging.getLogger(__name__)
 # expires before the driver's next shift.
 MIN_REMAINING_VALIDITY_DAYS = 14
 
-# Ceiling on submissions per driver per day. Not a security control (the licence
-# is manual, so a flood costs an operator attention, not the platform money) —
-# it is a guard against a retry loop in the app turning into a queue of
-# near-identical rows.
-MAX_SUBMISSIONS_PER_DAY = 5
+# Ceiling on submissions per driver per rolling 24 hours. Not a security control
+# (the licence is manual, so a flood costs an operator attention, not the platform
+# money) — it is a guard against a retry loop in the app turning into a queue of
+# near-identical rows. The window is deliberately rolling: five submissions at
+# 23:00 are exhausted for the next 24 hours, which is stronger than a HK-day
+# reset and matches the actual count below.
+MAX_SUBMISSIONS_PER_ROLLING_24H = 5
 
 # How many documents one submission must carry. Both are required: the driving
 # licence establishes the class of vehicle, the taxi driver pass (的士司機證)
@@ -455,8 +457,8 @@ class LicenceService:
                 {"hint": "wait for the decision, or withdraw and resubmit"},
             )
 
-        if await self._submissions_today(profile.id, now) >= MAX_SUBMISSIONS_PER_DAY:
-            raise BusinessRuleError("too many submissions today; try again tomorrow")
+        if await self._submissions_today(profile.id, now) >= MAX_SUBMISSIONS_PER_ROLLING_24H:
+            raise BusinessRuleError("too many submissions within 24 hours; try again later")
 
         licence_no = self._clean_licence_no(licence_no)
 
@@ -560,6 +562,12 @@ class LicenceService:
     # -- helpers ------------------------------------------------------------- #
 
     async def _submissions_today(self, driver_profile_id: uuid.UUID, now: datetime) -> int:
+        """Count submissions in the last 24 hours.
+
+        Named `_submissions_today` for historical compatibility with the route
+        message, but the boundary is rolling on purpose (see
+        `MAX_SUBMISSIONS_PER_ROLLING_24H`).
+        """
         start = now - timedelta(hours=24)
         rows = (
             (
@@ -621,7 +629,7 @@ class LicenceService:
 
 __all__ = [
     "LICENCE_NO_RE",
-    "MAX_SUBMISSIONS_PER_DAY",
+    "MAX_SUBMISSIONS_PER_ROLLING_24H",
     "MIN_REMAINING_VALIDITY_DAYS",
     "REQUIRED_DOCUMENT_KINDS",
     "LicenceService",

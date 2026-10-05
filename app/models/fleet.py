@@ -210,6 +210,7 @@ class FleetSettlementRun(Base):
     member_count: Mapped[int] = mapped_column(BigInteger)
     charged: Mapped[int] = mapped_column(BigInteger, default=0)
     skipped: Mapped[int] = mapped_column(BigInteger, default=0)
+    skipped_no_deposit_account: Mapped[int] = mapped_column(BigInteger, default=0)
     failed: Mapped[int] = mapped_column(BigInteger, default=0)
     tampered: Mapped[int] = mapped_column(BigInteger, default=0)
     collected_hkd: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))

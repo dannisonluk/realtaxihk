@@ -106,5 +106,5 @@ class LicenceListOut(BaseModel):
     items: list[LicenceSubmissionOut]
     current_submission_id: str | None
     driver_status: str
-    max_submissions_per_day: int
+    max_submissions_per_rolling_24h: int
     required_document_kinds: list[str]

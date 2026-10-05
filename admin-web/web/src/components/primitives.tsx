@@ -9,7 +9,7 @@
  * needs markup, it composes elements.
  */
 
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { useI18n } from '../i18n';
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
@@ -142,6 +142,26 @@ export function Modal({
   children: ReactNode;
   footer: ReactNode;
 }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  // Focus moves into the dialog on open (otherwise a screen reader keeps
+  // announcing the page behind it) and is trapped there: the last tabbable
+  // control wraps to the first, and Shift+Tab from the first wraps to the
+  // last. Escape is handled below rather than by a global listener so it
+  // never fires for a modal that has already closed.
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const focusable = () =>
+      Array.from(
+        box.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+    const first = focusable()[0];
+    (first ?? box).focus();
+  }, []);
+
   return (
     <div
       className="modal-backdrop"
@@ -150,12 +170,37 @@ export function Modal({
       }}
     >
       <div
+        ref={boxRef}
         className="modal"
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        tabIndex={-1}
         onKeyDown={(event) => {
-          if (event.key === 'Escape') onClose();
+          if (event.key === 'Escape') {
+            onClose();
+            return;
+          }
+          if (event.key !== 'Tab') return;
+          const box = boxRef.current;
+          if (!box) return;
+          const items = Array.from(
+            box.querySelectorAll<HTMLElement>(
+              'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ),
+          ).filter((el) => el.offsetParent !== null);
+          if (items.length === 0) return;
+          const first = items[0];
+          const last = items[items.length - 1];
+          if (!first || !last) return;
+          const active = document.activeElement as HTMLElement | null;
+          if (!event.shiftKey && active === last) {
+            event.preventDefault();
+            first.focus();
+          } else if (event.shiftKey && (active === first || active === box)) {
+            event.preventDefault();
+            last.focus();
+          }
         }}
       >
         <h2>{title}</h2>

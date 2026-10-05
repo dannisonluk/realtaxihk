@@ -29,10 +29,6 @@ async def _send_json(send, status: int, payload: dict) -> None:
     await send({"type": "http.response.body", "body": body})
 
 
-class _BodyTooLarge(Exception):
-    """Raised out of the receive wrapper; caught by the middleware."""
-
-
 class BodySizeLimitMiddleware:
     """Reject oversized request bodies with 413 before they are parsed.
 
@@ -42,6 +38,16 @@ class BodySizeLimitMiddleware:
     1. a declared `Content-Length` over the cap is rejected without reading a byte;
     2. for chunked/undeclared bodies the receive stream is metered, so the cap
        holds even when the client lies by omission.
+
+    NEW-9: point 2 must **not** raise out of `receive()`. `add_middleware()`
+    places this middleware outside Starlette's `ExceptionMiddleware`, so a raise
+    from the receive wrapper never reaches this class: a `BaseHTTPMiddleware`
+    sitting inside turns it into `RuntimeError("No response returned.")`, and
+    FastAPI's broad `except Exception` around body parsing turned the old
+    `Exception` subclass into 400 `BAD_REQUEST` — the 413 branch was dead code.
+    Instead, once the cap is passed the body handed to the app is replaced by an
+    empty final chunk (nothing oversized is ever parsed) and whatever the app
+    answers for it is rewritten to 413 in `guard_send`.
     """
 
     def __init__(self, app, max_bytes: int):
@@ -67,40 +73,52 @@ class BodySizeLimitMiddleware:
                     return
                 break
         if declared is not None and declared > self.max_bytes:
-            await _send_json(
-                send,
-                413,
-                {
-                    "code": "PAYLOAD_TOO_LARGE",
-                    "message": f"request body exceeds {self.max_bytes} bytes",
-                    "details": {"max_bytes": self.max_bytes},
-                },
-            )
+            await self._too_large(send)
             return
 
         received = 0
+        exceeded = False
+        started = False
+        rewritten = False
 
         async def metered_receive():
-            nonlocal received
+            nonlocal received, exceeded
+            if exceeded:
+                return {"type": "http.request", "body": b"", "more_body": False}
             message = await receive()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
                 if received > self.max_bytes:
-                    raise _BodyTooLarge
+                    exceeded = True
+                    # Empty final body, never the oversized one.
+                    return {"type": "http.request", "body": b"", "more_body": False}
             return message
 
-        try:
-            await self.app(scope, metered_receive, send)
-        except _BodyTooLarge:
-            await _send_json(
-                send,
-                413,
-                {
-                    "code": "PAYLOAD_TOO_LARGE",
-                    "message": f"request body exceeds {self.max_bytes} bytes",
-                    "details": {"max_bytes": self.max_bytes},
-                },
-            )
+        async def guard_send(message):
+            nonlocal started, rewritten
+            if message["type"] == "http.response.start":
+                if exceeded and not started:
+                    rewritten = True
+                    await self._too_large(send)
+                    return
+                started = True
+            elif message["type"] == "http.response.body" and rewritten:
+                # Swallow the body belonging to the response we replaced.
+                return
+            await send(message)
+
+        await self.app(scope, metered_receive, guard_send)
+
+    async def _too_large(self, send) -> None:
+        await _send_json(
+            send,
+            413,
+            {
+                "code": "PAYLOAD_TOO_LARGE",
+                "message": f"request body exceeds {self.max_bytes} bytes",
+                "details": {"max_bytes": self.max_bytes},
+            },
+        )
 
 
 # Applied to every response. CSP is the only one that could break the built-in

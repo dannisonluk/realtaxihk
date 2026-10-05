@@ -523,7 +523,6 @@ void _tripEventTests() {
         'READ_ONLY',
         'RATE_LIMITED',
         'BAD_MESSAGE',
-        'BAD_LOCATION',
       ]) {
         expectFalse(TripErrorEvent(code: code).isFatal, reason: code);
       }
@@ -533,7 +532,6 @@ void _tripEventTests() {
 
     test('has Chinese text for every code it knows', () {
       expect(const TripErrorEvent(code: 'OUTSIDE_HK').messageZh, '座標不在香港範圍內');
-      expect(const TripErrorEvent(code: 'BAD_LOCATION').messageZh, '座標不在香港範圍內');
       expect(const TripErrorEvent(code: 'DRIVER_NOT_ACTIVE').messageZh, '司機帳戶未啟用，已停止推送');
       // An unknown code still renders, naming the code.
       expectTrue(const TripErrorEvent(code: 'NEW_THING').messageZh.contains('NEW_THING'));

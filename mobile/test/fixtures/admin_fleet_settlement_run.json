@@ -8,6 +8,7 @@
   "member_count": 1,
   "charged": 1,
   "skipped": 0,
+  "skipped_no_deposit_account": 0,
   "failed": 0,
   "tampered": 0,
   "collected_hkd": "150.00"

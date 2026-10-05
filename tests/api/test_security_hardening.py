@@ -325,6 +325,35 @@ class TestInputCaps:
         assert r.status_code == 413
         assert r.json()["code"] == "PAYLOAD_TOO_LARGE"
 
+    def test_oversized_chunked_body_rejected_with_413(self, client):
+        """SEC-09~11: a chunked body (no `Content-Length`) must also answer 413.
+
+        `json=` makes httpx compute a Content-Length, so the test above only
+        exercises enforcement point #1. Passing an iterator instead makes httpx
+        use `Transfer-Encoding: chunked`, which reaches the metered receive and
+        is the path that used to answer 400 `BAD_REQUEST` — FastAPI's broad
+        `except Exception` around body parsing converted the raise before the
+        middleware's own handler could see it (NEW-9). The cap is now enforced
+        by replacing the body with an empty final chunk and rewriting the
+        response to 413, so nothing oversized is parsed at all.
+        """
+        from app.core.config import get_settings
+
+        cap = get_settings().max_request_body_bytes
+        chunk = b"x" * (cap // 2 + 4096)
+
+        def body():
+            yield chunk
+            yield chunk
+
+        r = client.post(
+            "/api/v1/fare/estimate",
+            content=body(),
+            headers={"content-type": "application/json"},
+        )
+        assert r.status_code == 413
+        assert r.json()["code"] == "PAYLOAD_TOO_LARGE"
+
     def test_normal_body_still_accepted(self, client):
         r = client.post("/api/v1/fare/estimate", json={"taxi_type": "URBAN", "distance_km": "5"})
         assert r.status_code == 200

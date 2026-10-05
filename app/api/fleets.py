@@ -119,6 +119,7 @@ def _settlement_out(run: FleetSettlementRun) -> dict:
         "member_count": run.member_count,
         "charged": run.charged,
         "skipped": run.skipped,
+        "skipped_no_deposit_account": run.skipped_no_deposit_account,
         "failed": run.failed,
         "tampered": run.tampered,
         "collected_hkd": _money(run.collected_hkd),

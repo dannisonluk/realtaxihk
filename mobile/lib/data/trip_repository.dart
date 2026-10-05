@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:web_socket_channel/io.dart' as io;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/config/app_config.dart';
@@ -62,10 +64,19 @@ class TripChannel {
 
   /// Connects without waiting for the handshake to be accepted — the server
   /// authorises first and closes on refusal, so there is nothing to await.
+  ///
+  /// The access token is sent as a native `Authorization` header where the
+  /// platform allows it. On the web there is no header channel for a
+  /// WebSocket handshake, so the token falls back to the server's documented
+  /// query parameter (`?token=…`).
   static TripChannel connect({required String orderId, required String accessToken}) {
-    final WebSocketChannel channel = WebSocketChannel.connect(
-      AppConfig.tripSocket(orderId: orderId, accessToken: accessToken),
-    );
+    final Uri uri = AppConfig.tripSocket(orderId: orderId, accessToken: accessToken);
+    final WebSocketChannel channel = kIsWeb
+        ? WebSocketChannel.connect(uri)
+        : io.IOWebSocketChannel.connect(
+            uri.replace(queryParameters: const <String, String>{}),
+            headers: <String, String>{'Authorization': 'Bearer $accessToken'},
+          );
     return TripChannel._(orderId, channel);
   }
 
