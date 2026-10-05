@@ -14,7 +14,10 @@
 
 - 最新 commit：以 `git log --oneline -5` 為準（本檔唔再硬寫 hash，避免每次 commit 都要改）
 - 目前 branch：見 `git branch --show-current`
-- Alembic head：`f1c2d3e4a5b6`（已確認 `alembic heads` 只有一個 head）
+- Alembic head：`c1f2e3d4a5b6`（2026-10-05 實跑 `alembic heads` 確認，**只有一個 head**）。
+  注意：本文件舊版寫 `f1c2d3e4a5b6` —— 那支現在只是**鏈中間**的一支
+  （`f1c2d3e4a5b6 -> 7a1b2c3d4e5f -> 042a7bc3e54c -> 5e1a9c7d4b02 -> c1f2e3d4a5b6`），已非 head。
+  **一律用 `alembic heads` 現查，不要信任何文檔寫死的 hash。**
 
 ### 已 commit 嘅進度
 
@@ -95,7 +98,7 @@
 
 ## 衝突紀錄
 
-- 2026-10-05：本 agent 曾開 `alembic/versions/6f3a9c2e8b15_fixed_fare_and_recurring.py`，但發現其他 agent 已有 fixed-fare migration，已刪除該重複檔。現時 alembic head 只有 `f1c2d3e4a5b6`。
+- 2026-10-05：本 agent 曾開 `alembic/versions/6f3a9c2e8b15_fixed_fare_and_recurring.py`，但發現其他 agent 已有 fixed-fare migration，已刪除該重複檔。現時 alembic head 以 `alembic heads` 為準（2026-10-05 為 `c1f2e3d4a5b6`，見上）。
 - `app/models/premium.py` 曾有本 agent 的 FixedPriceOffer draft，與 `app/models/fixed_offer.py` 重疊；現時 worktree 狀態未定，請其他 agent 唔好覆蓋，等我哋一齊核對。
 
 ## 下一步
@@ -118,8 +121,8 @@
 
 - 已完成：migration chain deep scan、fixed-fare/premium migration drift 修正、FK RESTRICT migration、security test public destinations path（見 commit `69c4484`、`e5454e5`）
 - 目前無持有 recurring rides slice；會避開你認領嘅檔案。
-- 提醒：新 migration 請接 `f1c2d3e4a5b6`，避免再出現多 head 分叉。
-- 2026-10-05 巡查：recurring WIP（`7a1b2c3d4e5f_recurring_rides.py`、`app/api/schemas/recurring.py`、`app/models/recurring.py`）已接 `f1c2d3e4a5b6`，`alembic heads` 只得 `7a1b2c3d4e5f`，無分叉；`app/api/schemas/__init__.py` 嘅 recurring export 我唔碰。
+- 提醒：新 migration 請接**當時的 `alembic heads` 輸出**（2026-10-05 為 `c1f2e3d4a5b6`），避免再出現多 head 分叉。不要照文檔抄 hash。
+- 2026-10-05 巡查：recurring WIP（`7a1b2c3d4e5f_recurring_rides.py`、`app/api/schemas/recurring.py`、`app/models/recurring.py`）已接上前一 head，無分叉；其後又落了 `8f2a1c5d3b40`、`5c8b2f0a1e43`、`f1c2d3e4a5b6`、`7a1b2c3d4e5f`、`042a7bc3e54c`、`5e1a9c7d4b02`、`c1f2e3d4a5b6`。`app/api/schemas/__init__.py` 嘅 recurring export 我唔碰。
 - 2026-10-05 另外幫 recurring WIP 清咗 blocker（唔 commit，留喺 worktree 俾你 review）：
   - `app/models/__init__.py`：`Recurring*` 原本錯誤由 `app.models.premium` import，改為 `from app.models.recurring import ...`
   - `app/models/recurring.py`：補返 migration 有但 model 冇嘅 `CheckConstraint("weekday BETWEEN 1 AND 7")`
@@ -139,6 +142,7 @@
   - **M-M-5**：`mobile/lib/data/trip_repository.dart` — native 平台改用 `io.IOWebSocketChannel.connect(uri, headers: {'Authorization': 'Bearer …'})`（token 唔再落 URL query）；web 保留 query 參數 fallback（瀏覽器無法設 WS handshake header）。
   - **AC-06（⚠️ 留意）**：`admin-web/web/src/components/primitives.tsx` 嘅 Modal 加咗 focus 移入 + Tab/Shift+Tab focus trap。handoff 之前記錄過呢個檔有 sibling 未 commit WIP（同一件事）——**我今次落嘅係單一實作、冇重疊**（`grep useEffect|boxRef` 只一處），已修好之前 `tsc` 報嘅 `TS18048 'first'/'last' is possibly undefined`。依 handoff 規則 3 喺此留言：**如 sibling 仲有自己版本，以 worktree 現有版本為準**。
   - **F-06（docs drift）**：`docs/DEPLOYMENT_REQUIREMENTS.md`（flutter 狀態改為 `dart` 直跑、`ERROR_PIPE_BUSY` 描述、gap 7→3 項、`ruff format` 檔數 184→212 並誠實註明餘 1 個 E501 在 sibling WIP `admin-web/serve.py`）；`docs/STRUCTURE_REVIEW.md`（寫死嘅「97 passed / 54 fixtures」改為指向即時輸出）。
+  - **2026-10-05 第二次 docs 掃描**：再修一批寫死數字 —— 根 `README.md`（交付物 82/56/46 檔 → 124/78/48；LOC；fixtures 54→63；Dart 97→149；vitest 69→76；API 68 塊→73 塊；docs 12→17 份）＋ `docs/WORK_SUMMARY.md`（API 86/93→98/111 ops；24 畫面→28；127→149 tests；69→76 vitest；pytest 數改為「未驗證」）＋ 本檔 head hash。新建 `docs/ERROR_SCAN_2026-10-05.md` 記 2 個真 blocker，`docs/README.md` 加量測基準表。
   - **順帶**：`ruff format` 補跑 3 個**本 agent 自己舊 commit** 留低嘅未格式化檔（`app/api/orders.py`、`app/core/region.py`、`scripts/dev/gen_mobile_fixtures.py`）；`ruff check --fix` 修 2 個 I001（`gen_mobile_fixtures.py`、`scripts/verify/audit_response_models.py`）。
   - **驗證**：`tests/api/test_security_hardening.py` 49 passed；mobile harness **149 passed / 0 failed**；`verify_contract.dart` **61 fixtures / 0 failure**；admin-web `tsc` 0 error、`vitest` **76 passed（10 檔）**；`ruff format --check` 211 formatted（餘 1 個係 sibling WIP）；`ruff check` 餘 1 個 E501（同上）；`alembic heads` 單一 `c1f2e3d4a5b6`。
   - **冇碰**：`mobile/lib/state/data_providers.dart`、`mobile/lib/models/order.dart`、`mobile/lib/core/network/wire.dart`、`mobile/lib/data/{driver,identity}_repository.dart`、`mobile/lib/router/*`、`mobile/lib/features/shared/account_screen.dart`、`admin-web/{README.md,serve.py}`、`scripts/dev/serve_and_run_browser.py`、`new/`。

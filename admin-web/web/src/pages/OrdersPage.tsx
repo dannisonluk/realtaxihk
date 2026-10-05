@@ -25,7 +25,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { endpoints } from '../api/endpoints';
 import type { AdminOrderRow } from '../api/types';
-import { ORDER_STATUSES } from '../api/types';
+import { ORDER_STATUSES, FARE_MODES } from '../api/types';
 import { Card, Chip, Money } from '../components/primitives';
 import { ErrorState, LoadingState } from '../components/states';
 import { useApp } from '../app/AppContext';
@@ -46,6 +46,7 @@ export function OrdersPage() {
    * "show me cancelled trips" but "show me everything still moving".
    */
   const [status, setStatus] = useState<string>('open');
+  const [fareMode, setFareMode] = useState<string>('');
   const [offset, setOffset] = useState(0);
 
   const { data, error, loading, reload } = useLoad(
@@ -53,10 +54,11 @@ export function OrdersPage() {
       endpoints.orders.list(client, {
         status: status === 'open' || status === '' ? undefined : status,
         openOnly: status === 'open',
+        fareMode: fareMode === '' ? undefined : fareMode,
         limit: PAGE_SIZE,
         offset,
       }),
-    [client, status, offset],
+    [client, status, fareMode, offset],
   );
 
   const items = data?.items ?? [];
@@ -113,6 +115,40 @@ export function OrdersPage() {
             }}
           >
             {labels.orderStatus(value)}
+          </button>
+        ))}
+      </div>
+
+      {/*
+        The fare-mode filter, on its own row. It is a *second* axis: an operator
+        reviewing agreed prices wants "fixed-price trips in any status", which
+        the status chips above cannot express, and folding the two into one row
+        would read as a single mutually-exclusive set.
+      */}
+      <div className="filters">
+        <button
+          type="button"
+          className={fareMode === '' ? 'chip chip--action chip--brand' : 'chip chip--action'}
+          aria-pressed={fareMode === ''}
+          onClick={() => {
+            setFareMode('');
+            setOffset(0);
+          }}
+        >
+          {t('orders.fareAll')}
+        </button>
+        {FARE_MODES.map((value) => (
+          <button
+            key={value}
+            type="button"
+            className={fareMode === value ? 'chip chip--action chip--brand' : 'chip chip--action'}
+            aria-pressed={fareMode === value}
+            onClick={() => {
+              setFareMode(value);
+              setOffset(0);
+            }}
+          >
+            {labels.fareMode(value)}
           </button>
         ))}
       </div>

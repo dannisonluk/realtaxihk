@@ -396,6 +396,7 @@ export const zhHant = {
     sub: '所有行程的即時狀態。乘客查詢時可在此確認司機、時間與當前狀態。',
     tabOpen: '進行中',
     tabAll: '全部',
+    fareAll: '不限收費模式',
     emptyOpen: '目前沒有進行中的行程。',
     empty: '沒有符合條件的訂單。',
     colCreated: '建立時間',

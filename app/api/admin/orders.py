@@ -25,7 +25,7 @@ from app.api.schemas import AdminOrderDetailOut, AdminOrderPageOut
 from app.core.db import get_session
 from app.core.deps import Principal, require_admin
 from app.core.money import meter_str, money_str
-from app.models import LedgerEntry, Order, OrderStatus
+from app.models import LedgerEntry, Order, OrderFareMode, OrderStatus
 
 router = APIRouter()
 
@@ -134,6 +134,7 @@ def _admin_order_detail_out(order: Order) -> dict:
 @router.get("/orders", response_model=AdminOrderPageOut)
 async def list_orders(
     status_filter: Annotated[str | None, Query(alias="status", max_length=24)] = None,
+    fare_mode: Annotated[str | None, Query(max_length=8)] = None,
     driver_id: uuid.UUID | None = None,
     passenger_id: uuid.UUID | None = None,
     since: Annotated[datetime | None, Query()] = None,
@@ -156,6 +157,11 @@ async def list_orders(
     filter that silently matches nothing is how an operator concludes there
     are no cancelled trips this week.
 
+    `fare_mode` is validated the same way, and for the same reason. It answers
+    the audit question the fixed-fare feature created: "show me every trip
+    where a price was agreed up front", which is the population a fee-differential
+    or overcharging review has to start from.
+
     `since`/`until` are half-open on `created_at`, matching `/audit`.
     """
     q = select(Order).order_by(Order.created_at.desc())
@@ -175,6 +181,18 @@ async def list_orders(
             ) from None
     if open_only:
         filters.append(Order.status.in_(_ORDER_OPEN_STATUSES))
+    if fare_mode:
+        try:
+            filters.append(Order.fare_mode == OrderFareMode(fare_mode))
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "unknown fare mode",
+                    "reason": "UNKNOWN_FARE_MODE",
+                    "allowed": [m.value for m in OrderFareMode],
+                },
+            ) from None
     if driver_id is not None:
         filters.append(Order.driver_id == driver_id)
     if passenger_id is not None:

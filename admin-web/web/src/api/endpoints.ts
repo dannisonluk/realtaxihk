@@ -344,6 +344,8 @@ export const endpoints = {
       since?: string;
       until?: string;
       openOnly?: boolean;
+      /** `METER` or `FIXED`; the server rejects anything else with a 400. */
+      fareMode?: string;
       limit?: number;
       offset?: number;
     } = {}) =>
@@ -354,6 +356,7 @@ export const endpoints = {
         since: filters.since,
         until: filters.until,
         open_only: filters.openOnly,
+        fare_mode: filters.fareMode,
         limit: filters.limit ?? 50,
         offset: filters.offset ?? 0,
       }),

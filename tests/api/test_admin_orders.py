@@ -337,6 +337,45 @@ class TestFareMode:
         data = client.get(f"/api/v1/admin/orders/{oid}", headers=client.admin_headers()).json()
         assert data["fare_mode"] == "FIXED"
 
+    async def test_the_filter_isolates_agreed_prices(self, client, passenger):
+        """The audit question the fixed-fare feature created: "show me every
+        trip where a price was agreed up front". A filter that quietly matched
+        nothing would read as "there are none"."""
+        _make_order(client, passenger_id=passenger, fare_mode="METER")
+        _make_order(client, passenger_id=passenger, fare_mode="FIXED", status="CREATED")
+        _make_order(client, passenger_id=passenger, fare_mode="FIXED", status="CANCELLED")
+
+        rows = client.get(
+            "/api/v1/admin/orders?fare_mode=FIXED", headers=client.admin_headers()
+        ).json()
+        assert rows["total"] == 2
+        assert {row["fare_mode"] for row in rows["items"]} == {"FIXED"}
+
+        metered = client.get(
+            "/api/v1/admin/orders?fare_mode=METER", headers=client.admin_headers()
+        ).json()
+        assert metered["total"] == 1
+
+    async def test_an_unknown_fare_mode_is_a_400_not_an_empty_list(self, client):
+        """Same contract as `status`: a bad value is refused, because a filter
+        that silently matches nothing is how an operator concludes there are no
+        agreed-price trips this week."""
+        r = client.get("/api/v1/admin/orders?fare_mode=BARGAIN", headers=client.admin_headers())
+        assert r.status_code == 400, r.text
+        assert r.json()["details"]["reason"] == "UNKNOWN_FARE_MODE"
+        assert "FIXED" in r.json()["details"]["allowed"]
+
+    async def test_the_filter_composes_with_status(self, client, passenger):
+        """The two filters are separate axes, so they must AND, not replace."""
+        _make_order(client, passenger_id=passenger, fare_mode="FIXED", status="CREATED")
+        _make_order(client, passenger_id=passenger, fare_mode="FIXED", status="COMPLETED")
+        rows = client.get(
+            "/api/v1/admin/orders?fare_mode=FIXED&status=CREATED",
+            headers=client.admin_headers(),
+        ).json()
+        assert rows["total"] == 1
+        assert rows["items"][0]["status"] == "CREATED"
+
 
 class TestDetail:
     async def test_detail_returns_the_frozen_snapshot_not_a_recomputation(self, client, passenger):

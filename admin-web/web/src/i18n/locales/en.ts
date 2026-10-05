@@ -389,6 +389,7 @@ export const en = {
     sub: 'Live status of every trip. Use this to confirm the driver, times and current state when a passenger calls.',
     tabOpen: 'In progress',
     tabAll: 'All',
+    fareAll: 'Any fare',
     emptyOpen: 'No trips in progress right now.',
     empty: 'No orders match the filter.',
     colCreated: 'Created',

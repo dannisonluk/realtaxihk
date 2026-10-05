@@ -670,6 +670,13 @@ export const ORDER_STATUSES = [
   'NO_DRIVER',
 ] as const;
 
+/**
+ * The two ways a fare can be set. Mirrors the `OrderFareMode` enum, which the
+ * server validates the `fare_mode` filter against — a hand-written list here
+ * that drifted from it would produce a 400 on a chip the UI itself offered.
+ */
+export const FARE_MODES = ['METER', 'FIXED'] as const;
+
 // ---------------------------------------------------------------------------
 // Audit
 // ---------------------------------------------------------------------------
