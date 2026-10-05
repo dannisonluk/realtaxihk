@@ -67,6 +67,7 @@ const NAV: NavItem[] = [
   { path: '/refunds', labelKey: 'nav.refunds', badge: 'pendingRefunds', end: false, role: 'FINANCE' },
   { path: '/settlement', labelKey: 'nav.settlement', badge: null, end: false, role: 'FINANCE' },
   { path: '/fleets', labelKey: 'nav.fleets', badge: null, end: false, role: 'OPERATIONS' },
+  { path: '/destinations', labelKey: 'nav.destinations', badge: null, end: false, role: 'OPERATIONS' },
   // Last of the working pages, because it is the one entry nobody needs during
   // a shift: the review queues are work to be cleared, while this is a question
   // you go and ask.

@@ -34,6 +34,7 @@ import { AnalyticsPage } from '../pages/AnalyticsPage';
 import { RefundsPage } from '../pages/RefundsPage';
 import { SettlementPage } from '../pages/SettlementPage';
 import { FleetsPage } from '../pages/FleetsPage';
+import { DestinationsPage } from '../pages/DestinationsPage';
 import { FleetDetailPage } from '../pages/FleetDetailPage';
 import { DriverDetailPage } from '../pages/DriverDetailPage';
 import { OrdersPage } from '../pages/OrdersPage';
@@ -158,6 +159,14 @@ function buildRouter() {
           element: (
             <RequireRole role="OPERATIONS">
               <FleetsPage />
+            </RequireRole>
+          ),
+        },
+        {
+          path: 'destinations',
+          element: (
+            <RequireRole role="OPERATIONS">
+              <DestinationsPage />
             </RequireRole>
           ),
         },

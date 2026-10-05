@@ -47,6 +47,8 @@ import type {
   LicenceSubmissionDetail,
   LicenceSubmissionRow,
   Paged,
+  PremiumDestination,
+  PremiumDestinationPage,
   RefundRow,
   RefundStatus,
   SearchResponse,
@@ -607,6 +609,34 @@ export const endpoints = {
   search: {
     query: (client: ApiClient, q: string, limit?: number) =>
       client.get<SearchResponse>('/api/v1/admin/search', { q, limit }),
+  },
+
+  /** Premium destinations — the admin-managed avatar-pinned map places. */
+  destinations: {
+    list: (client: ApiClient) =>
+      client.get<PremiumDestinationPage>('/api/v1/admin/destinations'),
+    create: (client: ApiClient, payload: {
+      code: string;
+      name_zh: string;
+      name_en: string;
+      lat: number;
+      lng: number;
+      radius_m: number;
+      avatar_key?: string | null;
+      status?: string;
+    }) => client.post<PremiumDestination>('/api/v1/admin/destinations', { body: payload }),
+    update: (client: ApiClient, id: string, payload: Partial<{
+      name_zh: string;
+      name_en: string;
+      lat: number;
+      lng: number;
+      radius_m: number;
+      avatar_key: string | null;
+      status: string;
+    }>) => client.patch<PremiumDestination>(
+      `/api/v1/admin/destinations/${encodeURIComponent(id)}`,
+      { body: payload },
+    ),
   },
 
   fleets: {

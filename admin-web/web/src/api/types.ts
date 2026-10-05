@@ -239,6 +239,32 @@ export interface FleetRow {
   member_count?: number;
 }
 
+/** A premium destination's visibility. Hidden rows stay in the admin list but never reach the public map. */
+export type DestinationStatus = 'ACTIVE' | 'HIDDEN';
+
+/**
+ * A premium destination (`/api/v1/admin/destinations`).
+ *
+ * `avatar_key` is an object key, not a URL. The backend never stores a URL so a
+ * leaked row cannot become a download link.
+ */
+export interface PremiumDestination {
+  id: string;
+  code: string;
+  name_zh: string;
+  name_en: string;
+  lat: number;
+  lng: number;
+  radius_m: number;
+  avatar_key: string | null;
+  status: DestinationStatus;
+  created_at: string | null;
+}
+
+export interface PremiumDestinationPage {
+  items: PremiumDestination[];
+}
+
 /**
  * A roster row.
  *
