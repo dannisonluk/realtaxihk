@@ -208,4 +208,11 @@
   - 環境備忘：跑 full-suite 前 **Docker Desktop 要開返**（`db` :15433 / `redis` :16379，`docker compose up -d db redis`）——今次中途 Docker 被關咗，一度全 pytest 連 DB 都連唔到。
   - 冇動 `admin/orders.py` 以外嘅 admin handler，亦冇改 `AdminOrderRowOut`（避免影響列表效能／形狀）。（註：下一批先加 `fare_mode` 落 row —— 屬刻意的後續，非矛盾。）
 
+- 2026-10-06（本 agent：**admin 凍結收據唯讀可見性**）
+  - `GET /api/v1/admin/orders/{order_id}/receipt`（`ReceiptOut`，`require_admin`）。Admin 本來可以經 party-facing `GET /orders/{id}/receipt` 讀，但嗰個 endpoint 有 side effect：第一次讀會**凍結** snapshot（設計上 to keep bytes idempotent）。Admin 瀏覽訂單唔應該代表乘客 mint 收據，所以呢條 admin route 係唯讀：`receipt_snapshot_json` 有就回傳 snapshot + `render_receipt_text()`，冇就 404，**永不 DB write**。
+  - admin-web：`OrderDetailPage` 喺 `receipt_requested` 時顯示「查看收據」按鈕；按鈕 fetch `/admin/orders/{id}/receipt` 並 render `total`、`issued_at`、服務器原文 `<pre>`。i18n 雙語 + `OrderReceipt` TS mirror（對齊 `ReceiptOut`）+ `endpoints.orders.receipt`。
+  - Tests：backend `test_admin_orders.py` 新 `TestAdminReceipt`（有 snapshot 讀取、support role、unissued 404 且**唔凍結**、unknown 404、匿唔到）；admin-web `OrderDetailPage.test.tsx` 加 2 個（未 requested 唔出按鈕；有 receipt 可開並 render 文件）。
+  - 驗證：admin 4 檔 **102 passed**（原 100 + 2 404 測試修正後，test_admin_orders 34 passed / 其餘三檔全 passing）；admin-web `npm test` **81 passed**（11 檔）；`npm run typecheck` 0 error（sibling `primitives.tsx` 已無 TS18048）；`ruff` 0；`mypy` 0。
+  - 注意：呢條 route 只服務 `receipt_snapshot_json` **已存在**的訂單；receipt 未 mint 就 404（UI 唔會 expose 按鈕）。
+
 

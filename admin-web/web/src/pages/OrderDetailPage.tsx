@@ -20,6 +20,7 @@
  * * **`broadcast_radius_km`** so "why did nobody take it" is answerable at all.
  */
 
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { endpoints } from '../api/endpoints';
 import { Card, Chip, DetailRow, Money, Rows } from '../components/primitives';
@@ -27,7 +28,7 @@ import { ErrorState, LoadingState } from '../components/states';
 import { useApp } from '../app/AppContext';
 import { useLoad } from '../app/useLoad';
 import { formatTime, shortId, useLabels } from '../lib/labels';
-import type { OrderRequirements } from '../api/types';
+import type { OrderReceipt, OrderRequirements } from '../api/types';
 import { useI18n } from '../i18n';
 import { PageHead } from '../app/Shell';
 
@@ -41,6 +42,8 @@ export function OrderDetailPage() {
     () => endpoints.orders.detail(client, orderId),
     [client, orderId],
   );
+  const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
 
   if (loading) return <LoadingState />;
   if (error) {
@@ -156,6 +159,20 @@ export function OrderDetailPage() {
                 {data.receipt_requested_at ? (
                   <span className="dim"> {formatTime(data.receipt_requested_at, formatLocale)}</span>
                 ) : null}
+                <button
+                  type="button"
+                  className="btn btn--small"
+                  onClick={() => {
+                    setReceipt(null);
+                    setReceiptError(null);
+                    void endpoints.orders
+                      .receipt(client, data.id)
+                      .then(setReceipt)
+                      .catch((e: unknown) => setReceiptError(e instanceof Error ? e.message : String(e)));
+                  }}
+                >
+                  {t('orderDetail.viewReceipt')}
+                </button>
               </>
             ) : (
               <span className="dim">{t('orderDetail.receiptNotRequested')}</span>
@@ -163,6 +180,26 @@ export function OrderDetailPage() {
           </DetailRow>
         </Rows>
       </Card>
+
+      {receipt || receiptError ? (
+        <div style={{ marginTop: 16 }}>
+          <h2>{t('orderDetail.receiptTitle')}</h2>
+          {receipt ? (
+            <Card className="card--pad">
+              <div className="row-inline" style={{ marginBottom: 12 }}>
+                <Money value={receipt.total_hkd} />
+                <span className="dim">{formatTime(receipt.issued_at, formatLocale)}</span>
+              </div>
+              <pre className="receipt-text">{receipt.text}</pre>
+            </Card>
+          ) : null}
+          {receiptError ? (
+            <p className="dim" style={{ color: 'var(--danger, #b42318)' }}>
+              {receiptError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {/*
         The timeline carries the whole diagnostic value of the page: the

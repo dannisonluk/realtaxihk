@@ -22,6 +22,7 @@ endpoints being correct.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -547,3 +548,127 @@ class TestDisputeRecord:
         }
         leaked = leaked_keys & set(item)
         assert not leaked, f"dispute blob leaked into the list row: {leaked}"
+
+
+def _freeze_receipt(client, oid: str, snapshot: dict) -> None:
+    """Persist a frozen receipt snapshot directly, as the write path would."""
+    client.exec_sql(
+        "UPDATE orders SET receipt_snapshot_json = CAST(:snap AS jsonb) "
+        "WHERE id = CAST(:oid AS uuid)",
+        {"snap": json.dumps(snapshot), "oid": oid},
+    )
+
+
+def _receipt_snapshot(oid: str) -> dict:
+    """A snapshot in the shape `build_receipt_snapshot` produces. The text is
+    rendered server-side on read, so it is intentionally absent here."""
+    return {
+        "order_id": oid,
+        "issued_at": "2026-10-05T04:26:00+00:00",
+        "status": "COMPLETED",
+        "taxi_type": "URBAN",
+        "fare_mode": "METER",
+        "pickup_address": "Central",
+        "dropoff_address": "North Point",
+        "distance_km": "5.0",
+        "total_hkd": "130.20",
+        "fare": {"meter_fare": "75.2", "surcharges_total": "55.0", "total_fare": "130.2"},
+        "tariff_version": "test-v1",
+        "requirements": {"silent_ride": True},
+        "payment_preference": ["CASH"],
+        "driver_payment_methods": ["OCTOPUS"],
+        "passenger_name": "p12345678",
+        "disclaimer_zh": "免責聲明：資訊中介平台",
+        "disclaimer_en": "Disclaimer: information intermediary platform",
+    }
+
+
+class TestAdminReceipt:
+    """The frozen document, served to operators without mutating the order.
+
+    The party-facing endpoint deliberately *issues* a receipt on first read so
+    a client can always download the same bytes they were promised. Browsing
+    the console is not a passenger request, so the admin route is read-only:
+    an order the passenger never asked a receipt for answers 404, and the
+    detail page already carries `receipt_requested` to explain why.
+    """
+
+    async def test_any_admin_role_can_read_the_frozen_receipt(self, client, passenger):
+        oid = _make_order(client, passenger_id=passenger, receipt_requested=True)
+        _freeze_receipt(client, oid, _receipt_snapshot(oid))
+
+        for role in ("SUPPORT", "OPERATIONS", "FINANCE", "SUPER_ADMIN"):
+            r = client.get(
+                f"/api/v1/admin/orders/{oid}/receipt",
+                headers=client.admin_headers(role=role),
+            )
+            assert r.status_code == 200, f"{role}: {r.text}"
+            body = r.json()
+            assert body["order_id"] == oid
+            assert body["total_hkd"] == "130.20"
+            assert body["requirements"]["silent_ride"] is True
+            assert body["payment_preference"] == ["CASH"]
+            assert body["driver_payment_methods"] == ["OCTOPUS"]
+            # The rendered document is part of the admin view too: a dispute
+            # about the *text* of a receipt is decided against the same bytes
+            # the passenger holds.
+            assert "車費收據 / Fare Receipt" in body["text"]
+            assert "完全靜音 Silent ride" in body["text"]
+            assert body["disclaimer_en"]
+
+    async def test_admin_read_does_not_mutate_the_order(self, client, passenger):
+        """A GET from the console must not freeze a receipt the passenger
+        never requested, and must not touch an already-frozen one."""
+        oid = _make_order(client, passenger_id=passenger, receipt_requested=True)
+        _freeze_receipt(client, oid, _receipt_snapshot(oid))
+
+        before = await _fetch(
+            client,
+            "SELECT receipt_snapshot_json, receipt_requested FROM orders "
+            "WHERE id = CAST(:oid AS uuid)",
+            {"oid": oid},
+        )
+
+        r = client.get(
+            f"/api/v1/admin/orders/{oid}/receipt",
+            headers=client.admin_headers(),
+        )
+        assert r.status_code == 200, r.text
+
+        after = await _fetch(
+            client,
+            "SELECT receipt_snapshot_json, receipt_requested FROM orders "
+            "WHERE id = CAST(:oid AS uuid)",
+            {"oid": oid},
+        )
+        assert before == after
+
+    async def test_unissued_receipt_is_a_404_not_a_creation(self, client, passenger):
+        oid = _make_order(client, passenger_id=passenger, receipt_requested=False)
+        r = client.get(
+            f"/api/v1/admin/orders/{oid}/receipt",
+            headers=client.admin_headers(),
+        )
+        assert r.status_code == 404, r.text
+        assert r.json()["message"] == "receipt not issued"
+        # Still nothing frozen afterwards.
+        rows = await _fetch(
+            client,
+            "SELECT receipt_snapshot_json FROM orders WHERE id = CAST(:oid AS uuid)",
+            {"oid": oid},
+        )
+        assert rows[0]["receipt_snapshot_json"] is None
+
+    async def test_unknown_order_is_a_404(self, client):
+        r = client.get(
+            f"/api/v1/admin/orders/{uuid.uuid4()}/receipt",
+            headers=client.admin_headers(),
+        )
+        assert r.status_code == 404, r.text
+        assert r.json()["message"] == "order not found"
+
+    async def test_an_anonymous_call_is_rejected(self, client, passenger):
+        oid = _make_order(client, passenger_id=passenger, receipt_requested=True)
+        _freeze_receipt(client, oid, _receipt_snapshot(oid))
+        r = client.get(f"/api/v1/admin/orders/{oid}/receipt")
+        assert r.status_code == 401

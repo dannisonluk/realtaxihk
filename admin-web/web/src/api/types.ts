@@ -649,6 +649,43 @@ export interface AdminOrderDetail extends AdminOrderRow {
   receipt_requested_at: string | null;
 }
 
+/**
+ * `GET /api/v1/admin/orders/{id}/receipt` — the frozen receipt document,
+ * read-only for operators.
+ *
+ * Mirrors `ReceiptOut` from `app/api/schemas/receipt.py`. `fare` and
+ * `requirements` stay open records because they are the order's own frozen
+ * JSONB blocks, not re-typed fare snapshots. `text` is rendered by the server
+ * from the same snapshot, so the structured view and the document view can
+ * never disagree.
+ */
+export interface OrderReceipt {
+  order_id: string;
+  issued_at: string;
+  status: string;
+  taxi_type: string;
+  fare_mode: string | null;
+  pickup_address: string;
+  dropoff_address: string;
+  distance_km: string;
+  pickup_area: string | null;
+  destination_area: string | null;
+  premium_destination: Record<string, unknown> | null;
+  total_hkd: string;
+  fare: Record<string, unknown>;
+  fixed_fare: Record<string, unknown> | null;
+  requirements: Record<string, unknown> | null;
+  payment_preference: string[];
+  driver_payment_methods: string[];
+  passenger_name: string | null;
+  tariff_version: string;
+  created_at: string | null;
+  completed_at: string | null;
+  text: string;
+  disclaimer_zh: string;
+  disclaimer_en: string;
+}
+
 /** The five states a trip can be in and still be moving. Mirrors `_ORDER_OPEN_STATUSES`. */
 export const OPEN_ORDER_STATUSES = [
   'CREATED',

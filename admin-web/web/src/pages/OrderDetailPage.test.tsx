@@ -112,6 +112,51 @@ function stubTransport(payload: unknown) {
   );
 }
 
+/** Serve the detail payload, and the receipt payload for the receipt path. */
+function stubTransportWithReceipt(detailPayload: unknown, receiptPayload: unknown) {
+  vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
+    const url = String(input);
+    const payload = url.includes('/receipt') ? receiptPayload : detailPayload;
+    return Promise.resolve(
+      new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+  });
+}
+
+/** A frozen receipt payload, mirroring `ReceiptOut`. */
+function receipt(overrides: Record<string, unknown> = {}) {
+  return {
+    order_id: ORDER_ID,
+    issued_at: '2026-10-05T04:26:00Z',
+    status: 'COMPLETED',
+    taxi_type: 'URBAN',
+    fare_mode: 'METER',
+    pickup_address: 'Central',
+    dropoff_address: 'Kowloon',
+    distance_km: '8.4',
+    pickup_area: null,
+    destination_area: null,
+    premium_destination: null,
+    total_hkd: '130.20',
+    fare: { meter_fare: '75.2', surcharges_total: '55.0', total_fare: '130.2' },
+    fixed_fare: null,
+    requirements: { silent_ride: true },
+    payment_preference: ['CASH'],
+    driver_payment_methods: ['OCTOPUS'],
+    passenger_name: null,
+    tariff_version: 'v1',
+    created_at: null,
+    completed_at: '2026-10-05T04:25:00Z',
+    text: 'hkfastdc.com — 車費收據 / Fare Receipt\n總額 Total : HK$ 130.2\n完全靜音 Silent ride',
+    disclaimer_zh: '免責聲明：資訊中介平台',
+    disclaimer_en: 'Disclaimer: information intermediary platform',
+    ...overrides,
+  };
+}
+
 /** The rendered text of the dispute card, and only that card. */
 function disputeCardText(container: HTMLElement): string {
   // Select on the *note*, not the heading: the `<h2>` is a sibling of the card,
@@ -264,6 +309,40 @@ describe('the order detail page', () => {
     const card = disputeCardText(container);
     expect(card).toContain(text('orderDetail.receiptRequested'));
     expect(card).not.toContain(text('orderDetail.receiptNotRequested'));
+  });
+
+  it('does not offer a receipt until one has been requested', async () => {
+    stubTransport(detail({ receipt_requested: false }));
+    await renderAndSettle(root);
+
+    expect(container.textContent).not.toContain(text('orderDetail.viewReceipt'));
+  });
+
+  it('opens the frozen receipt document for a requested receipt', async () => {
+    stubTransportWithReceipt(
+      detail({
+        receipt_requested: true,
+        receipt_requested_at: '2026-10-05T04:26:00Z',
+      }),
+      receipt(),
+    );
+    await renderAndSettle(root);
+
+    const button = Array.from(container.querySelectorAll('button')).find((b) =>
+      (b.textContent ?? '').includes(text('orderDetail.viewReceipt')),
+    );
+    expect(button).toBeTruthy();
+
+    await act(async () => {
+      button?.click();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    // The structured money field and the server-rendered document both appear;
+    // the document is the same bytes the passenger would hold.
+    expect(container.textContent).toContain('130.20');
+    expect(container.textContent).toContain('車費收據 / Fare Receipt');
+    expect(container.textContent).toContain('完全靜音 Silent ride');
   });
 
   // The one that stops an operator reading "the meter said $140 but the

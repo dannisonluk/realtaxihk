@@ -46,6 +46,7 @@ import type {
   LicenceReviewStatus,
   LicenceSubmissionDetail,
   LicenceSubmissionRow,
+  OrderReceipt,
   Paged,
   PremiumDestination,
   PremiumDestinationPage,
@@ -367,6 +368,16 @@ export const endpoints = {
      */
     detail: (client: ApiClient, orderId: string) =>
       client.get<AdminOrderDetail>(`/api/v1/admin/orders/${encodeURIComponent(orderId)}`),
+    /**
+     * The frozen receipt document, read-only for operators.
+     *
+     * This is intentionally *not* the party-facing `/orders/{id}/receipt`
+     * route: that route issues a receipt when none exists, and an operator
+     * browsing the console must not mutate an order. Orders without a frozen
+     * receipt answer 404 here.
+     */
+    receipt: (client: ApiClient, orderId: string) =>
+      client.get<OrderReceipt>(`/api/v1/admin/orders/${encodeURIComponent(orderId)}/receipt`),
   },
 
   /**

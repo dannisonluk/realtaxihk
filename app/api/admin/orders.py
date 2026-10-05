@@ -21,11 +21,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.admin._shared import _ledger_out
-from app.api.schemas import AdminOrderDetailOut, AdminOrderPageOut
+from app.api.schemas import AdminOrderDetailOut, AdminOrderPageOut, ReceiptOut
 from app.core.db import get_session
 from app.core.deps import Principal, require_admin
 from app.core.money import meter_str, money_str
 from app.models import LedgerEntry, Order, OrderFareMode, OrderStatus
+from app.services.receipt.receipt_service import render_receipt_text
 
 router = APIRouter()
 
@@ -253,3 +254,27 @@ async def order_detail(
         "timeline": _order_timeline(order),
         "ledger": {"items": [_ledger_out(e) for e in ledger_rows]},
     }
+
+
+@router.get("/orders/{order_id}/receipt", response_model=ReceiptOut)
+async def order_receipt(
+    order_id: uuid.UUID,
+    admin: Principal = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """The frozen receipt, read-only for operators.
+
+    The party-facing `GET /orders/{id}/receipt` necessarily *issues* a receipt
+    when one has not been frozen, so that the document a client downloads and
+    the document the passenger requested are the same bytes. An operator
+    browsing this page must not mutate an order: if the passenger never
+    requested a receipt, this answers 404 rather than creating one.
+    """
+    order = (await session.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+
+    snapshot = order.receipt_snapshot_json
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="receipt not issued")
+    return {**snapshot, "text": render_receipt_text(snapshot)}

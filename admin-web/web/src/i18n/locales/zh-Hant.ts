@@ -1023,6 +1023,8 @@ export const zhHant = {
     receiptLabel: '收據',
     receiptRequested: '已要求',
     receiptNotRequested: '未要求',
+    viewReceipt: '查看收據',
+    receiptTitle: '凍結收據',
     noneRecorded: '無記錄',
   },
 

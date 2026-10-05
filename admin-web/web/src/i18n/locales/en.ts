@@ -1031,6 +1031,8 @@ export const en = {
     receiptLabel: 'Receipt',
     receiptRequested: 'Requested',
     receiptNotRequested: 'Not requested',
+    viewReceipt: 'View receipt',
+    receiptTitle: 'Frozen receipt',
     noneRecorded: 'Not recorded',
   },
 
