@@ -178,18 +178,19 @@ async def list_disputes(
                 {"reason": "INVALID_FILTER", "field": field, "value": value},
             ) from exc
 
-    rows, total = await DisputeService(session_factory).list_cases(
-        status=status,
-        category=category,
-        severity=severity,
-        assigned_admin_id=assigned_admin_id,
-        unassigned_only=unassigned_only,
-        open_only=open_only,
-        overdue_only=overdue_only,
-        order_id=order_id,
-        limit=limit,
-        offset=offset,
-    )
+    async with session_factory() as session:
+        rows, total = await DisputeService(session).list_cases(
+            status=status,
+            category=category,
+            severity=severity,
+            assigned_admin_id=assigned_admin_id,
+            unassigned_only=unassigned_only,
+            open_only=open_only,
+            overdue_only=overdue_only,
+            order_id=order_id,
+            limit=limit,
+            offset=offset,
+        )
     now = datetime.now(UTC)
     return {
         "items": [_dispute_out(d, now=now) for d in rows],
@@ -205,7 +206,8 @@ async def dispute_stats(
     session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
 ):
     """Queue header counts, computed server-side against one clock."""
-    return await DisputeService(session_factory).stats()
+    async with session_factory() as session:
+        return await DisputeService(session).stats()
 
 
 @router.post("/disputes", status_code=201, response_model=AdminDisputeDetailOut)
@@ -223,7 +225,7 @@ async def create_dispute(
     """
     session = session_factory()
     try:
-        service = DisputeService(session_factory)
+        service = DisputeService(session)
         dispute = await service.open_case(
             category=payload.category,
             summary=payload.summary,
@@ -255,7 +257,11 @@ async def create_dispute(
     finally:
         await session.close()
 
-    full = await DisputeService(session_factory).get(dispute.id, with_messages=True)
+    full_session = session_factory()
+    try:
+        full = await DisputeService(full_session).get(dispute.id, with_messages=True)
+    finally:
+        await full_session.close()
     return {
         **_dispute_out(full),
         "messages": [_dispute_message_out(m) for m in full.messages],
@@ -277,7 +283,8 @@ async def dispute_detail(
     one is a filter somebody eventually forgets, and what it leaks is a staff
     opinion about a customer.
     """
-    full = await DisputeService(session_factory).get(dispute_id, with_messages=True)
+    async with session_factory() as session:
+        full = await DisputeService(session).get(dispute_id, with_messages=True)
     return {
         **_dispute_out(full),
         "messages": [_dispute_message_out(m) for m in full.messages],
@@ -294,13 +301,13 @@ async def assign_dispute(
     session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
 ):
     """Claim a case, moving `OPEN` to `INVESTIGATING`."""
-    service = DisputeService(session_factory)
-    # The returned row is re-read below so the response carries the thread, so
-    # only the previous assignee is needed here — it goes in the audit payload.
-    _, previous = await service.assign(dispute_id, admin_id=admin.id)
-
     session = session_factory()
     try:
+        service = DisputeService(session)
+        # The returned row is re-read below so the response carries the thread, so
+        # only the previous assignee is needed here — it goes in the audit payload.
+        _, previous = await service.assign(dispute_id, admin_id=admin.id)
+
         await record_audit(
             session,
             event=EV_DISPUTE_ASSIGN,
@@ -316,10 +323,10 @@ async def assign_dispute(
             request=request,
         )
         await session.commit()
+        full = await service.get(dispute_id, with_messages=True)
     finally:
         await session.close()
 
-    full = await service.get(dispute_id, with_messages=True)
     return {
         **_dispute_out(full),
         "messages": [_dispute_message_out(m) for m in full.messages],
@@ -346,17 +353,16 @@ async def add_dispute_message(
     "who wrote this, and did they mean the customer to see it" is the question
     asked when a note is quoted back at us by mistake.
     """
-    message = await DisputeService(session_factory).add_message(
-        dispute_id,
-        body=payload.body,
-        author_kind="ADMIN",
-        author_id=admin.id,
-        author_label=None,
-        is_internal=payload.is_internal,
-    )
-
     session = session_factory()
     try:
+        message = await DisputeService(session).add_message(
+            dispute_id,
+            body=payload.body,
+            author_kind="ADMIN",
+            author_id=admin.id,
+            author_label=None,
+            is_internal=payload.is_internal,
+        )
         await record_audit(
             session,
             event=EV_DISPUTE_MESSAGE,
@@ -395,9 +401,14 @@ async def set_dispute_status(
     note and an actor, and a status flip would produce a case that reads as
     decided with none of them recorded.
     """
-    service = DisputeService(session_factory)
-    await service.set_status(dispute_id, status=payload.status)
-    full = await service.get(dispute_id, with_messages=True)
+    session = session_factory()
+    try:
+        service = DisputeService(session)
+        await service.set_status(dispute_id, status=payload.status)
+        await session.commit()
+        full = await service.get(dispute_id, with_messages=True)
+    finally:
+        await session.close()
     return {
         **_dispute_out(full),
         "messages": [_dispute_message_out(m) for m in full.messages],
@@ -490,23 +501,20 @@ async def resolve_dispute(
                         "actual": actor_role.value,
                     },
                 )
-    finally:
-        await session.close()
 
-    service = DisputeService(session_factory)
-    dispute = await service.resolve(
-        dispute_id,
-        resolution=resolution,
-        note=payload.note,
-        admin_id=admin.id,
-        close=payload.close,
-    )
+        service = DisputeService(session)
+        dispute = await service.resolve(
+            dispute_id,
+            resolution=resolution,
+            note=payload.note,
+            admin_id=admin.id,
+            close=payload.close,
+        )
 
-    # The audit row rides the *same* transaction as the resolution. A separate
-    # commit here would leave "resolved but no audit" as a real outcome on a
-    # mid-crash, and this is the one admin module that moves money.
-    session = session_factory()
-    try:
+        # The audit row rides the *same* transaction as the resolution. A
+        # separate commit would leave "resolved but no audit" as a real
+        # outcome on a mid-crash, and this is the one admin module that moves
+        # money.
         await record_audit(
             session,
             event=EV_DISPUTE_RESOLVE,

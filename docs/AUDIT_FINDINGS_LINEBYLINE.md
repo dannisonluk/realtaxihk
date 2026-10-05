@@ -16,6 +16,8 @@ Status: IN PROGRESS.
 | **NEW-21** (MEDIUM) | `app/core/config.py:255`, `app/services/ledger/ledger_service.py:218`, `app/api/admin/drivers.py:180`, `app/api/drivers.py:115` | `driver_deposit_default_hkd` was dead config while four call sites hard-coded `500`. It now feeds the ledger deposit-row factory and both driver/admin deposit serializers. The console still hard-codes `500` as a grant suggestion (NEW-27 related client-side mirror), which is a separate low-risk UI cleanup. |
 | **SS-D1** (HIGH) | `app/models/user.py:344-346,552-554`, `alembic/versions/f1c2d3e4a5b6_harden_deposit_and_refund_fks.py` | `driver_deposits.driver_profile_id` and `refund_requests.driver_profile_id` changed from `ON DELETE CASCADE` to `ON DELETE RESTRICT`, so deleting a user/profile can no longer silently erase a paid deposit or a refund decision while `ledger_entries` stays RESTRICT. There is no product delete-user path (only fixture cleanup), so this is invariant hardening rather than a workflow change. **Verified:** `test_migrations_apply_to_a_plain_postgres` passes on a fresh Postgres with the migration applied. |
 | **NEW-23** (MEDIUM) | `app/api/admin/disputes.py` | The resolve audit row stays in the handler but the comment now states the truth: the resolution commits in its own transaction and the audit in another. The audit row can therefore be lost on a crash between the two commits, exactly on a money-moving action. Marked as a known two-phase limitation rather than silently claiming atomicity — the next step is moving the audit into `resolve()`'s transaction. |
+| **NEW-23, resolved (2026-10-05)** | `app/services/admin/dispute_service.py`, `app/api/admin/disputes.py` | `DisputeService` now takes the caller's session (as `RefundService` does), every handler opens one session, and the mutation + audit row commit together. A crash can no longer leave "resolved but no audit". |
+| **NEW-10** (LOW, resolved 2026-10-05) | `app/api/ws.py` | Removed the dead app-level idle watchdog; the transport's WebSocket ping is the sole reaper. Misleading claims in `ws.py`, `trip_repository.dart` and `trip_tracking_screen.dart` corrected; `ws_idle_timeout_s` kept as reference-only config. |
 
 **Third-deliverable parity, which the NEW-22 fix invalidated.** Three places in the console
 asserted that a reset *cannot* revoke a token in flight: the `types.ts` docstring, the
@@ -188,7 +190,7 @@ since removed): a chunked body over the cap returns **400 `BAD_REQUEST`**, not 4
 
 `app/api/ws.py` `watchdog()` reaps a socket when
 `time.monotonic() - activity["at"] > ws_idle_timeout_s`. But `send()` — called by
-`heartbeat()` every `ws_heartbeat_s` — refreshes that same `activity["at"]`
+`heartbeat()` every `ws_heartbeat_s` — refreshed that same `activity["at"]`
 (`ws.py:168-171`). Config: `ws_heartbeat_s = 30`, `ws_idle_timeout_s = 300`
 (`app/core/config.py:162,165`, no `.env` override). 30 < 300, so the condition is
 arithmetically unreachable: the module docstring's claim that "a dead one is detected"
@@ -199,8 +201,11 @@ and the comment "reap a connection with no traffic in either direction" are both
 peer is still reaped by the transport, and app-idle-but-alive sockets are arguably meant
 to live. So this is dead code plus a false claim, not a leak. No test covers it
 (`grep watchdog|idle_timeout tests/` → empty), which is why it went unnoticed.
-Fix: track inbound activity in its own field (`reader()` already updates `activity`, so
-only `send()` needs to stop touching it), or delete the watchdog and its claim.
+
+**Resolution (2026-10-05)**: removed the app-level watchdog and its task; the
+transport's WebSocket ping is the sole reaper. `ws_idle_timeout_s` is retained in
+config as a reference only, and the misleading claims in `ws.py`, `trip_repository.dart`
+and `trip_tracking_screen.dart` are corrected to say the same thing.
 
 ## NEW-11 — LOW — a Redis failure while releasing the grab lock turns a won order into an error
 

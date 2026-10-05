@@ -26,8 +26,7 @@ Security (SEC-14/16/18/30):
   and global connection caps, so one account cannot exhaust Redis's `maxclients`;
 - inbound ticks are throttled per connection (DB write + Pub/Sub publish per tick);
 - the heartbeat runs on its own timer, so an idle connection is pinged and a dead
-  one is detected — previously the ping only fired while messages were arriving,
-  which is exactly when it is not needed.
+  one is reaped by the transport’s WebSocket ping (uvicorn `--ws-ping-*`).
 """
 
 from __future__ import annotations
@@ -148,7 +147,6 @@ async def trip_socket(
 
     hub = ws.app.state.trip_hub
     send_lock = asyncio.Lock()
-    activity = {"at": time.monotonic()}
     # SEC-16: token bucket. Each tick is a DB UPDATE + commit + a Redis publish, so
     # the sustained rate is capped — but a small burst is allowed, because a driver
     # app that reconnects legitimately replays a few queued ticks at once.
@@ -168,7 +166,6 @@ async def trip_socket(
     async def send(payload: dict) -> None:
         async with send_lock:
             await ws.send_text(json.dumps(payload))
-            activity["at"] = time.monotonic()
 
     async def handle_push(raw: str) -> None:
         if party_kind != "driver":
@@ -212,7 +209,6 @@ async def trip_socket(
     async def reader() -> None:
         while True:
             raw = await ws.receive_text()
-            activity["at"] = time.monotonic()
             await handle_push(raw)
 
     heartbeat_s = max(1, settings.ws_heartbeat_s)
@@ -229,19 +225,9 @@ async def trip_socket(
                 continue  # drivers get direct acks; no self-echo
             await send(message)
 
-    async def watchdog() -> None:
-        """SEC-14: reap a connection with no traffic in either direction."""
-        while True:
-            await asyncio.sleep(min(heartbeat_s, max(1, settings.ws_idle_timeout_s // 2)))
-            if time.monotonic() - activity["at"] > settings.ws_idle_timeout_s:
-                with contextlib.suppress(Exception):
-                    await ws.close(code=1001)
-                return
-
     tasks = [
         asyncio.create_task(heartbeat(), name="ws_heartbeat"),
         asyncio.create_task(subscriber(), name="ws_subscriber"),
-        asyncio.create_task(watchdog(), name="ws_watchdog"),
     ]
     try:
         await reader()

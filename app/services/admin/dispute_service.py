@@ -31,7 +31,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BusinessRuleError, NotFoundError
 from app.models import (
@@ -66,10 +66,15 @@ _OPEN_STATUSES = (
 
 
 class DisputeService:
-    """Case management: open, assign, message, resolve, list."""
+    """Case management: open, assign, message, resolve, list.
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
-        self._session_factory = session_factory
+    Constructed with the caller's session, matching `RefundService`, so the
+    handler owns the transaction boundary and an audit row can ride the same
+    commit as the mutation it records.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
 
     # ------------------------------------------------------------------ open
 
@@ -120,27 +125,27 @@ class DisputeService:
             safety_flag=safety,
             sla_due_at=now + timedelta(hours=sev.sla_hours),
         )
-        async with self._session_factory() as session:
-            session.add(dispute)
-            # Flush before wiring the message to it. `id` is a Python-side
-            # default, so it is still `None` in memory until the INSERT runs —
-            # adding the message first binds a NULL `dispute_id` and the write
-            # fails on the NOT NULL constraint.
-            await session.flush()
-            # The opening summary is also the first message, so the thread is
-            # complete on its own — a reader of `dispute_messages` alone sees
-            # how the case started without joining back to the row.
-            session.add(
-                DisputeMessage(
-                    dispute_id=dispute.id,
-                    author_kind=raised_by_kind,
-                    author_id=raised_by_id,
-                    body=summary.strip(),
-                    is_internal=False,
-                )
+        session = self.session
+        session.add(dispute)
+        # Flush before wiring the message to it. `id` is a Python-side
+        # default, so it is still `None` in memory until the INSERT runs —
+        # adding the message first binds a NULL `dispute_id` and the write
+        # fails on the NOT NULL constraint.
+        await session.flush()
+        # The opening summary is also the first message, so the thread is
+        # complete on its own — a reader of `dispute_messages` alone sees
+        # how the case started without joining back to the row.
+        session.add(
+            DisputeMessage(
+                dispute_id=dispute.id,
+                author_kind=raised_by_kind,
+                author_id=raised_by_id,
+                body=summary.strip(),
+                is_internal=False,
             )
-            await session.commit()
-            await session.refresh(dispute)
+        )
+        await session.flush()
+        await session.refresh(dispute)
         logger.info(
             "dispute opened",
             extra={"dispute": str(dispute.id), "category": cat.value, "severity": sev.value},
@@ -215,16 +220,16 @@ class DisputeService:
     # ------------------------------------------------------------------ read
 
     async def get(self, dispute_id: uuid.UUID, *, with_messages: bool = False) -> OrderDispute:
-        async with self._session_factory() as session:
-            dispute = await session.get(OrderDispute, dispute_id)
-            if dispute is None:
-                raise NotFoundError(f"dispute {dispute_id} not found")
-            if with_messages:
-                # Touch the relationship while the session is open, or the
-                # caller gets a lazy-load error on a detached instance.
-                await session.refresh(dispute, ["messages"])
-                dispute.messages  # noqa: B018 — force the load inside the session
-            return dispute
+        session = self.session
+        dispute = await session.get(OrderDispute, dispute_id)
+        if dispute is None:
+            raise NotFoundError(f"dispute {dispute_id} not found")
+        if with_messages:
+            # Touch the relationship while the session is open, or the
+            # caller gets a lazy-load error on a detached instance.
+            await session.refresh(dispute, ["messages"])
+            dispute.messages  # noqa: B018 — force the load inside the session
+        return dispute
 
     async def list_cases(
         self,
@@ -275,9 +280,8 @@ class DisputeService:
             count_statement = count_statement.where(*clauses)
 
         statement = statement.order_by(OrderDispute.sla_due_at.asc()).limit(limit).offset(offset)
-        async with self._session_factory() as session:
-            rows = list((await session.execute(statement)).scalars())
-            total = int((await session.execute(count_statement)).scalar_one())
+        rows = list((await self.session.execute(statement)).scalars())
+        total = int((await self.session.execute(count_statement)).scalar_one())
         return rows, total
 
     async def stats(self, *, now: datetime | None = None) -> dict:
@@ -289,55 +293,56 @@ class DisputeService:
         """
         now = now or datetime.now(UTC)
         open_values = [s.value for s in _OPEN_STATUSES]
-        async with self._session_factory() as session:
-            total = int(
-                (await session.execute(select(func.count()).select_from(OrderDispute))).scalar_one()
-            )
-            open_count = int(
-                (
-                    await session.execute(
-                        select(func.count())
-                        .select_from(OrderDispute)
-                        .where(OrderDispute.status.in_(open_values))
+        total = int(
+            (
+                await self.session.execute(select(func.count()).select_from(OrderDispute))
+            ).scalar_one()
+        )
+        open_count = int(
+            (
+                await self.session.execute(
+                    select(func.count())
+                    .select_from(OrderDispute)
+                    .where(OrderDispute.status.in_(open_values))
+                )
+            ).scalar_one()
+        )
+        overdue = int(
+            (
+                await self.session.execute(
+                    select(func.count())
+                    .select_from(OrderDispute)
+                    .where(
+                        OrderDispute.status.in_(open_values),
+                        OrderDispute.sla_due_at < now,
                     )
-                ).scalar_one()
-            )
-            overdue = int(
-                (
-                    await session.execute(
-                        select(func.count())
-                        .select_from(OrderDispute)
-                        .where(
-                            OrderDispute.status.in_(open_values),
-                            OrderDispute.sla_due_at < now,
-                        )
+                )
+            ).scalar_one()
+        )
+        unassigned = int(
+            (
+                await self.session.execute(
+                    select(func.count())
+                    .select_from(OrderDispute)
+                    .where(
+                        OrderDispute.status.in_(open_values),
+                        OrderDispute.assigned_admin_id.is_(None),
                     )
-                ).scalar_one()
-            )
-            unassigned = int(
-                (
-                    await session.execute(
-                        select(func.count())
-                        .select_from(OrderDispute)
-                        .where(
-                            OrderDispute.status.in_(open_values),
-                            OrderDispute.assigned_admin_id.is_(None),
-                        )
+                )
+            ).scalar_one()
+        )
+        safety = int(
+            (
+                await self.session.execute(
+                    select(func.count())
+                    .select_from(OrderDispute)
+                    .where(
+                        OrderDispute.safety_flag.is_(True),
+                        OrderDispute.status.in_(open_values),
                     )
-                ).scalar_one()
-            )
-            safety = int(
-                (
-                    await session.execute(
-                        select(func.count())
-                        .select_from(OrderDispute)
-                        .where(
-                            OrderDispute.safety_flag.is_(True),
-                            OrderDispute.status.in_(open_values),
-                        )
-                    )
-                ).scalar_one()
-            )
+                )
+            ).scalar_one()
+        )
         return {
             "total": total,
             "open": open_count,
@@ -357,21 +362,21 @@ class DisputeService:
         says somebody owns this now. Re-assigning an already-resolved case is
         refused, because the assignee is part of the audit of who decided.
         """
-        async with self._session_factory() as session:
-            dispute = await session.get(OrderDispute, dispute_id)
-            if dispute is None:
-                raise NotFoundError(f"dispute {dispute_id} not found")
-            if dispute.status_enum.is_terminal:
-                raise BusinessRuleError(
-                    "a closed dispute cannot be reassigned",
-                    {"reason": "DISPUTE_ALREADY_CLOSED", "status": dispute.status},
-                )
-            previous = dispute.assigned_admin_id
-            dispute.assigned_admin_id = admin_id
-            if dispute.status_enum is DisputeStatus.OPEN:
-                dispute.status = DisputeStatus.INVESTIGATING.value
-            await session.commit()
-            await session.refresh(dispute)
+        session = self.session
+        dispute = await session.get(OrderDispute, dispute_id)
+        if dispute is None:
+            raise NotFoundError(f"dispute {dispute_id} not found")
+        if dispute.status_enum.is_terminal:
+            raise BusinessRuleError(
+                "a closed dispute cannot be reassigned",
+                {"reason": "DISPUTE_ALREADY_CLOSED", "status": dispute.status},
+            )
+        previous = dispute.assigned_admin_id
+        dispute.assigned_admin_id = admin_id
+        if dispute.status_enum is DisputeStatus.OPEN:
+            dispute.status = DisputeStatus.INVESTIGATING.value
+        await session.flush()
+        await session.refresh(dispute)
         return dispute, previous
 
     async def add_message(
@@ -394,26 +399,26 @@ class DisputeService:
             raise BusinessRuleError(
                 "a message must have a body", {"reason": "DISPUTE_MESSAGE_EMPTY"}
             )
-        async with self._session_factory() as session:
-            dispute = await session.get(OrderDispute, dispute_id)
-            if dispute is None:
-                raise NotFoundError(f"dispute {dispute_id} not found")
-            if dispute.status_enum.is_terminal and not is_internal:
-                raise BusinessRuleError(
-                    "this dispute is closed — reply internally, or reopen it first",
-                    {"reason": "DISPUTE_ALREADY_CLOSED", "status": dispute.status},
-                )
-            message = DisputeMessage(
-                dispute_id=dispute_id,
-                author_kind=author_kind,
-                author_id=author_id,
-                author_label=author_label,
-                body=body.strip(),
-                is_internal=is_internal,
+        session = self.session
+        dispute = await session.get(OrderDispute, dispute_id)
+        if dispute is None:
+            raise NotFoundError(f"dispute {dispute_id} not found")
+        if dispute.status_enum.is_terminal and not is_internal:
+            raise BusinessRuleError(
+                "this dispute is closed — reply internally, or reopen it first",
+                {"reason": "DISPUTE_ALREADY_CLOSED", "status": dispute.status},
             )
-            session.add(message)
-            await session.commit()
-            await session.refresh(message)
+        message = DisputeMessage(
+            dispute_id=dispute_id,
+            author_kind=author_kind,
+            author_id=author_id,
+            author_label=author_label,
+            body=body.strip(),
+            is_internal=is_internal,
+        )
+        session.add(message)
+        await session.flush()
+        await session.refresh(message)
         return message
 
     async def resolve(
@@ -439,28 +444,26 @@ class DisputeService:
                 "a resolution requires a note explaining the decision",
                 {"reason": "DISPUTE_RESOLUTION_NOTE_REQUIRED"},
             )
-        async with self._session_factory() as session:
-            dispute = await session.get(OrderDispute, dispute_id, with_for_update=True)
-            if dispute is None:
-                raise NotFoundError(f"dispute {dispute_id} not found")
-            if dispute.resolution is not None:
-                raise BusinessRuleError(
-                    "this dispute already has a resolution",
-                    {
-                        "reason": "DISPUTE_ALREADY_RESOLVED",
-                        "resolution": dispute.resolution,
-                        "resolved_at": dispute.resolved_at.isoformat()
-                        if dispute.resolved_at
-                        else None,
-                    },
-                )
-            dispute.resolution = res.value
-            dispute.resolution_note = note.strip()
-            dispute.resolved_by = admin_id
-            dispute.resolved_at = now
-            dispute.status = DisputeStatus.CLOSED.value if close else DisputeStatus.RESOLVED.value
-            await session.commit()
-            await session.refresh(dispute)
+        session = self.session
+        dispute = await session.get(OrderDispute, dispute_id, with_for_update=True)
+        if dispute is None:
+            raise NotFoundError(f"dispute {dispute_id} not found")
+        if dispute.resolution is not None:
+            raise BusinessRuleError(
+                "this dispute already has a resolution",
+                {
+                    "reason": "DISPUTE_ALREADY_RESOLVED",
+                    "resolution": dispute.resolution,
+                    "resolved_at": dispute.resolved_at.isoformat() if dispute.resolved_at else None,
+                },
+            )
+        dispute.resolution = res.value
+        dispute.resolution_note = note.strip()
+        dispute.resolved_by = admin_id
+        dispute.resolved_at = now
+        dispute.status = DisputeStatus.CLOSED.value if close else DisputeStatus.RESOLVED.value
+        await session.flush()
+        await session.refresh(dispute)
         logger.info(
             "dispute resolved",
             extra={"dispute": str(dispute_id), "resolution": res.value},
@@ -480,18 +483,18 @@ class DisputeService:
                 "use resolve() to resolve a dispute — it records the decision",
                 {"reason": "DISPUTE_USE_RESOLVE"},
             )
-        async with self._session_factory() as session:
-            dispute = await session.get(OrderDispute, dispute_id)
-            if dispute is None:
-                raise NotFoundError(f"dispute {dispute_id} not found")
-            if dispute.resolution is not None and target is not DisputeStatus.CLOSED:
-                raise BusinessRuleError(
-                    "a resolved dispute can only be closed",
-                    {"reason": "DISPUTE_ALREADY_RESOLVED"},
-                )
-            dispute.status = target.value
-            await session.commit()
-            await session.refresh(dispute)
+        session = self.session
+        dispute = await session.get(OrderDispute, dispute_id)
+        if dispute is None:
+            raise NotFoundError(f"dispute {dispute_id} not found")
+        if dispute.resolution is not None and target is not DisputeStatus.CLOSED:
+            raise BusinessRuleError(
+                "a resolved dispute can only be closed",
+                {"reason": "DISPUTE_ALREADY_RESOLVED"},
+            )
+        dispute.status = target.value
+        await session.flush()
+        await session.refresh(dispute)
         return dispute
 
 

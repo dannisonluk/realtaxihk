@@ -20,8 +20,9 @@ import '../shared/widgets.dart';
 /// Two channels are needed, and the second one is not optional:
 ///
 /// 1. `/ws/trip/{order_id}` for the driver's position ticks. The server pings on
-///    its own timer (`SEC-30`) so an idle socket is exercised in both
-///    directions and reaped after `ws_idle_timeout_s` only if genuinely dead.
+///    its own timer (`SEC-30`) and the transport's WebSocket ping reaps genuinely
+///    dead peers; there is no app-level idle watchdog that could race a healthy,
+///    silent passenger socket (NEW-10).
 /// 2. A slow poll of `GET /orders/{id}`. `app/services/trip_service.py` and
 ///    `app/api/ws.py` both document that "lifecycle events (grab/cancel) publish
 ///    on the same channel", but **no call site ever publishes one** — `publish()`

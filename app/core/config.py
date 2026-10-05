@@ -164,7 +164,7 @@ class Settings(BaseSettings):
     ws_heartbeat_s: int = 30  # server ping cadence for idle-keepalive
     ws_max_connections_per_user: int = 5
     ws_max_connections_total: int = 2000
-    ws_idle_timeout_s: int = 300  # no traffic in either direction -> reap
+    ws_idle_timeout_s: int = 300  # retained for reference; transport ping reaps dead peers (NEW-10)
     # SEC-16: sustained inbound tick rate per connection, plus a burst allowance so
     # a reconnect that replays a few queued ticks is not throttled.
     ws_ticks_per_second: int = 2

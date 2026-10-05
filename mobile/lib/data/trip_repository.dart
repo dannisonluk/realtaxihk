@@ -53,9 +53,10 @@ class TripRepository {
 ///   `{"type":"location"}` ticks — except the driver, whose own ticks are never
 ///   echoed back.
 ///
-/// The server reaps a connection with no traffic in either direction for
-/// `ws_idle_timeout_s` (300s), so a passenger socket must be kept open by the
-/// server's pings alone. It is.
+/// The server pings on its own timer and the transport's WebSocket ping reaps
+/// genuinely dead peers, so a passenger socket is kept open by server pings
+/// alone. There is no app-level idle watchdog that could race a healthy,
+/// silent passenger socket (NEW-10).
 class TripChannel {
   TripChannel._(this.orderId, this._channel);
 
