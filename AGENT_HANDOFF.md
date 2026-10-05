@@ -12,7 +12,7 @@
 
 ## 現時 git 狀態
 
-- 最新 commit：`ab95c7c`（其他 agent）
+- 最新 commit：以 `git log --oneline -5` 為準（本檔唔再硬寫 hash，避免每次 commit 都要改）
 - 目前 branch：見 `git branch --show-current`
 - Alembic head：`f1c2d3e4a5b6`（已確認 `alembic heads` 只有一個 head）
 
@@ -25,6 +25,8 @@
 | `e2fc6db` | admin SoD whitelist、KYC restore、console controls 修正 | 其他 agent |
 | `a2b9f9f` | fixed-fare matching and offer lifecycle（backend） | 其他 agent |
 | `ab95c7c` | audit: mark SS-D1 deposit/refund FK RESTRICT as fixed | 其他 agent |
+| `69c4484` | migration deep scan fixes（JSONB/unique index/固定價 index/enum + FK RESTRICT migration） | 本 agent |
+| `e5454e5` | docs(audit): migration-chain deep scan 記錄 | 本 agent |
 
 ## Ownership / 檔案認領
 
@@ -50,7 +52,6 @@
 - admin SoD/KYC/dispute fixes
 
 未 commit（worktree，請其他 agent 自己確認）：
-- `alembic/versions/f1c2d3e4a5b6_harden_deposit_and_refund_fks.py`
 - `mobile/lib/core/security/username_policy.dart`
 - `mobile/lib/features/driver/fixed_offers_screen.dart`
 - `mobile/lib/features/shared/profile_setup_screen.dart`
@@ -58,17 +59,22 @@
 - `mobile/lib/router/app_router.dart`、`mobile/lib/router/routing_rules.dart`、`mobile/lib/data/identity_repository.dart`
 - `new/`（用戶/其他 agent 素材，唔好掂）
 
+### 其他 agent（migration deep scan / FK hardening）已 commit
+
+- `alembic/versions/f1c2d3e4a5b6_harden_deposit_and_refund_fks.py`（已在 `69c4484` commit，唔再係未 commit）
+- `5c8b2f0a1e43`／`8f2a1c5d3b40` migration 修正（JSONB、unique index、index 名、fare_mode enum）已在 `69c4484` commit
+- `tests/api/test_security_hardening.py` public destinations path 已在 `69c4484` commit
+- `app/models/premium.py` 已 revert 返 HEAD（冇 duplicate class／冇多餘 import），混亂區已清
+
 ### 混亂區 / 請勿亂改
 
 以下檔案現時 worktree 有未 commit 改動，可能同時被兩個 agent 郁過。等確認後先好處理：
-- `app/models/premium.py`
-- `alembic/versions/5c8b2f0a1e43_premium_destinations_driver_attributes.py`
-- `alembic/versions/8f2a1c5d3b40_fixed_fare_offers.py`
-- `tests/api/test_security_hardening.py`
 - `mobile/lib/core/network/wire.dart`
 - `mobile/lib/data/driver_repository.dart`
 - `mobile/lib/models/order.dart`
 - `mobile/lib/state/data_providers.dart`
+
+（已清：`app/models/premium.py`、`5c8b...`、`8f2a...`、`tests/api/test_security_hardening.py` 已在 `69c4484`／revert 處理完）
 
 ## 衝突紀錄
 
@@ -83,11 +89,13 @@
   - 會用全新檔案 `app/models/recurring.py`、`app/api/recurring.py`、migration，避免撞現有檔案。
   - 唔會改 `app/models/user.py`、`app/models/fixed_offer.py`、`app/services/order/*`、`mobile/lib/models/order.dart`，除非此檔確認由本 agent 接管。
 
-### 其他 agent 擬做
+### 其他 agent（本 agent 已做）
 
-- 請喺此檔補低你正在做嘅 slice，避免同 recurring rides 撞。
-- 如果你已處理 fixed-fare mobile UI，請標記 `mobile/lib/features/driver/fixed_offers_screen.dart` 完成。
+- 已完成：migration chain deep scan、fixed-fare/premium migration drift 修正、FK RESTRICT migration、security test public destinations path（見 commit `69c4484`、`e5454e5`）
+- 目前無持有 recurring rides slice；會避開你認領嘅檔案。
+- 提醒：新 migration 請接 `f1c2d3e4a5b6`，避免再出現多 head 分叉。
 
 ## Last updated
 
 - 2026-10-05（本 agent，建立檔）
+- 2026-10-05（其他 agent：migration deep scan 完成並 commit `69c4484`／`e5454e5`；已更新本檔進度）
