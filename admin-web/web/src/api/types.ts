@@ -589,11 +589,43 @@ export interface OrderTimelineStep {
 }
 
 /**
+ * What the passenger asked for at booking time, frozen onto the order.
+ *
+ * `animal` is a **structured detail, not a flag** (`{"kind": "DOG",
+ * "height_cm": 35, "weight_kg": 8}`), and it is `null` when the passenger never
+ * mentioned a pet — which is *not* the same instruction as "no pet". The server
+ * stores `null` rather than an all-false object precisely so the distinction
+ * survives; do not collapse it in the UI.
+ */
+export interface OrderRequirements {
+  silent_ride?: boolean;
+  no_radio_music?: boolean;
+  no_smoke?: boolean;
+  no_perfume?: boolean;
+  animal?: { kind: string; height_cm?: number; weight_kg?: number } | null;
+}
+
+/** The premium destination frozen onto the order — a snapshot, not a live join. */
+export interface OrderPremiumDestination {
+  id: string;
+  code: string;
+  name_zh: string;
+  name_en: string;
+  avatar_key: string | null;
+}
+
+/**
  * `GET /admin/orders/{id}` — one trip in full.
  *
  * `fare` is the **frozen `fare_json` snapshot**, not a recomputation: after any
  * tariff change a recomputed number differs, and the disputed amount is always
  * the one the passenger was quoted.
+ *
+ * The dispute record (`requirements`, both payment sides, `receipt_requested`)
+ * rides this detail response only. A dispute is usually a disagreement about
+ * what the passenger *asked for* — "I wanted a quiet car", "I asked to pay by
+ * Octopus", "I asked for a receipt and never got one" — and the platform
+ * recorded the request at booking time, before either party had a story to tell.
  */
 export interface AdminOrderDetail extends AdminOrderRow {
   tariff_version: string;
@@ -601,6 +633,14 @@ export interface AdminOrderDetail extends AdminOrderRow {
   broadcast_radius_km: string;
   timeline: OrderTimelineStep[];
   ledger: { items: LedgerEntry[] };
+  requirements: OrderRequirements | null;
+  payment_preference: string[];
+  driver_payment_methods: string[];
+  premium_destination: OrderPremiumDestination | null;
+  destination_area: string | null;
+  pickup_area: string | null;
+  receipt_requested: boolean;
+  receipt_requested_at: string | null;
 }
 
 /** The five states a trip can be in and still be moving. Mirrors `_ORDER_OPEN_STATUSES`. */

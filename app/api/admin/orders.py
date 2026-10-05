@@ -96,6 +96,40 @@ def _admin_order_out(order: Order) -> dict:
     }
 
 
+def _admin_order_detail_out(order: Order) -> dict:
+    """The dispute-relevant additions to a single order.
+
+    Split out of `_admin_order_out` because these ride the detail page only:
+    the list is a fixed-column table and serialising a requirements/receipt
+    JSONB blob for every row of every scroll is a cost with no reader.
+
+    Everything here is the **frozen** record of what the passenger asked for,
+    captured at booking time. A dispute is usually about exactly this — "I
+    asked for a silent car and he had the radio on", "I asked to pay by
+    Octopus and he wanted cash", "I asked for a receipt and never got one" —
+    and the operator's job is to check the request as recorded, not to
+    arbitrate between two recollections on the phone.
+
+    `requirements` is `None` when nothing special was asked for; the write
+    path stores `None` rather than an object of all-false flags so "never
+    mentioned a pet" stays distinguishable from "said no pet".
+    """
+    return {
+        "requirements": order.requirements_json,
+        # Both are stored as `{"methods": [...]}`; unwrap so the console does
+        # not have to know the envelope. Same shape `order_out` returns.
+        "payment_preference": (order.payment_preference_json or {}).get("methods", []),
+        "driver_payment_methods": (order.driver_payment_methods_json or {}).get("methods", []),
+        "premium_destination": order.premium_destination_json,
+        "destination_area": order.destination_area,
+        "pickup_area": order.pickup_area,
+        "receipt_requested": bool(order.receipt_requested),
+        "receipt_requested_at": (
+            order.receipt_requested_at.isoformat() if order.receipt_requested_at else None
+        ),
+    }
+
+
 @router.get("/orders", response_model=AdminOrderPageOut)
 async def list_orders(
     status_filter: Annotated[str | None, Query(alias="status", max_length=24)] = None,
@@ -193,6 +227,7 @@ async def order_detail(
 
     return {
         **_admin_order_out(order),
+        **_admin_order_detail_out(order),
         "tariff_version": order.tariff_version,
         "fare": order.fare_json,
         "broadcast_radius_km": meter_str(Decimal(order.broadcast_radius_km)),

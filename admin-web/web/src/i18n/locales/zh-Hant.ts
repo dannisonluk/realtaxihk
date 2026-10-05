@@ -206,6 +206,31 @@ export const zhHant = {
       completed: '行程完成',
       cancelled: '行程取消',
     },
+    // 來自 `orders.requirements_json`，跟訂單一齊凍結——事後改動叫車表單都改寫唔到
+    // 司機當時收到嘅指示。
+    requirement: {
+      silent_ride: '完全靜音',
+      no_radio_music: '無收音機／音樂',
+      no_smoke: '無煙',
+      no_perfume: '無香水',
+    },
+    // 對應 server 嘅 `PaymentMethod`；平台未見過嘅方法會顯示原始代碼而唔係空白 chip。
+    paymentMethod: {
+      CASH: '現金',
+      OCTOPUS: '八達通',
+      CARD: '信用卡',
+      ALIPAY: '支付寶',
+      WECHAT_PAY: '微信支付',
+      TAP_AND_GO: 'Tap & Go',
+    },
+    // server 由座標推算嘅五個粗略地區代碼。
+    area: {
+      HK_ISLAND: '港島',
+      KOWLOON: '九龍',
+      NT: '新界',
+      AIRPORT: '機場',
+      LANTAU: '大嶼山',
+    },
     accountKind: {
       DRIVER: '司機',
       PASSENGER: '乘客',
@@ -978,6 +1003,21 @@ export const zhHant = {
     ledgerEmptyNote: '（車費本身不是帳目；只有罰款或人手調整才會出現。）',
     colType: '類型',
     colNote: '備註',
+    // ------------------------------------------------ 乘客要求記錄 --
+    disputeTitle: '乘客當時要求',
+    disputeNote:
+      '呢啲係落單當時記錄、並跟訂單一齊凍結嘅版本——唔係事後任何一方嘅記憶。當爭議係關於「要求」（「我叫咗要靜音車」、「我叫咗用八達通」、「我叫咗要收據」）時，平台手上就係呢個版本。',
+    requirementsLabel: '車內環境要求',
+    noRequirements: '無特別要求',
+    animalChip: '動物：{{kind}} {{size}}',
+    paymentPreferenceLabel: '付款偏好（乘客）',
+    driverMethodsLabel: '接受付款方式（司機）',
+    premiumDestinationLabel: '特選目的地',
+    areaLabel: '地區（上車 → 落車）',
+    receiptLabel: '收據',
+    receiptRequested: '已要求',
+    receiptNotRequested: '未要求',
+    noneRecorded: '無記錄',
   },
 
   // -------------------------------------------------- driver detail -----

@@ -27,6 +27,7 @@ import { ErrorState, LoadingState } from '../components/states';
 import { useApp } from '../app/AppContext';
 import { useLoad } from '../app/useLoad';
 import { formatTime, shortId, useLabels } from '../lib/labels';
+import type { OrderRequirements } from '../api/types';
 import { useI18n } from '../i18n';
 import { PageHead } from '../app/Shell';
 
@@ -103,6 +104,57 @@ export function OrderDetailPage() {
           {data.cancellation_reason ? (
             <DetailRow label={t('orderDetail.cancelReason')}>{data.cancellation_reason}</DetailRow>
           ) : null}
+        </Rows>
+      </Card>
+
+      <h2>{t('orderDetail.disputeTitle')}</h2>
+      <Card className="card--pad">
+        <p className="dim" style={{ marginTop: 0 }}>
+          {t('orderDetail.disputeNote')}
+        </p>
+        <Rows>
+          <DetailRow label={t('orderDetail.requirementsLabel')}>
+            <RequirementChips requirements={data.requirements} t={t} />
+          </DetailRow>
+          <DetailRow label={t('orderDetail.paymentPreferenceLabel')}>
+            <PaymentMethods methods={data.payment_preference} labels={labels} t={t} />
+          </DetailRow>
+          <DetailRow label={t('orderDetail.driverMethodsLabel')}>
+            <PaymentMethods methods={data.driver_payment_methods} labels={labels} t={t} />
+          </DetailRow>
+          <DetailRow label={t('orderDetail.premiumDestinationLabel')}>
+            {data.premium_destination ? (
+              <>
+                <span>{formatLocale === 'zh-HK'
+                  ? data.premium_destination.name_zh
+                  : data.premium_destination.name_en}</span>
+                <span className="dim mono"> {data.premium_destination.code}</span>
+              </>
+            ) : (
+              <span className="dim">{t('orderDetail.noneRecorded')}</span>
+            )}
+          </DetailRow>
+          <DetailRow label={t('orderDetail.areaLabel')}>
+            {data.pickup_area || data.destination_area ? (
+              <span>
+                {labels.area(data.pickup_area)} → {labels.area(data.destination_area)}
+              </span>
+            ) : (
+              <span className="dim">{t('orderDetail.noneRecorded')}</span>
+            )}
+          </DetailRow>
+          <DetailRow label={t('orderDetail.receiptLabel')}>
+            {data.receipt_requested ? (
+              <>
+                <Chip tone="ok">{t('orderDetail.receiptRequested')}</Chip>
+                {data.receipt_requested_at ? (
+                  <span className="dim"> {formatTime(data.receipt_requested_at, formatLocale)}</span>
+                ) : null}
+              </>
+            ) : (
+              <span className="dim">{t('orderDetail.receiptNotRequested')}</span>
+            )}
+          </DetailRow>
         </Rows>
       </Card>
 
@@ -201,6 +253,87 @@ export function OrderDetailPage() {
         )}
       </Card>
     </div>
+  );
+}
+
+/**
+ * The requirement chips, with `animal` rendered as the detail it is.
+ *
+ * `null` is **not** "no requirements" and **not** "no pet": it means the
+ * passenger was never asked, or asked for nothing. The distinction matters in a
+ * dispute, so an empty record says so in words rather than rendering an empty
+ * cell an operator would read as "confirmed: no pet".
+ */
+function RequirementChips({
+  requirements,
+  t,
+}: {
+  requirements: OrderRequirements | null;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  const flags = (
+    ['silent_ride', 'no_radio_music', 'no_smoke', 'no_perfume'] as const
+  ).filter((key) => requirements?.[key] === true);
+
+  const animal = requirements?.animal ?? null;
+  if (flags.length === 0 && !animal) {
+    return <span className="dim">{t('orderDetail.noRequirements')}</span>;
+  }
+
+  return (
+    <>
+      {flags.map((key) => (
+        <Chip key={key} tone="brand">
+          {t('enum.requirement.' + key)}
+        </Chip>
+      ))}
+      {animal ? (
+        <Chip tone="warn">
+          {t('orderDetail.animalChip', {
+            kind: animal.kind,
+            size: formatAnimalSize(animal),
+          })}
+        </Chip>
+      ) : null}
+    </>
+  );
+}
+
+/** `35×8` — centimetres and kilograms, or just the kind if neither was given. */
+function formatAnimalSize(animal: NonNullable<OrderRequirements['animal']>): string {
+  const height = animal.height_cm;
+  const weight = animal.weight_kg;
+  if (height === undefined && weight === undefined) return '';
+  return `${height ?? '?'}×${weight ?? '?'}`;
+}
+
+/**
+ * A list of server method codes as chips, or an explicit "nothing recorded".
+ *
+ * An empty list is not "cash only" — it is "the platform has no record", which
+ * is what the operator has to say when a passenger claims they asked for
+ * Octopus. Rendering it as a chip would invent a fact.
+ */
+function PaymentMethods({
+  methods,
+  labels,
+  t,
+}: {
+  methods: string[];
+  labels: { paymentMethod: (method: string) => string };
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  if (methods.length === 0) {
+    return <span className="dim">{t('orderDetail.noneRecorded')}</span>;
+  }
+  return (
+    <>
+      {methods.map((method) => (
+        <Chip key={method} tone="neutral">
+          {labels.paymentMethod(method)}
+        </Chip>
+      ))}
+    </>
   );
 }
 

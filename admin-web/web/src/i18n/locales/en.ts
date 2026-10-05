@@ -206,6 +206,33 @@ export const en = {
       completed: 'Trip completed',
       cancelled: 'Trip cancelled',
     },
+    // These come off `orders.requirements_json` and freeze with the order, so a
+    // retroactive change to the booking form cannot rewrite what a driver was
+    // told to expect.
+    requirement: {
+      silent_ride: 'Silent ride',
+      no_radio_music: 'No radio/music',
+      no_smoke: 'No smoke',
+      no_perfume: 'No perfume',
+    },
+    // `PaymentMethod` in the server model. A method the platform has never
+    // heard of renders as its own raw code rather than a blank chip.
+    paymentMethod: {
+      CASH: 'Cash',
+      OCTOPUS: 'Octopus',
+      CARD: 'Card',
+      ALIPAY: 'Alipay',
+      WECHAT_PAY: 'WeChat Pay',
+      TAP_AND_GO: 'Tap & Go',
+    },
+    // The five coarse area codes the server derives from coordinates.
+    area: {
+      HK_ISLAND: 'HK Island',
+      KOWLOON: 'Kowloon',
+      NT: 'New Territories',
+      AIRPORT: 'Airport',
+      LANTAU: 'Lantau',
+    },
     accountKind: {
       DRIVER: 'Driver',
       PASSENGER: 'Passenger',
@@ -983,6 +1010,21 @@ export const en = {
     ledgerEmptyNote: ' (The fare itself is not a ledger entry; only penalties or manual adjustments appear here.)',
     colType: 'Type',
     colNote: 'Note',
+    // ------------------------------------------------- the dispute record --
+    disputeTitle: 'What the passenger asked for',
+    disputeNote:
+      'As recorded at booking time and frozen with the order — not what either side recalls afterwards. In a dispute over a request ("I asked for a quiet car", "I asked to pay by Octopus", "I asked for a receipt"), this is the version the platform holds.',
+    requirementsLabel: 'In-car requirements',
+    noRequirements: 'Nothing requested',
+    animalChip: 'Animal: {{kind}} {{size}}',
+    paymentPreferenceLabel: 'Payment preference (passenger)',
+    driverMethodsLabel: 'Accepted methods (driver)',
+    premiumDestinationLabel: 'Premium destination',
+    areaLabel: 'Area (pickup → drop-off)',
+    receiptLabel: 'Receipt',
+    receiptRequested: 'Requested',
+    receiptNotRequested: 'Not requested',
+    noneRecorded: 'Not recorded',
   },
 
   // -------------------------------------------------- driver detail -----

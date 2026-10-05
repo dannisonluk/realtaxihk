@@ -465,6 +465,24 @@ class AdminOrderDetailOut(AdminOrderRowOut):
       which is itself worth seeing.
     * `broadcast` — the radius the trip was offered within, so "why did nobody
       take it" is answerable.
+
+    It also carries the **frozen record of what the passenger asked for**
+    (`requirements`, `payment_preference`, `premium_destination`, the two area
+    codes, and the receipt request). A dispute is very often about exactly
+    this — "the driver had the radio on the whole way and I asked for a silent
+    car", "I asked to pay by Octopus and he would only take cash", "I asked for
+    a receipt and never got one" — and the operator's job is to compare the
+    request *as recorded at booking time* against what happened, not to
+    arbitrate between two recollections of it.
+
+    These are omitted from `AdminOrderRowOut` on purpose. The list is a
+    fixed-column table, so pulling a requirements/receipt JSONB blob per row
+    for every scroll is a cost with no reader.
+
+    `requirements` is `None` when the passenger asked for nothing special.
+    That is not the same as `{}`: the write path stores `None` rather than an
+    object of all-false flags precisely so "never mentioned a pet" stays
+    distinguishable from "said no pet".
     """
 
     tariff_version: str
@@ -472,6 +490,14 @@ class AdminOrderDetailOut(AdminOrderRowOut):
     broadcast_radius_km: str
     timeline: list[dict[str, Any]]
     ledger: dict[str, list[AdminLedgerRowOut]]
+    requirements: dict[str, Any] | None
+    payment_preference: list[str]
+    driver_payment_methods: list[str]
+    premium_destination: dict[str, Any] | None
+    destination_area: str | None
+    pickup_area: str | None
+    receipt_requested: bool
+    receipt_requested_at: str | None
 
 
 class SettlementPreviewOut(BaseModel):

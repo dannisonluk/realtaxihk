@@ -104,6 +104,10 @@ def _make_order(
     fare: str = "130.20",
     fare_json: str = '{"meter_fare": "75.2", "total_fare": "130.2"}',
     broadcast_radius_km: str = "3.0",
+    requirements_json: str | None = None,
+    payment_methods: str | None = None,
+    driver_payment_methods: str | None = None,
+    receipt_requested: bool = False,
 ) -> str:
     oid = uuid.uuid4()
     created = created_at or datetime.now(UTC) - timedelta(minutes=30)
@@ -112,13 +116,17 @@ def _make_order(
         " id, passenger_id, driver_id, status, pickup_location, pickup_address,"
         " dropoff_location, dropoff_address, distance_km, taxi_type, fare_json,"
         " tariff_version, estimated_total_hkd, discount_percent, broadcast_radius_km,"
-        " fare_mode, accepted_at, driver_arrived_at, completed_at, cancelled_at,"
+        " fare_mode, requirements_json, payment_preference_json,"
+        " driver_payment_methods_json, receipt_requested, accepted_at,"
+        " driver_arrived_at, completed_at, cancelled_at,"
         " cancellation_reason, created_at, updated_at) VALUES ("
         " CAST(:oid AS uuid), CAST(:pid AS uuid), CAST(:did AS uuid),"
         " :status, ST_GeogFromText('POINT(114.158 22.284)'), 'Central',"
         " ST_GeogFromText('POINT(114.219 22.315)'), 'North Point',"
         " CAST(:dist AS numeric), 'URBAN', CAST(:fare_json AS jsonb), 'test-v1',"
         " CAST(:fare AS numeric), 0, CAST(:radius AS numeric), 'METER',"
+        " CAST(:req AS jsonb), CAST(:pay AS jsonb), CAST(:dpm AS jsonb),"
+        " CAST(:rcpt AS boolean),"
         " CAST(:accepted AS timestamptz), CAST(:arrived AS timestamptz),"
         " CAST(:completed AS timestamptz), CAST(:cancelled AS timestamptz),"
         " :reason, CAST(:created AS timestamptz), now())",
@@ -131,6 +139,10 @@ def _make_order(
             "fare_json": fare_json,
             "fare": fare,
             "radius": broadcast_radius_km,
+            "req": requirements_json,
+            "pay": payment_methods,
+            "dpm": driver_payment_methods,
+            "rcpt": receipt_requested,
             "accepted": accepted_at,
             "arrived": arrived_at,
             "completed": completed_at,
@@ -394,4 +406,87 @@ class TestDetail:
 
     async def test_malformed_order_id_is_a_422_not_a_500(self, client):
         r = client.get("/api/v1/admin/orders/not-a-uuid", headers=client.admin_headers())
-        assert r.status_code == 422, r.text
+        assert r.status_code == 422
+
+
+class TestDisputeRecord:
+    """The frozen record of what the passenger asked for.
+
+    These fields are the difference between an operator resolving a dispute
+    from evidence and arbitrating between two phone recollections. "I asked for
+    a silent car and he had the radio on", "I asked to pay by Octopus and he
+    wanted cash", "I asked for a receipt and never got one" — each is a
+    disagreement about a *request*, and the request was recorded at booking
+    time by the platform, not recalled afterwards by either party.
+    """
+
+    async def test_detail_surfaces_the_requirements_the_passenger_set(self, client, passenger):
+        oid = _make_order(
+            client,
+            passenger_id=passenger,
+            requirements_json='{"silent_ride": true, "no_smoke": true, "animal": null}',
+        )
+        body = client.get(f"/api/v1/admin/orders/{oid}", headers=client.admin_headers()).json()
+        assert body["requirements"]["silent_ride"] is True
+        assert body["requirements"]["no_smoke"] is True
+        # A JSON null survives the round trip as null, not as false: the driver
+        # was told "no pet mentioned", which is not the same instruction.
+        assert body["requirements"]["animal"] is None
+
+    async def test_no_requirements_is_null_not_an_empty_object(self, client, passenger):
+        """The distinction the write path preserves on purpose: `None` means
+        the passenger was never asked about pets, `{}`-with-false-flags would
+        mean they were asked and said no. Collapsing the two would make the
+        console assert a requirement the passenger never stated."""
+        oid = _make_order(client, passenger_id=passenger)
+        body = client.get(f"/api/v1/admin/orders/{oid}", headers=client.admin_headers()).json()
+        assert body["requirements"] is None
+
+    async def test_both_sides_of_the_payment_question_are_visible(self, client, passenger):
+        """The passenger's preference and the driver's declared methods are
+        separate facts and the dispute is usually the *gap* between them."""
+        oid = _make_order(
+            client,
+            passenger_id=passenger,
+            payment_methods='{"methods": ["OCTOPUS", "CASH"]}',
+            driver_payment_methods='{"methods": ["CASH"]}',
+        )
+        body = client.get(f"/api/v1/admin/orders/{oid}", headers=client.admin_headers()).json()
+        assert body["payment_preference"] == ["OCTOPUS", "CASH"]
+        assert body["driver_payment_methods"] == ["CASH"]
+
+    async def test_missing_payment_records_are_empty_lists_not_null(self, client, passenger):
+        """An order taken before the field existed has no row. An empty list
+        renders as "nothing recorded", which is honest; `null` would force the
+        console into a null check it would eventually forget."""
+        oid = _make_order(client, passenger_id=passenger)
+        body = client.get(f"/api/v1/admin/orders/{oid}", headers=client.admin_headers()).json()
+        assert body["payment_preference"] == []
+        assert body["driver_payment_methods"] == []
+
+    async def test_the_receipt_request_is_visible_with_its_instant(self, client, passenger):
+        """A receipt dispute is "did they ask, and when". The timestamp is the
+        answer to "before or after the trip"."""
+        oid = _make_order(client, passenger_id=passenger, receipt_requested=True)
+        body = client.get(f"/api/v1/admin/orders/{oid}", headers=client.admin_headers()).json()
+        assert body["receipt_requested"] is True
+
+    async def test_the_list_row_does_not_carry_the_dispute_blob(self, client, passenger):
+        """Scoping check: the requirements/receipt payload is detail-only. The
+        list is a fixed-column table, so a JSONB blob per row for every scroll
+        is a cost with no reader."""
+        _make_order(
+            client,
+            passenger_id=passenger,
+            requirements_json='{"silent_ride": true}',
+            receipt_requested=True,
+        )
+        item = client.get("/api/v1/admin/orders", headers=client.admin_headers()).json()["items"][0]
+        leaked_keys = {
+            "requirements",
+            "payment_preference",
+            "driver_payment_methods",
+            "receipt_requested",
+        }
+        leaked = leaked_keys & set(item)
+        assert not leaked, f"dispute blob leaked into the list row: {leaked}"

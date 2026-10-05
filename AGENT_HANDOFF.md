@@ -171,3 +171,14 @@
   - 驗證：該 4 檔 **86 passed**（原本 41 failed/45 passed）✅。三個測試檔**冇任何 agent 認領**、worktree 亦乾淨，所以安全改。
   - 注意：full-suite 另有 **676 errors** 屬其他 agent WIP 中途狀態（`app/services/licence/licence_service.py` 將 `MAX_SUBMISSIONS_PER_DAY` 改名為 `MAX_SUBMISSIONS_PER_ROLLING_24H` 但 `app/api/licence.py:49` 未同步）——**唔關本 agent 事**，等對方完成。
 
+- 2026-10-05（本 agent：**admin console 爭議可見性 parity —— 乘客要求記錄落訂單詳情頁**）
+  - **缺口**：admin 睇唔到乘客落單時要求咗乜。`AdminOrderRowOut` / `AdminOrderDetailOut` 完全冇 `requirements` / `payment_preference` / `driver_payment_methods` / `premium_destination` / `pickup_area` / `destination_area` / `receipt_requested` → 營運同事處理「我叫咗要靜音車」「我叫咗用八達通」「我叫咗要收據」呢類爭議時，**手上完全冇平台版本嘅事實**。呢啲欄位自 `78745ab` 起已經 freeze 落 order，只係 admin 冇 expose。
+  - Backend：`app/api/schemas/admin.py`（`AdminOrderDetailOut` 加 7 個欄位）、`app/api/admin/orders.py`（新 helper `_admin_order_detail_out()`；**只落詳情頁、唔落 list row** —— list 要維持輕量，所以另加測試釘住「爭議 blob 唔可以漏入 list」）。
+  - admin-web：`types.ts`（`OrderRequirements` / `AnimalDetail` / `OrderPaymentMethod` 鏡像）、`OrderDetailPage.tsx`（新「乘客當時要求」卡）、`labels.ts`（`paymentMethod` / `area` / `requirement` 三個 keyer）、`i18n/locales/{en,zh-Hant}.ts`（enum + 卡片文案，雙語）。
+  - **設計原則（同 mobile 一致）**：`requirements: null` 同 `{animal: null}` 都係「冇要求過」——**唔可以**render 成「確認冇寵物」（資料唔支持呢個結論）；空 `payment_preference` 係「冇記錄」而**唔係**「只收現金」（營運爭議唔可以睇到憑空發明嘅事實）。
+  - Tests：`tests/api/test_admin_orders.py` 加 6 個（+`_make_order` 擴參數）；新檔 `admin-web/web/src/pages/OrderDetailPage.test.tsx`（6 個，vitest + jsdom，釘住上面兩個「唔可以亂斷言」嘅 case）。
+  - 驗證：admin 相關 8 檔 **177 passed**；admin-web `npm test` **75 passed**（10 檔）；`npm run typecheck` 我改嘅檔 0 error；`ruff` 0；`mypy` 124 files 0；`verify_contract.dart` 61 fixtures 0 failure；`audit_response_models.py` OK。
+  - **注意**：`admin-web/web/src/components/primitives.tsx` 當時有 sibling 未 commit WIP（modal focus trap），`tsc` 報 2 個 `TS18048 'first'/'last' is possibly undefined` —— 屬對方改動，**本 agent 冇碰**。
+  - 冇動 `admin/orders.py` 以外嘅 admin handler，亦冇改 `AdminOrderRowOut`（避免影響列表效能／形狀）。
+
+

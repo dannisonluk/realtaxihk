@@ -53,6 +53,9 @@ const disputeSourceKey = keyer('disputeSource');
 const licenceStatusKey = keyer('licenceStatus');
 const documentKindKey = keyer('documentKind');
 const accountKindKey = keyer('accountKind');
+const paymentMethodKey = keyer('paymentMethod');
+const areaKey = keyer('area');
+const requirementKey = keyer('requirement');
 
 // ------------------------------------------------------------------ tones --
 // Tones are severity, not language: they describe *how bad* a state is, which is
@@ -171,6 +174,9 @@ export interface Labels {
   licenceStatusTone: (status: string) => ChipTone;
   documentKind: (kind: string) => string;
   accountKind: (kind: string) => string;
+  paymentMethod: (method: string) => string;
+  area: (area: string | null) => string;
+  requirement: (key: string) => string;
 }
 
 /**
@@ -217,6 +223,9 @@ export function useLabels(): Labels {
       licenceStatusTone: tone(LICENCE_STATUS_TONE),
       documentKind: label(documentKindKey),
       accountKind: label(accountKindKey),
+      paymentMethod: label(paymentMethodKey),
+      area: label(areaKey),
+      requirement: label(requirementKey),
     };
   }, [t]);
 }
