@@ -67,7 +67,15 @@ class AppConfig {
     return 'http://127.0.0.1:8000';
   }
 
-  static String get apiBaseUrl => _apiOverride.isEmpty ? _devHost : _apiOverride;
+  static String get apiBaseUrl {
+    if (_apiOverride.isEmpty && kReleaseMode) {
+      throw StateError(
+        'API_BASE_URL must be set with --dart-define in release builds; '
+        'the loopback fallback is for development only.',
+      );
+    }
+    return _apiOverride.isEmpty ? _devHost : _apiOverride;
+  }
 
   static String get wsBaseUrl {
     if (_wsOverride.isNotEmpty) {

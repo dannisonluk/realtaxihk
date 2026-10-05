@@ -416,14 +416,14 @@ async def resolve_dispute(
 ):
     """Decide the money question.
 
-    **The 403 is per-request, not on the route.** Judging conduct is OPERATIONS'
-    job and moving money is FINANCE's, so this endpoint opens for both and then
-    narrows: a resolution whose `moves_money` is true additionally requires
-    FINANCE. A fixed `require_role(FINANCE)` on the route would lock OPERATIONS
-    out of the `NONE` and `CHARGE_PASSENGER` decisions it is exactly the right
-    role to make; a fixed `require_role(OPERATIONS)` would let the operator who
-    judged the conduct also authorise the payout, which is the separation of
-    duties the two roles exist to enforce.
+    **The 403 is per-request, not on the route.** The global role model is a
+    rank hierarchy (FINANCE is senior to OPERATIONS and also satisfies
+    OPERATIONS gates), but this endpoint deliberately narrows with a
+    decision-matched whitelist: a conduct-only resolution requires OPERATIONS
+    or SUPER_ADMIN, and a resolution whose `moves_money` is true additionally
+    requires FINANCE or SUPER_ADMIN. The narrow whitelist keeps the assigned
+    judge from also authorising a payout in one request; it is a per-handler
+    business rule, not the general RBAC model.
 
     The check reads the **live** role via `live_admin_role`, not the token
     claim, so a demotion takes effect on the next request rather than at token
@@ -432,11 +432,10 @@ async def resolve_dispute(
     resolution = DisputeResolution(payload.resolution)
     session = session_factory()
     try:
-        # Whitelist matched to the decision, not a rank floor. Rank was the bug:
-        # FINANCE outranks OPERATIONS, so a single FINANCE admin passed both
-        # gates and could judge the conduct and authorise the payout in one
-        # request — the exact separation of duties these roles exist for.
-        #
+        # Decision-matched whitelist on top of the accepted rank hierarchy:
+        # conduct-only is OPERATIONS+, money is FINANCE+, and the assigned judge
+        # cannot authorise the payout. The whitelist is deliberately narrower
+        # than the global role model for this one endpoint.
         # * conduct-only (NONE / CHARGE_PASSENGER-style judgements that move no
         #   money) is OPERATIONS' call, plus SUPER_ADMIN as break-glass.
         # * a resolution that moves money is FINANCE's call, plus SUPER_ADMIN,

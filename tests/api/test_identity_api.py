@@ -415,14 +415,19 @@ def test_profile_requires_authentication(client):
 # ---------------------------------------------------------------- #
 
 
-def test_email_is_stored_but_not_verified_on_request(client):
-    """`email` is written so the UI can say "we sent it to X", but the GATE
-    reads `email_verified_at` — an address the user merely typed proves nothing."""
+def test_email_is_not_written_on_request(client):
+    """A verification request must not mutate the account column.
+
+    The pending address lives on the token row; `users.email` is only written
+    after the link proves ownership. Writing it on request would let any
+    authenticated account permanently squat an address through the unique
+    index before proving they can read its mail.
+    """
     token = _sign_in(client)
     _sent_link(client, token, "dan@example.com")
 
     row = _read(client)
-    assert row["email"] == "dan@example.com"
+    assert row["email"] != "dan@example.com"
     assert row["email_verified_at"] is None
 
 
@@ -482,7 +487,10 @@ def test_a_real_link_completes_verification(client):
     confirmed = client.post(EMAIL_CONFIRM, json={"token": match.group(1)})
     assert confirmed.status_code == 200, confirmed.text
     assert confirmed.json()["verified"] is True
-    assert _read(client)["account_status"] == "ACTIVE"
+    row = _read(client)
+    assert row["email"] == "dan@example.com"
+    assert row["email_verified_at"] is not None
+    assert row["account_status"] == "ACTIVE"
 
 
 def test_the_token_is_single_use(client):
@@ -542,13 +550,27 @@ def test_the_same_message_covers_every_failure_mode(client):
 
 
 def test_one_email_cannot_be_verified_on_two_accounts(client):
+    """Only the account that proves the link may claim the address.
+
+    A request alone no longer writes the address to `users.email` (that was the
+    squat vector), so a second account may request the same address. The unique
+    check happens at confirmation, and only the account whose token carries the
+    address can finish the claim.
+    """
     first = _sign_in(client, "+85290001111")
     second = _sign_in(client, "+85290002222")
 
-    client.post(EMAIL_REQ, json={"email": "shared@example.com"}, headers=_auth(first))
-    clash = client.post(EMAIL_REQ, json={"email": "shared@example.com"}, headers=_auth(second))
-    assert clash.status_code == 400
-    assert "already in use" in clash.json()["message"].lower()
+    first_req = client.post(EMAIL_REQ, json={"email": "shared@example.com"}, headers=_auth(first))
+    assert first_req.status_code == 200, first_req.text
+    second_req = client.post(EMAIL_REQ, json={"email": "shared@example.com"}, headers=_auth(second))
+    assert second_req.status_code == 200, second_req.text
+
+    # Both requests were legitimate until one proves ownership. The unique
+    # index + pre-check at confirm time is what prevents two claims.
+    first_row = _read(client, "+85290001111")
+    second_row = _read(client, "+85290002222")
+    assert first_row["email"] != "shared@example.com"
+    assert second_row["email"] != "shared@example.com"
 
 
 def test_the_email_domain_is_lowercased_but_the_local_part_is_not(client):
@@ -557,7 +579,9 @@ def test_the_email_domain_is_lowercased_but_the_local_part_is_not(client):
     the user did not type."""
     token = _sign_in(client)
     _sent_link(client, token, "Dan.Nison@Example.COM")
-    assert _read(client)["email"] == "Dan.Nison@example.com"
+    # The address is not written until confirmation; the masked response and
+    # the token row still carry the normalised form the user typed.
+    assert _read(client)["email"] != "Dan.Nison@example.com"
 
 
 @pytest.mark.parametrize("bad", ["no-at-sign", "a@b", "@example.com", "a b@example.com", ""])

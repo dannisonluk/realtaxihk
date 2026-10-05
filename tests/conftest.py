@@ -483,7 +483,12 @@ def ops(client):
 
 @pytest.fixture()
 def finance(client):
-    """FINANCE — money movement, but not KYC."""
+    """FINANCE — money movement; senior to OPERATIONS under the accepted rank hierarchy.
+
+    Owner decision 2026-10-05: FINANCE outranks OPERATIONS and therefore also
+    passes OPERATIONS-gated routes. Only the dispute-resolution endpoint keeps
+    a decision-matched whitelist.
+    """
     return client.admin_headers(role="FINANCE")
 
 

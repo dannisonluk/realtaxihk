@@ -201,11 +201,10 @@
 
 ## 8. 建議行動次序（v4）
 
-**已完成**：F-02 ✅、AC-01 ✅、AC-02 ✅、AC-03 ✅、AC-04 ✅、F-03 ✅、AC-08 ✅
+**已完成（v4 + 2026-10-05）**：F-02 ✅、AC-01 ✅、AC-02 ✅、AC-03 ✅、AC-04 ✅、F-03 ✅、AC-08 ✅、N-1 ✅（owner 決定：接受 rank hierarchy，docstring 已改）、N-2 ✅（conftest docstring 已同步）、M-M-4 ✅（release fail-closed）、M-M-1 ✅（改掉誤導 docstring）、NEW-18 ✅（email 不再 early write）、NEW-29 ✅（刪死 APP_HOST / app_host/app_port fields）、NEW-30 ✅（turnstile site key comment 已修正）
 
 **待 owner 拍板**：
-1. **N-1（最高優先）**：FINANCE 與 OPERATIONS 要唔要真正互斥？三選項見 §3.3。呢個係唯一影響權限模型語意的決策。
-2. **AC-05**：`serve.py` 默認翻轉為 `web/dist`？屬部署政策。
+1. **AC-05**：`serve.py` 默認翻轉為 `web/dist`？屬部署政策。
 
 **可直接做**：
 3. **M-H-2**：live-trip 寫入加 durable outbox（idempotency token + replay on reconnect）。

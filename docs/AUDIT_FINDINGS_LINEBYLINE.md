@@ -349,11 +349,15 @@ states the same policy in its header ("dispute resolution that moves money -> FI
 per-request"). So the contradiction is not just model-vs-docstring; it is two docstrings
 describing an invariant that the comparison operator cannot express.
 
-**Owner decision still needed** (unchanged from v4): accept the hierarchy and rewrite the two
-docstrings, switch `require_role` to set semantics, or keep rank and add an explicit
-mutual-exclusion check on this one handler. The pinning test in
-`tests/api/test_admin_role_separation.py` currently encodes the **rank** behaviour, so it must
-change with whichever option is chosen.
+**Owner decision (2026-10-05): accept the rank hierarchy.** The global model is
+hierarchical — FINANCE is senior to OPERATIONS and also passes OPERATIONS gates.
+Code docstrings (`app/models/admin.py`, `app/api/admin/_roles.py`,
+`app/api/admin/disputes.py`, `tests/conftest.py` `finance` fixture) now describe
+that truth. The dispute-resolution handler keeps a deliberate decision-matched
+whitelist on top of the hierarchy, so the assigned judge cannot authorise a
+payout; it is a per-handler business rule, not a claim of global mutual
+exclusion. The pinning test in `tests/api/test_admin_role_separation.py`
+continues to encode the rank behaviour.
 
 ## RBAC matrix — verified against `app/api/admin/_roles.py` (clean)
 

@@ -41,8 +41,6 @@ class Settings(BaseSettings):
 
     # SEC-01: deliberately blank sentinel, not "dev". Blank -> startup error.
     app_env: str = ""
-    app_host: str = "0.0.0.0"
-    app_port: int = 8000
     # Local dev origins for the admin console (`admin-web/`). Both spellings of
     # loopback are listed because a CORS origin is matched as a literal string:
     # `http://127.0.0.1:8081` and `http://localhost:8081` are different origins,
@@ -217,7 +215,7 @@ class Settings(BaseSettings):
     # and so a provider with the same request shape (hCaptcha, Friendly Captcha)
     # can be swapped in without a code change.
     turnstile_secret_key: str = ""
-    turnstile_site_key: str = ""  # served to the client; not a secret
+    turnstile_site_key: str = ""  # not served by this API; clients carry a build-time key
     turnstile_verify_url: str = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
     turnstile_timeout_s: float = 5.0
     # Optional. When set, a token solved on another hostname is refused even

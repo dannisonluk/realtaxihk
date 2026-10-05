@@ -29,8 +29,10 @@ Rank, not set membership
 ------------------------
 `require_role` admits every role that *outranks* its argument, so FINANCE
 reaches the OPERATIONS routes. `test_finance_outranks_operations_on_a_licence_
-decision` pins that deliberately: it is the behaviour the factory documents,
-and it is the opposite of what the `finance` fixture's own docstring claims.
+decision` pins that deliberately: the owner accepted the rank hierarchy on
+2026-10-05, so FINANCE is senior to OPERATIONS and may do OPERATIONS-gated
+work. The dispute-resolution endpoint is the one deliberate exception, and it
+uses a decision-matched whitelist instead of a rank floor.
 """
 
 from __future__ import annotations
@@ -107,12 +109,12 @@ class TestLicenceDecisionIsOperations:
         assert r.status_code < 500, r.text
 
     def test_finance_outranks_operations_on_a_licence_decision(self, client, finance):
-        """Rank, not set membership — pinned because the docs disagree.
+        """Rank, not set membership — the accepted hierarchy.
 
         `require_role` is a rank comparison, so FINANCE is senior to OPERATIONS
-        and reaches this route. The `finance` fixture's docstring says
-        "money movement, but not KYC", which the implementation does not
-        deliver. Whichever way that is resolved, this test is where it lands.
+        and reaches this route. Owner decision 2026-10-05 accepted the rank
+        hierarchy rather than enforcing lateral OPERATIONS/FINANCE separation
+        globally; this test pins that behaviour.
         """
         r = _decide(client, finance, uuid.uuid4())
         assert r.status_code != 403, r.text

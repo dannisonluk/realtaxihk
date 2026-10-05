@@ -30,8 +30,9 @@ class TripRepository {
   /// server authorises **before** accepting (`SEC-14`), so a rejected client
   /// never gets a 101 upgrade — it just closes with 4401/4403/4404.
   ///
-  /// Callers should prefer [TripChannel]'s own reconnect loop over calling this
-  /// repeatedly.
+  /// Callers own reconnection: this method opens a fresh channel and never
+  /// retries internally. On a close (or a REST fallback decision) the caller
+  /// should call this again rather than expecting the channel to recover.
   Future<TripChannel> openTripChannel(String orderId) async {
     final String? token = await _api.tokenStore.accessToken();
     if (token == null) {

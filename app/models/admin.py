@@ -58,9 +58,12 @@ class AdminRole(str, enum.Enum):
       to *record* a problem and operations' job is to *decide* one. Merged,
       front-line support inherits KYC approval — a compliance judgement about
       whether a driver may operate, which is not a first-line task.
-    * `OPERATIONS` and `FINANCE` are apart because KYC must not be loosened by
-      whoever benefits from more drivers being online, and money must not be
-      moved by whoever approved the paperwork. Standard separation of duties.
+    * `OPERATIONS` and `FINANCE` are seniority levels, not mutually exclusive
+      jobs: FINANCE is senior to OPERATIONS, so it also passes OPERATIONS-gated
+      routes. The hierarchy protects the direction that matters — a lower role
+      never inherits a higher one, and a SUPPORT account never reaches either
+      gate. (Owner decision 2026-10-05: accept the rank hierarchy rather than
+      enforcing lateral OPERATIONS/FINANCE separation in the global model.)
 
     `SUPER_ADMIN` is the only role that may change a role. If `OPERATIONS` or
     `FINANCE` could, the hierarchy would be bypassable by self-promotion and

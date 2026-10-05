@@ -159,10 +159,10 @@ order_disputes
 |---|---|---|---|
 | `SUPPORT`（客服） | 前線 | 工單、訂單、司機唯讀 | 回覆工單、改工單指派與狀態；**不可**動錢、不可批 KYC、不可改他人帳號 |
 | `OPERATIONS`（營運） | 審核 + 處理爭議 | 全部 | KYC 裁決、司機停權、處理 dispute 裁決；**不可**動錢額度（grant / adjust / settlement） |
-| `FINANCE`（財務） | 金流 | 全部 | settlement run、grant、adjust、refund decision、dispute 的財務結果；**不可**批 KYC、不可改角色 |
+| `FINANCE`（財務） | 金流 | 全部 | settlement run、grant、adjust、refund decision、dispute 的財務結果；**可**做 OPERATIONS 職責（rank 制：FINANCE ⊇ OPERATIONS），不可改角色 |
 | `SUPER_ADMIN`（最高管理員） | **可以管理所有** | 全部 | **全部**，外加：建立 / 修改 / 停用 admin 帳號、指派與變更任何人的角色、管理系統設定（費率、週費、罰款比例） |
 
-**為何四級**：`SUPPORT` / `OPERATIONS` 必須分開（客服回答 vs 營運決定；KYC 是上線合規判斷）；`FINANCE` / `OPERATIONS` 必須分開（separation of duties）；**只有 `SUPER_ADMIN` 可改角色**，否則可自我提權（**RBAC 唯一死穴，須由架構守住**）。
+**為何四級**：`SUPPORT` / `OPERATIONS` 必須分開（客服回答 vs 營運決定；KYC 是上線合規判斷）；`FINANCE` / `OPERATIONS` 用 **rank 階層**（2026-10-05 owner 決定：接受 hierarchy，FINANCE ⊇ OPERATIONS，唔再當佢哋係橫向互斥）；只有 dispute-resolution 呢一個 endpoint 用 decision-matched whitelist 防止 assigned judge 同時批 payout。**只有 `SUPER_ADMIN` 可改角色**，否則可自我提權（**RBAC 唯一死穴，須由架構守住**）。
 
 **實作**：
 

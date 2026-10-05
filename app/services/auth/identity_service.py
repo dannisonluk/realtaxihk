@@ -197,10 +197,10 @@ class IdentityService:
             )
         )
 
-        # Stored immediately, but `email_verified_at` is NOT set: an unverified
-        # address on the row is what lets the UI say "we sent it to X". The
-        # account gate reads `email_verified_at`, not `email`.
-        user.email = address
+        # The pending address lives on the token row, not on `users.email`: the
+        # account column is only written after the link proves ownership. Writing
+        # it here would let any authenticated account permanently squat an
+        # address through the unique index before proving it can read that mail.
         await self.session.flush()
 
         link = f"{settings.public_base_url.rstrip('/')}/verify-email?token={raw}"
