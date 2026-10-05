@@ -133,6 +133,10 @@ class Settings(BaseSettings):
     weekly_settlement_enabled: bool = True
     weekly_fee_hkd: int = 200  # deducted from every ACTIVE driver, per week
     weekly_settlement_interval_s: int = 604800  # 7 days between settlement runs
+    # Recurring-ride template minter cadence. Runs frequently enough that a due
+    # ride is minted within a sensible window, but every mint is DB-driven and
+    # idempotent per template, so this is a scheduling detail, not a safety net.
+    recurring_mint_interval_s: int = 60
     refund_min_hkd: int = 1  # balance below this is not worth a refund request
 
     # --- OTP / rate limiting (P1-2, SEC-07/08) ---

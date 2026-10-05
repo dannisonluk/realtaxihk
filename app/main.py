@@ -107,6 +107,16 @@ def _start_background_jobs(app: FastAPI, settings) -> list[asyncio.Task]:
                 name="weekly_settlement",
             )
         )
+    tasks.append(
+        asyncio.create_task(
+            _job_loop(
+                settings.recurring_mint_interval_s,
+                app.state.recurring_minter.run_due,
+                "recurring_mint",
+            ),
+            name="recurring_mint",
+        )
+    )
     return tasks
 
 
@@ -231,6 +241,7 @@ def create_app() -> FastAPI:
     from app.services.infra.maintenance import MaintenanceService
     from app.services.ledger.settlement_service import SettlementService
     from app.services.order.trip_service import ConnectionRegistry, TripHub
+    from app.services.recurring.recurring_service import RecurringMinter
 
     configure_logging(settings.log_level)
     attach_request_logging(app)
@@ -245,6 +256,7 @@ def create_app() -> FastAPI:
     app.state.auth_redis = get_redis()
     app.state.maintenance = MaintenanceService(get_session_factory(), get_redis())
     app.state.settlement = SettlementService(get_session_factory())
+    app.state.recurring_minter = RecurringMinter(get_session_factory())
     # SEC-14: ONE hub holding ONE Redis client. Previously each socket built its
     # own client + pubsub, so a single account could push Redis's client count
     # toward `maxclients` and take the whole platform down with it.

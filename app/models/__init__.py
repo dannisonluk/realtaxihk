@@ -78,6 +78,7 @@ from app.models.premium import (
     PaymentMethod,
     PremiumDestination,
 )
+from app.models.recurring import RecurringFrequency, RecurringRide, RecurringStatus
 from app.models.user import (
     AccountStatus,
     DriverDeposit,
@@ -147,6 +148,9 @@ __all__ = [
     "OtpCode",
     "PaymentMethod",
     "PremiumDestination",
+    "RecurringFrequency",
+    "RecurringRide",
+    "RecurringStatus",
     "RefreshToken",
     "RefundRequest",
     "RefundStatus",

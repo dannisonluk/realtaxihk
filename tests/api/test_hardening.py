@@ -265,6 +265,7 @@ class TestLifespanBackgroundJobs:
             assert sorted(j.get_name() for j in jobs) == [
                 "geo_sweep",
                 "pdpo_purge",
+                "recurring_mint",
                 "weekly_settlement",
             ]
             assert all(not j.done() for j in jobs)

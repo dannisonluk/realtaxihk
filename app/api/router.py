@@ -45,6 +45,7 @@ from app.api.fleets import router as fleets_router
 from app.api.identity import router as identity_router
 from app.api.licence import router as licence_router
 from app.api.orders import router as orders_router
+from app.api.recurring import router as recurring_router
 from app.api.service_area_route import router as service_area_router
 from app.api.tracking import router as tracking_router
 from app.api.trips import router as trips_router
@@ -76,6 +77,7 @@ api_router.include_router(licence_router)
 api_router.include_router(fleets_router)
 api_router.include_router(admin_fleets_router)
 api_router.include_router(orders_router)
+api_router.include_router(recurring_router)
 api_router.include_router(tracking_router)
 api_router.include_router(trips_router)
 api_router.include_router(service_area_router)

@@ -104,9 +104,16 @@
 - 目前無持有 recurring rides slice；會避開你認領嘅檔案。
 - 提醒：新 migration 請接 `f1c2d3e4a5b6`，避免再出現多 head 分叉。
 - 2026-10-05 巡查：recurring WIP（`7a1b2c3d4e5f_recurring_rides.py`、`app/api/schemas/recurring.py`、`app/models/recurring.py`）已接 `f1c2d3e4a5b6`，`alembic heads` 只得 `7a1b2c3d4e5f`，無分叉；`app/api/schemas/__init__.py` 嘅 recurring export 我唔碰。
+- 2026-10-05 另外幫 recurring WIP 清咗 blocker（唔 commit，留喺 worktree 俾你 review）：
+  - `app/models/__init__.py`：`Recurring*` 原本錯誤由 `app.models.premium` import，改為 `from app.models.recurring import ...`
+  - `app/models/recurring.py`：補返 migration 有但 model 冇嘅 `CheckConstraint("weekday BETWEEN 1 AND 7")`
+  - `7a1b2c3d4e5f_recurring_rides.py`：enum 名改為 model 一致嘅 `ck_recurring_rides_status`／`ck_recurring_rides_frequency`，並加相應 check constraint；
+  - 已跑 migration parity：3 passed；ruff format 已套用。
 
 ## Last updated
 
 - 2026-10-05（本 agent，建立檔）
 - 2026-10-05（其他 agent：migration deep scan 完成並 commit `69c4484`／`e5454e5`；已更新本檔進度）
 - 2026-10-05（記錄 fixed-fare fee ledger gap 待接手）
+- 2026-10-05（本 agent：幫 recurring WIP 清 import/constraint blocker，留喺 worktree 唔 commit；fixed-fare ledger 等 recurring migration 入 main 先接）
+- 2026-10-05（本 agent：recurring rides backend 已完成並 commit；API prefix `/api/v1/recurring-rides`、background `recurring_mint`、migration `7a1b2c3d4e5f`；測試 47 passed；full suite 內 analytics/fare_mode 相關 43 failures 係其他 agent WIP 引起，未有動佢啲檔）
