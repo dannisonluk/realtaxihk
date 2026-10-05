@@ -413,11 +413,19 @@ class AdminOrderRowOut(BaseModel):
     `pickup_address` / `dropoff_address` are the requested text, not a
     geocoded value: they are what the passenger typed and what the driver was
     shown, so they are the right thing to quote back in a dispute.
+
+    `fare_mode` is on the row rather than the detail page because it changes
+    what the fare *means*. A `FIXED` trip is one the passenger agreed to at a
+    quoted price, so "the meter says more than that" is not a discrepancy to
+    investigate — it is what a fixed fare is. A `METER` trip has no such
+    agreement. An operator scanning the table for a billing complaint needs to
+    tell those apart without opening fifty rows.
     """
 
     id: str
     status: str
     taxi_type: str
+    fare_mode: str
     passenger_id: str
     driver_id: str | None
     pickup_address: str

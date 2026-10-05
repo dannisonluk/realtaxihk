@@ -78,6 +78,7 @@ def _admin_order_out(order: Order) -> dict:
         "id": str(order.id),
         "status": order.status.value,
         "taxi_type": order.taxi_type,
+        "fare_mode": order.fare_mode.value,
         "passenger_id": str(order.passenger_id),
         "driver_id": str(order.driver_id) if order.driver_id else None,
         "pickup_address": order.pickup_address,

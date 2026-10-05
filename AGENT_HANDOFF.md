@@ -80,7 +80,8 @@
   - 已修細項：NEW-18（email 唔再 early write，token row 先係 pending）+ tests 更新；NEW-29（刪死 `APP_HOST` / `app_host` / `app_port`）；NEW-30（turnstile site key comment 修正）；M-M-1（trip_repository 誤導 docstring 改誠實）；M-M-4（release 缺 `API_BASE_URL` 硬失敗）。
   - **AC-05：owner 已批准（2026-10-05）**。改動已喺 worktree（`admin-web/serve.py` default 翻轉做 `web/dist`、`--legacy` 後備；`admin-web/README.md` + `scripts/dev/serve_and_run_browser.py` 同步），但呢三個檔同時係 sibling WIP，未 commit。已驗證：`py_compile` OK、`--help` RC=0、`web/dist/index.html` 同 `legacy/index.html` 都存在。
   - **已完成（2026-10-05）**：NEW-23（dispute audit 同 mutation 同一 transaction commit）、NEW-10（WS watchdog 移除，transport ping 負責 reap）；NEW-1/NEW-2 已做 NEW-2+box 誠實化。
-  - **仲等緊 owner / 未郁**：mobile 大項（M-H-1 enum unknown、M-H-2 outbox、M-M-2 settlement 警示、M-M-3 autoDispose、M-M-5 token header、NEW-24）、AC-06/07、F-05/F-06、NEW-15/16/17/9 未郁，避免踩 sibling WIP。
+  - **仲等緊 owner / 未郁**：mobile 大項（M-H-1 enum unknown、M-H-2 outbox、M-M-3 autoDispose）、AC-07、F-05 未郁，避免踩 sibling WIP。
+  - **已於 2026-10-05 安全批次完成（見「Last updated」頂部）**：NEW-9、NEW-15、NEW-16、NEW-17、NEW-24、NEW-25/26、M-M-2、M-M-5、AC-06、F-06。
 
 ### 混亂區 / 請勿亂改
 
@@ -127,6 +128,20 @@
 
 ## Last updated
 
+- 2026-10-05（本 agent：**audit 安全批次完成**——NEW-9/15/16/17/24/25/26 + M-M-2/M-M-5 + AC-06 + F-06）
+  - **NEW-9（body size cap 對 chunked body 失效）**：`app/core/middleware.py`。原本 chunked（無 `Content-Length`）超過上限時由 `receive()` 拋 `_BodyTooLarge`，但 `add_middleware()` 令本 middleware 喺 Starlette `ExceptionMiddleware` **外**，所以個 raise 永遠到唔到本 class：內層 `BaseHTTPMiddleware` 會變成 `RuntimeError: No response returned.`，而舊嘅 `Exception` 版本就被 FastAPI body parsing 嘅 `except Exception` 吞成 400 `BAD_REQUEST` → **413 分支係死碼**。改法：唔再拋例外，超標時將餵俾 app 嘅 body 換成「空、最後一塊」（**任何超標內容都唔會被 parse**），再喺 `guard_send` 將 app 嘅回應改寫成 413。`_BodyTooLarge` 已刪。`tests/api/test_security_hardening.py` **49 passed**。
+  - **NEW-15**：`fleet_settlement_runs` 新增獨立 `skipped_no_deposit_account`（唔再混入 `skipped`）——`app/models/fleet.py`、`app/services/fleet/fleet_service.py`、`app/api/schemas/fleet.py`、`app/api/fleets.py`、migration `c1f2e3d4a5b6`（`alembic heads` 單一 head ✓）。Mobile mirror：`FleetSettlementRun.skippedNoDepositAccount` + 3 個 fixture 補 `skipped_no_deposit_account`。
+  - **NEW-16**：licence cap 改名 `MAX_SUBMISSIONS_PER_ROLLING_24H` / `max_submissions_per_rolling_24h`（`app/services/licence/licence_service.py`、`app/api/licence.py`）——**呢個就係 handoff 之前記錄嘅 676 errors 元兇**（service 改名但 API 未同步），已同步。
+  - **NEW-17**：OTP 嘗試預算改成 phone-wide window（`app/services/auth/otp_service.py`）；新 code 唔 reset 舊 budget，wrong attempt 仍累積到 row（`test_phone_binding_api.py:261` 期望 `attempts_remaining == 4` 仍成立）。
+  - **NEW-24**：新增 fixture `mobile/test/fixtures/ws_outside_hk_error.json` + `manifest.json` 一行 + `verify_contract.dart` decoder（斷言 `OUTSIDE_HK`、`isFatal == true`、訊息 `座標不在香港範圍內`）；`run_tests.dart` 移除舊 `BAD_LOCATION` pin（server 從來只送 `OUTSIDE_HK`，舊 pin 係客戶端自己估出嚟嘅字彙漂移）。
+  - **NEW-25/26**：`mobile/lib/features/driver/driver_earnings_screen.dart` 加 `signed: true`；`admin-web/web/src/pages/DriverDetailPage.tsx` 嘅 `Math.min(100, Math.max(0, …))` 同 `sign` 檢查後 **HEAD 已有**，唔使改。
+  - **M-M-2**：`mobile/lib/models/admin.dart` `SettlementPreview` 補 `wouldChargeDriverIds` / `wouldGoNegativeDriverIds`（原本 mobile 完全冇 decode 呢兩個 field）。
+  - **M-M-5**：`mobile/lib/data/trip_repository.dart` — native 平台改用 `io.IOWebSocketChannel.connect(uri, headers: {'Authorization': 'Bearer …'})`（token 唔再落 URL query）；web 保留 query 參數 fallback（瀏覽器無法設 WS handshake header）。
+  - **AC-06（⚠️ 留意）**：`admin-web/web/src/components/primitives.tsx` 嘅 Modal 加咗 focus 移入 + Tab/Shift+Tab focus trap。handoff 之前記錄過呢個檔有 sibling 未 commit WIP（同一件事）——**我今次落嘅係單一實作、冇重疊**（`grep useEffect|boxRef` 只一處），已修好之前 `tsc` 報嘅 `TS18048 'first'/'last' is possibly undefined`。依 handoff 規則 3 喺此留言：**如 sibling 仲有自己版本，以 worktree 現有版本為準**。
+  - **F-06（docs drift）**：`docs/DEPLOYMENT_REQUIREMENTS.md`（flutter 狀態改為 `dart` 直跑、`ERROR_PIPE_BUSY` 描述、gap 7→3 項、`ruff format` 檔數 184→212 並誠實註明餘 1 個 E501 在 sibling WIP `admin-web/serve.py`）；`docs/STRUCTURE_REVIEW.md`（寫死嘅「97 passed / 54 fixtures」改為指向即時輸出）。
+  - **順帶**：`ruff format` 補跑 3 個**本 agent 自己舊 commit** 留低嘅未格式化檔（`app/api/orders.py`、`app/core/region.py`、`scripts/dev/gen_mobile_fixtures.py`）；`ruff check --fix` 修 2 個 I001（`gen_mobile_fixtures.py`、`scripts/verify/audit_response_models.py`）。
+  - **驗證**：`tests/api/test_security_hardening.py` 49 passed；mobile harness **149 passed / 0 failed**；`verify_contract.dart` **61 fixtures / 0 failure**；admin-web `tsc` 0 error、`vitest` **76 passed（10 檔）**；`ruff format --check` 211 formatted（餘 1 個係 sibling WIP）；`ruff check` 餘 1 個 E501（同上）；`alembic heads` 單一 `c1f2e3d4a5b6`。
+  - **冇碰**：`mobile/lib/state/data_providers.dart`、`mobile/lib/models/order.dart`、`mobile/lib/core/network/wire.dart`、`mobile/lib/data/{driver,identity}_repository.dart`、`mobile/lib/router/*`、`mobile/lib/features/shared/account_screen.dart`、`admin-web/{README.md,serve.py}`、`scripts/dev/serve_and_run_browser.py`、`new/`。
 - 2026-10-05（本 agent：**車內環境/付款偏好乘客端 + 收據 mobile screen + 特選目的地 pins 完成**；順帶修正 nearby 動物篩選嘅 JSONB null bug）
   - **後端 bug 修正（重要，影響已 commit 嘅 `bd25f76`）**：`RideRequirementsIn.model_dump()` 會為每個欄位序列化，所以只要求「靜音」嘅訂單其實存咗 `"animal": null`。JSONB 入面 JSON null **係一個值**，所以 `-> 'animal' IS NULL` 對佢係 **false** → 司機嘅「可載寵物」chip 會**隱藏**從未提及寵物嘅訂單。改用 `.astext.is_(None)`（`astext` 令「鍵不存在」同「JSON null」都塌成 SQL NULL）。`requires` 方向同樣改 `.astext.is_not(None)`。新增回歸測試 `test_exclude_animal_keeps_orders_that_never_mentioned_one` **先證實失敗**再修 → `tests/api/test_nearby_filters.py` **18 passed**。
   - 新增 `mobile/lib/models/ride_requirements.dart`（`RideRequirements` + `AnimalDetail`）＝**requirements 封閉集單一來源**，`NearbyFilter` 改成讀佢（唔再各自重述四個 key）。
@@ -179,6 +194,14 @@
   - Tests：`tests/api/test_admin_orders.py` 加 6 個（+`_make_order` 擴參數）；新檔 `admin-web/web/src/pages/OrderDetailPage.test.tsx`（6 個，vitest + jsdom，釘住上面兩個「唔可以亂斷言」嘅 case）。
   - 驗證：admin 相關 8 檔 **177 passed**；admin-web `npm test` **75 passed**（10 檔）；`npm run typecheck` 我改嘅檔 0 error；`ruff` 0；`mypy` 124 files 0；`verify_contract.dart` 61 fixtures 0 failure；`audit_response_models.py` OK。
   - **注意**：`admin-web/web/src/components/primitives.tsx` 當時有 sibling 未 commit WIP（modal focus trap），`tsc` 報 2 個 `TS18048 'first'/'last' is possibly undefined` —— 屬對方改動，**本 agent 冇碰**。
-  - 冇動 `admin/orders.py` 以外嘅 admin handler，亦冇改 `AdminOrderRowOut`（避免影響列表效能／形狀）。
+
+- 2026-10-05（本 agent：**admin 收費模式 parity —— 列表同詳情頁睇得到一口價**）
+  - **缺口**：`orders.fare_mode` 自 `8f2a1c5d3b40` 起已存在，但 `AdminOrderRowOut` / `AdminOrderDetailOut` / admin-web **完全冇 expose**（`grep -rn fare_mode admin-web/web/src` 係空）。後果：營運睇「乘客話一口價 $105、但落車跳錶 $140」呢類爭議時，**分唔到邊程係一口價**，會誤判成收錯錢。
+  - Backend：`app/api/schemas/admin.py`（row 加 `fare_mode`）、`app/api/admin/orders.py`（`_admin_order_out()` 輸出 `order.fare_mode.value`）。
+  - admin-web：`types.ts`（`AdminOrderRow.fare_mode: string` + 註解講清「跳錶數字唔同係預期，唔係收錯」）、`OrdersPage.tsx`（**只喺 `FIXED` 時**喺車型後綴 ` · 一口價` —— METER 係預設，加噪音冇用）、`OrderDetailPage.tsx`（**無條件**顯示 chip，爭議頁要睇得到而唔係靠「冇 badge」推論）、`labels.ts`（`fareMode` keyer）、`i18n/locales/{en,zh-Hant}.ts`（`enum.fareMode` 雙語）。
+  - Tests：`tests/api/test_admin_orders.py` 新 `TestFareMode`（2 個；`_make_order` 加 `fare_mode` 參數）；`OrderDetailPage.test.tsx` 加 1 個（FIXED + METER 兩種都render 文字）。
+  - 驗證：admin 4 檔 **94 passed**；admin-web `npm test` **76 passed**（10 檔）；`ruff` 0；`mypy` 124 files 0；full-suite **1143 passed / 2 failed / 1 error**（兩個 failure 全屬 sibling 現行 WIP：`app/api/licence.py` + `app/core/middleware.py` + `tests/api/test_security_hardening.py`，**唔關本 agent 事**）。
+  - 環境備忘：跑 full-suite 前 **Docker Desktop 要開返**（`db` :15433 / `redis` :16379，`docker compose up -d db redis`）——今次中途 Docker 被關咗，一度全 pytest 連 DB 都連唔到。
+  - 冇動 `admin/orders.py` 以外嘅 admin handler，亦冇改 `AdminOrderRowOut`（避免影響列表效能／形狀）。（註：下一批先加 `fare_mode` 落 row —— 屬刻意的後續，非矛盾。）
 
 

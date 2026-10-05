@@ -199,7 +199,12 @@ function OrderTableRow({ order, onOpen }: { order: AdminOrderRow; onOpen: () => 
         <div className="truncate" style={{ maxWidth: 220 }} title={order.pickup_address}>
           {order.pickup_address || <span className="dim">—</span>}
         </div>
-        <div className="dim t-caption1">{labels.taxiType(order.taxi_type)}</div>
+        <div className="dim t-caption1">
+          {labels.taxiType(order.taxi_type)}
+          {/* Only worth a word when it is not the default: a metered trip needs
+              no annotation, a fixed price changes how the whole trip reads. */}
+          {order.fare_mode === 'FIXED' ? ` · ${labels.fareMode(order.fare_mode)}` : ''}
+        </div>
       </td>
       <td>
         <div className="truncate" style={{ maxWidth: 220 }} title={order.dropoff_address}>

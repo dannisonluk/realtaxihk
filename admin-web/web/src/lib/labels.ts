@@ -56,6 +56,7 @@ const accountKindKey = keyer('accountKind');
 const paymentMethodKey = keyer('paymentMethod');
 const areaKey = keyer('area');
 const requirementKey = keyer('requirement');
+const fareModeKey = keyer('fareMode');
 
 // ------------------------------------------------------------------ tones --
 // Tones are severity, not language: they describe *how bad* a state is, which is
@@ -177,6 +178,7 @@ export interface Labels {
   paymentMethod: (method: string) => string;
   area: (area: string | null) => string;
   requirement: (key: string) => string;
+  fareMode: (mode: string) => string;
 }
 
 /**
@@ -226,6 +228,7 @@ export function useLabels(): Labels {
       paymentMethod: label(paymentMethodKey),
       area: label(areaKey),
       requirement: label(requirementKey),
+      fareMode: label(fareModeKey),
     };
   }, [t]);
 }

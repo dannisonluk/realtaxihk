@@ -75,6 +75,12 @@ export function OrderDetailPage() {
           <Chip tone={labels.orderStatusTone(data.status)}>{labels.orderStatus(data.status)}</Chip>
           <span className="dim mono">{shortId(data.id)}</span>
           <span className="dim">{labels.taxiType(data.taxi_type)}</span>
+          {/* Shown unconditionally, unlike the list: on a dispute page the
+              operator must be able to *read* the fare mode, not infer it from
+              the absence of a badge. */}
+          <Chip tone={data.fare_mode === 'FIXED' ? 'brand' : 'neutral'}>
+            {labels.fareMode(data.fare_mode)}
+          </Chip>
         </div>
 
         <Rows>

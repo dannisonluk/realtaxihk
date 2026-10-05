@@ -565,6 +565,12 @@ export interface AdminOrderRow {
   id: string;
   status: string;
   taxi_type: string;
+  /**
+   * `METER` or `FIXED`. A `FIXED` trip had its price agreed before pickup, so
+   * a meter total that disagrees is expected, not a billing error — without
+   * this an operator reading a dispute cannot tell the two apart.
+   */
+  fare_mode: string;
   passenger_id: string;
   driver_id: string | null;
   pickup_address: string;

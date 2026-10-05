@@ -99,6 +99,12 @@ export const en = {
       NT: 'New Territories taxi',
       LANTAU: 'Lantau taxi',
     },
+    // The passenger's side of the fare. `FIXED` means a price was agreed
+    // before the trip, so a meter reading that differs is not a discrepancy.
+    fareMode: {
+      METER: 'Metered',
+      FIXED: 'Agreed price',
+    },
     fleetStatus: {
       ACTIVE: 'Active',
       SUSPENDED: 'Suspended',

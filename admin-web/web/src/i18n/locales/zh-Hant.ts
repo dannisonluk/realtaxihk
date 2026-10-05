@@ -99,6 +99,11 @@ export const zhHant = {
       NT: '新界的士',
       LANTAU: '大嶼山的士',
     },
+    // 收費模式。「一口價」= 行程前已議定金額，跳錶數字唔同唔等於收錯錢。
+    fareMode: {
+      METER: '按錶收費',
+      FIXED: '一口價',
+    },
     fleetStatus: {
       ACTIVE: '營運中',
       SUSPENDED: '已停權',

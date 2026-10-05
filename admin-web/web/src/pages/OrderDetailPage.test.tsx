@@ -69,6 +69,7 @@ function detail(overrides: Record<string, unknown> = {}) {
     driver_profile_id: null,
     driver_id: null,
     taxi_type: 'URBAN',
+    fare_mode: 'METER',
     pickup_address: 'Central',
     dropoff_address: 'Kowloon',
     distance_km: '8.4',
@@ -263,5 +264,23 @@ describe('the order detail page', () => {
     const card = disputeCardText(container);
     expect(card).toContain(text('orderDetail.receiptRequested'));
     expect(card).not.toContain(text('orderDetail.receiptNotRequested'));
+  });
+
+  // The one that stops an operator reading "the meter said $140 but the
+  // passenger was quoted $105" as a billing error.
+  it('states the fare mode in words, for both modes', async () => {
+    stubTransport(detail({ fare_mode: 'FIXED' }));
+    await renderAndSettle(root);
+    expect(container.textContent).toContain(text('enum.fareMode.FIXED'));
+
+    act(() => root.unmount());
+    container.remove();
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    stubTransport(detail({ fare_mode: 'METER' }));
+    await renderAndSettle(root);
+    expect(container.textContent).toContain(text('enum.fareMode.METER'));
   });
 });

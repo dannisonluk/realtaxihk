@@ -108,6 +108,7 @@ def _make_order(
     payment_methods: str | None = None,
     driver_payment_methods: str | None = None,
     receipt_requested: bool = False,
+    fare_mode: str = "METER",
 ) -> str:
     oid = uuid.uuid4()
     created = created_at or datetime.now(UTC) - timedelta(minutes=30)
@@ -124,7 +125,7 @@ def _make_order(
         " :status, ST_GeogFromText('POINT(114.158 22.284)'), 'Central',"
         " ST_GeogFromText('POINT(114.219 22.315)'), 'North Point',"
         " CAST(:dist AS numeric), 'URBAN', CAST(:fare_json AS jsonb), 'test-v1',"
-        " CAST(:fare AS numeric), 0, CAST(:radius AS numeric), 'METER',"
+        " CAST(:fare AS numeric), 0, CAST(:radius AS numeric), :fare_mode,"
         " CAST(:req AS jsonb), CAST(:pay AS jsonb), CAST(:dpm AS jsonb),"
         " CAST(:rcpt AS boolean),"
         " CAST(:accepted AS timestamptz), CAST(:arrived AS timestamptz),"
@@ -139,6 +140,7 @@ def _make_order(
             "fare_json": fare_json,
             "fare": fare,
             "radius": broadcast_radius_km,
+            "fare_mode": fare_mode,
             "req": requirements_json,
             "pay": payment_methods,
             "dpm": driver_payment_methods,
@@ -318,6 +320,22 @@ class TestRowShape:
         assert item["driver_id"] is None
         assert item["accepted_at"] is None
         assert item["completed_at"] is None
+
+
+class TestFareMode:
+    async def test_both_fare_modes_reach_the_list_row(self, client, passenger):
+        """Without `fare_mode` the list cannot say whether a trip was metered
+        or agreed at a fixed price — and that is the first thing an operator
+        needs when a passenger disputes the amount."""
+        _make_order(client, passenger_id=passenger, fare_mode="METER")
+        _make_order(client, passenger_id=passenger, fare_mode="FIXED", status="CREATED")
+        rows = client.get("/api/v1/admin/orders", headers=client.admin_headers()).json()["items"]
+        assert {row["fare_mode"] for row in rows} == {"METER", "FIXED"}
+
+    async def test_fare_mode_reaches_the_detail_view(self, client, passenger):
+        oid = _make_order(client, passenger_id=passenger, fare_mode="FIXED")
+        data = client.get(f"/api/v1/admin/orders/{oid}", headers=client.admin_headers()).json()
+        assert data["fare_mode"] == "FIXED"
 
 
 class TestDetail:
