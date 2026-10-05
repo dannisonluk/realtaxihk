@@ -64,12 +64,12 @@ def _insert_completed_order(
             id, passenger_id, status, pickup_location, pickup_address,
             dropoff_location, dropoff_address, distance_km, taxi_type,
             fare_json, tariff_version, estimated_total_hkd, discount_percent,
-            broadcast_radius_km, completed_at, created_at, updated_at
+            broadcast_radius_km, fare_mode, completed_at, created_at, updated_at
         ) VALUES (
             :oid, :pid, 'COMPLETED',
             ST_GeogFromText('POINT(114.158 22.284)'), 'Central',
             ST_GeogFromText('POINT(114.219 22.315)'), 'North Point',
-            :dist, :taxi, '{}'::jsonb, 'test-v1', :fare, 0, 3.0,
+            :dist, :taxi, '{}'::jsonb, 'test-v1', :fare, 0, 3.0, 'METER',
             :completed, now(), now()
         )
         """,
@@ -208,12 +208,12 @@ class TestEarningsAggregation:
                 id, passenger_id, status, pickup_location, pickup_address,
                 dropoff_location, dropoff_address, distance_km, taxi_type,
                 fare_json, tariff_version, estimated_total_hkd, discount_percent,
-                broadcast_radius_km, created_at, updated_at
+                broadcast_radius_km, fare_mode, created_at, updated_at
             ) VALUES (
                 :oid, :pid, 'BROADCASTING',
                 ST_GeogFromText('POINT(114.158 22.284)'), 'Central',
                 ST_GeogFromText('POINT(114.219 22.315)'), 'North Point',
-                5.000, 'URBAN', '{}'::jsonb, 'test-v1', 999.00, 0, 3.0,
+                5.000, 'URBAN', '{}'::jsonb, 'test-v1', 999.00, 0, 3.0, 'METER',
                 now(), now()
             )
             """,

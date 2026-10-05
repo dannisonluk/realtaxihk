@@ -428,12 +428,13 @@ class TestCsvExport:
         column and gets a different answer than the file claims is a support
         ticket, and the difference is usually a row someone filtered out."""
         driver = _make_driver(client, balance="500.00")
+        ref = f"weekly:{driver}:2026-W40"
         client.exec_sql(
             "INSERT INTO ledger_entries (driver_profile_id, entry_type, amount_hkd, "
             "balance_after_hkd, reference, note, created_at) "
             "VALUES (CAST(:d AS uuid), 'WEEKLY_FEE_DEDUCTION', -200.00, 300.00, "
-            ":ref, 'weekly fee', now())",
-            {"d": driver, "ref": f"weekly:{driver}:2026-W40"},
+            ":ref, 'weekly fee', CAST(:ts AS timestamptz))",
+            {"d": driver, "ref": ref, "ts": _week_instant(ref)},
         )
         r = client.get(
             "/api/v1/admin/settlement/export.csv",

@@ -93,13 +93,13 @@ def _mk_order(client, *, passenger_id: str, driver_id: str | None, status: str) 
             id, passenger_id, driver_id, status, pickup_location, pickup_address,
             dropoff_location, dropoff_address, distance_km, taxi_type,
             fare_json, tariff_version, estimated_total_hkd, discount_percent,
-            broadcast_radius_km, created_at, updated_at
+            broadcast_radius_km, fare_mode, created_at, updated_at
         ) VALUES (
             CAST(:oid AS uuid), CAST(:pid AS uuid),
             CAST(:did AS uuid), :status,
             ST_GeogFromText('POINT(114.158 22.284)'), 'Central',
             ST_GeogFromText('POINT(114.219 22.315)'), 'North Point',
-            8.5, 'URBAN', '{}'::jsonb, 'test-v1', 120.00, 0, 3.0, now(), now()
+            8.5, 'URBAN', '{}'::jsonb, 'test-v1', 120.00, 0, 3.0, 'METER', now(), now()
         )
         """,
         {"oid": str(oid), "pid": passenger_id, "did": driver_id, "status": status},

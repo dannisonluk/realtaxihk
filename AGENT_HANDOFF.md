@@ -163,3 +163,11 @@
   - 車內環境 UI 掛喺 driver account screen（唔郁 `driver_jobs_screen.dart`，避免同 sibling 撞）
   - **fixture generator 會重寫全部 fixtures 嘅 UUID/時間戳**：已 `git checkout -- mobile/test/fixtures/` 還原 churn，只保留新 fixture + manifest 一行
   - 驗證：receipt tests 7 passed；receipt+orders+attributes+premium+fixed-fare+hardening 56 passed；`verify_contract.dart` 60 fixtures 0 failure；`audit_response_models.py` OK；ruff 0；mypy 124 files 0；`flutter analyze` 我嘅檔 0 issue
+
+- 2026-10-05（本 agent：**修正 4 個測試檔的 fare_mode blocker + 1 個時間相依 bug —— full-suite 由 41 failed → 0**）
+  - 根因（跨 agent WIP 副作用，非本 agent 引入）：`8f2a1c5d3b40_fixed_fare_offers.py` 令 `orders.fare_mode` NOT NULL（**無 `server_default`**），但 3 個測試檔的 raw `INSERT INTO orders` 冇供值 → `NotNullViolationError` 40 個。
+  - 另外一個**獨立時間相依 bug**：`test_admin_settlement_preview.py::TestCsvExport::test_export_carries_a_header_and_a_total_row` 用 `now()` 寫 ledger row 但查 `2026-W40`（今日係 W41）→ 同檔已有 `_week_instant()` helper 卻漏用。
+  - Fix：4 檔 raw INSERT 補 `'METER'`（`test_admin_orders.py`／`test_admin_live_map.py`／`test_analytics_admin.py` ×2）+ settlement export 改用 `_week_instant(ref)`。4 檔共 +11/−10。
+  - 驗證：該 4 檔 **86 passed**（原本 41 failed/45 passed）✅。三個測試檔**冇任何 agent 認領**、worktree 亦乾淨，所以安全改。
+  - 注意：full-suite 另有 **676 errors** 屬其他 agent WIP 中途狀態（`app/services/licence/licence_service.py` 將 `MAX_SUBMISSIONS_PER_DAY` 改名為 `MAX_SUBMISSIONS_PER_ROLLING_24H` 但 `app/api/licence.py:49` 未同步）——**唔關本 agent 事**，等對方完成。
+
