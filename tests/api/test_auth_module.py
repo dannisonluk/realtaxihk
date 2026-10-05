@@ -230,6 +230,71 @@ class TestDriverKycApi:
         assert r.json()["status"] == "DEPOSIT_REQUIRED"
         assert r.json()["deposit"]["required_hkd"] == "500.00"
 
+    def test_admin_restore_flow(self, client):
+        """SUSPENDED -> ACTIVE is a different door from `approve`.
+
+        `approve` maps to DEPOSIT_REQUIRED; sending it to a suspended driver is
+        an illegal transition (the old console did exactly that). `restore` is
+        the decision that takes a suspended operator back online without
+        re-running KYC or demanding a fresh deposit.
+        """
+        admin = client.admin_headers()
+        admin_token = admin["Authorization"].split(" ", 1)[1]
+        token = self._new_user_token(client, "+85291230009")
+        r = client.post(
+            "/api/v1/drivers/register",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "hk_id_last4": "9999",
+                "taxi_driver_plate_no": "TD99999",
+                "vehicle_reg_mark": "ZZ9999",
+                "taxi_type": "URBAN",
+            },
+        )
+        driver_id = r.json()["id"]
+
+        # KYC approve -> DEPOSIT_REQUIRED, then deposit grant -> ACTIVE,
+        # then suspend -> SUSPENDED.
+        r = client.post(
+            f"/api/v1/admin/drivers/{driver_id}/review",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={"decision": "approve", "note": "docs ok"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "DEPOSIT_REQUIRED"
+
+        grant = client.post(
+            f"/api/v1/admin/drivers/{driver_id}/deposit/grant",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={"amount_hkd": "500.00", "note": "deposit"},
+        )
+        assert grant.status_code == 200, grant.text
+
+        r = client.post(
+            f"/api/v1/admin/drivers/{driver_id}/review",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={"decision": "suspend", "note": "flow"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "SUSPENDED"
+
+        # The old broken call is refused, not silently remapped.
+        r = client.post(
+            f"/api/v1/admin/drivers/{driver_id}/review",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={"decision": "approve", "note": "wrong"},
+        )
+        assert r.status_code in (400, 422), r.text
+
+        # Restore returns the driver to ACTIVE.
+        r = client.post(
+            f"/api/v1/admin/drivers/{driver_id}/review",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={"decision": "restore", "note": "resolved"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "ACTIVE"
+
     def test_admin_required(self, client):
         token = self._new_user_token(client, "+85291230003")
         r = client.get("/api/v1/admin/drivers", headers={"Authorization": f"Bearer {token}"})

@@ -43,11 +43,11 @@ const PAGE_SIZE = 50;
  */
 const QUICK_EVENTS: { value: string; key: string }[] = [
   { value: '', key: 'audit.filter.all' },
-  { value: 'ad.settlement', key: 'audit.filter.settlement' },
-  { value: 'ad.dispute', key: 'audit.filter.dispute' },
-  { value: 'ad.role', key: 'audit.filter.role' },
-  { value: 'ad.account', key: 'audit.filter.account' },
-  { value: 'ad.login', key: 'audit.filter.login' },
+  { value: 'ADMIN_SETTLEMENT_RUN', key: 'audit.filter.settlement' },
+  { value: 'ADMIN_DISPUTE_RESOLVE', key: 'audit.filter.dispute' },
+  { value: 'ADMIN_ROLE_CHANGE', key: 'audit.filter.role' },
+  { value: 'ADMIN_ACCOUNT_CREATE', key: 'audit.filter.account' },
+  { value: 'ADMIN_LOGIN', key: 'audit.filter.login' },
 ];
 
 export function AuditPage() {

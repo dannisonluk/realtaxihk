@@ -186,7 +186,7 @@ class TestQueueOrderingIsByDeadline:
         d = _open(client, ops, severity="NORMAL")
         client.post(
             f"/api/v1/admin/disputes/{d['id']}/resolve",
-            headers=finance,
+            headers=ops,
             json={"resolution": "NONE", "note": "no charge warranted"},
         )
         client.exec_sql(
@@ -203,7 +203,7 @@ class TestFiltersAndStats:
         closed = _open(client, ops, summary="will be resolved")
         client.post(
             f"/api/v1/admin/disputes/{closed['id']}/resolve",
-            headers=finance,
+            headers=ops,
             json={"resolution": "NONE", "note": "fine", "close": True},
         )
         items = client.get("/api/v1/admin/disputes", headers=ops).json()["items"]
@@ -329,7 +329,7 @@ class TestThread:
         d = _open(client, ops)
         client.post(
             f"/api/v1/admin/disputes/{d['id']}/resolve",
-            headers=finance,
+            headers=ops,
             json={"resolution": "NONE", "note": "no charge", "close": True},
         )
         blocked = client.post(
@@ -388,7 +388,7 @@ class TestAssignment:
         d = _open(client, ops)
         client.post(
             f"/api/v1/admin/disputes/{d['id']}/resolve",
-            headers=finance,
+            headers=ops,
             json={"resolution": "NONE", "note": "done", "close": True},
         )
         r = client.post(f"/api/v1/admin/disputes/{d['id']}/assign", headers=ops)
@@ -452,6 +452,43 @@ class TestResolution:
         assert rows[0]["payload"]["note"] == "detour confirmed on GPS"
         assert rows[0]["payload"]["moves_money"] is True
 
+    async def test_finance_cannot_judge_a_non_money_case(self, client, ops, finance):
+        """FINANCE may authorise a payout but may not *judge* conduct.
+
+        The rank hierarchy used to make FINANCE ⊇ OPERATIONS, so a single
+        FINANCE admin could decide the case and authorise the payout in one
+        request. Judging a non-money outcome is OPERATIONS' call; this pins the
+        split the other way round.
+        """
+        d = _open(client, ops)
+        r = client.post(
+            f"/api/v1/admin/disputes/{d['id']}/resolve",
+            headers=finance,
+            json={"resolution": "NONE", "note": "fare was correct"},
+        )
+        assert r.status_code == 403, r.text
+        assert r.json()["details"]["reason"] == "ADMIN_ROLE_INSUFFICIENT"
+
+    async def test_super_admin_break_glass_can_pay_a_case_they_assigned(self, client, ops):
+        """SUPER_ADMIN is the documented break-glass for both sides.
+
+        Assign is OPERATIONS-only, so a FINANCE admin can never be the assigned
+        judge; the only role that can both be assigned and authorise money is
+        SUPER_ADMIN. That is exactly the exception the role list exists for.
+        """
+        super_headers = client.admin_headers()
+        d = _open(client, ops)
+        assigned = client.post(f"/api/v1/admin/disputes/{d['id']}/assign", headers=super_headers)
+        assert assigned.status_code == 200, assigned.text
+
+        r = client.post(
+            f"/api/v1/admin/disputes/{d['id']}/resolve",
+            headers=super_headers,
+            json={"resolution": "CHARGE_DRIVER", "note": "break-glass override"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["moves_money"] is True
+
     async def test_support_cannot_resolve_even_nothing(self, client, ops, support):
         d = _open(client, ops)
         r = client.post(
@@ -501,13 +538,13 @@ class TestResolution:
         d = _open(client, ops)
         client.post(
             f"/api/v1/admin/disputes/{d['id']}/resolve",
-            headers=finance,
+            headers=ops,
             json={"resolution": "NONE", "note": "ok"},
         )
         # The console's own identity endpoint is `GET /api/v1/auth/me`, shared
         # with passengers and returning `AdminMeOut` for an admin token — there
         # is deliberately no `/admin/auth/me`.
-        me = client.get("/api/v1/auth/me", headers=finance).json()
+        me = client.get("/api/v1/auth/me", headers=ops).json()
         detail = client.get(f"/api/v1/admin/disputes/{d['id']}", headers=ops).json()
         assert detail["resolved_by"] == me["id"]
         assert detail["resolved_at"] is not None
@@ -540,7 +577,7 @@ class TestStatusTransitions:
         d = _open(client, ops)
         client.post(
             f"/api/v1/admin/disputes/{d['id']}/resolve",
-            headers=finance,
+            headers=ops,
             json={"resolution": "NONE", "note": "done"},
         )
         reopened = client.post(

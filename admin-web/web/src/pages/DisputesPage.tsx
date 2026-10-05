@@ -401,8 +401,8 @@ function DisputeDetailView({ disputeId }: { disputeId: string }) {
           // SUPER_ADMIN. The gate three lines above (`hasRole('FINANCE')`) was
           // already correct; this is the same question and must use the same
           // answer. The server narrows per request (`admin.py` `resolve_dispute`
-          // → `live_admin_role` → `at_least(FINANCE)`), so a forged value here
-          // yields a 403 rather than a charge.
+          // → `live_admin_role` → a whitelist matched to the decision), so a
+          // forged value here yields a 403 rather than a charge.
           canMoveMoney={hasRole('FINANCE')}
         />
       ),
@@ -563,7 +563,7 @@ function DisputeDetailView({ disputeId }: { disputeId: string }) {
                 key={value}
                 type="button"
                 className="btn btn--sm"
-                disabled={busy || !canAct || value === data.status}
+                disabled={busy || !canAct || value === data.status || value === ('RESOLVED' as never)}
                 onClick={() => changeStatus(value)}
               >
                 {t('disputes.opsChangeTo', { status: labels.disputeStatus(value) })}

@@ -55,7 +55,7 @@ router = APIRouter()
 
 
 class DriverReviewIn(BaseModel):
-    decision: str = Field(pattern=r"^(approve|reject|suspend|terminate)$")
+    decision: str = Field(pattern=r"^(approve|reject|suspend|terminate|restore)$")
     note: str = ""
 
 
@@ -64,6 +64,10 @@ _DECISION_TARGET = {
     "reject": DriverStatus.TERMINATED,
     "suspend": DriverStatus.SUSPENDED,
     "terminate": DriverStatus.TERMINATED,
+    # A suspended driver is restored to ACTIVE, not run through the KYC door
+    # again. `approve` maps to DEPOSIT_REQUIRED, which is why the old console
+    # "Restore" button was an illegal transition waiting to fail.
+    "restore": DriverStatus.ACTIVE,
 }
 
 

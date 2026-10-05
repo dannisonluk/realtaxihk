@@ -2,7 +2,9 @@
 
 `/disputes*`. Judging conduct is OPERATIONS; a resolution that moves money
 additionally requires FINANCE, checked per-request in the handler because
-`moves_money` is in the body rather than the path."""
+`moves_money` is in the body rather than the path. The check is a whitelist
+matched to the decision, not a rank floor — see `_roles.py` for the
+separation-of-duties reasoning."""
 
 from __future__ import annotations
 
@@ -11,6 +13,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.admin._roles import _require_operations
@@ -429,29 +432,65 @@ async def resolve_dispute(
     resolution = DisputeResolution(payload.resolution)
     session = session_factory()
     try:
-        # OPERATIONS is the floor for deciding anything at all.
+        # Whitelist matched to the decision, not a rank floor. Rank was the bug:
+        # FINANCE outranks OPERATIONS, so a single FINANCE admin passed both
+        # gates and could judge the conduct and authorise the payout in one
+        # request — the exact separation of duties these roles exist for.
+        #
+        # * conduct-only (NONE / CHARGE_PASSENGER-style judgements that move no
+        #   money) is OPERATIONS' call, plus SUPER_ADMIN as break-glass.
+        # * a resolution that moves money is FINANCE's call, plus SUPER_ADMIN,
+        #   **and** the resolving admin must not be the admin assigned to the
+        #   case. The assignee is the judge; letting them also authorise the
+        #   payout is the single-request version of the hole rank opened.
         actor_role = await live_admin_role(session, admin)
-        if not actor_role.at_least(AdminRole.OPERATIONS):
+        allowed = (
+            {AdminRole.OPERATIONS, AdminRole.SUPER_ADMIN}
+            if not resolution.moves_money
+            else {AdminRole.FINANCE, AdminRole.SUPER_ADMIN}
+        )
+        if actor_role not in allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
-                    "message": "insufficient admin role",
-                    "reason": "ADMIN_ROLE_INSUFFICIENT",
-                    "required": AdminRole.OPERATIONS.value,
-                    "actual": actor_role.value,
-                },
-            )
-        if resolution.moves_money and not actor_role.at_least(AdminRole.FINANCE):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "message": "this resolution moves money and requires FINANCE",
-                    "reason": "DISPUTE_RESOLUTION_REQUIRES_FINANCE",
+                    "message": (
+                        "this resolution moves money and requires FINANCE"
+                        if resolution.moves_money
+                        else "insufficient admin role"
+                    ),
+                    "reason": (
+                        "DISPUTE_RESOLUTION_REQUIRES_FINANCE"
+                        if resolution.moves_money
+                        else "ADMIN_ROLE_INSUFFICIENT"
+                    ),
                     "resolution": resolution.value,
-                    "required": AdminRole.FINANCE.value,
+                    "required": (
+                        AdminRole.FINANCE.value
+                        if resolution.moves_money
+                        else AdminRole.OPERATIONS.value
+                    ),
                     "actual": actor_role.value,
                 },
             )
+        if resolution.moves_money and actor_role is not AdminRole.SUPER_ADMIN:
+            assignee = (
+                await session.execute(
+                    select(OrderDispute.assigned_admin_id).where(OrderDispute.id == dispute_id)
+                )
+            ).scalar_one_or_none()
+            if assignee is not None and assignee == admin.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={
+                        "message": (
+                            "the admin who judged this case cannot authorise the payout — "
+                            "reassign it to another FINANCE admin first"
+                        ),
+                        "reason": "DISPUTE_RESOLUTION_SAME_ASSIGNEE",
+                        "resolution": resolution.value,
+                        "actual": actor_role.value,
+                    },
+                )
     finally:
         await session.close()
 

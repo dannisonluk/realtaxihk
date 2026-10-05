@@ -175,7 +175,7 @@ export function KycPage() {
           key="restore"
           type="button"
           className="btn btn--sm"
-          onClick={() => review(driver, 'approve', t('kyc.restoreTitle'))}
+          onClick={() => review(driver, 'restore', t('kyc.restoreTitle'))}
         >
           {t('kyc.restore')}
         </button>,
@@ -286,7 +286,7 @@ function ReviewBody({
           {t('kyc.dialogApproveNote')}
         </p>
       ) : null}
-      {decision === 'approve' && driver.status === 'SUSPENDED' ? (
+      {decision === 'restore' && driver.status === 'SUSPENDED' ? (
         <p className="dim" style={{ margin: 0 }}>
           {t('kyc.dialogRestoreNote')}
         </p>

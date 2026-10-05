@@ -79,11 +79,20 @@ export function FleetDetailPage() {
   }, [client, fleetId, includeLeft]);
 
   async function runSettlement(period: string) {
-    if (period !== '' && !PERIOD_PATTERN.test(period)) {
-      notify(t('fleetDetail.errPeriod'), 'error');
-      return;
-    }
-    setRunning(true);
+      if (period !== '' && !PERIOD_PATTERN.test(period)) {
+        notify(t('fleetDetail.errPeriod'), 'error');
+        return;
+      }
+      // This button moves money; the platform-wide settlement page requires a
+      // preview token for exactly this reason. The fleet route is idempotent per
+      // (fleet, ISO week) — it cannot double-bill — but an accidental run still
+      // charges the roster and overwrites the stored aggregate, so the operator
+      // gets a deliberate second press instead of a one-click money movement.
+      const confirmed = window.confirm(
+        `${t('fleetDetail.settlementTitle')}\n\n${t('fleetDetail.settlementNote')}`,
+      );
+      if (!confirmed) return;
+      setRunning(true);
     setRunError(null);
     try {
       const result = await endpoints.fleets.runSettlement(client, fleetId, {
