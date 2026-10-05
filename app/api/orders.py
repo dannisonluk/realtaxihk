@@ -47,11 +47,12 @@ from app.models import (
     DriverStatus,
     LedgerEntryType,
     Order,
+    OrderFareMode,
     OrderStatus,
     PaymentMethod,
     UserRole,
 )
-from app.services.ledger.ledger_service import LedgerService
+from app.services.ledger.ledger_service import LedgerService, reference_for_fixed_ride
 from app.services.order.geo_service import GeoService
 from app.services.order.grab_service import GrabService
 from app.services.order.order_service import OrderService, order_out
@@ -407,6 +408,27 @@ async def order_complete(
     order = await _get_order(session, order_id, for_update=True)
     await _assigned_driver_guard(session, order, user)
     await OrderService(session).transition(order, OrderStatus.COMPLETED)
+
+    # Fixed-fare service fee is a real ledger event: the passenger's price
+    # includes a disclosed platform fee, and the driver owes that portion to
+    # the platform. Reference is minted server-side so a retried completion
+    # cannot double-debit through the unique reference backstop.
+    if (
+        order.fare_mode == OrderFareMode.FIXED
+        and order.platform_fee_hkd is not None
+        and order.platform_fee_hkd != 0
+        and order.driver_id is not None
+    ):
+        await LedgerService(session).append(
+            driver_profile_id=order.driver_id,
+            entry_type=LedgerEntryType.FIXED_RIDE_FEE,
+            amount_hkd=-order.platform_fee_hkd,
+            note=f"fixed-fare platform fee: {order.id}",
+            order_id=order.id,
+            created_by=user.id,
+            reference=reference_for_fixed_ride(order.id),
+        )
+
     return order_out(order)
 
 

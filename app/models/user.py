@@ -115,6 +115,7 @@ class LedgerEntryType(str, enum.Enum):
     PENALTY_DEDUCTION = "PENALTY_DEDUCTION"
     REFUND = "REFUND"
     ADJUSTMENT = "ADJUSTMENT"
+    FIXED_RIDE_FEE = "FIXED_RIDE_FEE"
 
 
 class RefundStatus(str, enum.Enum):

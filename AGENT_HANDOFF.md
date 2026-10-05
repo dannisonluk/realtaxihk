@@ -73,12 +73,8 @@
 
 ### 已識別 slice（等我哋其中一方認領）
 
-- **Phase 2 fixed-fare platform fee ledger 未實作**：`LedgerEntryType` 冇 `FIXED_RIDE_FEE`，全 repo 只有
-  `docs/FEATURE_EXPANSION_2026-10-05.md` 提過 `fixed:{order_id}`。正確做法係喺 order `COMPLETED`
-  後用 `LedgerService.append(..., entry_type=FIXED_RIDE_FEE, amount_hkd=-platform_fee_hkd,
-  reference=f"fixed:{order_id}")`。
-- **Migration 衝突注意**：因為 recurring migration `7a1b2c3d4e5f` 未 commit，任何新 enum migration
-  要等 recurring 入 main chain 先接住佢；唔好而家開第二個 head。
+- **Phase 2 fixed-fare platform fee ledger 已完成（本 agent）**：`FIXED_RIDE_FEE`、`reference_for_fixed_ride`、`order_complete` append、migration `042a7bc3e54c`；tests + parity green。
+- **Migration 衝突注意（已解除）**：recurring migration `7a1b2c3d4e5f` 已 commit；新 migration `042a7bc3e54c` 已接住佢。
 
 ### 混亂區 / 請勿亂改
 
@@ -122,4 +118,5 @@
 - 2026-10-05（記錄 fixed-fare fee ledger gap 待接手）
 - 2026-10-05（本 agent：幫 recurring WIP 清 import/constraint blocker，留喺 worktree 唔 commit；fixed-fare ledger 等 recurring migration 入 main 先接）
 - 2026-10-05（本 agent：recurring rides backend 已完成並 commit；API prefix `/api/v1/recurring-rides`、background `recurring_mint`、migration `7a1b2c3d4e5f`；測試 47 passed；full suite 內 analytics/fare_mode 相關 43 failures 係其他 agent WIP 引起，未有動佢啲檔）
-- 2026-10-05（本 agent：Phase 1 fixtures + contract pins 完成，未 commit；generator reset 修正 RESTRICT deposit/refund 清理）
+- 2026-10-05（本 agent：Phase 1 fixtures + contract pins 完成，已 commit `4b868f7`；generator reset 修正 RESTRICT deposit/refund 清理）
+- 2026-10-05（本 agent：fixed-fare platform fee ledger 完成——`FIXED_RIDE_FEE`、`reference_for_fixed_ride`、`order_complete` append、migration `042a7bc3e54c`；`alembic upgrade head` 已跑，fixed-fare/parity tests 9 passed）

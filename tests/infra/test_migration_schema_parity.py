@@ -48,8 +48,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # 5 indexes: `users` / `admin_accounts` / `email_verification_tokens` declare
 #   `unique=True, index=True` in the models, which SQLAlchemy renders as a
 #   separate `ix_*` index; the migrations declared `UniqueConstraint` instead.
-# 4 type widths: the models derive VARCHAR length from the longest enum member,
+# 6 type widths: the models derive VARCHAR length from the longest enum member,
 #   the migrations hand-wrote a length. The *type* is VARCHAR in both.
+#   (`recurring_rides.status` / `recurring_rides.frequency` joined this set when
+#   the recurring-rides migration landed — same hand-written VARCHAR pattern.)
 _KNOWN_INDEX_DRIFT = {
     "ix_admin_accounts_email",
     "ix_admin_accounts_username",
@@ -60,6 +62,8 @@ _KNOWN_INDEX_DRIFT = {
 _KNOWN_TYPE_DRIFT = {
     ("driver_documents", "kind"),
     ("driver_licence_submissions", "status"),
+    ("recurring_rides", "status"),
+    ("recurring_rides", "frequency"),
     ("users", "gender"),
     ("users", "account_status"),
 }

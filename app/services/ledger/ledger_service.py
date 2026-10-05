@@ -27,7 +27,8 @@ Two defences now:
 
 The prefixes in use: `grant:` (admin top-up), `weekly:` (platform weekly fee),
 `fleet:` (fleet-member weekly fee), `refund:` (approved refund), `adj:` (manual
-balance correction). An `ADJUSTMENT` is always operator-initiated and always
+balance correction), `fixed:` (fixed-ride platform fee). An `ADJUSTMENT` is
+always operator-initiated and always
 carries a reason, which is slugged into its own reference.
 """
 
@@ -74,6 +75,16 @@ def reference_for_fleet_weekly(fleet_id, period: str, driver_profile_id) -> str:
 
 def reference_for_refund(refund_id) -> str:
     return f"refund:{refund_id}"
+
+
+def reference_for_fixed_ride(order_id) -> str:
+    """The platform service fee for one completed fixed-fare order.
+
+    Namespaced under `fixed:` so the fee can never collide with a grant,
+    weekly fee, refund, or adjustment reference — the same SEC-13 rule every
+    other reference helper follows.
+    """
+    return f"fixed:{order_id}"
 
 
 def reference_for_adjustment(driver_profile_id, reason: str, client_key: str | None = None) -> str:

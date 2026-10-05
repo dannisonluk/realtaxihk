@@ -7,10 +7,6 @@ a fixed passenger price, and only the offer owner can grab it.
 
 from __future__ import annotations
 
-import uuid
-
-from sqlalchemy import text
-
 
 def _mk_active_driver(client, phone: str) -> dict:
     token = client.activate(phone)
@@ -43,7 +39,9 @@ def _mk_active_driver(client, phone: str) -> dict:
     return {"token": token, "driver_id": driver_id, "user_id": me["id"]}
 
 
-def _mk_premium(client, *, code: str = "HKG_T1", lat: float = 22.308, lng: float = 113.9185) -> dict:
+def _mk_premium(
+    client, *, code: str = "HKG_T1", lat: float = 22.308, lng: float = 113.9185
+) -> dict:
     headers = client.admin_headers()
     r = client.post(
         "/api/v1/admin/destinations",
@@ -119,13 +117,9 @@ class TestFixedOfferLifecycle:
             "pickup_area": "KOWLOON",
             "price_hkd": "150.00",
         }
-        r = client.post(
-            "/api/v1/drivers/me/fixed-offers", headers=headers, json=payload
-        )
+        r = client.post("/api/v1/drivers/me/fixed-offers", headers=headers, json=payload)
         assert r.status_code == 201, r.text
-        r = client.post(
-            "/api/v1/drivers/me/fixed-offers", headers=headers, json=payload
-        )
+        r = client.post("/api/v1/drivers/me/fixed-offers", headers=headers, json=payload)
         assert r.status_code == 422, r.text
 
     async def test_fixed_order_freezes_fare_and_only_owner_can_grab(self, client):
@@ -165,11 +159,101 @@ class TestFixedOfferLifecycle:
         assert r.status_code == 409, r.text
 
         # The offer owner can.
-        r = client.post(
-            f"/api/v1/orders/{order['id']}/grab", headers=driver_headers
-        )
+        r = client.post(f"/api/v1/orders/{order['id']}/grab", headers=driver_headers)
         assert r.status_code == 200, r.text
         assert r.json()["status"] == "ACCEPTED"
+
+    async def test_fixed_complete_posts_platform_fee_to_ledger(self, client):
+        _mk_premium(client)
+        driver = _mk_active_driver(client, "+85260009918")
+        driver_headers = {"Authorization": f"Bearer {driver['token']}"}
+
+        r = client.post(
+            "/api/v1/drivers/me/fixed-offers",
+            headers=driver_headers,
+            json={
+                "destination_area": "AIRPORT",
+                "pickup_area": "KOWLOON",
+                "price_hkd": "150.00",
+            },
+        )
+        assert r.status_code == 201, r.text
+
+        passenger_token = client.activate("+85260009919")
+        order = _airport_order(passenger_token, client)
+        assert order["fare_mode"] == "FIXED"
+
+        r = client.post(
+            f"/api/v1/orders/{order['id']}/grab",
+            headers=driver_headers,
+        )
+        assert r.status_code == 200, r.text
+
+        r = client.post(
+            f"/api/v1/orders/{order['id']}/arrive",
+            headers=driver_headers,
+        )
+        assert r.status_code == 200, r.text
+
+        r = client.post(
+            f"/api/v1/orders/{order['id']}/start",
+            headers=driver_headers,
+        )
+        assert r.status_code == 200, r.text
+
+        r = client.post(
+            f"/api/v1/orders/{order['id']}/complete",
+            headers=driver_headers,
+        )
+        assert r.status_code == 200, r.text
+
+        ledger = client.get(
+            "/api/v1/drivers/me/ledger",
+            headers=driver_headers,
+        ).json()["items"]
+        fee_entries = [e for e in ledger if e["entry_type"] == "FIXED_RIDE_FEE"]
+        assert len(fee_entries) == 1, fee_entries
+        assert fee_entries[0]["amount_hkd"] == "-15.00"
+        assert fee_entries[0]["order_id"] == order["id"]
+        assert fee_entries[0]["balance_after_hkd"] == "485.00"
+
+    async def test_meter_complete_does_not_post_fixed_fee(self, client):
+        driver = _mk_active_driver(client, "+85260009920")
+        driver_headers = {"Authorization": f"Bearer {driver['token']}"}
+
+        passenger_token = client.activate("+85260009921")
+        order = _airport_order(passenger_token, client)
+        assert order["fare_mode"] == "METER"
+
+        r = client.post(
+            f"/api/v1/orders/{order['id']}/grab",
+            headers=driver_headers,
+        )
+        assert r.status_code == 200, r.text
+
+        r = client.post(
+            f"/api/v1/orders/{order['id']}/arrive",
+            headers=driver_headers,
+        )
+        assert r.status_code == 200, r.text
+
+        r = client.post(
+            f"/api/v1/orders/{order['id']}/start",
+            headers=driver_headers,
+        )
+        assert r.status_code == 200, r.text
+
+        r = client.post(
+            f"/api/v1/orders/{order['id']}/complete",
+            headers=driver_headers,
+        )
+        assert r.status_code == 200, r.text
+
+        ledger = client.get(
+            "/api/v1/drivers/me/ledger",
+            headers=driver_headers,
+        ).json()["items"]
+        assert all(e["entry_type"] != "FIXED_RIDE_FEE" for e in ledger)
 
     async def test_noncompetitive_offer_stays_meter(self, client):
         _mk_premium(client)
