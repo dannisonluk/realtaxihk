@@ -127,6 +127,15 @@
 
 ## Last updated
 
+- 2026-10-05（本 agent：**nearby filters Phase 1 完成**——司機「接單」列表 server-side 篩選）
+  - Backend：`GET /api/v1/orders/nearby` 新增 5 個 optional filter（`fare_mode` / `destination_area` / `premium_destination_id` / `requires` / `excludes`），全部 AND 組合；無 filter 時**回應 byte-for-byte 不變**（舊客戶零影響）。
+  - 兩條原則：**value validation 由 server 做**（未知值 → 422，唔會靜靜地 match 唔到任何嘢）；**predicate 一定在 DB 做**（PostGIS `pickup_location` 過濾後才取 id，唔受 Redis geo 候選上限所限）。
+  - Changes：`app/api/orders.py`（+131）、`app/core/region.py`（area 封閉集 + `is_valid_area`，+15）、`app/services/order/geo_service.py`（候選上限參數化，filtered query 用 200 vs 預設 50，+18）
+  - Mobile mirror：新檔 `mobile/lib/models/nearby_filter.dart`（query contract mirror + copyWith sentinel + `==`）、`mobile/lib/state/nearby_filter.dart`（`NearbyFilterController` Notifier + `filteredNearbyOrdersProvider` family，family key 含 filter）；改 `mobile/lib/data/order_repository.dart`（`nearby(filter:)`）、`mobile/lib/features/driver/driver_jobs_screen.dart`（filter chip row + 「清除篩選」空狀態 + 改用 filtered provider）
+  - Tests：`tests/api/test_nearby_filters.py` 新檔 **17 passed**（含 422 validation、未知 area、malformed UUID、AND 組合、animal presence/exclude）；mobile harness `tool/run_tests.dart` +5 → **139 passed 0 failed**
+  - **注意（重要）**：`mobile/lib/models/order.dart` 嘅 `fareMode` 欄位**現時只存在於其他 agent 未 commit 嘅版本**，所以我冇加列表上嘅「一口價」badge（會令我自己嘅 commit 編譯唔到）。等 `order.dart` 入咗 HEAD 之後，可加一行 `_fareModeChip(order)`。
+  - 唔知呢個係咩嘅話：`filteredNearbyOrdersProvider` 取代咗 `nearbyOrdersProvider` 嘅使用，但**冇刪** `nearbyOrdersProvider`（`mobile/lib/state/data_providers.dart` 仍係其他 agent WIP，唔碰）。
+  - 順帶一提：`mobile/tool/run_tests.dart` 有一輪我用 `dart format` 意外令全檔重排，已 `git checkout` 還原、只重施自己嘅改動（diff 純 +77）。
 - 2026-10-05（本 agent，建立檔）
 - 2026-10-05（其他 agent：migration deep scan 完成並 commit `69c4484`／`e5454e5`；已更新本檔進度）
 - 2026-10-05（記錄 fixed-fare fee ledger gap 待接手）

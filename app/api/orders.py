@@ -41,6 +41,7 @@ from app.api.schemas import OrderOut, OrderPageOut
 from app.core.db import get_session, get_session_factory
 from app.core.deps import Principal, require_active_user, require_phone_current
 from app.core.exceptions import BusinessRuleError
+from app.core.region import ALL_AREAS, is_valid_area
 from app.core.service_area import require_in_hong_kong
 from app.models import (
     DriverProfile,
@@ -65,6 +66,14 @@ _ORDER_WINDOW_S = 60
 # There are exactly 8 tunnels in the fare engine's Tunnel enum; anything beyond
 # that is either a mistake or an attack.
 _MAX_TUNNELS = 8
+
+# Redis candidate window for `GET /orders/nearby`. Unfiltered, the nearest 50 is
+# the whole answer and the SQL pass only re-validates them. Filtered, the window
+# is the *input* to the predicates, so it has to be wide enough that a filter
+# does not starve on its own cap — 200 keeps a dense-area poll bounded while
+# leaving a filtered query able to find its rows.
+_GEO_CANDIDATES = 50
+_GEO_CANDIDATES_FILTERED = 200
 
 
 def _redis(request: Request):
@@ -91,6 +100,34 @@ class RideRequirementsIn(BaseModel):
     no_smoke: bool = False
     no_perfume: bool = False
     animal: AnimalDetailIn | None = None
+
+
+# The filterable requirement keys, derived from the schema above rather than
+# restated, so a new requirement cannot be added to `RideRequirementsIn` and
+# silently stay unfilterable. The four flags are queried as booleans; `animal`
+# is a structured detail, so "carrying one" is answered by presence instead of
+# by truthiness — casting an object to boolean would raise at runtime rather
+# than return a row.
+_ANIMAL_KEY = "animal"
+_REQUIREMENT_KEYS = frozenset(RideRequirementsIn.model_fields) - {_ANIMAL_KEY}
+_ALL_REQUIREMENT_KEYS = frozenset(RideRequirementsIn.model_fields)
+
+
+def _split_keys(values: list[str] | None) -> list[str]:
+    """Flatten `?k=a,b` and `?k=a&k=b` into one ordered, de-duplicated list.
+
+    Both spellings are in the wild: a form-built query joins with `&`, a
+    hand-built one tends to use commas. Accepting only one of them would make
+    the other mean "filter on the literal string 'a,b'", i.e. a filter that
+    silently matches nothing — the exact failure this endpoint refuses.
+    """
+    out: list[str] = []
+    for raw in values or ():
+        for part in raw.split(","):
+            key = part.strip()
+            if key and key not in out:
+                out.append(key)
+    return out
 
 
 class OrderCreateIn(BaseModel):
@@ -235,31 +272,114 @@ async def nearby_orders(
     lat: Annotated[float, Query(ge=22.1, le=22.6)],
     lng: Annotated[float, Query(ge=113.8, le=114.5)],
     radius_km: Annotated[float, Query(ge=0.5, le=10)] = 3.0,
+    fare_mode: Annotated[OrderFareMode | None, Query()] = None,
+    destination_area: Annotated[str | None, Query(max_length=24)] = None,
+    premium_destination_id: Annotated[uuid.UUID | None, Query()] = None,
+    requires: Annotated[list[str] | None, Query()] = None,
+    excludes: Annotated[list[str] | None, Query()] = None,
     user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
+    """Open orders near the driver, optionally narrowed (Phase 1 filters).
+
+    Every filter is optional and AND-combined; with none supplied the behaviour
+    is byte-for-byte what it was before, so existing clients are unaffected.
+    `requires` and `excludes` accept either `a,b` or repeated `a&b=` and read
+    the passenger's frozen requirements — never the caller's own declared
+    environment.
+
+    Two rules govern the whole set, and both are deliberate:
+
+    * **A filter is a predicate on the order, not on the driver.** `requires`
+      matches the requirements the *passenger* froze onto the order — it does
+      not consult the caller's declared `in_car_environment_json`. The server
+      therefore answers "which orders asked for X", and the client decides
+      whether the driver can honour X. Inferring driver capability here would
+      silently hide orders from a driver who could have taken them.
+    * **An unanswerable filter is a 422, never an empty page.** An unknown area
+      code or requirement key cannot match any row, so accepting it would make
+      a typo indistinguishable from "nothing nearby" — the one reading a driver
+      must be able to trust.
+
+    Filters run in SQL, against the authoritative rows. Redis only supplies the
+    distance window, and because that window is applied *before* the predicates
+    it is widened whenever a filter is present: at the default cap of 50, a
+    driver filtering for airport runs could be handed an empty list purely
+    because the nearest 50 happened to be somewhere else. The SQL `status`
+    predicate remains the real gate, exactly as before.
+    """
     import logging
 
+    wants = _split_keys(requires)
+    avoids = _split_keys(excludes)
+    if destination_area is not None and not is_valid_area(destination_area):
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown destination_area; expected one of {sorted(ALL_AREAS)}",
+        )
+    for name, keys in (("requires", wants), ("excludes", avoids)):
+        unknown = sorted(set(keys) - _ALL_REQUIREMENT_KEYS)
+        if unknown:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"unknown {name}: {unknown}; expected one of "
+                    f"{sorted(_ALL_REQUIREMENT_KEYS)}"
+                ),
+            )
+
+    filtering = any(
+        (
+            fare_mode is not None,
+            destination_area is not None,
+            premium_destination_id is not None,
+            bool(wants),
+            bool(avoids),
+        )
+    )
     try:
         ids = await GeoService(request.app.state.redis_factory()).nearby_order_ids(
-            lat, lng, radius_km
+            lat,
+            lng,
+            radius_km,
+            count=_GEO_CANDIDATES_FILTERED if filtering else _GEO_CANDIDATES,
         )
     except Exception:  # P2-10: Redis down -> fail-open dispatch, not a 500
         logging.getLogger("realtaxihk.orders").exception("nearby: geo index unavailable")
         return {"items": [], "degraded": True}
     if not ids:
         return {"items": []}
-    orders = (
-        (
-            await session.execute(
-                select(Order)
-                .where(Order.id.in_([uuid.UUID(i) for i in ids]))
-                .where(Order.status == OrderStatus.BROADCASTING)
-            )
-        )
-        .scalars()
-        .all()
+    q = (
+        select(Order)
+        .where(Order.id.in_([uuid.UUID(i) for i in ids]))
+        .where(Order.status == OrderStatus.BROADCASTING)
     )
+    if fare_mode is not None:
+        q = q.where(Order.fare_mode == fare_mode)
+    if destination_area is not None:
+        q = q.where(Order.destination_area == destination_area)
+    if premium_destination_id is not None:
+        q = q.where(Order.premium_destination_id == premium_destination_id)
+    for key in wants:
+        if key == _ANIMAL_KEY:
+            # `IS NOT NULL` on the JSONB key, not a boolean cast: an animal is
+            # an object, and "carries one" is the only sensible reading.
+            q = q.where(Order.requirements_json[_ANIMAL_KEY].is_not(None))
+        else:
+            # `requirements_json` is NULL for an order with no requirements, so
+            # the cast yields NULL and the predicate is not satisfied —
+            # correct: such an order cannot promise a requirement it never
+            # recorded. An explicit `false` is likewise not a promise.
+            q = q.where(Order.requirements_json[key].as_boolean().is_(True))
+    for key in avoids:
+        if key == _ANIMAL_KEY:
+            # Missing key -> the JSONB extraction is NULL, `IS NULL` holds, so
+            # the order stays in the result. That is the wanted reading:
+            # "no pets in my car" must not hide orders that never mentioned one.
+            q = q.where(Order.requirements_json[_ANIMAL_KEY].is_(None))
+        else:
+            q = q.where(Order.requirements_json[key].as_boolean().is_not(True))
+    orders = (await session.execute(q)).scalars().all()
     # Two filters, not one, and both are needed. Redis holds the *candidate*
     # set ranked by distance, but it is not authoritative: an id can linger
     # after the order was grabbed or cancelled (the ZREM in GrabService is

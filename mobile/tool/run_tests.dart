@@ -38,6 +38,7 @@ import 'package:hkfastdc_mobile/models/enums.dart';
 import 'package:hkfastdc_mobile/models/fleet.dart';
 import 'package:hkfastdc_mobile/models/identity.dart';
 import 'package:hkfastdc_mobile/models/ledger.dart';
+import 'package:hkfastdc_mobile/models/nearby_filter.dart';
 import 'package:hkfastdc_mobile/models/order.dart';
 import 'package:hkfastdc_mobile/models/refund.dart';
 import 'package:hkfastdc_mobile/models/trip.dart';
@@ -1657,6 +1658,82 @@ void _identityTests() {
       expectFalse(AuthOutcome.fromJson(body).created);
       body.remove('created');
       expectFalse(AuthOutcome.fromJson(body).created);
+    });
+  });
+
+  group('NearbyFilter', () {
+    test('an untouched filter sends no query parameters at all', () {
+      // This is the compatibility claim: a client that never opens the filter
+      // row must keep making the exact request it made before the feature.
+      expect(const NearbyFilter().isEmpty, true);
+      expect(const NearbyFilter().toQuery().isEmpty, true);
+    });
+
+    test('a set filter sends the documented parameter names', () {
+      const NearbyFilter f = NearbyFilter(
+        fareMode: 'FIXED',
+        destinationArea: 'AIRPORT',
+        premiumDestinationId: '8b1f0c3e-0000-4000-8000-000000000001',
+        requires: <String>{'silent_ride', 'no_smoke'},
+        excludes: <String>{'animal'},
+      );
+      final Map<String, dynamic> q = f.toQuery();
+      expect(q['fare_mode'], 'FIXED');
+      expect(q['destination_area'], 'AIRPORT');
+      expect(q['premium_destination_id'], '8b1f0c3e-0000-4000-8000-000000000001');
+      // The harness compares with `==`, which on a List is identity and on a Set
+      // is never content equality — sort into a list and compare element-wise.
+      expectList(
+        (q['requires'] as String).split(',')..sort(),
+        <String>['no_smoke', 'silent_ride'],
+      );
+      expect(q['excludes'], 'animal');
+      expect(f.isEmpty, false);
+    });
+
+    test('copyWith(null) clears a value instead of keeping it', () {
+      // The sentinel exists for exactly this: `null` is a meaningful value here
+      // ("不限"), so `?? this.x` would make the clear button do nothing.
+      const NearbyFilter f = NearbyFilter(fareMode: 'METER', destinationArea: 'NT');
+      expect(f.copyWith(fareMode: null).fareMode, null);
+      expect(f.copyWith(fareMode: null).destinationArea, 'NT');
+      expect(f.copyWith().fareMode, 'METER');
+    });
+
+    test('equality ignores set order, so the family key does not churn', () {
+      // `filteredNearbyOrdersProvider` is keyed on this object: two filters that
+      // mean the same thing must not produce two cache entries and two requests.
+      const NearbyFilter a = NearbyFilter(
+        fareMode: 'METER',
+        requires: <String>{'no_smoke', 'silent_ride'},
+      );
+      const NearbyFilter b = NearbyFilter(
+        fareMode: 'METER',
+        requires: <String>{'silent_ride', 'no_smoke'},
+      );
+      expectTrue(a == b);
+      expect(a.hashCode, b.hashCode);
+      expectFalse(a == b.copyWith(fareMode: 'FIXED'));
+    });
+
+    test('the area and fare-mode mirrors are self-consistent', () {
+      // `destinationArea`/`fareMode` are validated server-side against the same
+      // closed sets; a label without a code (or vice versa) is drift the UI
+      // would show as a blank menu row.
+      expect(NearbyFilter.areaCodes.length, 5);
+      expectList(
+        NearbyFilter.areaLabelsZh.keys.toList()..sort(),
+        NearbyFilter.areaCodes.toList()..sort(),
+      );
+      expectList(
+        NearbyFilter.fareModeLabelsZh.keys.toList()..sort(),
+        <String>['FIXED', 'METER'],
+      );
+      expectFalse(NearbyFilter.environmentKeys.contains(NearbyFilter.animalKey));
+      expectList(
+        NearbyFilter.environmentLabelsZh.keys.toList()..sort(),
+        NearbyFilter.environmentKeys.toList()..sort(),
+      );
     });
   });
 }

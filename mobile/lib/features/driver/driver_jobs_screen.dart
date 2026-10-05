@@ -8,9 +8,10 @@ import '../../core/location/location_service.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/enums.dart';
+import '../../models/nearby_filter.dart';
 import '../../models/order.dart';
 import '../../router/app_router.dart';
-import '../../state/data_providers.dart';
+import '../../state/nearby_filter.dart';
 import '../../state/providers.dart';
 import '../auth/phone_unlock_screen.dart';
 import '../shared/map_panel.dart';
@@ -90,7 +91,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
     setState(() => _busy = true);
     try {
       final Order grabbed = await ref.read(orderRepositoryProvider).grab(order.id);
-      ref.invalidate(nearbyOrdersProvider);
+      ref.invalidate(filteredNearbyOrdersProvider);
       if (mounted) {
         await context.push('${Routes.driverActiveTrip}/${grabbed.id}');
       }
@@ -104,7 +105,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
         if (!offerPhoneUnlockIfNeeded(context, e)) {
           showError(context, e);
         }
-        ref.invalidate(nearbyOrdersProvider);
+        ref.invalidate(filteredNearbyOrdersProvider);
       }
     } finally {
       if (mounted) {
@@ -194,78 +195,205 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
   }
 
   Widget _nearbyList(MapPoint me) {
+    final NearbyFilter filter = ref.watch(nearbyFilterProvider);
     final AsyncValue<NearbyOrders> nearby = ref.watch(
-      nearbyOrdersProvider((lat: me.lat, lng: me.lng, radiusKm: 3)),
+      filteredNearbyOrdersProvider((
+        lat: me.lat,
+        lng: me.lng,
+        radiusKm: 3,
+        filter: filter,
+      )),
     );
 
-    return AsyncValueView<NearbyOrders>(
-      value: nearby,
-      onRetry: () => ref.invalidate(nearbyOrdersProvider),
-      builder: (NearbyOrders data) {
-        // P2-10: the server fails open with an empty page when Redis is down.
-        // "Searching" is the honest message — there may well be orders.
-        if (data.degraded) {
-          return const EmptyView(
-            icon: Icons.cloud_off,
-            title: '暫時無法搜尋附近訂單',
-            subtitle: '定位服務暫時不可用，請稍後重新整理。',
-          );
-        }
-        if (data.items.isEmpty) {
-          return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(nearbyOrdersProvider),
-            child: ListView(
-              children: const <Widget>[
-                SizedBox(height: 120),
-                EmptyView(icon: Icons.search_off, title: '附近沒有待接訂單', subtitle: '下拉重新整理。'),
-              ],
-            ),
-          );
-        }
-        return RefreshIndicator(
-          onRefresh: () async => ref.invalidate(nearbyOrdersProvider),
-          child: ListView.separated(
-            padding: const EdgeInsets.all(AppTheme.space4),
-            itemCount: data.items.length,
-            separatorBuilder: (BuildContext context, int index) =>
-                const SizedBox(height: AppTheme.space3),
-            itemBuilder: (BuildContext context, int index) {
-              final Order order = data.items[index];
-              return Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppTheme.space4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      children: <Widget>[
+        _filterBar(filter),
+        Expanded(
+          child: AsyncValueView<NearbyOrders>(
+            value: nearby,
+            onRetry: () => ref.invalidate(filteredNearbyOrdersProvider),
+            builder: (NearbyOrders data) {
+              // P2-10: the server fails open with an empty page when Redis is
+              // down. "Searching" is the honest message — there may well be
+              // orders. A filter that matches nothing is a different story,
+              // and says so below.
+              if (data.degraded) {
+                return const EmptyView(
+                  icon: Icons.cloud_off,
+                  title: '暫時無法搜尋附近訂單',
+                  subtitle: '定位服務暫時不可用，請稍後重新整理。',
+                );
+              }
+              if (data.items.isEmpty) {
+                final bool filtered = !filter.isEmpty;
+                return RefreshIndicator(
+                  onRefresh: () async => ref.invalidate(filteredNearbyOrdersProvider),
+                  child: ListView(
                     children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          Text(
-                            order.taxiType.labelZh,
-                            style: Theme.of(context).textTheme.titleMedium,
+                      const SizedBox(height: 120),
+                      EmptyView(
+                        icon: filtered ? Icons.filter_alt_off : Icons.search_off,
+                        title: filtered ? '沒有符合條件的訂單' : '附近沒有待接訂單',
+                        subtitle: filtered ? '條件太窄，試下放寬。' : '下拉重新整理。',
+                      ),
+                      if (filtered)
+                        Center(
+                          child: TextButton.icon(
+                            onPressed: () => ref.read(nearbyFilterProvider.notifier).clear(),
+                            icon: const Icon(Icons.clear_all),
+                            label: const Text('清除篩選'),
                           ),
-                          const Spacer(),
-                          MoneyText(order.estimatedTotalHkd),
-                        ],
-                      ),
-                      const SizedBox(height: AppTheme.space2),
-                      if (order.fare.tunnels.isNotEmpty)
-                        Text(
-                          '經 ${order.fare.tunnels.map((Tunnel t) => t.labelZh).join('、')}',
-                          style: Theme.of(context).textTheme.bodySmall,
                         ),
-                      const SizedBox(height: AppTheme.space3),
-                      FilledButton(
-                        onPressed: _busy ? null : () => _grab(order),
-                        child: const Text('接單'),
-                      ),
                     ],
                   ),
+                );
+              }
+              return RefreshIndicator(
+                onRefresh: () async => ref.invalidate(filteredNearbyOrdersProvider),
+                child: ListView.separated(
+                  padding: const EdgeInsets.all(AppTheme.space4),
+                  itemCount: data.items.length,
+                  separatorBuilder: (BuildContext context, int index) =>
+                      const SizedBox(height: AppTheme.space3),
+                  itemBuilder: (BuildContext context, int index) {
+                    final Order order = data.items[index];
+                    return Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppTheme.space4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Row(
+                              children: <Widget>[
+                                Text(
+                                  order.taxiType.labelZh,
+                                  style: Theme.of(context).textTheme.titleMedium,
+                                ),
+                                const Spacer(),
+                                MoneyText(order.estimatedTotalHkd),
+                              ],
+                            ),
+                            const SizedBox(height: AppTheme.space2),
+                            if (order.fare.tunnels.isNotEmpty)
+                              Text(
+                                '經 ${order.fare.tunnels.map((Tunnel t) => t.labelZh).join('、')}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            const SizedBox(height: AppTheme.space3),
+                            FilledButton(
+                              onPressed: _busy ? null : () => _grab(order),
+                              child: const Text('接單'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
               );
             },
           ),
-        );
-      },
+        ),
+      ],
+    );
+  }
+
+  /// The filter row. Every control writes into [nearbyFilterProvider], whose
+  /// value is part of the family key of [filteredNearbyOrdersProvider] — so a
+  /// change refetches from the server instead of filtering on the device.
+  ///
+  /// Server-side is the only correct place for this: the geo index is capped at
+  /// a fixed number of candidates, and filtering a capped list on the device
+  /// would show the driver fewer orders than exist.
+  Widget _filterBar(NearbyFilter filter) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(
+        AppTheme.space4,
+        AppTheme.space2,
+        AppTheme.space4,
+        0,
+      ),
+      child: Row(
+        children: <Widget>[
+          _filterMenu(
+            label: '收費模式',
+            icon: Icons.receipt_long,
+            current: filter.fareMode,
+            options: NearbyFilter.fareModeLabelsZh,
+            onPick: (String? value) => ref
+                .read(nearbyFilterProvider.notifier)
+                .patch((NearbyFilter f) => f.copyWith(fareMode: value)),
+          ),
+          const SizedBox(width: AppTheme.space2),
+          _filterMenu(
+            label: '目的地地區',
+            icon: Icons.place_outlined,
+            current: filter.destinationArea,
+            options: NearbyFilter.areaLabelsZh,
+            onPick: (String? value) => ref
+                .read(nearbyFilterProvider.notifier)
+                .patch((NearbyFilter f) => f.copyWith(destinationArea: value)),
+          ),
+          const SizedBox(width: AppTheme.space2),
+          FilterChip(
+            avatar: const Icon(Icons.volume_off, size: 18),
+            label: const Text('靜音'),
+            selected: filter.requires.contains('silent_ride'),
+            onSelected: (bool _) =>
+                ref.read(nearbyFilterProvider.notifier).toggleRequires('silent_ride'),
+          ),
+          const SizedBox(width: AppTheme.space2),
+          FilterChip(
+            avatar: const Icon(Icons.smoke_free, size: 18),
+            label: const Text('無煙'),
+            selected: filter.requires.contains('no_smoke'),
+            onSelected: (bool _) =>
+                ref.read(nearbyFilterProvider.notifier).toggleRequires('no_smoke'),
+          ),
+          const SizedBox(width: AppTheme.space2),
+          FilterChip(
+            avatar: const Icon(Icons.pets, size: 18),
+            label: const Text('可載寵物'),
+            selected: filter.excludes.contains(NearbyFilter.animalKey),
+            onSelected: (bool _) =>
+                ref.read(nearbyFilterProvider.notifier).toggleExcludes(NearbyFilter.animalKey),
+          ),
+          if (!filter.isEmpty) ...<Widget>[
+            const SizedBox(width: AppTheme.space2),
+            ActionChip(
+              avatar: const Icon(Icons.clear, size: 18),
+              label: const Text('清除'),
+              onPressed: () => ref.read(nearbyFilterProvider.notifier).clear(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// A tappable chip that opens a `不限` + options menu. Used for the two
+  /// single-valued filters; the boolean requirements are plain [FilterChip]s.
+  Widget _filterMenu({
+    required String label,
+    required IconData icon,
+    required String? current,
+    required Map<String, String> options,
+    required ValueChanged<String?> onPick,
+  }) {
+    return PopupMenuButton<String?>(
+      onSelected: onPick,
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<String?>>[
+        const PopupMenuItem<String?>(value: null, child: Text('不限')),
+        for (final MapEntry<String, String> entry in options.entries)
+          PopupMenuItem<String?>(value: entry.key, child: Text(entry.value)),
+      ],
+      child: Chip(
+        avatar: Icon(icon, size: 18),
+        label: Text(current == null ? label : '$label：${options[current] ?? current}'),
+        deleteIcon: current == null ? null : const Icon(Icons.close, size: 16),
+        onDeleted: current == null ? null : () => onPick(null),
+      ),
     );
   }
 }

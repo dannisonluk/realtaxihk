@@ -26,14 +26,30 @@ class GeoService:
     async def remove_order(self, order_id: str) -> None:
         await self.redis.zrem(GEO_ORDERS_KEY, str(order_id))
 
-    async def nearby_order_ids(self, lat: float, lng: float, radius_km: float) -> list[str]:
+    async def nearby_order_ids(
+        self,
+        lat: float,
+        lng: float,
+        radius_km: float,
+        count: int = 50,
+    ) -> list[str]:
+        """Candidate order ids, nearest first, capped at `count`.
+
+        The cap is the difference between "nearest 50" and "all of them", and it
+        exists so a dense area cannot turn one map poll into an unbounded read.
+        Callers that intend to filter the result in SQL must raise it: the Redis
+        window is applied *before* any predicate, so a filtered query with the
+        default cap silently answers a narrower question than it was asked. The
+        caller owns that budget decision — see `nearby_orders` in
+        `app/api/orders.py`.
+        """
         res = await self.redis.geosearch(
             GEO_ORDERS_KEY,
             longitude=lng,
             latitude=lat,
             radius=radius_km,
             unit="km",
-            count=50,
+            count=count,
             sort="ASC",
         )
         return [str(x) for x in res]

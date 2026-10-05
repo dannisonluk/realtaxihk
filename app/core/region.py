@@ -31,6 +31,21 @@ AREA_NT = "NT"
 AREA_AIRPORT = "AIRPORT"
 AREA_LANTAU = "LANTAU"
 
+# The closed set, in one place, because it is now a **filter** input and not
+# just an output. `destination_area()` can only ever return one of these (or
+# None), so a caller passing anything else is not asking a narrower question —
+# it is asking a question with no answer, and must be rejected rather than
+# silently matched against nothing. A filter that quietly returns an empty page
+# for a typo is worse than a 422: the driver reads it as "no orders nearby".
+ALL_AREAS: frozenset[str] = frozenset(
+    {AREA_HK_ISLAND, AREA_KOWLOON, AREA_NT, AREA_AIRPORT, AREA_LANTAU}
+)
+
+
+def is_valid_area(code: str) -> bool:
+    """True when `code` is one of the stable wire codes above."""
+    return code in ALL_AREAS
+
 # Airport points for the coarse area test (Airport Express / T1/T2 / SkyCity).
 _AIRPORT_POINTS = ((22.308, 113.9185), (22.315, 113.935), (22.321, 113.944))
 _AIRPORT_RADIUS_KM = 2.0

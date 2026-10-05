@@ -1,4 +1,5 @@
 import '../core/network/api_client.dart';
+import '../models/nearby_filter.dart';
 import '../models/order.dart';
 import '../models/receipt.dart';
 
@@ -45,14 +46,25 @@ class OrderRepository {
   /// Returns `degraded: true` with an empty list when the Redis geo index is
   /// unavailable; the server fails open rather than 500-ing the driver's map
   /// (`P2-10`). Show "searching", not "no orders", in that case.
+  ///
+  /// [filter] is appended to the query only where set, so an unfiltered call
+  /// stays byte-identical to the pre-filter client. The server validates each
+  /// value and answers 422 for an unknown one — a filter that silently matched
+  /// nothing would be the worse failure (`tests/api/test_nearby_filters.py`).
   Future<NearbyOrders> nearby({
     required double lat,
     required double lng,
     double radiusKm = 3,
+    NearbyFilter? filter,
   }) async {
     final Map<String, dynamic> json = await _api.get(
       '/api/v1/orders/nearby',
-      query: <String, dynamic>{'lat': lat, 'lng': lng, 'radius_km': radiusKm},
+      query: <String, dynamic>{
+        'lat': lat,
+        'lng': lng,
+        'radius_km': radiusKm,
+        ...?filter?.toQuery(),
+      },
     );
     return NearbyOrders.fromJson(json);
   }
