@@ -1241,3 +1241,34 @@ worth anything if that is written down:
 - admin-web `src/` (47 files) — AC-06…13 unverified
 - `tests/` (45 files, 17,439 lines)
 - `alembic/versions/`
+
+## 2026-10-05 migration-chain deep scan (sibling coordination)
+
+After another agent committed Phase-2 fixed-fare/premium backend (`a2b9f9f`, `7a06bef`),
+I re-scanned the Alembic chain and SQLAlchemy models end to end. Three migration defects
+were real and fixed in `69c4484`:
+
+- `5c8b2f0a1e43` used `sa.JSONB()` with no JSONB import and built a non-unique
+  `uq_premium_destinations_code` plus a second `ix_..._code`; the model declares
+  `unique=True, index=True`, which SQLAlchemy renders as one unique `ix_..._code`.
+  Migration now imports `JSONB`, creates the unique index once, and drops only that
+  index in downgrade. **CONFIRMED.**
+- `5c8b2f0a1e43` omitted `uq_driver_payment_method` unique constraint and
+  `ix_driver_payment_methods_driver_profile_id` that the model declares; both are now
+  in upgrade/downgrade. **CONFIRMED.**
+- `8f2a1c5d3b40` used index names/`fare_mode` type inconsistent with the model
+  (`FixedPriceOffer` canonical in `app/models/fixed_offer.py`); aligned names and
+  `ck_orders_fare_mode` enum. **CONFIRMED.**
+
+Also verified in this pass:
+- Alembic has exactly one head (`f1c2d3e4a5b6`); no residual sibling migration fork.
+- `tests/infra/test_migration_schema_parity.py` = 3 passed.
+- `tests/api/test_security_hardening.py` = 48 passed; `/api/v1/destinations` is a
+  deliberate public metadata route and is whitelisted, not a missing live-state guard.
+- `tests/api/test_premium_destinations.py` = 5 passed; `test_fixed_fare_offers.py` = 4 passed.
+- admin-web `npm run typecheck` = 0 errors.
+- Mobile WIP `FixedOffer`/`Order` JSON fields align with backend schemas. Not committed;
+  still sibling-owned.
+
+No new HIGH/MEDIUM findings from this scan. The earlier audit report remains the
+authority for unresolved findings.
