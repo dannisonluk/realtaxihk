@@ -17,15 +17,16 @@ Only the offer's owner may grab a FIXED order; the backend enforces that in
 `GrabService`, not the client.
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "8f2a1c5d3b40"
-down_revision: Union[str, Sequence[str], None] = "5c8b2f0a1e43"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "5c8b2f0a1e43"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -49,10 +50,17 @@ def upgrade() -> None:
             ["premium_destination_id"], ["premium_destinations.id"], ondelete="SET NULL"
         ),
     )
-    op.create_index("ix_fixed_price_offers_driver", "fixed_price_offers", ["driver_profile_id"])
     op.create_index(
-        "ix_fixed_price_offers_premium", "fixed_price_offers", ["premium_destination_id"]
+        "ix_fixed_price_offers_driver_profile_id",
+        "fixed_price_offers",
+        ["driver_profile_id"],
     )
+    op.create_index(
+        "ix_fixed_price_offers_premium_destination_id",
+        "fixed_price_offers",
+        ["premium_destination_id"],
+    )
+    op.create_index("ix_fixed_price_offers_status", "fixed_price_offers", ["status"])
     op.create_index(
         "uq_fixed_offer_active_route",
         "fixed_price_offers",
@@ -66,7 +74,20 @@ def upgrade() -> None:
         postgresql_where=sa.text("status = 'ACTIVE'"),
     )
 
-    op.add_column("orders", sa.Column("fare_mode", sa.String(8), nullable=True))
+    op.add_column(
+        "orders",
+        sa.Column(
+            "fare_mode",
+            sa.Enum(
+                "METER",
+                "FIXED",
+                name="ck_orders_fare_mode",
+                native_enum=False,
+                create_constraint=True,
+            ),
+            nullable=True,
+        ),
+    )
     op.add_column("orders", sa.Column("pickup_area", sa.String(24), nullable=True))
     op.add_column("orders", sa.Column("fixed_offer_id", sa.UUID(as_uuid=True), nullable=True))
     op.add_column("orders", sa.Column("driver_price_hkd", sa.Numeric(10, 2), nullable=True))
@@ -80,6 +101,7 @@ def upgrade() -> None:
         ["id"],
         ondelete="SET NULL",
     )
+    op.create_index("ix_orders_fixed_offer_id", "orders", ["fixed_offer_id"])
     op.create_index("ix_orders_fare_mode", "orders", ["fare_mode"])
     # Backfill existing orders as METER so reads never see a NULL fare mode.
     op.execute("UPDATE orders SET fare_mode = 'METER' WHERE fare_mode IS NULL")
@@ -88,6 +110,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index("ix_orders_fare_mode", table_name="orders")
+    op.drop_index("ix_orders_fixed_offer_id", table_name="orders")
     op.drop_constraint("fk_orders_fixed_offer_id", "orders", type_="foreignkey")
     op.drop_column("orders", "passenger_price_hkd")
     op.drop_column("orders", "platform_fee_hkd")
@@ -97,6 +120,7 @@ def downgrade() -> None:
     op.drop_column("orders", "fare_mode")
 
     op.drop_index("uq_fixed_offer_active_route", table_name="fixed_price_offers")
-    op.drop_index("ix_fixed_price_offers_premium", table_name="fixed_price_offers")
-    op.drop_index("ix_fixed_price_offers_driver", table_name="fixed_price_offers")
+    op.drop_index("ix_fixed_price_offers_premium_destination_id", table_name="fixed_price_offers")
+    op.drop_index("ix_fixed_price_offers_driver_profile_id", table_name="fixed_price_offers")
+    op.drop_index("ix_fixed_price_offers_status", table_name="fixed_price_offers")
     op.drop_table("fixed_price_offers")

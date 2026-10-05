@@ -468,6 +468,10 @@ _PUBLIC_PATHS = {
     # the credential instead — stored only as a SHA-256 digest, expiring, and
     # stamped on use. It grants exactly one thing: marking one address verified.
     "/api/v1/identity/email/confirm",
+    # Public metadata: premium destination pins. Places, not people, and the
+    # row set is already filtered to ACTIVE; the admin write surface is where
+    # the live-state guard lives.
+    "/api/v1/destinations",
 }
 
 

@@ -20,16 +20,18 @@ Phase 1 foundation tables/columns for the feature expansion:
   remain valid.
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "5c8b2f0a1e43"
-down_revision: Union[str, Sequence[str], None] = "b7d4e1c9a3f2"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "b7d4e1c9a3f2"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -52,7 +54,7 @@ def upgrade() -> None:
             "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
         ),
     )
-    op.create_index("uq_premium_destinations_code", "premium_destinations", ["code"], unique=True)
+    op.create_index("ix_premium_destinations_code", "premium_destinations", ["code"], unique=True)
     op.create_index("ix_premium_destinations_status", "premium_destinations", ["status"])
 
     op.create_table(
@@ -65,17 +67,52 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["driver_profile_id"], ["driver_profiles.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("driver_profile_id", "method"),
     )
-    op.create_index("uq_driver_payment_method", "driver_payment_methods", ["driver_profile_id", "method"])
+    op.create_unique_constraint(
+        "uq_driver_payment_method",
+        "driver_payment_methods",
+        ["driver_profile_id", "method"],
+    )
+    op.create_index(
+        "ix_driver_payment_methods_driver_profile_id",
+        "driver_payment_methods",
+        ["driver_profile_id"],
+    )
 
     op.add_column(
         "driver_profiles",
-        sa.Column("in_car_environment_json", sa.JSON().with_variant(sa.JSONB(), "postgresql"), nullable=True),
+        sa.Column(
+            "in_car_environment_json", sa.JSON().with_variant(JSONB(), "postgresql"), nullable=True
+        ),
     )
-    op.add_column("orders", sa.Column("requirements_json", sa.JSON().with_variant(sa.JSONB(), "postgresql"), nullable=True))
-    op.add_column("orders", sa.Column("payment_preference_json", sa.JSON().with_variant(sa.JSONB(), "postgresql"), nullable=True))
-    op.add_column("orders", sa.Column("driver_payment_methods_json", sa.JSON().with_variant(sa.JSONB(), "postgresql"), nullable=True))
-    op.add_column("orders", sa.Column("premium_destination_id", sa.UUID(as_uuid=True), nullable=True))
-    op.add_column("orders", sa.Column("premium_destination_json", sa.JSON().with_variant(sa.JSONB(), "postgresql"), nullable=True))
+    op.add_column(
+        "orders",
+        sa.Column(
+            "requirements_json", sa.JSON().with_variant(JSONB(), "postgresql"), nullable=True
+        ),
+    )
+    op.add_column(
+        "orders",
+        sa.Column(
+            "payment_preference_json", sa.JSON().with_variant(JSONB(), "postgresql"), nullable=True
+        ),
+    )
+    op.add_column(
+        "orders",
+        sa.Column(
+            "driver_payment_methods_json",
+            sa.JSON().with_variant(JSONB(), "postgresql"),
+            nullable=True,
+        ),
+    )
+    op.add_column(
+        "orders", sa.Column("premium_destination_id", sa.UUID(as_uuid=True), nullable=True)
+    )
+    op.add_column(
+        "orders",
+        sa.Column(
+            "premium_destination_json", sa.JSON().with_variant(JSONB(), "postgresql"), nullable=True
+        ),
+    )
     op.add_column("orders", sa.Column("destination_area", sa.String(24), nullable=True))
     op.create_foreign_key(
         "fk_orders_premium_destination_id",
@@ -99,9 +136,13 @@ def downgrade() -> None:
     op.drop_column("orders", "requirements_json")
     op.drop_column("driver_profiles", "in_car_environment_json")
 
-    op.drop_index("uq_driver_payment_method", table_name="driver_payment_methods")
+    op.drop_constraint("uq_driver_payment_method", "driver_payment_methods", type_="unique")
+    op.drop_index(
+        "ix_driver_payment_methods_driver_profile_id",
+        table_name="driver_payment_methods",
+    )
     op.drop_table("driver_payment_methods")
 
     op.drop_index("ix_premium_destinations_status", table_name="premium_destinations")
-    op.drop_index("uq_premium_destinations_code", table_name="premium_destinations")
+    op.drop_index("ix_premium_destinations_code", table_name="premium_destinations")
     op.drop_table("premium_destinations")
