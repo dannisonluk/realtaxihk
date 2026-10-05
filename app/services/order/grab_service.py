@@ -19,6 +19,7 @@ lock, the second UPDATE matches zero rows and loses.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from datetime import UTC, datetime
 
@@ -143,6 +144,10 @@ class GrabService:
             # removing a still-available order from the dispatch index.
             await self.redis.zrem("geo:orders:active", str(order_id))
         finally:
-            # Lock always released; a DB failure propagates (order stays BROADCASTING).
-            await self.redis.eval(_RELEASE_LUA, 1, lock_key, lock_token)
+            # Lock always released; a DB failure propagates (order stays
+            # BROADCASTING). Redis may be down at teardown without meaning the
+            # grab failed — the order is already committed, the lock has a TTL,
+            # and every other Redis teardown here is best-effort.
+            with contextlib.suppress(Exception):
+                await self.redis.eval(_RELEASE_LUA, 1, lock_key, lock_token)
         return True

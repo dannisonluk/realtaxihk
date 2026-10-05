@@ -195,12 +195,13 @@ def provisioning_uri(
     return f"otpauth://totp/{label}?" + urllib.parse.urlencode(params)
 
 
-def generate_recovery_codes(count: int = 8, nbytes: int = 5) -> list[str]:
+def generate_recovery_codes(count: int = 8, nbytes: int = 6) -> list[str]:
     """Single-use codes for when the authenticator device is lost.
 
     Without these, a lost phone means a locked-out administrator and a manual
     database edit — which is how a security control turns into an operational
-    incident. Each is ~10 base32 chars (50 bits), high-entropy but typeable.
+    incident. Each is ~9 base32 chars (48 bits from 6 bytes, padded), high-entropy
+    but typeable.
     """
     codes = []
     for _ in range(count):
@@ -213,7 +214,7 @@ def generate_recovery_codes(count: int = 8, nbytes: int = 5) -> list[str]:
 def hash_recovery_code(code: str) -> str:
     """Hash a recovery code for storage.
 
-    A plain SHA-256 (not argon2) is the right choice *here*: the code is 50 bits
+    A plain SHA-256 (not argon2) is the right choice *here*: the code is 48 bits
     of CSPRNG output, so there is no dictionary to attack and no need to be
     slow — while verification has to happen on the login path. The pepper is
     unnecessary for the same reason. Codes are single-use and stored one-way.

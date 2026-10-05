@@ -515,7 +515,7 @@ void _tripEventTests() {
       expectFalse(event.isFatal);
     });
 
-    test('treats only DRIVER_NOT_ACTIVE as fatal', () {
+    test('treats DRIVER_NOT_ACTIVE and OUTSIDE_HK as fatal', () {
       for (final String code in <String>[
         'READ_ONLY',
         'RATE_LIMITED',
@@ -525,9 +525,11 @@ void _tripEventTests() {
         expectFalse(TripErrorEvent(code: code).isFatal, reason: code);
       }
       expectTrue(const TripErrorEvent(code: 'DRIVER_NOT_ACTIVE').isFatal);
+      expectTrue(const TripErrorEvent(code: 'OUTSIDE_HK').isFatal);
     });
 
     test('has Chinese text for every code it knows', () {
+      expect(const TripErrorEvent(code: 'OUTSIDE_HK').messageZh, '座標不在香港範圍內');
       expect(const TripErrorEvent(code: 'BAD_LOCATION').messageZh, '座標不在香港範圍內');
       expect(const TripErrorEvent(code: 'DRIVER_NOT_ACTIVE').messageZh, '司機帳戶未啟用，已停止推送');
       // An unknown code still renders, naming the code.

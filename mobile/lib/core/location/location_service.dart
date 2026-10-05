@@ -8,15 +8,15 @@ enum LocationAccess { granted, denied, deniedForever, serviceDisabled }
 
 /// Thin wrapper over `geolocator`.
 ///
-/// The backend bounds every coordinate to `lat 22.1–22.6, lng 113.8–114.5`
-/// (`_HK_BOUNDS` in `app/api/orders.py`, repeated in `ws.py`), and rejects
-/// anything outside with a 422 or `{"type":"error","code":"BAD_LOCATION"}`. So
-/// [current] returns null rather than a position the server will refuse —
-/// callers then show "locating…" instead of an error the user cannot act on.
+/// The backend's authoritative service-area gate is the `hk_bounds` polygon,
+/// not the coarse box mirrored here. This client check is only a cheap,
+/// advisory pre-filter so a clearly-outside fix is not offered to the server;
+/// the server may still answer an `OUTSIDE_HK` refusal, and callers must
+/// handle that code instead of trusting this box.
 class LocationService {
   const LocationService();
 
-  /// `HONG_KONG_BOUNDS` mirrors the server's own constant.
+  /// Coarse superset box for the cheap reject. The server polygon is the gate.
   static const double minLat = 22.1;
   static const double maxLat = 22.6;
   static const double minLng = 113.8;

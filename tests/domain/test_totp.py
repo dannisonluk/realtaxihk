@@ -310,9 +310,9 @@ class TestRecoveryCodes:
         assert len(set(codes)) == 50
 
     def test_are_high_entropy(self):
-        # 5 bytes = 40 bits minimum; grouping dashes must not reduce that.
+        # 6 bytes = 48 bits minimum; grouping dashes must not reduce that.
         code = generate_recovery_codes(1)[0]
-        assert len(code.replace("-", "")) >= 8
+        assert len(code.replace("-", "")) >= 9
 
     def test_hash_is_stable_and_normalizes_formatting(self):
         code = generate_recovery_codes(1)[0]

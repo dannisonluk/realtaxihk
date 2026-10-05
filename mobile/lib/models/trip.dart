@@ -90,18 +90,19 @@ final class TripAckEvent extends TripEvent {
 }
 
 /// A rejected push. Codes are `READ_ONLY`, `RATE_LIMITED`, `BAD_MESSAGE`,
-/// `BAD_LOCATION`, `DRIVER_NOT_ACTIVE`.
+/// `OUTSIDE_HK`, `DRIVER_NOT_ACTIVE`.
 final class TripErrorEvent extends TripEvent {
   const TripErrorEvent({required this.code});
 
   final String code;
 
-  bool get isFatal => code == 'DRIVER_NOT_ACTIVE';
+  bool get isFatal => code == 'DRIVER_NOT_ACTIVE' || code == 'OUTSIDE_HK';
 
   String get messageZh => switch (code) {
     'READ_ONLY' => '乘客連線不可推送位置',
     'RATE_LIMITED' => '位置更新過於頻繁',
     'BAD_MESSAGE' => '位置訊息格式錯誤',
+    'OUTSIDE_HK' => '座標不在香港範圍內',
     'BAD_LOCATION' => '座標不在香港範圍內',
     'DRIVER_NOT_ACTIVE' => '司機帳戶未啟用，已停止推送',
     _ => '位置推送失敗（$code）',

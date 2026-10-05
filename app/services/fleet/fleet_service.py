@@ -27,6 +27,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.exceptions import BusinessRuleError, DuplicateReferenceError
@@ -145,6 +146,22 @@ class FleetService:
     ) -> Fleet:
         fleet = await self.require(fleet_id)
         if name is not None:
+            # Same pre-check as create(): the unique index is the race backstop,
+            # but a rename into a taken name should answer a clean 400, not a 500.
+            clash = (
+                (
+                    await self.session.execute(
+                        select(Fleet).where(Fleet.name == name, Fleet.id != fleet_id)
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            if clash is not None:
+                raise BusinessRuleError(
+                    "a fleet with that name already exists",
+                    {"field": "name", "fleet_id": str(clash.id)},
+                )
             fleet.name = name
         if status is not None:
             fleet.status = status
@@ -510,30 +527,59 @@ class FleetSettlementService:
         # Upsert the aggregate: one row per (fleet, week), so a re-run updates
         # what the operator is shown rather than appending a second version.
         async with self.session_factory() as session:
-            run = (
-                (
-                    await session.execute(
-                        select(FleetSettlementRun).where(
-                            FleetSettlementRun.fleet_id == fleet_id,
-                            FleetSettlementRun.period == period,
+            try:
+                run = (
+                    (
+                        await session.execute(
+                            select(FleetSettlementRun).where(
+                                FleetSettlementRun.fleet_id == fleet_id,
+                                FleetSettlementRun.period == period,
+                            )
                         )
                     )
+                    .scalars()
+                    .first()
                 )
-                .scalars()
-                .first()
-            )
-            if run is None:
-                run = FleetSettlementRun(fleet_id=fleet_id, period=period)
-                session.add(run)
-            run.fee_hkd = per_member
-            run.discount_percent = discount
-            run.member_count = len(member_ids)
-            run.charged = charged
-            run.skipped = skipped
-            run.failed = failed
-            run.tampered = tampered
-            run.collected_hkd = collected
-            await session.commit()
+                if run is None:
+                    run = FleetSettlementRun(fleet_id=fleet_id, period=period)
+                    session.add(run)
+                run.fee_hkd = per_member
+                run.discount_percent = discount
+                run.member_count = len(member_ids)
+                run.charged = charged
+                run.skipped = skipped
+                run.failed = failed
+                run.tampered = tampered
+                run.collected_hkd = collected
+                await session.commit()
+            except IntegrityError:
+                # Lost the race for uq_fleet_settlement_period. The per-driver
+                # charges are already idempotent, so re-read and update the row
+                # instead of surfacing a 500 after the settlement succeeded.
+                await session.rollback()
+                run = (
+                    (
+                        await session.execute(
+                            select(FleetSettlementRun).where(
+                                FleetSettlementRun.fleet_id == fleet_id,
+                                FleetSettlementRun.period == period,
+                            )
+                        )
+                    )
+                    .scalars()
+                    .first()
+                )
+                if run is None:  # pragma: no cover - the unique row exists now
+                    raise
+                run.fee_hkd = per_member
+                run.discount_percent = discount
+                run.member_count = len(member_ids)
+                run.charged = charged
+                run.skipped = skipped
+                run.failed = failed
+                run.tampered = tampered
+                run.collected_hkd = collected
+                await session.commit()
 
         if charged or failed or tampered:
             logger.info(

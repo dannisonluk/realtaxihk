@@ -79,7 +79,7 @@
   - N-1：**接受 rank hierarchy**，已改 `app/models/admin.py` / `app/api/admin/_roles.py` / `app/api/admin/disputes.py` / `tests/conftest.py` / `docs/ADMIN_CONSOLE_DESIGN.md` / audit docs docstring；dispute resolve 保留 decision-matched whitelist（assigned judge 唔可以批自己 payout）。
   - 已修細項：NEW-18（email 唔再 early write，token row 先係 pending）+ tests 更新；NEW-29（刪死 `APP_HOST` / `app_host` / `app_port`）；NEW-30（turnstile site key comment 修正）；M-M-1（trip_repository 誤導 docstring 改誠實）；M-M-4（release 缺 `API_BASE_URL` 硬失敗）。
   - **AC-05：owner 已批准（2026-10-05）**。改動已喺 worktree（`admin-web/serve.py` default 翻轉做 `web/dist`、`--legacy` 後備；`admin-web/README.md` + `scripts/dev/serve_and_run_browser.py` 同步），但呢三個檔同時係 sibling WIP，未 commit。已驗證：`py_compile` OK、`--help` RC=0、`web/dist/index.html` 同 `legacy/index.html` 都存在。
-  - **仲等緊 owner**：mobile 大項（M-H-1 enum unknown、M-H-2 outbox、M-M-2 settlement 警示、M-M-3 autoDispose、M-M-5 token header、NEW-1/NEW-2 HK bounds/OUTSIDE_HK、NEW-24、AC-06/07、F-05/F-06、NEW-23 atomic audit 移 service 入 transaction）未郁，避免踩 sibling WIP。
+  - **仲等緊 owner**：mobile 大項（M-H-1 enum unknown、M-H-2 outbox、M-M-2 settlement 警示、M-M-3 autoDispose、M-M-5 token header、NEW-1/NEW-2 已做 NEW-2+box 誠實化、NEW-24、AC-06/07、F-05/F-06、NEW-23 atomic audit 移 service 入 transaction、NEW-10/15/16/17/9 未郁）未郁，避免踩 sibling WIP。
 
 ### 混亂區 / 請勿亂改
 
@@ -133,6 +133,7 @@
 - 2026-10-05（本 agent：recurring rides backend 已完成並 commit；API prefix `/api/v1/recurring-rides`、background `recurring_mint`、migration `7a1b2c3d4e5f`；測試 47 passed；full suite 內 analytics/fare_mode 相關 43 failures 係其他 agent WIP 引起，未有動佢啲檔）
 - 2026-10-05（本 agent：Phase 1 fixtures + contract pins 完成，已 commit `4b868f7`；generator reset 修正 RESTRICT deposit/refund 清理）
 - 2026-10-05（本 agent：audit owner 決策落地——N-1 接受 rank hierarchy + docstring 全套；NEW-18/NEW-29/NEW-30/M-M-1/M-M-4 已修；test 56 passed、ruff 0）
+- 2026-10-05（本 agent：audit batch 2——NEW-2 OUTSIDE_HK + NEW-1 client box 誠實化；NEW-11 Redis lock release best-effort；NEW-12 recovery code 6-byte/48-bit；NEW-14 fleet rename pre-check + settlement upsert IntegrityError backstop；TOTP 56 + fleets/security 85 + Dart 134 passed）
 - 2026-10-05（本 agent：fixed-fare platform fee ledger 完成——`FIXED_RIDE_FEE`、`reference_for_fixed_ride`、`order_complete` append、migration `042a7bc3e54c`；`alembic upgrade head` 已跑，fixed-fare/parity tests 9 passed）
 - 2026-10-05（本 agent：**收據（backend + mobile mirror）+ 車內環境 mobile UI 完成**）
   - `POST|GET /api/v1/orders/{id}/receipt`（JSON）+ `GET .../receipt.txt`（純文字下載）；idempotent freeze、當事人限制（403/404 不可分辨）
