@@ -11,6 +11,30 @@ class DriverPaymentMethods {
 
   final List<String> methods;
 
+  /// The closed set, mirroring `PaymentMethod` in `app/models/premium.py`.
+  ///
+  /// Declared here — next to the model both the driver's settings screen and
+  /// the passenger's preference chips read — rather than restated per screen, so
+  /// a method can never have a chip on one side and no label on the other. The
+  /// server validates the same six values and answers 422 for anything else.
+  static const List<String> all = <String>[
+    'CASH',
+    'OCTOPUS',
+    'CARD',
+    'ALIPAY',
+    'WECHAT_PAY',
+    'TAP_AND_GO',
+  ];
+
+  static const Map<String, String> labelsZh = <String, String>{
+    'CASH': '現金',
+    'OCTOPUS': '八達通',
+    'CARD': '信用卡',
+    'ALIPAY': '支付寶',
+    'WECHAT_PAY': '微信支付',
+    'TAP_AND_GO': '掃碼易',
+  };
+
   Map<String, dynamic> toJson() => <String, dynamic>{'methods': methods};
 }
 

@@ -127,6 +127,16 @@
 
 ## Last updated
 
+- 2026-10-05（本 agent：**車內環境/付款偏好乘客端 + 收據 mobile screen + 特選目的地 pins 完成**；順帶修正 nearby 動物篩選嘅 JSONB null bug）
+  - **後端 bug 修正（重要，影響已 commit 嘅 `bd25f76`）**：`RideRequirementsIn.model_dump()` 會為每個欄位序列化，所以只要求「靜音」嘅訂單其實存咗 `"animal": null`。JSONB 入面 JSON null **係一個值**，所以 `-> 'animal' IS NULL` 對佢係 **false** → 司機嘅「可載寵物」chip 會**隱藏**從未提及寵物嘅訂單。改用 `.astext.is_(None)`（`astext` 令「鍵不存在」同「JSON null」都塌成 SQL NULL）。`requires` 方向同樣改 `.astext.is_not(None)`。新增回歸測試 `test_exclude_animal_keeps_orders_that_never_mentioned_one` **先證實失敗**再修 → `tests/api/test_nearby_filters.py` **18 passed**。
+  - 新增 `mobile/lib/models/ride_requirements.dart`（`RideRequirements` + `AnimalDetail`）＝**requirements 封閉集單一來源**，`NearbyFilter` 改成讀佢（唔再各自重述四個 key）。
+  - `mobile/lib/models/driver_attributes.dart`：`DriverPaymentMethods` 加 `all` + `labelsZh`（六個 `PaymentMethod` 鏡像）。
+  - `mobile/lib/features/passenger/request_ride_screen.dart`：新增「車內環境要求」（四個開關 + 小動物 bottom sheet，尺寸界線同 `AnimalDetailIn` 一致）＋「付款方式偏好」chips；`requirements` 為空時**送 `null`**（唔會喺每張單寫 `animal: null`）。
+  - 新檔 `mobile/lib/features/passenger/receipt_screen.dart`：凍結收據文件（索取/讀取、複製伺服器原文、一口價分帳、付款方式聲明）。**入口用 `Navigator.push`**，唔改 `routing_rules.dart` / `app_router.dart`（仍然係其他 agent WIP）。
+  - `mobile/lib/features/passenger/trip_detail_screen.dart`：加 requirements 卡、付款方式卡、「索取電子收據」按鈕。
+  - `mobile/lib/features/driver/driver_jobs_screen.dart`：加特選目的地 pin 列（tap → server-side `premium_destination_id` 篩選）＋接單卡要求/動物/目的地 badge（**接單前**可見，因為 ACCEPTED 後取消會寫 `PENALTY_DEDUCTION`）。
+  - 驗證：nearby filters 18 passed；`ruff` 0；`mypy` 124 files 0；mobile harness 149 passed 0 failed（+10）；`flutter analyze` 我 7 個檔 0 issue（`fixed_offers_screen.dart` 有 3 個 pre-existing error，係其他 agent 未 commit WIP，唔碰）。
+  - **仍然未做**：司機列表「一口價」badge（要等 `Order.fareMode` 由其他 agent 入 HEAD）；收據 route 註冊（等 router WIP 入 HEAD）。
 - 2026-10-05（本 agent：**nearby filters Phase 1 完成**——司機「接單」列表 server-side 篩選）
   - Backend：`GET /api/v1/orders/nearby` 新增 5 個 optional filter（`fare_mode` / `destination_area` / `premium_destination_id` / `requires` / `excludes`），全部 AND 組合；無 filter 時**回應 byte-for-byte 不變**（舊客戶零影響）。
   - 兩條原則：**value validation 由 server 做**（未知值 → 422，唔會靜靜地 match 唔到任何嘢）；**predicate 一定在 DB 做**（PostGIS `pickup_location` 過濾後才取 id，唔受 Redis geo 候選上限所限）。

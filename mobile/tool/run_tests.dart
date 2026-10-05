@@ -41,7 +41,9 @@ import 'package:hkfastdc_mobile/models/ledger.dart';
 import 'package:hkfastdc_mobile/models/nearby_filter.dart';
 import 'package:hkfastdc_mobile/models/order.dart';
 import 'package:hkfastdc_mobile/models/refund.dart';
+import 'package:hkfastdc_mobile/models/ride_requirements.dart';
 import 'package:hkfastdc_mobile/models/trip.dart';
+import 'package:hkfastdc_mobile/models/driver_attributes.dart';
 import 'package:hkfastdc_mobile/router/routing_rules.dart';
 
 // ---------------------------------------------------------------------------
@@ -1733,6 +1735,124 @@ void _identityTests() {
       expectList(
         NearbyFilter.environmentLabelsZh.keys.toList()..sort(),
         NearbyFilter.environmentKeys.toList()..sort(),
+      );
+    });
+  });
+
+  group('RideRequirements', () {
+    test('nothing asked for encodes to an empty map, not four falses', () {
+      // The distinction the server stores: `null` requirements means the order
+      // never mentioned an animal, while `animal: null` inside an object is a
+      // present value. Sending four explicit falses would put the second shape
+      // on the wire for every order.
+      const RideRequirements none = RideRequirements();
+      expect(none.isEmpty, true);
+      expect(none.toJson().isEmpty, true);
+      expect(none.enabledFlags.isEmpty, true);
+    });
+
+    test('only the enabled flags are sent', () {
+      const RideRequirements some = RideRequirements(silentRide: true, noSmoke: true);
+      final Map<String, dynamic> json = some.toJson();
+      expectList(json.keys.toList()..sort(), <String>['no_smoke', 'silent_ride']);
+      expect(json['no_smoke'], true);
+    });
+
+    test('an animal is sent as an object, and only when described', () {
+      const RideRequirements withPet = RideRequirements(
+        animal: AnimalDetail(kind: 'DOG', heightCm: 35, weightKg: 8),
+      );
+      final Map<String, dynamic> json = withPet.toJson();
+      expectList(json.keys.toList(), <String>['animal']);
+      final Map<String, dynamic> animal = json['animal'] as Map<String, dynamic>;
+      expect(animal['kind'], 'DOG');
+      expect(animal['height_cm'], 35.0);
+      expect(animal['weight_kg'], 8.0);
+      expect(withPet.isEmpty, false);
+    });
+
+    test('copyWith(animal: null) clears the pet, copyWith() keeps it', () {
+      const RideRequirements withPet = RideRequirements(
+        silentRide: true,
+        animal: AnimalDetail(kind: 'CAT', heightCm: 25, weightKg: 4),
+      );
+      expect(withPet.copyWith(animal: null).animal, null);
+      expect(withPet.copyWith(animal: null).silentRide, true);
+      expect(withPet.copyWith().animal?.kind, 'CAT');
+    });
+
+    test('an absent animal and a JSON null both decode to no animal', () {
+      // The server writes `animal: null` on every order whose requirements were
+      // serialised by `model_dump()`, so a decoder that treated JSON null as a
+      // filled-in animal would show a phantom pet on the job card.
+      expect(RideRequirements.fromJson(null).isEmpty, true);
+      expect(RideRequirements.fromJson(<String, dynamic>{}).isEmpty, true);
+      expect(
+        RideRequirements.fromJson(<String, dynamic>{'animal': null}).animal,
+        null,
+      );
+      expect(
+        RideRequirements.fromJson(<String, dynamic>{'silent_ride': true}).silentRide,
+        true,
+      );
+    });
+
+    test('a half-written animal object decodes to no animal rather than crashing', () {
+      // Tolerant on purpose: a partially-filled object is not a promise a driver
+      // can act on, and the alternative is a decode exception on the job list.
+      expect(
+        AnimalDetail.fromJson(<String, dynamic>{'kind': 'DOG'}).runtimeType,
+        Null,
+      );
+      expect(AnimalDetail.fromJson('DOG').runtimeType, Null);
+      expect(AnimalDetail.fromJson(null).runtimeType, Null);
+    });
+
+    test('the animal bounds mirror AnimalDetailIn', () {
+      expect(AnimalDetail.isValidHeight(0.5), false);
+      expect(AnimalDetail.isValidHeight(35), true);
+      expect(AnimalDetail.isValidWeight(0), false);
+      expect(AnimalDetail.isValidWeight(8), true);
+      const AnimalDetail d = AnimalDetail(kind: 'DOG', heightCm: 35, weightKg: 8);
+      expect(d.isValid, true);
+      expect(
+        const AnimalDetail(kind: 'DOG', heightCm: 35, weightKg: 0).isValid,
+        false,
+      );
+    });
+
+    test('the flag mirrors the driver filter reads are the same four keys', () {
+      // `NearbyFilter.environmentKeys` is now read from here, so this pins the
+      // single-source claim rather than a copy of it.
+      expectList(
+        RideRequirements.flagKeys.toList()..sort(),
+        <String>['no_perfume', 'no_radio_music', 'no_smoke', 'silent_ride'],
+      );
+      expectList(
+        RideRequirements.flagLabelsZh.keys.toList()..sort(),
+        RideRequirements.flagKeys.toList()..sort(),
+      );
+      expectFalse(RideRequirements.flagKeys.contains(animalRequirementKey));
+    });
+  });
+
+  group('payment methods', () {
+    test('the six methods match the server enum and all have labels', () {
+      expect(DriverPaymentMethods.all.length, 6);
+      expectList(
+        DriverPaymentMethods.labelsZh.keys.toList()..sort(),
+        DriverPaymentMethods.all.toList()..sort(),
+      );
+      expect(DriverPaymentMethods.labelsZh['OCTOPUS'], '八達通');
+    });
+
+    test('round-trips through the wire shape', () {
+      const DriverPaymentMethods methods = DriverPaymentMethods(
+        methods: <String>['CASH', 'OCTOPUS'],
+      );
+      expectList(
+        DriverPaymentMethods.fromJson(methods.toJson()).methods,
+        <String>['CASH', 'OCTOPUS'],
       );
     });
   });

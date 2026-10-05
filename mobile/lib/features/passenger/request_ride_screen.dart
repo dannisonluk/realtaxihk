@@ -5,10 +5,12 @@ import 'package:go_router/go_router.dart';
 import '../../core/location/location_service.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/theme/app_theme.dart';
+import '../../models/driver_attributes.dart';
 import '../../models/enums.dart';
 import '../../models/fare.dart';
 import '../../models/identity.dart';
 import '../../models/order.dart';
+import '../../models/ride_requirements.dart';
 import '../../router/app_router.dart';
 import '../../state/data_providers.dart';
 import '../../state/providers.dart';
@@ -52,6 +54,24 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
   bool _busy = false;
   bool _locating = false;
 
+  /// What the passenger needs the driver to see before accepting.
+  ///
+  /// Held as one immutable value rather than five fields, so "is anything
+  /// asked for" and "what goes on the wire" are answered in one place —
+  /// `RideRequirements.toJson` omits an absent animal instead of sending a
+  /// `null` the server would store as a JSON null.
+  RideRequirements _requirements = const RideRequirements();
+
+  /// The methods the passenger would prefer. Informational, not a guarantee —
+  /// the driver's own declared methods are what the order is matched against.
+  final Set<String> _paymentPreference = <String>{};
+
+  /// Draft for the animal detail sheet. Kept off [_requirements] until the
+  /// passenger confirms, so opening and closing the sheet changes nothing.
+  String _animalKind = AnimalDetail.kinds.first;
+  final TextEditingController _animalHeight = TextEditingController(text: '35');
+  final TextEditingController _animalWeight = TextEditingController(text: '8');
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +82,8 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
   void dispose() {
     _distance.dispose();
     _tip.dispose();
+    _animalHeight.dispose();
+    _animalWeight.dispose();
     super.dispose();
   }
 
@@ -110,6 +132,57 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
   double get _distanceKm => double.tryParse(_distance.text) ?? 0;
 
   double get _tipValue => double.tryParse(_tip.text) ?? 0;
+
+  /// One environment flag. Toggling re-quotes nothing: a requirement is not a
+  /// price input, so it must not clear the estimate the way a tunnel does.
+  void _toggleRequirement(String key) {
+    setState(() {
+      _requirements = switch (key) {
+        'silent_ride' => _requirements.copyWith(silentRide: !_requirements.silentRide),
+        'no_radio_music' => _requirements.copyWith(
+          noRadioMusic: !_requirements.noRadioMusic,
+        ),
+        'no_smoke' => _requirements.copyWith(noSmoke: !_requirements.noSmoke),
+        'no_perfume' => _requirements.copyWith(noPerfume: !_requirements.noPerfume),
+        _ => _requirements,
+      };
+    });
+  }
+
+  void _togglePayment(String method) {
+    setState(() {
+      if (!_paymentPreference.remove(method)) {
+        _paymentPreference.add(method);
+      }
+    });
+  }
+
+  /// Collect the animal description a driver needs *before* accepting.
+  ///
+  /// Refuses the submission rather than trusting the server to: the bounds are
+  /// the server's own (`AnimalDetailIn`), and a driver reading the job card
+  /// needs a plausible size, not `0 kg`.
+  Future<void> _editAnimal() async {
+    final AnimalDetail? existing = _requirements.animal;
+    _animalKind = existing?.kind ?? AnimalDetail.kinds.first;
+    _animalHeight.text = (existing?.heightCm ?? 35).toStringAsFixed(0);
+    _animalWeight.text = (existing?.weightKg ?? 8).toStringAsFixed(0);
+
+    final AnimalDetail? result = await showModalBottomSheet<AnimalDetail>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) => _AnimalSheet(
+        kind: _animalKind,
+        heightController: _animalHeight,
+        weightController: _animalWeight,
+        onKindChanged: (String kind) => setState(() => _animalKind = kind),
+      ),
+    );
+    if (result == null || !mounted) {
+      return;
+    }
+    setState(() => _requirements = _requirements.copyWith(animal: result));
+  }
 
   bool get _ready => _pickup != null && _dropoff != null && _distanceKm > 0 && _distanceKm <= 100;
 
@@ -165,6 +238,11 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
               tunnels: _tunnels.toList(growable: false),
               crossesHarbour: _crossesHarbour,
               pickupAtCrossHarbourStand: _atCrossHarbourStand,
+              // Omitted entirely when empty, so an order that asks for nothing
+              // stores no `requirements_json` — which is what the driver's
+              // nearby filters read as "never mentioned an animal".
+              requirements: _requirements.isEmpty ? null : _requirements.toJson(),
+              paymentPreference: _paymentPreference.toList(growable: false),
             ),
           );
       if (!mounted) {
@@ -381,11 +459,84 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
                     ],
                   ),
 
+                  // What the driver must be able to provide. Every control here
+                  // is a *statement the passenger makes*, visible on the job
+                  // card before anyone accepts — the platform is an information
+                  // intermediary (Cap. 374D) and does not verify the car.
+                  GroupedSection(
+                    title: '車內環境要求',
+                    footnote: '這些要求會顯示給司機，讓對方在接單前決定是否合適；'
+                        '平台僅屬資訊中介，不會代司機保證。',
+                    children: <Widget>[
+                      for (final MapEntry<String, String> entry
+                          in RideRequirements.flagLabelsZh.entries)
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: _requirements.enabledFlags.contains(entry.key),
+                          onChanged: (bool _) => _toggleRequirement(entry.key),
+                          title: Text(entry.value),
+                          subtitle: Text(RideRequirements.flagSubtitleZh[entry.key] ?? ''),
+                        ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.pets),
+                        title: const Text('攜帶小動物'),
+                        // The driver must know the species and rough size
+                        // *before* accepting; an order that says only "pet"
+                        // leaves them guessing at a carrier they may not have.
+                        subtitle: Text(
+                          _requirements.animal == null
+                              ? '未填寫'
+                              : '${AnimalDetail.kindLabelsZh[_requirements.animal!.kind] ?? _requirements.animal!.kind}'
+                                    '　高約 ${_requirements.animal!.heightCm.toStringAsFixed(0)} cm'
+                                    '、約 ${_requirements.animal!.weightKg.toStringAsFixed(0)} kg',
+                        ),
+                        trailing: _requirements.animal == null
+                            ? null
+                            : IconButton(
+                                tooltip: '移除',
+                                icon: const Icon(Icons.clear),
+                                onPressed: () => setState(
+                                  () => _requirements = _requirements.copyWith(animal: null),
+                                ),
+                              ),
+                        onTap: _editAnimal,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppTheme.space4),
+
+                  // A preference, not a promise: the server matches the
+                  // *driver's* declared methods onto the order at grab time, and
+                  // this list only tells them what the passenger would like.
+                  GroupedSection(
+                    title: '付款方式偏好',
+                    footnote: '只屬偏好。司機實際接受的方式會在下單後顯示。',
+                    children: <Widget>[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: AppTheme.space2),
+                        child: Wrap(
+                          spacing: AppTheme.space2,
+                          runSpacing: AppTheme.space1,
+                          children: <Widget>[
+                            for (final String method in DriverPaymentMethods.all)
+                              FilterChip(
+                                label: Text(
+                                  DriverPaymentMethods.labelsZh[method] ?? method,
+                                ),
+                                selected: _paymentPreference.contains(method),
+                                onSelected: (bool _) => _togglePayment(method),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
                   if (_estimate != null) ...<Widget>[
                     const SizedBox(height: AppTheme.space4),
                     _FareBreakdownCard(estimate: _estimate!),
                   ],
-
                   const SizedBox(height: AppTheme.space6),
                   Row(
                     children: <Widget>[
@@ -478,6 +629,123 @@ class _FareBreakdownCard extends StatelessWidget {
               style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The animal description a driver reads before accepting.
+///
+/// A bottom sheet rather than a screen: it is three fields belonging to the
+/// booking form, and the passenger must be able to dismiss it without losing
+/// the ride they were half-way through setting up.
+///
+/// The bounds it enforces are the server's own (`AnimalDetailIn`): 1–200 cm and
+/// 0.1–100 kg. Checking here is not belt-and-braces — the server would answer
+/// 422 *after* the passenger had left the form, and by then the species and size
+/// they typed are gone.
+class _AnimalSheet extends StatelessWidget {
+  const _AnimalSheet({
+    required this.kind,
+    required this.heightController,
+    required this.weightController,
+    required this.onKindChanged,
+  });
+
+  final String kind;
+  final TextEditingController heightController;
+  final TextEditingController weightController;
+  final ValueChanged<String> onKindChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
+    return Padding(
+      // Lifts the sheet above the keyboard, which otherwise covers the field
+      // being typed into.
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(AppTheme.space4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text('小動物資料', style: theme.textTheme.titleMedium),
+              const SizedBox(height: AppTheme.space2),
+              Text(
+                '司機接單前會看到種類與大約尺寸。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: AppTheme.space4),
+              SegmentedButton<String>(
+                segments: <ButtonSegment<String>>[
+                  for (final String k in AnimalDetail.kinds)
+                    ButtonSegment<String>(
+                      value: k,
+                      label: Text(AnimalDetail.kindLabelsZh[k] ?? k),
+                    ),
+                ],
+                selected: <String>{kind},
+                onSelectionChanged: (Set<String> value) => onKindChanged(value.first),
+              ),
+              const SizedBox(height: AppTheme.space4),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: TextField(
+                      controller: heightController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: '高度',
+                        suffixText: 'cm',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppTheme.space3),
+                  Expanded(
+                    child: TextField(
+                      controller: weightController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: '重量',
+                        suffixText: 'kg',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppTheme.space4),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () {
+                    final AnimalDetail detail = AnimalDetail(
+                      kind: kind,
+                      heightCm: double.tryParse(heightController.text) ?? 0,
+                      weightKg: double.tryParse(weightController.text) ?? 0,
+                    );
+                    if (!detail.isValid) {
+                      showInfo(
+                        context,
+                        '請輸入合理尺寸：高度 ${AnimalDetail.minHeightCm.toStringAsFixed(0)}–'
+                        '${AnimalDetail.maxHeightCm.toStringAsFixed(0)} cm、'
+                        '重量 ${AnimalDetail.minWeightKg}–'
+                        '${AnimalDetail.maxWeightKg.toStringAsFixed(0)} kg。',
+                      );
+                      return;
+                    }
+                    Navigator.of(context).pop(detail);
+                  },
+                  child: const Text('確定'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -10,7 +10,9 @@ import '../../core/theme/app_theme.dart';
 import '../../models/enums.dart';
 import '../../models/nearby_filter.dart';
 import '../../models/order.dart';
+import '../../models/ride_requirements.dart';
 import '../../router/app_router.dart';
+import '../../state/data_providers.dart';
 import '../../state/nearby_filter.dart';
 import '../../state/providers.dart';
 import '../auth/phone_unlock_screen.dart';
@@ -207,6 +209,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
 
     return Column(
       children: <Widget>[
+        _premiumPins(),
         _filterBar(filter),
         Expanded(
           child: AsyncValueView<NearbyOrders>(
@@ -279,6 +282,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
                                 '經 ${order.fare.tunnels.map((Tunnel t) => t.labelZh).join('、')}',
                                 style: Theme.of(context).textTheme.bodySmall,
                               ),
+                            _jobBadges(order),
                             const SizedBox(height: AppTheme.space3),
                             FilledButton(
                               onPressed: _busy ? null : () => _grab(order),
@@ -295,6 +299,113 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// What the passenger asked for, plus the destination pin, shown **before**
+  /// the driver accepts.
+  ///
+  /// This is the point of freezing requirements onto the order: a driver without
+  /// a pet carrier, or who will not take a silent trip, must be able to pass on
+  /// the job without first claiming it and then cancelling — a cancellation after
+  /// `ACCEPTED` writes a real `PENALTY_DEDUCTION`. Rendering these after the grab
+  /// button would make each of them cost the driver money.
+  Widget _jobBadges(Order order) {
+    final RideRequirements requirements = RideRequirements.fromJson(order.requirements);
+    final PremiumDestination? premium = order.premiumDestination;
+    if (requirements.isEmpty && premium == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppTheme.space2),
+      child: Wrap(
+        spacing: AppTheme.space2,
+        runSpacing: AppTheme.space1,
+        children: <Widget>[
+          if (premium != null)
+            Chip(
+              avatar: const Icon(Icons.flight_takeoff, size: 18),
+              label: Text(premium.nameZh),
+            ),
+          for (final String key in requirements.enabledFlags)
+            Chip(
+              avatar: Icon(_requirementIcon(key), size: 18),
+              label: Text(RideRequirements.flagLabelsZh[key] ?? key),
+            ),
+          if (requirements.animal != null)
+            Chip(
+              avatar: const Icon(Icons.pets, size: 18),
+              // Species and size together: "has a pet" alone tells a driver
+              // nothing about whether their carrier fits.
+              label: Text(
+                '${AnimalDetail.kindLabelsZh[requirements.animal!.kind] ?? requirements.animal!.kind}'
+                '　${requirements.animal!.heightCm.toStringAsFixed(0)} cm'
+                '／${requirements.animal!.weightKg.toStringAsFixed(0)} kg',
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static IconData _requirementIcon(String key) => switch (key) {
+    'silent_ride' => Icons.volume_off,
+    'no_radio_music' => Icons.music_off,
+    'no_smoke' => Icons.smoke_free,
+    'no_perfume' => Icons.air,
+    _ => Icons.check_circle_outline,
+  };
+
+  /// The premium destinations a driver may recognise — airport terminals,
+  /// airline bases, the CAD — shown as pins above the job list.
+  ///
+  /// These are *places*, and the list is public metadata, so this card answers
+  /// "where is the work likely to be", not "who is the passenger". The curated
+  /// list is what makes such a trip predictable, which is the whole reason a
+  /// driver is willing to price it flat (Phase 2). Tapping one narrows the
+  /// list to that destination — server-side, via the same filter the chips use.
+  ///
+  /// Renders nothing when the list is empty or still loading: a spinner for
+  /// optional metadata above a working job list would be noise.
+  Widget _premiumPins() {
+    final AsyncValue<PremiumDestinationPage> destinations = ref.watch(
+      premiumDestinationsProvider,
+    );
+    final List<PremiumDestination> items = destinations.value?.items ?? const <PremiumDestination>[];
+    if (items.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final String? selected = ref.watch(nearbyFilterProvider).premiumDestinationId;
+
+    return SizedBox(
+      height: 44,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(
+          AppTheme.space4,
+          AppTheme.space3,
+          AppTheme.space4,
+          0,
+        ),
+        children: <Widget>[
+          for (final PremiumDestination d in items) ...<Widget>[
+            FilterChip(
+              avatar: const Icon(Icons.flight_takeoff, size: 18),
+              label: Text(d.nameZh),
+              selected: selected == d.id,
+              onSelected: (bool nowSelected) => ref
+                  .read(nearbyFilterProvider.notifier)
+                  .patch(
+                    (NearbyFilter f) => f.copyWith(
+                      premiumDestinationId: nowSelected ? d.id : null,
+                    ),
+                  ),
+            ),
+            const SizedBox(width: AppTheme.space2),
+          ],
+        ],
+      ),
     );
   }
 

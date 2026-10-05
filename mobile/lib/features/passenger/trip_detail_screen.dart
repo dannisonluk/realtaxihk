@@ -4,12 +4,15 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/format/money.dart';
 import '../../core/theme/app_theme.dart';
+import '../../models/driver_attributes.dart';
 import '../../models/enums.dart';
 import '../../models/fare.dart';
 import '../../models/order.dart';
+import '../../models/ride_requirements.dart';
 import '../../router/app_router.dart';
 import '../../state/data_providers.dart';
 import '../shared/widgets.dart';
+import 'receipt_screen.dart';
 
 /// The full receipt for one order, from either side of the trip.
 ///
@@ -66,7 +69,31 @@ class TripDetailScreen extends ConsumerWidget {
               const SizedBox(height: AppTheme.space6 - 4),
               _StatusTimeline(status: o.status),
               const SizedBox(height: AppTheme.space6 - 4),
+              // What this order asked the driver to provide, and what the
+              // driver said they accept — the two sides of the match, shown
+              // together so neither is mistaken for a platform guarantee.
+              _RequirementsCard(order: o),
+              if (o.paymentPreference.isNotEmpty || o.driverPaymentMethods.isNotEmpty) ...<Widget>[
+                const SizedBox(height: AppTheme.space6 - 4),
+                _PaymentCard(order: o),
+              ],
+              const SizedBox(height: AppTheme.space6 - 4),
               _FareBreakdown(order: o),
+              const SizedBox(height: AppTheme.space3),
+              // The frozen document, which is a different artefact from the
+              // live breakdown above: this is the record that can be forwarded.
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (BuildContext _) =>
+                          ReceiptScreen(orderId: o.id, autoIssue: true),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.receipt_long_outlined),
+                label: const Text('索取電子收據'),
+              ),
             ],
           ),
         ),
@@ -111,6 +138,125 @@ class _Headline extends StatelessWidget {
       ),
     );
   }
+}
+
+/// What the order asked for, as the passenger stated it at booking.
+///
+/// Rendered from the order's frozen `requirements_json`, so it shows what was
+/// actually recorded rather than what the booking form currently offers. The
+/// card is omitted entirely when nothing was asked for — an empty "requirements"
+/// box would read as a failed promise rather than as an absent question.
+class _RequirementsCard extends StatelessWidget {
+  const _RequirementsCard({required this.order});
+
+  final Order order;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final RideRequirements requirements = RideRequirements.fromJson(order.requirements);
+    if (requirements.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppTheme.space4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('車內環境要求', style: theme.textTheme.titleMedium),
+            const SizedBox(height: AppTheme.space3),
+            Wrap(
+              spacing: AppTheme.space2,
+              runSpacing: AppTheme.space1,
+              children: <Widget>[
+                for (final String key in RideRequirements.flagKeys)
+                  if (requirements.enabledFlags.contains(key))
+                    Chip(
+                      avatar: Icon(_requirementIcon(key), size: 18),
+                      label: Text(RideRequirements.flagLabelsZh[key] ?? key),
+                    ),
+                if (requirements.animal != null)
+                  Chip(
+                    avatar: const Icon(Icons.pets, size: 18),
+                    label: Text(
+                      '${AnimalDetail.kindLabelsZh[requirements.animal!.kind] ?? requirements.animal!.kind}'
+                      '　${requirements.animal!.heightCm.toStringAsFixed(0)} cm'
+                      '／${requirements.animal!.weightKg.toStringAsFixed(0)} kg',
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppTheme.space2),
+            Text(
+              '以上為乘客提出的要求，由司機自行決定是否合適；平台僅屬資訊中介。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static IconData _requirementIcon(String key) => switch (key) {
+    'silent_ride' => Icons.volume_off,
+    'no_radio_music' => Icons.music_off,
+    'no_smoke' => Icons.smoke_free,
+    'no_perfume' => Icons.air,
+    _ => Icons.check_circle_outline,
+  };
+}
+
+/// The two payment lists side by side: what the passenger preferred, and what
+/// the assigned driver declared they accept.
+///
+/// They are shown together because either alone is misleading. A passenger
+/// preference with no driver declaration reads as a platform promise; a driver
+/// declaration with no preference reads as a restriction nobody asked for.
+class _PaymentCard extends StatelessWidget {
+  const _PaymentCard({required this.order});
+
+  final Order order;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppTheme.space4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('付款方式', style: theme.textTheme.titleMedium),
+            const SizedBox(height: AppTheme.space2),
+            if (order.paymentPreference.isNotEmpty)
+              DetailRow(
+                label: '乘客偏好',
+                value: _methods(order.paymentPreference),
+              ),
+            if (order.driverPaymentMethods.isNotEmpty)
+              DetailRow(
+                label: '司機接受',
+                value: _methods(order.driverPaymentMethods),
+              ),
+            const SizedBox(height: AppTheme.space2),
+            Text(
+              '付款方式由司機自行聲明，平台不會代為保證。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _methods(List<String> methods) =>
+      methods.map((String m) => DriverPaymentMethods.labelsZh[m] ?? m).join('、');
 }
 
 /// The lifecycle as a vertical list, with the current step marked.

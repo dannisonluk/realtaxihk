@@ -1,3 +1,5 @@
+import 'ride_requirements.dart';
+
 /// Driver-side filters for `GET /orders/nearby`.
 ///
 /// This mirrors the query-param contract of `app/api/orders.py::nearby_orders`.
@@ -58,23 +60,17 @@ class NearbyFilter {
 
   /// The four in-car environment flags a passenger can ask for, matching
   /// `RideRequirementsIn` minus [animalKey].
-  static const List<String> environmentKeys = <String>[
-    'silent_ride',
-    'no_radio_music',
-    'no_smoke',
-    'no_perfume',
-  ];
+  ///
+  /// Read from [RideRequirements] rather than restated: the booking screen, the
+  /// driver's job card and this filter all name the same four flags, and three
+  /// copies of a closed set is three chances to drift.
+  static const List<String> environmentKeys = RideRequirements.flagKeys;
 
-  static const Map<String, String> environmentLabelsZh = <String, String>{
-    'silent_ride': '全程靜音',
-    'no_radio_music': '不播收音機／音樂',
-    'no_smoke': '無煙車',
-    'no_perfume': '無香水',
-  };
+  static const Map<String, String> environmentLabelsZh = RideRequirements.flagLabelsZh;
 
   /// `animal` is the one requirement that is an object, not a flag, so it is
   /// matched by presence rather than truthiness on both sides.
-  static const String animalKey = 'animal';
+  static const String animalKey = animalRequirementKey;
 
   bool get isEmpty =>
       fareMode == null &&
