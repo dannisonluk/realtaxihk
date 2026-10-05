@@ -47,6 +47,7 @@ from app.models._base import Base
 if TYPE_CHECKING:
     # Checker-only, for the same reason as the mirror image in
     # `app/models/licence.py`.
+    from app.models.fixed_offer import FixedPriceOffer
     from app.models.licence import DriverLicenceSubmission
 
 __all__ = [
@@ -101,6 +102,11 @@ class OrderStatus(str, enum.Enum):
     IN_TRIP = "IN_TRIP"
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
+
+
+class OrderFareMode(str, enum.Enum):
+    METER = "METER"
+    FIXED = "FIXED"
 
 
 class LedgerEntryType(str, enum.Enum):
@@ -300,6 +306,10 @@ class DriverProfile(Base):
     # known keys. NULL means "has not declared anything" (no claim, no badge).
     in_car_environment_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
+    fixed_offers: Mapped[list[FixedPriceOffer]] = relationship(
+        back_populates="driver_profile", cascade="all, delete-orphan"
+    )
+
     @staticmethod
     async def for_user(session: AsyncSession, user_id: uuid.UUID) -> DriverProfile | None:
         """The driver profile belonging to `user_id`, or `None` if not a driver.
@@ -333,7 +343,7 @@ class DriverDeposit(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
     driver_profile_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("driver_profiles.id", ondelete="CASCADE"), unique=True
+        UUID(as_uuid=True), ForeignKey("driver_profiles.id", ondelete="RESTRICT"), unique=True
     )
     balance_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)  # available
     held_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)  # locked pending refund
@@ -365,6 +375,18 @@ class Order(Base):
             create_constraint=True,
         ),
         default=OrderStatus.CREATED,
+        index=True,
+    )
+    # FIXED vs METER. Defaults to METER for existing rows and backfilled by the
+    # migration; the column is non-null after Phase 2.
+    fare_mode: Mapped[OrderFareMode] = mapped_column(
+        SAEnum(
+            OrderFareMode,
+            name="ck_orders_fare_mode",
+            native_enum=False,
+            create_constraint=True,
+        ),
+        default=OrderFareMode.METER,
         index=True,
     )
     # Requested route.
@@ -417,6 +439,17 @@ class Order(Base):
     # and the map tag stays stable for the life of the order.
     premium_destination_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     destination_area: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    pickup_area: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    # Fixed-fare (一口價) fields. Null on METER orders.
+    fixed_offer_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("fixed_price_offers.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
+    driver_price_hkd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    platform_fee_hkd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    passenger_price_hkd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     # Broadcast config
     broadcast_radius_km: Mapped[Decimal] = mapped_column(Numeric(4, 1), default=3.0)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -518,7 +551,7 @@ class RefundRequest(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
     driver_profile_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("driver_profiles.id", ondelete="CASCADE"), index=True
+        UUID(as_uuid=True), ForeignKey("driver_profiles.id", ondelete="RESTRICT"), index=True
     )
     amount_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     status: Mapped[RefundStatus] = mapped_column(

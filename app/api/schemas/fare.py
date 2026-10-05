@@ -122,6 +122,9 @@ class FareSnapshotOut(BaseModel):
     caller's raw list (SEC-11). The raw list used to be stored verbatim, which
     let a caller write megabytes of junk into `fare_json` that every subsequent
     list call re-sent.
+
+    Phase 2: a fixed-fare order keeps the METER breakdown for reference and
+    adds `fare_mode` plus the three frozen contract amounts.
     """
 
     meter_fare: str
@@ -137,3 +140,8 @@ class FareSnapshotOut(BaseModel):
     disclaimer_en: str
     disclaimer_zh: str
     surcharges: list[FareSurchargeOut]
+    # Phase 2 additions are optional so existing fixtures stay decodable.
+    fare_mode: str | None = None
+    driver_price_hkd: str | None = None
+    platform_fee_hkd: str | None = None
+    passenger_price_hkd: str | None = None

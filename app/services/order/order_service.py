@@ -18,10 +18,12 @@ from app.core.region import destination_area, match_premium_destination
 from app.models import (
     DestinationStatus,
     Order,
+    OrderFareMode,
     OrderStatus,
     PaymentMethod,
     PremiumDestination,
 )
+from app.services.fare.fixed_fare_service import FixedFareService
 from app.services.order.fare_calculator import TaxiType, Tunnel, calculate_fare
 from app.services.order.state_machine import assert_order_transition
 
@@ -114,6 +116,7 @@ class OrderService:
         # Destination area + premium destination are computed server-side from
         # the dropoff coordinates. The platform never trusts a client-tagged
         # premium destination.
+        pickup_area = destination_area(payload.pickup_lat, payload.pickup_lng)
         dropoff_area = destination_area(payload.dropoff_lat, payload.dropoff_lng)
         premium_match = None
         if dropoff_area is not None:
@@ -137,6 +140,7 @@ class OrderService:
         order = Order(
             passenger_id=passenger_user_id,
             status=OrderStatus.BROADCASTING,
+            fare_mode=OrderFareMode.METER,
             pickup_location=_point_wkt(payload.pickup_lat, payload.pickup_lng),
             pickup_address=payload.pickup_address,
             dropoff_location=_point_wkt(payload.dropoff_lat, payload.dropoff_lng),
@@ -151,6 +155,7 @@ class OrderService:
             payment_preference_json=(
                 {"methods": payment_preference} if payment_preference else None
             ),
+            pickup_area=pickup_area,
             destination_area=dropoff_area,
             premium_destination_id=(uuid.UUID(premium_match.id) if premium_match else None),
             premium_destination_json=(
@@ -166,6 +171,36 @@ class OrderService:
             ),
         )
         self.session.add(order)
+        await self.session.flush()
+
+        # Fixed-fare matching (一口價). If a standing offer covers this route
+        # and is competitive, the order freezes the passenger price
+        # (`offer + platform fee`) and binds the order to that offer.
+        match = await FixedFareService(self.session).match_order(
+            order,
+            Decimal(bd.total_fare),
+            pickup_area=pickup_area,
+        )
+        if match is not None:
+            order.fare_mode = OrderFareMode.FIXED
+            order.fixed_offer_id = match.offer.id
+            order.driver_price_hkd = match.offer.price_hkd
+            order.platform_fee_hkd = match.platform_fee_hkd
+            order.passenger_price_hkd = match.passenger_price_hkd
+            order.estimated_total_hkd = match.passenger_price_hkd
+            snapshot.update(
+                {
+                    "fare_mode": OrderFareMode.FIXED.value,
+                    "driver_price_hkd": money_str(match.offer.price_hkd),
+                    "platform_fee_hkd": money_str(match.platform_fee_hkd),
+                    "passenger_price_hkd": money_str(match.passenger_price_hkd),
+                }
+            )
+            order.fare_json = snapshot
+        else:
+            snapshot.update({"fare_mode": OrderFareMode.METER.value})
+            order.fare_json = snapshot
+
         await self.session.flush()
         return order
 
@@ -200,4 +235,17 @@ def order_out(order: Order) -> dict:
         "driver_payment_methods": (order.driver_payment_methods_json or {}).get("methods", []),
         "premium_destination": order.premium_destination_json,
         "destination_area": order.destination_area,
+        "pickup_area": order.pickup_area,
+        # Phase 2: fixed-fare fields.
+        "fare_mode": order.fare_mode.value if order.fare_mode else None,
+        "fixed_offer_id": str(order.fixed_offer_id) if order.fixed_offer_id else None,
+        "driver_price_hkd": money_str(order.driver_price_hkd)
+        if order.driver_price_hkd is not None
+        else None,
+        "platform_fee_hkd": money_str(order.platform_fee_hkd)
+        if order.platform_fee_hkd is not None
+        else None,
+        "passenger_price_hkd": money_str(order.passenger_price_hkd)
+        if order.passenger_price_hkd is not None
+        else None,
     }

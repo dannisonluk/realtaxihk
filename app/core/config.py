@@ -255,6 +255,16 @@ class Settings(BaseSettings):
     driver_deposit_default_hkd: int = 500
     no_show_penalty_hkd: int = 50
 
+    # --- Fixed-fare offers (一口價) --------------------------------------
+    # The passenger pays `offer price + platform fee`; the driver receives the
+    # offer price. The fee is the platform's disclosed spread. Matching only
+    # surfaces an offer when the passenger price is at or below the meter
+    # estimate, so a fixed fare is never more expensive than the reference.
+    fixed_fare_enabled: bool = True
+    fixed_fare_fee_percent: int = 10  # platform keeps 10% of the driver's offer
+    fixed_fare_min_fee_hkd: int = 5  # ... but never below HK$5
+    fixed_fare_max_offer_hkd: int = 10000  # sanity cap on a driver's standing price
+
     @model_validator(mode="after")
     def _fail_closed(self) -> Settings:
         """Reject unsafe configurations at import/startup, never mid-request."""

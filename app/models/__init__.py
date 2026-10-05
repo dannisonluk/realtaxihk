@@ -57,6 +57,7 @@ from app.models.dispute import (
     DisputeStatus,
     OrderDispute,
 )
+from app.models.fixed_offer import FixedOfferStatus, FixedPriceOffer
 from app.models.fleet import (
     Fleet,
     FleetMemberRole,
@@ -86,6 +87,7 @@ from app.models.user import (
     LedgerEntry,
     LedgerEntryType,
     Order,
+    OrderFareMode,
     OrderStatus,
     OtpCode,
     RefreshToken,
@@ -126,6 +128,8 @@ __all__ = [
     "DriverProfile",
     "DriverStatus",
     "EmailVerificationToken",
+    "FixedOfferStatus",
+    "FixedPriceOffer",
     "Fleet",
     "FleetMemberRole",
     "FleetMemberStatus",
@@ -138,6 +142,7 @@ __all__ = [
     "LicenceReviewStatus",
     "Order",
     "OrderDispute",
+    "OrderFareMode",
     "OrderStatus",
     "OtpCode",
     "PaymentMethod",

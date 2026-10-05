@@ -28,7 +28,9 @@ from app.models import (
     DriverPaymentMethod,
     DriverProfile,
     DriverStatus,
+    FixedPriceOffer,
     Order,
+    OrderFareMode,
     OrderStatus,
 )
 from app.services.order.state_machine import assert_order_transition
@@ -86,6 +88,19 @@ class GrabService:
                     or profile.status != DriverStatus.ACTIVE
                 ):
                     return False
+
+                # A FIXED fare is bound to the offer that priced it. Only that
+                # offer's owner may grab it; another driver accepting it would
+                # be accepting a price they never agreed to.
+                if order.fare_mode == OrderFareMode.FIXED:
+                    offer = (
+                        await session.get(FixedPriceOffer, order.fixed_offer_id)
+                        if order.fixed_offer_id
+                        else None
+                    )
+                    if offer is None or offer.driver_profile_id != profile.id:
+                        return False
+
                 assert_order_transition(order.status, OrderStatus.ACCEPTED)
 
                 # Copy the driver's declared payment methods onto the order at

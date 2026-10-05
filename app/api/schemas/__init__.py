@@ -9,12 +9,12 @@ validates the returned object and drops every key the model does not declare.
 Before this package, 29 request models lived inline in `app/api/*.py` and only
 one route declared a response model, so `/openapi.json` published `{}` for
 almost every response — which is why the real contract had to be pinned by
-`mobile/tool/verify_contract.dart` and 54 captured fixtures.
+`mobile/tool/verify_contract.dart` and captured fixtures.
 
 The models here are derived **from those captured responses**, not from reading
 the handlers, and the fixture set is the acceptance test: adding a
 `response_model=` that omits a field a fixture contains will fail the contract
-check. See `mobile/test/fixtures/manifest.json` for the route → fixture map.
+check.
 
 Coverage: **all operations now declare a real `response_model=`**.
 `scripts/verify/audit_response_models.py` proves that no fixture key is dropped
@@ -118,6 +118,7 @@ from app.api.schemas.fare import (
     FareSnapshotOut,
     FareSurchargeOut,
 )
+from app.api.schemas.fixed_offer import FixedOfferListOut, FixedOfferOut
 from app.api.schemas.fleet import (
     FleetMemberListOut,
     FleetMemberRowOut,
@@ -213,6 +214,8 @@ __all__ = [
     "FareEstimateOut",
     "FareSnapshotOut",
     "FareSurchargeOut",
+    "FixedOfferListOut",
+    "FixedOfferOut",
     "FleetMemberListOut",
     "FleetMemberRowOut",
     "FleetMembershipOut",

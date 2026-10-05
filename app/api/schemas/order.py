@@ -51,6 +51,13 @@ class OrderOut(BaseModel):
     driver_payment_methods: list[str] = Field(default_factory=list)
     premium_destination: dict | None = None
     destination_area: str | None = None
+    pickup_area: str | None = None
+    # Phase 2: fixed-fare (一口價) fields, optional on METER orders.
+    fare_mode: str | None = None
+    fixed_offer_id: str | None = None
+    driver_price_hkd: str | None = None
+    platform_fee_hkd: str | None = None
+    passenger_price_hkd: str | None = None
 
 
 class OrderPageOut(BaseModel):
