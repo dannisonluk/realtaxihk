@@ -5,6 +5,7 @@ import '../data/driver_repository.dart';
 import '../models/admin.dart';
 import '../models/auth.dart';
 import '../models/driver.dart';
+import '../models/driver_attributes.dart';
 import '../models/enums.dart';
 import '../models/fleet.dart';
 import '../models/identity.dart';
@@ -86,6 +87,24 @@ final FutureProvider<List<LedgerEntry>> ledgerProvider = FutureProvider<List<Led
 final FutureProvider<RefundRequest?> myRefundProvider = FutureProvider<RefundRequest?>(
   (Ref ref) => ref.watch(driverRepositoryProvider).myRefund(),
 );
+
+/// The driver's declared payment methods.
+final FutureProvider<DriverPaymentMethods> driverPaymentMethodsProvider =
+    FutureProvider<DriverPaymentMethods>(
+      (Ref ref) => ref.watch(driverRepositoryProvider).paymentMethods(),
+    );
+
+/// The driver's in-car environment capability flags.
+final FutureProvider<DriverEnvironment> driverEnvironmentProvider =
+    FutureProvider<DriverEnvironment>(
+      (Ref ref) => ref.watch(driverRepositoryProvider).environment(),
+    );
+
+/// Active premium destinations shown as avatar pins on the map.
+final FutureProvider<PremiumDestinationPage> premiumDestinationsProvider =
+    FutureProvider<PremiumDestinationPage>(
+      (Ref ref) => ref.watch(destinationRepositoryProvider).list(),
+    );
 
 /// One order, by id.
 ///

@@ -3,6 +3,61 @@ import '../core/network/wire.dart';
 import 'enums.dart';
 import 'fare.dart';
 
+/// A premium destination from `GET /api/v1/destinations` — a map pin with an
+/// avatar key, e.g. Airport T1/T2, Cathay City or the Civil Aviation Department.
+class PremiumDestination {
+  const PremiumDestination({
+    required this.id,
+    required this.code,
+    required this.nameZh,
+    required this.nameEn,
+    required this.lat,
+    required this.lng,
+    required this.radiusM,
+    required this.status,
+    this.avatarKey,
+  });
+
+  factory PremiumDestination.fromJson(Map<String, dynamic> json) =>
+      PremiumDestination(
+        id: asString(json['id'], 'premium_destination.id'),
+        code: asString(json['code'], 'premium_destination.code'),
+        nameZh: asString(json['name_zh'], 'premium_destination.name_zh'),
+        nameEn: asString(json['name_en'], 'premium_destination.name_en'),
+        lat: asDouble(json['lat'], 'premium_destination.lat'),
+        lng: asDouble(json['lng'], 'premium_destination.lng'),
+        radiusM: asInt(json['radius_m'], 'premium_destination.radius_m'),
+        status: asString(json['status'], 'premium_destination.status'),
+        avatarKey: asStringOrNull(json['avatar_key'], 'premium_destination.avatar_key'),
+      );
+
+  final String id;
+  final String code;
+  final String nameZh;
+  final String nameEn;
+  final double lat;
+  final double lng;
+  final int radiusM;
+  final String status;
+  final String? avatarKey;
+}
+
+/// `GET /api/v1/destinations` — the public premium-destination map pins.
+class PremiumDestinationPage {
+  const PremiumDestinationPage({required this.items});
+
+  factory PremiumDestinationPage.fromJson(Map<String, dynamic> json) =>
+      PremiumDestinationPage(
+        items: asObjectList(
+          json['items'],
+          'premium_destination.items',
+          PremiumDestination.fromJson,
+        ),
+      );
+
+  final List<PremiumDestination> items;
+}
+
 /// The fare snapshot frozen into `orders.fare_json` at creation time.
 ///
 /// It is deliberately a *copy* rather than a live recomputation, so a historical
@@ -85,6 +140,11 @@ class Order {
     required this.estimatedTotalHkd,
     required this.completedAt,
     required this.createdAt,
+    this.requirements,
+    this.paymentPreference = const <String>[],
+    this.driverPaymentMethods = const <String>[],
+    this.premiumDestination,
+    this.destinationArea,
   });
 
   factory Order.fromJson(Map<String, dynamic> json) => Order(
@@ -95,6 +155,20 @@ class Order {
     estimatedTotalHkd: Money.parse(json['estimated_total_hkd']),
     completedAt: asDateOrNull(json['completed_at'], 'order.completed_at'),
     createdAt: asDateOrNull(json['created_at'], 'order.created_at'),
+    requirements:
+        json['requirements'] == null
+            ? null
+            : asMap(json['requirements'], 'order.requirements'),
+    paymentPreference: asStringListOrEmpty(json['payment_preference'], 'order.payment_preference'),
+    driverPaymentMethods:
+        asStringListOrEmpty(json['driver_payment_methods'], 'order.driver_payment_methods'),
+    premiumDestination:
+        json['premium_destination'] == null
+            ? null
+            : PremiumDestination.fromJson(
+                asMap(json['premium_destination'], 'order.premium_destination'),
+              ),
+    destinationArea: asStringOrNull(json['destination_area'], 'order.destination_area'),
   );
 
   final String id;
@@ -104,6 +178,22 @@ class Order {
   final Money estimatedTotalHkd;
   final DateTime? completedAt;
   final DateTime? createdAt;
+
+  /// The passenger's frozen ride requirements (silence, no radio/music, no
+  /// smoke, no perfume, animal details). Optional — older orders have none.
+  final Map<String, dynamic>? requirements;
+
+  /// The passenger's requested payment methods; informational, not a guarantee.
+  final List<String> paymentPreference;
+
+  /// The assigned driver's declared methods, copied onto the order at grab.
+  final List<String> driverPaymentMethods;
+
+  /// Auto-detected premium destination snapshot on the order.
+  final PremiumDestination? premiumDestination;
+
+  /// Coarse destination area (e.g. `AIRPORT`) derived server-side.
+  final String? destinationArea;
 }
 
 /// `GET /api/v1/orders` — newest first, keyset-paginated.
@@ -162,6 +252,8 @@ class OrderCreateRequest {
     this.tunnels = const <Tunnel>[],
     this.crossesHarbour = false,
     this.pickupAtCrossHarbourStand = false,
+    this.requirements,
+    this.paymentPreference = const <String>[],
   });
 
   final double pickupLat;
@@ -179,6 +271,13 @@ class OrderCreateRequest {
   final bool crossesHarbour;
   final bool pickupAtCrossHarbourStand;
 
+  /// Optional ride requirements: silent ride, no radio/music, no smoke/perfume,
+  /// and animal details before a driver sees the order.
+  final Map<String, dynamic>? requirements;
+
+  /// Optional requested payment methods; informational, not a guarantee.
+  final List<String> paymentPreference;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
     'pickup_lat': pickupLat,
     'pickup_lng': pickupLng,
@@ -195,5 +294,7 @@ class OrderCreateRequest {
     'tunnels': tunnels.map((Tunnel t) => t.wire).toList(growable: false),
     'crosses_harbour': crossesHarbour,
     'pickup_at_cross_harbour_stand': pickupAtCrossHarbourStand,
+    'requirements': requirements,
+    'payment_preference': paymentPreference,
   };
 }

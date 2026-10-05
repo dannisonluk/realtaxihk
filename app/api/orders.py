@@ -48,6 +48,7 @@ from app.models import (
     LedgerEntryType,
     Order,
     OrderStatus,
+    PaymentMethod,
     UserRole,
 )
 from app.services.ledger.ledger_service import LedgerService
@@ -75,6 +76,22 @@ def _redis(request: Request):
     return request.app.state.redis_factory()
 
 
+class AnimalDetailIn(BaseModel):
+    kind: str = Field(min_length=1, max_length=32)
+    # Approximate size so a driver can judge before accepting. Open ranges are
+    # bounded to keep a passenger from stuffing absurd values into JSONB.
+    height_cm: Decimal = Field(ge=1, le=200)
+    weight_kg: Decimal = Field(ge=0.1, le=100)
+
+
+class RideRequirementsIn(BaseModel):
+    silent_ride: bool = False
+    no_radio_music: bool = False
+    no_smoke: bool = False
+    no_perfume: bool = False
+    animal: AnimalDetailIn | None = None
+
+
 class OrderCreateIn(BaseModel):
     pickup_lat: float = Field(ge=22.1, le=22.6)
     pickup_lng: float = Field(ge=113.8, le=114.5)
@@ -92,6 +109,9 @@ class OrderCreateIn(BaseModel):
     tunnels: list[str] = Field(default_factory=list, max_length=_MAX_TUNNELS)
     crosses_harbour: bool = False
     pickup_at_cross_harbour_stand: bool = False
+    # Phase 1: what the passenger needs the assigned driver to see/agree to.
+    requirements: RideRequirementsIn | None = None
+    payment_preference: list[str] = Field(default_factory=list, max_length=6)
 
     @field_validator("tunnels", mode="before")
     @classmethod
@@ -111,6 +131,16 @@ class OrderCreateIn(BaseModel):
     def finite(cls, v: Decimal) -> Decimal:
         if not v.is_finite():
             raise ValueError("must be a finite number")
+        return v
+
+    @field_validator("payment_preference")
+    @classmethod
+    def validate_payment_preference(cls, v: list[str]) -> list[str]:
+        for m in v:
+            try:
+                PaymentMethod(m)
+            except ValueError as exc:
+                raise ValueError(f"unknown payment method: {m}") from exc
         return v
 
 

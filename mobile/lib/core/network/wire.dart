@@ -106,6 +106,16 @@ List<T> asObjectList<T>(Object? value, String field, T Function(Map<String, dyna
   ).map((Object? item) => decode(asMap(item, '$field[]'))).toList(growable: false);
 }
 
+/// A list of strings, or an empty list when the key is absent (older fixtures).
+List<String> asStringListOrEmpty(Object? value, String field) {
+  if (value == null) {
+    return const <String>[];
+  }
+  return asList(value, field)
+      .map((Object? item) => asString(item, '$field[]'))
+      .toList(growable: false);
+}
+
 /// A list of enums decoded from their wire tokens.
 List<T> asEnumList<T>(Object? value, String field, T Function(String) decode) {
   return asList(

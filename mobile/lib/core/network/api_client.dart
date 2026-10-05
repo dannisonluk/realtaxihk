@@ -98,6 +98,24 @@ class ApiClient {
     ),
   );
 
+  /// `PUT` — the full-replace verb used by driver attribute routes.
+  ///
+  /// Distinct from [patch] because the server treats these as replacement of
+  /// the whole set (payment methods / environment flags), not partial updates.
+  Future<Map<String, dynamic>> put(
+    String path, {
+    Object? data,
+    Map<String, dynamic>? query,
+    bool authenticated = true,
+  }) => _send<Map<String, dynamic>>(
+    () => _dio.put<dynamic>(
+      path,
+      data: data,
+      queryParameters: query,
+      options: Options(extra: <String, dynamic>{_kSkipAuth: !authenticated}),
+    ),
+  );
+
   /// `PATCH` — the partial-update verb the admin routes use.
   ///
   /// Distinct from [post] because the server does: `PATCH /admin/fleets/{id}`

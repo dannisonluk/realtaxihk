@@ -21,6 +21,7 @@ from fastapi import APIRouter
 from app.api.admin import (
     accounts,
     audit,
+    destinations,
     disputes,
     drivers,
     live,
@@ -44,5 +45,6 @@ for _resource in (
     disputes,
     search,
     live,
+    destinations,
 ):
     router.include_router(_resource.router)

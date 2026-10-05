@@ -71,6 +71,12 @@ from app.models.licence import (
     DriverLicenceSubmission,
     LicenceReviewStatus,
 )
+from app.models.premium import (
+    DestinationStatus,
+    DriverPaymentMethod,
+    PaymentMethod,
+    PremiumDestination,
+)
 from app.models.user import (
     AccountStatus,
     DriverDeposit,
@@ -104,6 +110,7 @@ __all__ = [
     "AdminRefreshToken",
     "AdminRole",
     "Base",
+    "DestinationStatus",
     "DisputeCategory",
     "DisputeMessage",
     "DisputePartyKind",
@@ -115,6 +122,7 @@ __all__ = [
     "DriverDeposit",
     "DriverDocument",
     "DriverLicenceSubmission",
+    "DriverPaymentMethod",
     "DriverProfile",
     "DriverStatus",
     "EmailVerificationToken",
@@ -132,6 +140,8 @@ __all__ = [
     "OrderDispute",
     "OrderStatus",
     "OtpCode",
+    "PaymentMethod",
+    "PremiumDestination",
     "RefreshToken",
     "RefundRequest",
     "RefundStatus",

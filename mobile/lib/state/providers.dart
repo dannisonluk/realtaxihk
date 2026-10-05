@@ -6,6 +6,7 @@ import '../core/network/api_client.dart';
 import '../core/storage/token_store.dart';
 import '../data/admin_repository.dart';
 import '../data/auth_repository.dart';
+import '../data/destination_repository.dart';
 import '../data/driver_repository.dart';
 import '../data/fare_repository.dart';
 import '../data/fleet_repository.dart';
@@ -42,6 +43,11 @@ final Provider<IdentityRepository> identityRepositoryProvider = Provider<Identit
 final Provider<FareRepository> fareRepositoryProvider = Provider<FareRepository>(
   (Ref ref) => FareRepository(ref.watch(apiClientProvider)),
 );
+
+final Provider<DestinationRepository> destinationRepositoryProvider =
+    Provider<DestinationRepository>(
+      (Ref ref) => DestinationRepository(ref.watch(apiClientProvider)),
+    );
 
 final Provider<OrderRepository> orderRepositoryProvider = Provider<OrderRepository>(
   (Ref ref) => OrderRepository(ref.watch(apiClientProvider)),

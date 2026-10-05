@@ -295,6 +295,10 @@ class DriverProfile(Base):
     )
     is_online: Mapped[bool] = mapped_column(Boolean, default=False)
     last_location_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Driver-declared in-car environment capabilities. JSONB because the set of
+    # flags is expected to grow without schema churn; the API validates the
+    # known keys. NULL means "has not declared anything" (no claim, no badge).
+    in_car_environment_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     @staticmethod
     async def for_user(session: AsyncSession, user_id: uuid.UUID) -> DriverProfile | None:
@@ -392,6 +396,27 @@ class Order(Base):
     tariff_version: Mapped[str] = mapped_column(String(60))
     estimated_total_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0)
+    # Phase-1 ride requirements, frozen with the order. NULL means no special
+    # requirements; the API validates shape and bounds before storing.
+    requirements_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Passenger-facing preferred payment methods, set by the passenger at order
+    # creation. This is a preference/request, not a guarantee.
+    payment_preference_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # The assigned driver's declared methods, copied onto the order at grab time
+    # so a passenger sees what this driver actually accepts even if the driver
+    # later edits their profile.
+    driver_payment_methods_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Auto-detected at creation from a geofence against premium_destinations.
+    premium_destination_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("premium_destinations.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
+    # A frozen snapshot (id/code/name/avatar) so `order_out` never needs a join
+    # and the map tag stays stable for the life of the order.
+    premium_destination_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    destination_area: Mapped[str | None] = mapped_column(String(24), nullable=True)
     # Broadcast config
     broadcast_radius_km: Mapped[Decimal] = mapped_column(Numeric(4, 1), default=3.0)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

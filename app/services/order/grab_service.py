@@ -24,7 +24,13 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 
-from app.models import DriverProfile, DriverStatus, Order, OrderStatus
+from app.models import (
+    DriverPaymentMethod,
+    DriverProfile,
+    DriverStatus,
+    Order,
+    OrderStatus,
+)
 from app.services.order.state_machine import assert_order_transition
 
 _LOCK_TTL_MS = 15_000
@@ -81,6 +87,21 @@ class GrabService:
                 ):
                     return False
                 assert_order_transition(order.status, OrderStatus.ACCEPTED)
+
+                # Copy the driver's declared payment methods onto the order at
+                # grab time. The passenger sees a snapshot, so a driver editing
+                # their profile after grabbing cannot change what was agreed.
+                methods = (
+                    (
+                        await session.execute(
+                            select(DriverPaymentMethod.method).where(
+                                DriverPaymentMethod.driver_profile_id == profile.id
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
                 # Conditional UPDATE: only a BROADCASTING row can be claimed, so
                 # the database itself enforces single-assignment.
                 result = await session.execute(
@@ -90,6 +111,9 @@ class GrabService:
                         status=OrderStatus.ACCEPTED,
                         driver_id=profile.id,
                         accepted_at=datetime.now(UTC),
+                        driver_payment_methods_json=(
+                            {"methods": [str(m) for m in methods]} if methods else None
+                        ),
                     )
                 )
                 if (result.rowcount or 0) != 1:

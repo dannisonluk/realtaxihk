@@ -16,7 +16,7 @@ That inconsistency is not an accident and it is pinned by the fixtures:
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.schemas.fare import FareSnapshotOut
 
@@ -43,6 +43,14 @@ class OrderOut(BaseModel):
     estimated_total_hkd: str  # money_str, 2 dp (stored column)
     completed_at: str | None
     created_at: str | None
+    # Phase 1 additions — all optional so existing fixtures and clients decode
+    # unchanged. The values are stored/frozen with the order; they are not
+    # recomputed from current driver state.
+    requirements: dict | None = None
+    payment_preference: list[str] = Field(default_factory=list)
+    driver_payment_methods: list[str] = Field(default_factory=list)
+    premium_destination: dict | None = None
+    destination_area: str | None = None
 
 
 class OrderPageOut(BaseModel):

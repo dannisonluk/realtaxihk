@@ -16,13 +16,13 @@ the handlers, and the fixture set is the acceptance test: adding a
 `response_model=` that omits a field a fixture contains will fail the contract
 check. See `mobile/test/fixtures/manifest.json` for the route → fixture map.
 
-Coverage: **all 69 operations now declare a real `response_model=`** (it was 1
-of 69 before this package). `scripts/verify/audit_response_models.py` proves that no
-fixture key is dropped by its model — run it after touching anything here. It
-is deliberately separate from `mobile/tool/verify_contract.dart`: that one
-validates the *Dart decoders* against the bytes, this one validates the
-*schemas* against the fixtures, and a rename that updates both the model and the
-handler passes every Python test while breaking the client.
+Coverage: **all operations now declare a real `response_model=`**.
+`scripts/verify/audit_response_models.py` proves that no fixture key is dropped
+by its model — run it after touching anything here. It is deliberately separate
+from `mobile/tool/verify_contract.dart`: that one validates the *Dart decoders*
+against the bytes, this one validates the *schemas* against the fixtures, and a
+rename that updates both the model and the handler passes every Python test
+while breaking the client.
 
 Conventions (see each module for the detail):
 - Money and meter figures are `str` on the wire. `money_str` = 2 dp for stored
@@ -31,15 +31,13 @@ Conventions (see each module for the detail):
   mismatch, so an absent key and a null key are handled the same way.
 - No field is declared that no fixture (or, for the fixture-less routes, no
   serializer) actually produces.
-- **A route whose handler emits a key only sometimes needs
-  `response_model_exclude_unset=True`.** `GET /drivers/me` is the one case: the
-  no-deposit path omits `balance_hkd`/`held_hkd` entirely, and a plain
-  `response_model=` would materialise them from their defaults and publish a
-  balance the driver does not have.
+- A route whose handler emits a key only sometimes needs
+  `response_model_exclude_unset=True`.
 
-Deliberately **not** here: the two distinct fare shapes are in `fare.py` rather
-than merged, and the three list envelopes are in `_envelope.py` rather than
-unified, because those differences are load-bearing on the client.
+Deliberately **not** here: request-body models. Request schemas live in their
+API modules (or dedicated schema modules) and are not exported from this
+package, so the audit script can prove every exported schema is reachable as a
+response model.
 """
 
 from __future__ import annotations
@@ -111,6 +109,10 @@ from app.api.schemas.driver import (
     RefundRequestOut,
     RefundViewOut,
 )
+from app.api.schemas.driver_attributes import (
+    DriverEnvironmentOut,
+    DriverPaymentMethodsOut,
+)
 from app.api.schemas.fare import (
     FareEstimateOut,
     FareSnapshotOut,
@@ -155,6 +157,10 @@ from app.api.schemas.order import (
     OrderPageOut,
     TripLocationOut,
 )
+from app.api.schemas.premium import (
+    PremiumDestinationListOut,
+    PremiumDestinationOut,
+)
 
 __all__ = [
     "AdminAccountCreatedOut",
@@ -192,8 +198,10 @@ __all__ = [
     "DisputeResolveOut",
     "DisputeStatsOut",
     "DriverDetailOut",
+    "DriverEnvironmentOut",
     "DriverFleetBlockOut",
     "DriverPageOut",
+    "DriverPaymentMethodsOut",
     "DriverProfileOut",
     "DriverProfileWithDepositOut",
     "DriverReviewOut",
@@ -233,6 +241,8 @@ __all__ = [
     "PageEnvelope",
     "PhoneBindOut",
     "PhoneReverifyOut",
+    "PremiumDestinationListOut",
+    "PremiumDestinationOut",
     "PresignedUploadOut",
     "ProfileOut",
     "RefundDecisionOut",

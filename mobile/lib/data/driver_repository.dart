@@ -1,5 +1,6 @@
 import '../core/network/api_client.dart';
 import '../models/driver.dart';
+import '../models/driver_attributes.dart';
 import '../models/ledger.dart';
 import '../models/refund.dart';
 
@@ -72,5 +73,35 @@ class DriverRepository {
       '/api/v1/drivers/location',
       data: <String, dynamic>{'lat': lat, 'lng': lng, 'online': online},
     );
+  }
+
+  /// `GET /drivers/me/payment-methods` — the driver's declared methods.
+  Future<DriverPaymentMethods> paymentMethods() async {
+    final Map<String, dynamic> json = await _api.get('/api/v1/drivers/me/payment-methods');
+    return DriverPaymentMethods.fromJson(json);
+  }
+
+  /// `PUT /drivers/me/payment-methods` — replace the declared methods.
+  Future<DriverPaymentMethods> setPaymentMethods(List<String> methods) async {
+    final Map<String, dynamic> json = await _api.put(
+      '/api/v1/drivers/me/payment-methods',
+      data: DriverPaymentMethods(methods: methods).toJson(),
+    );
+    return DriverPaymentMethods.fromJson(json);
+  }
+
+  /// `GET /drivers/me/environment` — in-car capability flags.
+  Future<DriverEnvironment> environment() async {
+    final Map<String, dynamic> json = await _api.get('/api/v1/drivers/me/environment');
+    return DriverEnvironment.fromJson(json);
+  }
+
+  /// `PUT /drivers/me/environment` — replace the declared capability flags.
+  Future<DriverEnvironment> setEnvironment(DriverEnvironment environment) async {
+    final Map<String, dynamic> json = await _api.put(
+      '/api/v1/drivers/me/environment',
+      data: environment.toJson(),
+    );
+    return DriverEnvironment.fromJson(json);
   }
 }
