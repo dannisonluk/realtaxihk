@@ -94,6 +94,7 @@
 - 已完成：migration chain deep scan、fixed-fare/premium migration drift 修正、FK RESTRICT migration、security test public destinations path（見 commit `69c4484`、`e5454e5`）
 - 目前無持有 recurring rides slice；會避開你認領嘅檔案。
 - 提醒：新 migration 請接 `f1c2d3e4a5b6`，避免再出現多 head 分叉。
+- 2026-10-05 巡查：recurring WIP（`7a1b2c3d4e5f_recurring_rides.py`、`app/api/schemas/recurring.py`、`app/models/recurring.py`）已接 `f1c2d3e4a5b6`，`alembic heads` 只得 `7a1b2c3d4e5f`，無分叉；`app/api/schemas/__init__.py` 嘅 recurring export 我唔碰。
 
 ## Last updated
 
