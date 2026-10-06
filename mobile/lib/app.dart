@@ -21,7 +21,11 @@ class HkfastdcApp extends ConsumerWidget {
       themeMode: ThemeMode.system,
       routerConfig: router,
       locale: const Locale('zh', 'HK'),
-      supportedLocales: const <Locale>[Locale('zh', 'HK'), Locale('zh'), Locale('en')],
+      // Only the locales the app actually has copy for. `Locale('en')` used to
+      // be listed here, but there is no English resource anywhere in the tree —
+      // no `.arb`, no `l10n` directory — so listing it advertised a language the
+      // app cannot render. The product ships in Chinese only.
+      supportedLocales: const <Locale>[Locale('zh', 'HK'), Locale('zh')],
       localizationsDelegates: const <LocalizationsDelegate<Object>>[
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

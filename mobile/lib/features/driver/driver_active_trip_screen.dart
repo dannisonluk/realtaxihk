@@ -100,6 +100,13 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
               if (mounted && _socketNote != null) {
                 setState(() => _socketNote = null);
               }
+            case TripOrderEvent():
+              // Something happened to the trip that this screen did not do:
+              // the passenger confirmed arrival (which is what unlocks the
+              // trip), cancelled, or an admin closed a dispute. The screen
+              // renders from `orderDetailProvider`, so re-reading is the
+              // response — never applying the payload as state.
+              ref.invalidate(orderDetailProvider(widget.orderId));
             case TripLocationEvent():
             case TripPingEvent():
             case TripUnknownEvent():

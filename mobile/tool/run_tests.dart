@@ -569,6 +569,33 @@ void _tripEventTests() {
       expectTrue(const TripErrorEvent(code: 'NEW_THING').messageZh.contains('NEW_THING'));
     });
 
+    test('decodes a lifecycle announcement', () {
+      final TripEvent event = TripEvent.fromJson(<String, dynamic>{
+        'type': 'order',
+        'event': 'ARRIVAL_CLAIMED',
+        'order_id': '6f1d5a1e-0000-4000-8000-000000000001',
+        'status': 'PENDING_ARRIVAL_CONFIRM',
+      });
+      expectTrue(event is TripOrderEvent);
+      final TripOrderEvent order = event as TripOrderEvent;
+      expect(order.event, 'ARRIVAL_CLAIMED');
+      expect(order.status, 'PENDING_ARRIVAL_CONFIRM');
+      expect(order.orderId, '6f1d5a1e-0000-4000-8000-000000000001');
+    });
+
+    test('a lifecycle event with an unknown name still decodes', () {
+      // The screens respond by re-reading the order, so a server that adds an
+      // event must not require a client release to keep working.
+      final TripEvent event = TripEvent.fromJson(<String, dynamic>{
+        'type': 'order',
+        'event': 'SOMETHING_NEW',
+        'order_id': '6f1d5a1e-0000-4000-8000-000000000002',
+        'status': 'IN_TRIP',
+      });
+      expectTrue(event is TripOrderEvent);
+      expect((event as TripOrderEvent).event, 'SOMETHING_NEW');
+    });
+
     test('an unknown frame type does not break the socket', () {
       final TripEvent event = TripEvent.fromJson(<String, dynamic>{'type': 'telemetry'});
       expectTrue(event is TripUnknownEvent);

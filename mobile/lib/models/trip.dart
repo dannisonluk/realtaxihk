@@ -35,9 +35,10 @@ class TripLocationSnapshot {
 
 /// A message on the live-trip channel `/ws/trip/{order_id}`.
 ///
-/// Server → client types are `location`, `ping`, `ack` and `error`
-/// (`app/api/ws.py`). The driver's own socket never receives `location` — it
-/// gets a direct `ack` per tick instead, so it sees exactly one reply per push.
+/// Server → client types are `location`, `ping`, `ack`, `error` and `order`
+/// (`app/api/ws.py`, `app/services/order/trip_event_service.py`). The driver's
+/// own socket never receives `location` — it gets a direct `ack` per tick
+/// instead, so it sees exactly one reply per push.
 sealed class TripEvent {
   const TripEvent();
 
@@ -57,6 +58,11 @@ sealed class TripEvent {
         lng: asDouble(json['lng'], 'ws.lng'),
       ),
       'error' => TripErrorEvent(code: asString(json['code'], 'ws.code')),
+      'order' => TripOrderEvent(
+        event: asString(json['event'], 'ws.order.event'),
+        orderId: asString(json['order_id'], 'ws.order.order_id'),
+        status: asString(json['status'], 'ws.order.status'),
+      ),
       _ => TripUnknownEvent(type: type),
     };
   }
@@ -107,6 +113,31 @@ final class TripErrorEvent extends TripEvent {
     'DRIVER_NOT_ACTIVE' => '司機帳戶未啟用，已停止推送',
     _ => '位置推送失敗（$code）',
   };
+}
+
+/// A trip lifecycle announcement (`type: "order"`), emitted by
+/// `app/services/order/trip_event_service.publish_lifecycle` the moment a state
+/// change is durable.
+///
+/// Before this message existed the other party learned about a grab, an arrival
+/// claim or a cancellation on the next poll
+/// ([AppConfig.locationPollInterval], 10 s). The arrival-confirmation flow is
+/// the case that made the delay unacceptable: the passenger's "did the driver
+/// really arrive?" prompt has to appear *when the driver claims it*.
+///
+/// [event] is the semantic name — `GRABBED`, `ARRIVAL_CLAIMED`,
+/// `ARRIVAL_CONFIRMED`, `ARRIVAL_CONFLICT`, `TRIP_STARTED`, `TRIP_COMPLETED`,
+/// `DESTINATION_CHANGED`, `INTERRUPTED`, `CANCELLED`, `DISPUTE_RESOLVED` — and
+/// [status] is the order's status *after* the change. Both are open strings on
+/// purpose: a server that adds an event must still cause a re-read on an older
+/// build, and the screens never apply the payload as state anyway — they
+/// re-fetch the order, which is the single source of truth.
+final class TripOrderEvent extends TripEvent {
+  const TripOrderEvent({required this.event, required this.orderId, required this.status});
+
+  final String event;
+  final String orderId;
+  final String status;
 }
 
 final class TripUnknownEvent extends TripEvent {

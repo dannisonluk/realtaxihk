@@ -118,6 +118,11 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
     switch (event) {
       case TripLocationEvent(:final double lat, :final double lng):
         setState(() => _driver = MapPoint(lat: lat, lng: lng, label: '司機位置'));
+      case TripOrderEvent():
+        // The driver claimed arrival, started the trip, or someone ended it.
+        // Re-reading beats waiting for the next poll tick — the poll is still
+        // there as the fallback for a dropped socket, not as the main path.
+        ref.invalidate(orderDetailProvider(widget.orderId));
       case TripErrorEvent():
         // A passenger socket is read-only, so the only error it can provoke is
         // its own; nothing to do beyond leaving the map up.
