@@ -60,6 +60,7 @@ from app.api.schemas import (
     OrderOut,
     OrderPageOut,
     OtpRequestOut,
+    ProfileOut,
     ReceiptOut,
     RefundDecisionOut,
     RefundOut,
@@ -73,6 +74,18 @@ from app.api.schemas import (
 )
 
 FIXTURES = pathlib.Path("mobile/test/fixtures")
+
+# Fixtures on disk that are deliberately not HTTP responses, so they have no
+# `response_model` to audit. Enumerating them — rather than globbing only what
+# the roster happens to name — is what lets `check_roster` below notice a *new*
+# fixture that nobody wired up.
+NON_RESPONSE_FIXTURES = {
+    "manifest": "the generator's index, not a captured response",
+    "ws_driver_ack": "WebSocket frame, not an HTTP response",
+    "ws_location_tick": "WebSocket frame, not an HTTP response",
+    "ws_outside_hk_error": "WebSocket frame, not an HTTP response",
+    "ws_read_only_error": "WebSocket frame, not an HTTP response",
+}
 
 # Schemas deliberately NOT reachable from any route, with the reason. Anything
 # unreachable that is *not* listed here is a problem — it means a schema was
@@ -92,9 +105,12 @@ MODEL_OF: dict[str, object] = {
     "auth_otp_request": OtpRequestOut,
     "auth_verify": TokenPairOut,
     "auth_verify_admin": TokenPairOut,
-    "auth_verify_new_user": TokenPairOut,
+    "auth_register": TokenPairOut,
     "auth_refresh": TokenPairOut,
     "auth_me": AuthMeOut,
+    # identity
+    "identity_me": ProfileOut,
+    "identity_profile": ProfileOut,
     "driver_location": OkOut,
     # drivers
     "driver_register": DriverProfileOut,
@@ -397,11 +413,46 @@ def self_test() -> int:
     return 0
 
 
+def check_roster(problems: list[str]) -> None:
+    """The roster and the fixtures directory must name the same responses.
+
+    Drift here is silent in **both** directions, and both were live before this
+    guard existed:
+
+    * `auth_verify_new_user` was named in `MODEL_OF` while its fixture had been
+      deleted. `check_fixtures` skips a missing file (`if not path.exists()`),
+      so the entry audited nothing and reported nothing.
+    * `identity_me`, `identity_profile` and `auth_register` existed on disk,
+      with decoders in `mobile/tool/verify_contract.dart`, but were named
+      nowhere — so whether their `response_model` drops a key was never asked.
+
+    The module docstring used to say this walked `manifest.json`. It does not:
+    it walks the hard-coded roster, which is exactly why an unnamed fixture is
+    invisible. Comparing the two sets is the only way that claim can be made
+    true.
+    """
+    on_disk = {p.stem for p in FIXTURES.glob("*.json")} - set(NON_RESPONSE_FIXTURES)
+    named = set(MODEL_OF) | set(LIST_WRAPPED) | {stem for stem, _ in NESTED}
+
+    for stem in sorted(named - on_disk):
+        problems.append(
+            f"{stem}: named in the roster but no {stem}.json on disk "
+            f"(the entry audits nothing — delete it, or restore the fixture)"
+        )
+    for stem in sorted(on_disk - named):
+        problems.append(
+            f"{stem}: fixture on disk but named nowhere in the roster "
+            f"(its response_model is never checked — add it, or list it in "
+            f"NON_RESPONSE_FIXTURES with a reason)"
+        )
+
+
 def main() -> int:
     if "--self-test" in sys.argv:
         return self_test()
 
     problems: list[str] = []
+    check_roster(problems)
     checked = check_fixtures(problems)
     operations, distinct = check_coverage(problems)
 
