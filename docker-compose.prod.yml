@@ -8,8 +8,9 @@
 # standalone prod file would be a second copy of all of it. The second copy is
 # the one that gets missed when the next finding lands.
 #
-# What this file adds: the TLS terminator, its certificate renewal, and the
-# explicit sizing numbers that the base file deliberately leaves to defaults.
+# What this file adds: the TLS terminator, its certificate renewal, the mount
+# that publishes the admin console's static build at /console/, and the explicit
+# sizing numbers that the base file deliberately leaves to defaults.
 #
 # Before the first `up`, certificates must already exist — nginx cannot start
 # without them and will restart-loop. See deploy/README.md for the bootstrap.
@@ -124,6 +125,22 @@ services:
       - letsencrypt:/etc/letsencrypt
       - certbot-webroot:/var/www/certbot
       - nginx-logs:/var/log/nginx
+      # The admin console's static build, served at /console/.
+      #
+      # ONE mount is enough: `location /console/` and `location /console/assets/`
+      # in hkfastdc.conf both use `root /var/www`, so they resolve to
+      # /var/www/console/... and /var/www/console/assets/... respectively —
+      # exactly the tree Vite writes (dist/index.html + dist/assets/*). The
+      # `base: './'` in admin-web/web/vite.config.ts is what keeps the asset
+      # URLs relative, which is what lets the bundle live under a path prefix
+      # at all.
+      #
+      # `:ro` because nginx only reads. The source MUST be built before `up`:
+      # a missing bind source is created as an empty root-owned directory, and
+      # nginx then answers 404 on every console route — KYC review, dispute
+      # adjudication, refunds, fleet settlement — with nothing in any log to
+      # say why. Build it first; see deploy/README.md §"Console build".
+      - ./admin-web/web/dist:/var/www/console:ro
     # Two things happen before nginx starts.
     #
     # `rm -f /etc/nginx/conf.d/default.conf` — the stock image ships a server

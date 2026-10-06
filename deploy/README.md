@@ -78,8 +78,53 @@ hostname `hkfastdc.com`，沒有 `api.` 也沒有 `console.` 前綴。** 所有�
 > —— 那個做法存在的理由是「三種拼法無法收斂」，而現在收斂了。多一層模板只會多
 > 一個要對齊的地方。
 
-console 的靜態檔要放進 nginx 容器（`/var/www/console`），來源是
-`cd admin-web/web && npm run build` 的 `dist/`。
+## Console build：`/console/` 的靜態檔從哪來
+
+`nginx/hkfastdc.conf` 的 `location /console/` 是**啟用中**的，但 nginx 本身不
+建置前端——它只是把 `/var/www/console/` 當靜態根目錄讀。所以上線前**必須先建置
+一次**，否則 `/console/` 會回 404。
+
+```bash
+cd admin-web/web
+npm ci          # 用 lockfile 精準安裝，不要用 npm install
+npm run build   # 產物在 admin-web/web/dist/
+```
+
+`docker-compose.prod.yml` 的 nginx service 已把該目錄掛進容器：
+
+```yaml
+volumes:
+  - ./admin-web/web/dist:/var/www/console:ro
+```
+
+**路徑對應關係**（`base: './'` 是關鍵，它令產物的資源路徑保持相對）：
+
+| nginx `location` | `root` + `location` 解析後 | 對應 `dist/` 內 |
+|---|---|---|
+| `/console/` | `/var/www/console/` | `dist/index.html` |
+| `/console/assets/` | `/var/www/console/assets/` | `dist/assets/*`（含 hash 檔名） |
+
+兩個 `location` 都用 `root /var/www`，所以**掛一個 volume 就同時覆蓋兩者**，
+不需要為 `assets` 再掛一次。
+
+> ⚠️ **未 build 就先 `up` 的後果**：bind mount 的來源目錄不存在時，Docker 會
+> **靜靜地建立一個空的 root 擁有的目錄**，不會報錯。於是 nginx 起來、TLS 正常、
+> `/` 的 API 照常運作，唯獨 `/console/` 每一條路由都回 **404**——KYC 審批、爭議
+> 裁決、退款、車隊結算全部沒有後台可用，而**任何日誌都不會說原因**。這是本專案
+> 反覆記錄的「看起來對、其實無聲失效」那一類。**先把 `dist/` build 出來再 `up`。**
+
+驗證（在宿主機，`dist/` 存在即可先確認內容）：
+
+```bash
+ls admin-web/web/dist/index.html admin-web/web/dist/assets
+```
+
+若容器已起來但 console 仍 404，確認容器內真的看到檔案：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  exec nginx ls /var/www/console/
+```
 
 ## 三個必須對齊的設定（否則會靜默失效）
 
@@ -221,6 +266,8 @@ R2 與 VPS 若在同一個帳號下，一次帳號事故會同時帶走兩者。
 
 - **主機名**：已定為 `hkfastdc.com`，單一 origin（見上面「主機名」一節）。
 - **後台主控台（`admin-web/web`）**：`nginx/hkfastdc.conf` 內已有**啟用中**的
-  `location /console/`，與 API 同一個 origin，**不需要另簽憑證**。剩下的是把
-  `npm run build` 的 `dist/` 放進 nginx 容器的 `/var/www/console`（目前 compose
-  沒有這個 volume，要加）。在此之前 `/console/` 會回 404，其餘一切照常。
+  `location /console/`，與 API 同一個 origin，**不需要另簽憑證**。
+  `docker-compose.prod.yml` 的 nginx service 已掛上
+  `./admin-web/web/dist:/var/www/console:ro`。剩下的只有**建置**：跑一次
+  `cd admin-web/web && npm ci && npm run build`（詳見上面「Console build」一節）。
+  **未 build 就 `up` 會令 `/console/` 回 404**，其餘一切照常。
