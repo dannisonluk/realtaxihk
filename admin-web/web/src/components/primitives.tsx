@@ -152,6 +152,11 @@ export function Modal({
   useEffect(() => {
     const box = boxRef.current;
     if (!box) return;
+    // Where focus was before the dialog opened. Without putting it back, closing
+    // the dialog leaves focus on `<body>`, so the next Tab starts at the top of
+    // the page instead of from the control that opened it — the keyboard user
+    // loses their place every time.
+    const opener = document.activeElement as HTMLElement | null;
     const focusable = () =>
       Array.from(
         box.querySelectorAll<HTMLElement>(
@@ -160,6 +165,11 @@ export function Modal({
       ).filter((el) => el.offsetParent !== null || el === document.activeElement);
     const first = focusable()[0];
     (first ?? box).focus();
+    return () => {
+      // `isConnected` because the opener is often a row's button, and acting on
+      // a row usually re-renders the list away from under it.
+      if (opener?.isConnected) opener.focus();
+    };
   }, []);
 
   return (

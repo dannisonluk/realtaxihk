@@ -22,7 +22,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useApp } from '../app/AppContext';
-import { useFormDialog } from '../app/useDialogs';
+import { useConfirmDialog, useFormDialog } from '../app/useDialogs';
 import { useLoad } from '../app/useLoad';
 import { endpoints } from '../api/endpoints';
 import type {
@@ -63,6 +63,7 @@ export function FleetDetailPage() {
   const editDialog = useFormDialog();
   const addDialog = useFormDialog();
   const removeDialog = useFormDialog();
+  const settleDialog = useConfirmDialog();
 
   const { data, error, loading, reload } = useLoad(async (): Promise<FleetDetail> => {
     // Sequential — see `useLoad.ts`. This page previously fired all three
@@ -78,38 +79,48 @@ export function FleetDetailPage() {
     return { fleet, members: members.items ?? [], settlement: history.items ?? [] };
   }, [client, fleetId, includeLeft]);
 
-  async function runSettlement(period: string) {
-      if (period !== '' && !PERIOD_PATTERN.test(period)) {
-        notify(t('fleetDetail.errPeriod'), 'error');
-        return;
-      }
-      // This button moves money; the platform-wide settlement page requires a
-      // preview token for exactly this reason. The fleet route is idempotent per
-      // (fleet, ISO week) — it cannot double-bill — but an accidental run still
-      // charges the roster and overwrites the stored aggregate, so the operator
-      // gets a deliberate second press instead of a one-click money movement.
-      const confirmed = window.confirm(
-        `${t('fleetDetail.settlementTitle')}\n\n${t('fleetDetail.settlementNote')}`,
-      );
-      if (!confirmed) return;
-      setRunning(true);
-    setRunError(null);
-    try {
-      const result = await endpoints.fleets.runSettlement(client, fleetId, {
-        period: period || undefined,
-      });
-      setLastRun(result);
-      notify(t('fleetDetail.settleDone', { count: result.charged }));
-      // The header's member count and the history have both moved.
-      reload();
-      void refreshBadges();
-    } catch (cause) {
-      // Shown in place, below the lever, rather than replacing the whole page —
-      // the roster and history above it are still valid and worth reading.
-      setRunError(cause instanceof Error ? cause : new Error(String(cause)));
-    } finally {
-      setRunning(false);
+  function requestSettlement(period: string) {
+    if (period !== '' && !PERIOD_PATTERN.test(period)) {
+      notify(t('fleetDetail.errPeriod'), 'error');
+      return;
     }
+    // This button moves money; the platform-wide settlement page requires a
+    // preview token for exactly this reason. The fleet route is idempotent per
+    // (fleet, ISO week) — it cannot double-bill — but an accidental run still
+    // charges the roster and overwrites the stored aggregate, so the operator
+    // gets a deliberate second press instead of a one-click money movement.
+    //
+    // A modal rather than `window.confirm`: the native dialog cannot carry the
+    // danger tone, renders outside the app's styling, and blocks the whole tab.
+    // `useConfirmDialog` states the consequence in the body and marks the
+    // confirm button `--danger`, like every other irreversible action here.
+    settleDialog.open({
+      title: t('fleetDetail.settlementTitle'),
+      message: t('fleetDetail.settlementNote'),
+      confirmLabel: t('fleetDetail.runNow'),
+      onConfirm: async () => {
+        setRunning(true);
+        setRunError(null);
+        try {
+          const result = await endpoints.fleets.runSettlement(client, fleetId, {
+            period: period || undefined,
+          });
+          setLastRun(result);
+          notify(t('fleetDetail.settleDone', { count: result.charged }));
+          // The header's member count and the history have both moved.
+          reload();
+          void refreshBadges();
+        } catch (cause) {
+          // Shown in place, below the lever, rather than inside the modal — the
+          // roster and history above it are still valid and worth reading.
+          // Swallowed rather than rethrown so the modal closes and the error
+          // lands below the lever, where it has always been reported.
+          setRunError(cause instanceof Error ? cause : new Error(String(cause)));
+        } finally {
+          setRunning(false);
+        }
+      },
+    });
   }
 
   if (loading) return <LoadingState />;
@@ -247,7 +258,7 @@ export function FleetDetailPage() {
         <p className="dim" style={{ margin: '0 0 16px' }}>
           {t('fleetDetail.settlementNote')}
         </p>
-        <SettlementLever running={running} onRun={(period) => void runSettlement(period)} />
+        <SettlementLever running={running} onRun={requestSettlement} />
       </Card>
       <div style={{ marginTop: 14 }}>
         {runError ? <ErrorState error={runError} /> : null}
@@ -381,6 +392,7 @@ export function FleetDetailPage() {
       {editDialog.element}
       {addDialog.element}
       {removeDialog.element}
+      {settleDialog.element}
     </div>
   );
 }

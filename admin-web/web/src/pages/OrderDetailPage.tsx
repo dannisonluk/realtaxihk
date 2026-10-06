@@ -161,7 +161,7 @@ export function OrderDetailPage() {
                 ) : null}
                 <button
                   type="button"
-                  className="btn btn--small"
+                  className="btn btn--sm"
                   onClick={() => {
                     setReceipt(null);
                     setReceiptError(null);
