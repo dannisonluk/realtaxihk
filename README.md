@@ -737,7 +737,8 @@ what" by role.
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **Start here** — guided tour, business flow, invariants |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Conventions, backend quirks, lint gate, methodology |
 | [`docs/WORK_SUMMARY.md`](docs/WORK_SUMMARY.md) | Current state, everything outstanding |
-| [`docs/archive/AUDIT_2026-10-06.md`](docs/archive/AUDIT_2026-10-06.md) | **Latest fresh root-and-branch audit** — backend/mobile/admin findings, disposition, gates |
+| [`docs/archive/AUDIT_FRESH_2026-10-06.md`](docs/archive/AUDIT_FRESH_2026-10-06.md) | **Latest fresh root-and-branch audit** — independent backend/mobile/admin reports + fixes |
+| [`docs/archive/AUDIT_2026-10-06.md`](docs/archive/AUDIT_2026-10-06.md) | Earlier 2026-10-06 audit, superseded by AUDIT_FRESH_2026-10-06.md |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Security model + hardening guide |
 | [`docs/ADMIN_AUTH.md`](docs/ADMIN_AUTH.md) | Admin auth model, authenticator choice |
 | [`docs/ADMIN_CONSOLE_DESIGN.md`](docs/ADMIN_CONSOLE_DESIGN.md) | Console design + four-level RBAC |
