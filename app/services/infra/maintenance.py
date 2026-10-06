@@ -20,7 +20,7 @@ from sqlalchemy import CursorResult, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import AdminRefreshToken, Order, OrderStatus, OtpCode, RefreshToken
-from app.services.order.geo_service import GEO_ORDERS_KEY
+from app.services.order.geo_service import geo_orders_key
 
 logger = logging.getLogger("realtaxihk.maintenance")
 
@@ -76,7 +76,7 @@ class MaintenanceService:
                 auto_cancelled = len(stale_ids)
 
             # 2) Purge index entries that no longer point at BROADCASTING rows.
-            raw_ids = await self.redis.zrange(GEO_ORDERS_KEY, 0, -1)
+            raw_ids = await self.redis.zrange(geo_orders_key(), 0, -1)
             if raw_ids:
                 uuids: list[uuid.UUID] = []
                 malformed: list[str] = []
@@ -102,7 +102,7 @@ class MaintenanceService:
                     }
                 ghosts = [str(r) for r in raw_ids if str(r) not in live] + malformed
                 if ghosts:
-                    await self.redis.zrem(GEO_ORDERS_KEY, *ghosts)
+                    await self.redis.zrem(geo_orders_key(), *ghosts)
                     removed_ghosts = len(ghosts)
 
             # SEC-25: retire the legacy write-only driver index. Writes stopped

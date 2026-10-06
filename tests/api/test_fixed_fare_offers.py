@@ -79,6 +79,46 @@ def _airport_order(passenger_token: str, client) -> dict:
     return r.json()
 
 
+# The pickup of `_airport_order` above — the arrival claim is checked against the
+# driver's recorded GPS, so the tick has to land here.
+_PICKUP = (22.284, 114.158)
+
+
+def _arrive(
+    client, order_id: str, driver: dict, passenger_token: str, passenger_phone: str
+) -> None:
+    """Walk `ACCEPTED -> DRIVER_ARRIVED` through the real two-step arrival.
+
+    P4 split arrival in two (`docs/IN_TRIP_REDESIGN.md` §4.0): the driver claims
+    with a recorded GPS tick, and the passenger confirms with the last 4 digits
+    of *their own* number. A bare `/arrive` can no longer reach `DRIVER_ARRIVED`
+    — it stops at `PENDING_ARRIVAL_CONFIRM` — so any test that only cares about
+    what happens *after* arrival still has to walk both steps.
+    """
+    r = client.post(
+        "/api/v1/drivers/location",
+        headers={"Authorization": f"Bearer {driver['token']}"},
+        json={"lat": _PICKUP[0], "lng": _PICKUP[1]},
+    )
+    assert r.status_code == 200, r.text
+
+    r = client.post(
+        f"/api/v1/orders/{order_id}/arrival-claim",
+        headers={"Authorization": f"Bearer {driver['token']}"},
+        json={},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "PENDING_ARRIVAL_CONFIRM", r.text
+
+    r = client.post(
+        f"/api/v1/orders/{order_id}/arrival-confirm",
+        headers={"Authorization": f"Bearer {passenger_token}"},
+        json={"phone_last4": passenger_phone[-4:]},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "DRIVER_ARRIVED", r.text
+
+
 class TestFixedOfferLifecycle:
     async def test_driver_creates_and_updates_offer(self, client):
         driver = _mk_active_driver(client, "+85260009911")
@@ -121,6 +161,55 @@ class TestFixedOfferLifecycle:
         assert r.status_code == 201, r.text
         r = client.post("/api/v1/drivers/me/fixed-offers", headers=headers, json=payload)
         assert r.status_code == 422, r.text
+
+    async def test_unknown_destination_area_is_rejected(self, client):
+        """A typo must be a 422, not a silent offer that can never match.
+
+        `Order.destination_area` is only ever one of the five codes in
+        `app.core.region`, so an offer naming anything else would sit ACTIVE
+        forever and match nothing — the failure the closed set exists to turn
+        into a refusal.
+        """
+        driver = _mk_active_driver(client, "+85260009921")
+        headers = {"Authorization": f"Bearer {driver['token']}"}
+        r = client.post(
+            "/api/v1/drivers/me/fixed-offers",
+            headers=headers,
+            json={"destination_area": "KOWLOON_BAD", "price_hkd": "150.00"},
+        )
+        assert r.status_code == 422, r.text
+        assert "unknown destination area" in r.text
+        assert client.get("/api/v1/drivers/me/fixed-offers", headers=headers).json()["items"] == []
+
+    async def test_unknown_pickup_area_is_rejected(self, client):
+        driver = _mk_active_driver(client, "+85260009922")
+        headers = {"Authorization": f"Bearer {driver['token']}"}
+        r = client.post(
+            "/api/v1/drivers/me/fixed-offers",
+            headers=headers,
+            json={
+                "destination_area": "AIRPORT",
+                "pickup_area": "NOWHERE",
+                "price_hkd": "150.00",
+            },
+        )
+        assert r.status_code == 422, r.text
+        assert "unknown pickup area" in r.text
+
+    async def test_unknown_premium_destination_is_rejected(self, client):
+        """A dangling premium id is its own refusal, never "duplicate route"."""
+        driver = _mk_active_driver(client, "+85260009923")
+        headers = {"Authorization": f"Bearer {driver['token']}"}
+        r = client.post(
+            "/api/v1/drivers/me/fixed-offers",
+            headers=headers,
+            json={
+                "premium_destination_id": "00000000-0000-0000-0000-0000000000ff",
+                "price_hkd": "150.00",
+            },
+        )
+        assert r.status_code == 422, r.text
+        assert "unknown premium destination" in r.text
 
     async def test_fixed_order_freezes_fare_and_only_owner_can_grab(self, client):
         premium = _mk_premium(client)
@@ -189,11 +278,7 @@ class TestFixedOfferLifecycle:
         )
         assert r.status_code == 200, r.text
 
-        r = client.post(
-            f"/api/v1/orders/{order['id']}/arrive",
-            headers=driver_headers,
-        )
-        assert r.status_code == 200, r.text
+        _arrive(client, order["id"], driver, passenger_token, "+85260009919")
 
         r = client.post(
             f"/api/v1/orders/{order['id']}/start",
@@ -215,7 +300,9 @@ class TestFixedOfferLifecycle:
         assert len(fee_entries) == 1, fee_entries
         assert fee_entries[0]["amount_hkd"] == "-15.00"
         assert fee_entries[0]["order_id"] == order["id"]
-        assert fee_entries[0]["balance_after_hkd"] == "485.00"
+        # 500.00 deposit, less the $5 per-trip platform fee taken at `/start`
+        # (P4 DECISION-1), less this $15 fixed-ride fee at `/complete`.
+        assert fee_entries[0]["balance_after_hkd"] == "480.00"
 
     async def test_meter_complete_does_not_post_fixed_fee(self, client):
         driver = _mk_active_driver(client, "+85260009920")
@@ -231,11 +318,7 @@ class TestFixedOfferLifecycle:
         )
         assert r.status_code == 200, r.text
 
-        r = client.post(
-            f"/api/v1/orders/{order['id']}/arrive",
-            headers=driver_headers,
-        )
-        assert r.status_code == 200, r.text
+        _arrive(client, order["id"], driver, passenger_token, "+85260009921")
 
         r = client.post(
             f"/api/v1/orders/{order['id']}/start",

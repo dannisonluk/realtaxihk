@@ -497,6 +497,23 @@ _PUBLIC_PATHS = {
     # the credential instead — stored only as a SHA-256 digest, expiring, and
     # stamped on use. It grants exactly one thing: marking one address verified.
     "/api/v1/identity/email/confirm",
+    # Password recovery. Both are pre-authentication **by definition** — the
+    # account cannot sign in, so there is no session and no live row for a guard
+    # to read. What substitutes differs by route:
+    #
+    # * `/auth/password/forgot` — human verification (Turnstile), a per-IP budget
+    #   (`_FORGOT_IP_RATE_LIMIT`), and an answer that is **identical** for a
+    #   registered and an unregistered address. It reads the account only to
+    #   email it, and the disclosure it avoids is the same one login avoids.
+    # * `/auth/password/reset` — the credential is the 256-bit single-use token
+    #   from the email, stored only as a SHA-256 digest, expiring, and stamped on
+    #   use: the same pattern as `/identity/email/confirm` above. It grants no
+    #   session, so it is not a way around a suspension — signing in afterwards
+    #   still passes `require_active_user`, which refuses a disabled row. Every
+    #   failure mode answers one identical 400 sentence, so it is not an oracle
+    #   either.
+    "/api/v1/auth/password/forgot",
+    "/api/v1/auth/password/reset",
     # Public metadata: premium destination pins. Places, not people, and the
     # row set is already filtered to ACTIVE; the admin write surface is where
     # the live-state guard lives.

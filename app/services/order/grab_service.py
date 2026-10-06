@@ -34,6 +34,7 @@ from app.models import (
     OrderFareMode,
     OrderStatus,
 )
+from app.services.order.geo_service import geo_orders_key
 from app.services.order.state_machine import assert_order_transition
 
 _LOCK_TTL_MS = 15_000
@@ -142,7 +143,7 @@ class GrabService:
             # query re-filters on `status == BROADCASTING`, so a lingering id
             # simply fails to resolve). Doing this before the commit would risk
             # removing a still-available order from the dispatch index.
-            await self.redis.zrem("geo:orders:active", str(order_id))
+            await self.redis.zrem(geo_orders_key(), str(order_id))
         finally:
             # Lock always released; a DB failure propagates (order stays
             # BROADCASTING). Redis may be down at teardown without meaning the

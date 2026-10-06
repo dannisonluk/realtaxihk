@@ -81,6 +81,12 @@ class RecurringRide(Base):
             name="ck_recurring_rides_status",
             native_enum=False,
             create_constraint=True,
+            # `length` is not decorative. Without it SQLAlchemy derives the
+            # column width from the longest member (`CANCELLED` = 9), which no
+            # longer matches the `VARCHAR(16)` the migration created — and
+            # `alembic check` then reports that difference as drift on every
+            # run, burying the one item that would actually be new.
+            length=16,
         ),
         default=RecurringStatus.ACTIVE,
         nullable=False,
@@ -91,6 +97,8 @@ class RecurringRide(Base):
             name="ck_recurring_rides_frequency",
             native_enum=False,
             create_constraint=True,
+            # Same reason: `WEEKLY` is 6 characters, the column is 16.
+            length=16,
         ),
         default=RecurringFrequency.WEEKLY,
         nullable=False,

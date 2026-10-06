@@ -241,6 +241,49 @@ class TestWsStreaming:
         )
         assert r.status_code == 403
 
+    def test_driver_tick_outside_hk_is_refused(self, client):
+        """A driver outside Hong Kong may not publish positions.
+
+        The refusal is an explicit error rather than silence, and it is
+        **fatal**: the coordinate is refused however many times it is sent, so
+        the client must not treat it like the retryable `RATE_LIMITED` hiccup.
+        Guangzhou (23.1291, 113.2644) sits outside `HK_BBOX`, so this exercises
+        the cheap reject rather than the polygon ray cast -- the polygon is
+        covered separately by `tests/domain/test_hk_bounds.py`.
+
+        The mobile client pins this exact payload in
+        `mobile/test/fixtures/ws_outside_hk_error.json`; if the shape here
+        changes, that fixture and its decoder must change with it.
+        """
+        pax = _mk_user_token(client, "+85260000071")
+        drv = _mk_active_driver(client, "+85260000072")
+        oid = _mk_broadcasting_order(client, pax)
+        assert (
+            client.post(
+                f"/api/v1/orders/{oid}/grab",
+                headers={"Authorization": f"Bearer {drv['token']}"},
+            ).status_code
+            == 200
+        )
+
+        with client.websocket_connect(_ws_url(client, f"/ws/trip/{oid}", drv["token"])) as ws:
+            for _ in range(2):
+                ws.send_text(json.dumps({"lat": 23.1291, "lng": 113.2644}))
+                reply = json.loads(ws.receive_text())
+                assert reply == {"type": "error", "code": "OUTSIDE_HK"}
+
+        # Nothing was published: the snapshot is still a 200 with a null fix,
+        # because a participant asking early is not an error — the driver
+        # simply has no position on record. A 404 here would mean the order
+        # vanished, which is not what a refused tick should cause.
+        snapshot = client.get(
+            f"/api/v1/trips/{oid}/location",
+            headers={"Authorization": f"Bearer {pax}"},
+        )
+        assert snapshot.status_code == 200, snapshot.text
+        assert snapshot.json()["lat"] is None
+        assert snapshot.json()["lng"] is None
+
 
 class TestWsConnectionLifetime:
     """The handshake must not hold a pooled DB connection for the socket's life.

@@ -13,7 +13,23 @@ queried from the database and cannot go stale independently.
 
 from __future__ import annotations
 
-GEO_ORDERS_KEY = "geo:orders:active"
+from app.core.config import get_settings
+
+GEO_ORDERS_SUFFIX = "geo:orders:active"
+
+
+def geo_orders_key() -> str:
+    """The dispatch GEO index key, under the configured key namespace.
+
+    `Settings.redis_key_namespace` is what keeps two concurrent pytest
+    processes (or two CI shards) off the same key. Without the prefix they
+    `GEOADD` and `GEOSEARCH` one shared index, so a test that asserts "this
+    order is the nearest" intermittently sees another run's orders — the same
+    collision the rate-limit keys already guard against (see
+    `tests/conftest.py`). Read at call time rather than import time, so the
+    namespace the app boots with is the one it uses.
+    """
+    return f"{get_settings().redis_key_namespace}{GEO_ORDERS_SUFFIX}"
 
 
 class GeoService:
@@ -21,10 +37,10 @@ class GeoService:
         self.redis = redis
 
     async def index_order(self, order_id: str, lat: float, lng: float) -> None:
-        await self.redis.geoadd(GEO_ORDERS_KEY, (lng, lat, str(order_id)))
+        await self.redis.geoadd(geo_orders_key(), (lng, lat, str(order_id)))
 
     async def remove_order(self, order_id: str) -> None:
-        await self.redis.zrem(GEO_ORDERS_KEY, str(order_id))
+        await self.redis.zrem(geo_orders_key(), str(order_id))
 
     async def nearby_order_ids(
         self,
@@ -44,7 +60,7 @@ class GeoService:
         `app/api/orders.py`.
         """
         res = await self.redis.geosearch(
-            GEO_ORDERS_KEY,
+            geo_orders_key(),
             longitude=lng,
             latitude=lat,
             radius=radius_km,

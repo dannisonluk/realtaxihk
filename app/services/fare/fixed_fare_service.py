@@ -21,10 +21,12 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.models import FixedOfferStatus, FixedPriceOffer, Order
+from app.core.region import is_valid_area
+from app.models import FixedOfferStatus, FixedPriceOffer, Order, PremiumDestination
 
 __all__ = [
     "FixedFareMatch",
@@ -150,6 +152,25 @@ class FixedFareService:
         """
         if not destination_area and premium_destination_id is None:
             raise ValueError("an offer needs a destination area or premium destination")
+        # Area codes are validated against the closed set in `app.core.region`.
+        # An offer is matched against `Order.destination_area` / `pickup_area`,
+        # which the region helpers can only ever set to one of those five codes
+        # — so an offer naming anything else is not a narrow offer, it is an
+        # offer that can never match. A typo that silently matches nothing is
+        # exactly what `region.ALL_AREAS` exists to turn into a 422.
+        if destination_area is not None and not is_valid_area(destination_area):
+            raise ValueError(f"unknown destination area: {destination_area}")
+        if pickup_area is not None and not is_valid_area(pickup_area):
+            raise ValueError(f"unknown pickup area: {pickup_area}")
+        # Checked here rather than left to the FK: a dangling id fails the
+        # INSERT, and the bare `except IntegrityError` below would report that
+        # as a duplicate route. Two different failures must not share one
+        # message.
+        if (
+            premium_destination_id is not None
+            and (await self.session.get(PremiumDestination, premium_destination_id)) is None
+        ):
+            raise ValueError(f"unknown premium destination: {premium_destination_id}")
         offer = FixedPriceOffer(
             driver_profile_id=driver_profile_id,
             destination_area=destination_area,
@@ -161,7 +182,7 @@ class FixedFareService:
         self.session.add(offer)
         try:
             await self.session.flush()
-        except Exception as exc:
+        except IntegrityError as exc:
             await self.session.rollback()
             raise ValueError("an active offer for this route already exists") from exc
         return offer
