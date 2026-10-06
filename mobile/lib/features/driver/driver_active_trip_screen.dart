@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/location/location_service.dart';
@@ -39,10 +38,12 @@ class DriverActiveTripScreen extends ConsumerStatefulWidget {
   final String orderId;
 
   @override
-  ConsumerState<DriverActiveTripScreen> createState() => _DriverActiveTripScreenState();
+  ConsumerState<DriverActiveTripScreen> createState() =>
+      _DriverActiveTripScreenState();
 }
 
-class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen> {
+class _DriverActiveTripScreenState
+    extends ConsumerState<DriverActiveTripScreen> {
   final LocationService _location = const LocationService();
 
   TripChannel? _channel;
@@ -145,8 +146,15 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
             }
             setState(() {
               _latest = position;
-              if (LocationService.isInHongKong(position.latitude, position.longitude)) {
-                _me = MapPoint(lat: position.latitude, lng: position.longitude, label: '我的位置');
+              if (LocationService.isInHongKong(
+                position.latitude,
+                position.longitude,
+              )) {
+                _me = MapPoint(
+                  lat: position.latitude,
+                  lng: position.longitude,
+                  label: '我的位置',
+                );
               }
             });
           },
@@ -155,7 +163,10 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
           },
         );
 
-    _pushTimer = Timer.periodic(AppConfig.locationTickInterval, (Timer _) => _pushTick());
+    _pushTimer = Timer.periodic(
+      AppConfig.locationTickInterval,
+      (Timer _) => _pushTick(),
+    );
   }
 
   void _pushTick() {
@@ -172,7 +183,10 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
     channel.pushLocation(lat: position.latitude, lng: position.longitude);
   }
 
-  Future<void> _transition(String label, Future<Order> Function(String orderId) action) async {
+  Future<void> _transition(
+    String label,
+    Future<Order> Function(String orderId) action,
+  ) async {
     setState(() {
       _busy = true;
       _actionNote = null;
@@ -206,7 +220,11 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
     try {
       await ref
           .read(orderRepositoryProvider)
-          .arrivalClaim(widget.orderId, lat: position?.latitude, lng: position?.longitude);
+          .arrivalClaim(
+            widget.orderId,
+            lat: position?.latitude,
+            lng: position?.longitude,
+          );
       ref.invalidate(orderDetailProvider(widget.orderId));
       if (mounted) {
         showInfo(context, '已通知乘客確認上車');
@@ -235,7 +253,9 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
 
   @override
   Widget build(BuildContext context) {
-    final AsyncValue<Order> order = ref.watch(orderDetailProvider(widget.orderId));
+    final AsyncValue<Order> order = ref.watch(
+      orderDetailProvider(widget.orderId),
+    );
 
     return Scaffold(
       appBar: AppBar(title: const Text('進行中的行程')),
@@ -257,7 +277,11 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
           child: Stack(
             children: <Widget>[
               Positioned.fill(
-                child: MapPanel(centre: me, markers: <MapPoint>[?me], follow: me),
+                child: MapPanel(
+                  centre: me,
+                  markers: <MapPoint>[?me],
+                  follow: me,
+                ),
               ),
               Positioned(
                 left: 12,
@@ -272,7 +296,8 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
                         const SizedBox(width: AppTheme.space3),
                         Expanded(
                           child: Text(
-                            _socketNote ?? (_channel == null ? '連線中…' : '位置推送中'),
+                            _socketNote ??
+                                (_channel == null ? '連線中…' : '位置推送中'),
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: _socketNote == null
                                   ? theme.colorScheme.onSurfaceVariant
@@ -299,19 +324,27 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: <Widget>[
                     Text('車費', style: theme.textTheme.titleSmall),
-                    MoneyText(order.estimatedTotalHkd, style: theme.textTheme.headlineSmall),
+                    MoneyText(
+                      order.estimatedTotalHkd,
+                      style: theme.textTheme.headlineSmall,
+                    ),
                   ],
                 ),
                 const SizedBox(height: AppTheme.space2),
                 DetailRow(label: '的士種類', value: order.taxiType.labelZh),
                 if (order.destinationChangeCount > 0)
-                  DetailRow(label: '乘客已改目的地', value: '${order.destinationChangeCount} 次'),
+                  DetailRow(
+                    label: '乘客已改目的地',
+                    value: '${order.destinationChangeCount} 次',
+                  ),
                 if (_actionNote != null)
                   Padding(
                     padding: const EdgeInsets.only(top: AppTheme.space2),
                     child: Text(
                       _actionNote!,
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
                     ),
                   ),
                 const SizedBox(height: AppTheme.space3),
@@ -333,11 +366,16 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
         final Position? position = _latest;
         return <Widget>[
           Text(
-            position == null ? '⏳ 尚未取得你的位置，請確認已開啟定位權限。' : '✅ GPS 已定位，可以按「我已到達」。',
+            position == null
+                ? '⏳ 尚未取得你的位置，請確認已開啟定位權限。'
+                : '✅ GPS 已定位，可以按「我已到達」。',
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: AppTheme.space2),
-          FilledButton(onPressed: _busy ? null : _arrivalClaim, child: const Text('我已到達上車點')),
+          FilledButton(
+            onPressed: _busy ? null : _arrivalClaim,
+            child: const Text('我已到達上車點'),
+          ),
           const SizedBox(height: AppTheme.space2),
           OutlinedButton(
             onPressed: _busy ? null : () => _confirmCancel(order),
@@ -405,7 +443,10 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
           Card(
             child: Padding(
               padding: const EdgeInsets.all(AppTheme.space4),
-              child: Text('行程已中斷。平台會稍後處理費用安排。', style: theme.textTheme.bodyMedium),
+              child: Text(
+                '行程已中斷。平台會稍後處理費用安排。',
+                style: theme.textTheme.bodyMedium,
+              ),
             ),
           ),
           const SizedBox(height: AppTheme.space2),
@@ -502,7 +543,9 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
           .read(orderRepositoryProvider)
           .cancel(
             id,
-            reason: reasonCode == null ? 'driver cancelled' : 'driver defaulted',
+            reason: reasonCode == null
+                ? 'driver cancelled'
+                : 'driver defaulted',
             reasonCode: reasonCode,
           ),
     );

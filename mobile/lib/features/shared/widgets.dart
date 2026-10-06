@@ -1,8 +1,12 @@
-import 'package:flutter/cupertino.dart' show CupertinoAlertDialog, CupertinoDialogAction;
+import 'dart:async';
+
+import 'package:flutter/cupertino.dart'
+    show CupertinoAlertDialog, CupertinoDialogAction;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format/money.dart';
+import '../../core/location/location_service.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/enums.dart';
@@ -32,8 +36,10 @@ class AsyncValueView<T> extends StatelessWidget {
     return value.when(
       skipLoadingOnRefresh: false,
       data: builder,
-      loading: () => loading ?? const Center(child: CircularProgressIndicator()),
-      error: (Object error, StackTrace stack) => ErrorView(error: error, onRetry: onRetry),
+      loading: () =>
+          loading ?? const Center(child: CircularProgressIndicator()),
+      error: (Object error, StackTrace stack) =>
+          ErrorView(error: error, onRetry: onRetry),
     );
   }
 }
@@ -60,7 +66,11 @@ class AsyncValueView<T> extends StatelessWidget {
 ///    stray wordmark. [semanticLabel] is that object's name, and it is also the
 ///    wordmark the fallback below draws.
 class BrandLogo extends StatelessWidget {
-  const BrandLogo({required this.size, this.semanticLabel = 'hkfastdc', super.key});
+  const BrandLogo({
+    required this.size,
+    this.semanticLabel = 'hkfastdc',
+    super.key,
+  });
 
   /// Width and height in logical pixels. The source is 1024px, so anything up
   /// to ~340dp is a downscale — which is the case [FilterQuality.medium] is
@@ -93,22 +103,27 @@ class BrandLogo extends StatelessWidget {
           // A missing asset means the generator was never run. Draw the mark the
           // app used before — icon plus wordmark — rather than Flutter's grey
           // error box on the first screen a user ever sees.
-          errorBuilder: (BuildContext context, Object error, StackTrace? stack) => SizedBox(
-            width: size,
-            height: size,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Icon(
-                  Icons.local_taxi_rounded,
-                  size: size * 0.5,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(height: AppTheme.space2),
-                Text(semanticLabel, style: Theme.of(context).textTheme.titleMedium),
-              ],
-            ),
-          ),
+          errorBuilder:
+              (BuildContext context, Object error, StackTrace? stack) =>
+                  SizedBox(
+                    width: size,
+                    height: size,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        Icon(
+                          Icons.local_taxi_rounded,
+                          size: size * 0.5,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(height: AppTheme.space2),
+                        Text(
+                          semanticLabel,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ],
+                    ),
+                  ),
         ),
       ),
     );
@@ -152,15 +167,26 @@ class ErrorView extends StatelessWidget {
           children: <Widget>[
             Icon(Icons.error_outline, size: 44, color: theme.colorScheme.error),
             const SizedBox(height: AppTheme.space4),
-            Text(error.userMessage, textAlign: TextAlign.center, style: theme.textTheme.bodyLarge),
+            Text(
+              error.userMessage,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyLarge,
+            ),
             if (hint.isNotEmpty) ...<Widget>[
               const SizedBox(height: AppTheme.space2),
-              Text(hint, textAlign: TextAlign.center, style: theme.textTheme.bodySmall),
+              Text(
+                hint,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall,
+              ),
             ],
             if (onRetry != null) ...<Widget>[
               const SizedBox(height: AppTheme.space6),
               // A prominent action, per `buttons.md`: one obvious thing to do.
-              FilledButton.tonal(onPressed: onRetry, child: const Text('Try Again')),
+              FilledButton.tonal(
+                onPressed: onRetry,
+                child: const Text('Try Again'),
+              ),
             ],
           ],
         ),
@@ -175,7 +201,13 @@ class ErrorView extends StatelessWidget {
 /// action rather than reporting an absence. Where there is a natural next step,
 /// [action] is that step, not a "dismiss".
 class EmptyView extends StatelessWidget {
-  const EmptyView({required this.icon, required this.title, this.subtitle, this.action, super.key});
+  const EmptyView({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.action,
+    super.key,
+  });
 
   final IconData icon;
   final String title;
@@ -193,12 +225,23 @@ class EmptyView extends StatelessWidget {
           children: <Widget>[
             Icon(icon, size: 44, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: AppTheme.space4),
-            Text(title, style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
+            Text(
+              title,
+              style: theme.textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
             if (subtitle != null) ...<Widget>[
               const SizedBox(height: AppTheme.space2),
-              Text(subtitle!, textAlign: TextAlign.center, style: theme.textTheme.bodySmall),
+              Text(
+                subtitle!,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall,
+              ),
             ],
-            if (action != null) ...<Widget>[const SizedBox(height: AppTheme.space6), action!],
+            if (action != null) ...<Widget>[
+              const SizedBox(height: AppTheme.space6),
+              action!,
+            ],
           ],
         ),
       ),
@@ -215,7 +258,12 @@ class EmptyView extends StatelessWidget {
 /// Visual hierarchy` ("Group related items to clearly express related
 /// information or functions").
 class GroupedSection extends StatelessWidget {
-  const GroupedSection({required this.title, required this.children, this.footnote, super.key});
+  const GroupedSection({
+    required this.title,
+    required this.children,
+    this.footnote,
+    super.key,
+  });
 
   final String title;
   final List<Widget> children;
@@ -230,10 +278,15 @@ class GroupedSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.only(left: AppTheme.space4, bottom: AppTheme.space2),
+          padding: const EdgeInsets.only(
+            left: AppTheme.space4,
+            bottom: AppTheme.space2,
+          ),
           child: Text(
             title,
-            style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
         Card(
@@ -242,7 +295,10 @@ class GroupedSection extends StatelessWidget {
               horizontal: AppTheme.space4,
               vertical: AppTheme.space3,
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: children,
+            ),
           ),
         ),
         if (footnote != null)
@@ -262,7 +318,13 @@ class GroupedSection extends StatelessWidget {
 /// An amount, coloured by sign using the Hong Kong convention (red up, green
 /// down) — see [AppTheme.moneyColor].
 class MoneyText extends StatelessWidget {
-  const MoneyText(this.money, {this.signed = false, this.style, this.showSymbol = true, super.key});
+  const MoneyText(
+    this.money, {
+    this.signed = false,
+    this.style,
+    this.showSymbol = true,
+    super.key,
+  });
 
   final Money money;
 
@@ -274,7 +336,9 @@ class MoneyText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String text = signed ? money.signedHkd : (showSymbol ? money.hkd : money.display);
+    final String text = signed
+        ? money.signedHkd
+        : (showSymbol ? money.hkd : money.display);
     return Text(
       text,
       style: (style ?? Theme.of(context).textTheme.titleMedium)?.copyWith(
@@ -288,12 +352,18 @@ class MoneyText extends StatelessWidget {
 
 /// A small status pill.
 class StatusChip extends StatelessWidget {
-  const StatusChip({required this.label, required this.color, super.key});
+  const StatusChip({
+    required this.label,
+    required this.color,
+    this.semanticsLabel,
+    super.key,
+  });
 
   factory StatusChip.order(OrderStatus status, BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     return StatusChip(
       label: status.labelZh,
+      semanticsLabel: '訂單狀態：${status.labelZh}',
       color: switch (status) {
         OrderStatus.created => scheme.onSurfaceVariant,
         OrderStatus.broadcasting => AppTheme.pending,
@@ -303,8 +373,13 @@ class StatusChip extends StatelessWidget {
         OrderStatus.accepted || OrderStatus.driverArrived => scheme.primary,
         // `DESTINATION_CHANGED` is a live trip that happens to have a new
         // dropoff, so it reads the same as `IN_TRIP`.
-        OrderStatus.inTrip || OrderStatus.destinationChanged => AppTheme.gain,
-        OrderStatus.completed => AppTheme.loss,
+        OrderStatus.inTrip ||
+        OrderStatus.destinationChanged => AppTheme.statusLive,
+        // Neutral rather than a colour: the trip is over and nothing is
+        // outstanding. This used to be `loss`, which painted a finished trip as
+        // money leaving the account and disagreed with the console, where the
+        // same state is neutral.
+        OrderStatus.completed => scheme.onSurfaceVariant,
         // Interrupted and cancelled are both "did not complete"; the label
         // carries the distinction (a trip that ended early vs one that never
         // departed), and the settlement difference is not a UI colour.
@@ -317,10 +392,12 @@ class StatusChip extends StatelessWidget {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     return StatusChip(
       label: status.labelZh,
+      semanticsLabel: '司機狀態：${status.labelZh}',
       color: switch (status) {
         DriverStatus.pendingKyc => AppTheme.pending,
         DriverStatus.depositRequired => scheme.primary,
-        DriverStatus.active => AppTheme.loss,
+        // A driver who is working, not money leaving an account.
+        DriverStatus.active => AppTheme.statusLive,
         DriverStatus.suspended => scheme.error,
         DriverStatus.terminated => scheme.onSurfaceVariant,
       },
@@ -331,8 +408,11 @@ class StatusChip extends StatelessWidget {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     return StatusChip(
       label: status.labelZh,
+      semanticsLabel: '退款狀態：${status.labelZh}',
       color: switch (status) {
         RefundStatus.pending => AppTheme.pending,
+        // Here a money colour is the right one: approval means cash going back
+        // to the passenger, which is what green-down means in this app.
         RefundStatus.approved => AppTheme.loss,
         RefundStatus.rejected => scheme.error,
       },
@@ -342,6 +422,13 @@ class StatusChip extends StatelessWidget {
   final String label;
   final Color color;
 
+  /// What a screen reader announces instead of [label].
+  ///
+  /// A pill's word on its own ("行程中") leaves the listener guessing what it
+  /// describes, so the factories name the state it belongs to. Null means the
+  /// label already stands on its own.
+  final String? semanticsLabel;
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
@@ -349,16 +436,29 @@ class StatusChip extends StatelessWidget {
     // a status pill. The tint is a fill plus a border rather than text colour
     // alone, so the state survives for someone who cannot tell the hues apart
     // (`accessibility.md › Vision`: convey information with more than colour).
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppTheme.space3, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelLarge?.copyWith(color: color, fontWeight: FontWeight.w600),
+    return Semantics(
+      label: semanticsLabel ?? label,
+      // The pill's own text says the same thing; announcing both would read the
+      // state twice.
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTheme.space3,
+            vertical: 3,
+          ),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: color.withValues(alpha: 0.5)),
+          ),
+          child: Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -367,32 +467,53 @@ class StatusChip extends StatelessWidget {
 /// A label/value row used across the detail and receipt screens.
 /// Supply either [value] or [valueWidget], whichever fits.
 ///
-/// The label column is fixed rather than intrinsic so stacked rows align — the
-/// value edge is the thing a reader scans down, and it has to be straight
-/// (`layout.md › Visual hierarchy`: "Align elements to make them easier to
-/// scan").
+/// The label column is a fixed 132 pt at the default text size rather than
+/// intrinsic, so stacked rows align — the value edge is the thing a reader scans
+/// down, and it has to be straight (`layout.md › Visual hierarchy`: "Align
+/// elements to make them easier to scan"). Above 1.3x that fixed width turns
+/// into a trap: the label wraps to three lines or clips its last word while the
+/// value column keeps all of its room, so the column gives way to legibility
+/// instead.
 class DetailRow extends StatelessWidget {
-  const DetailRow({required this.label, this.value, this.valueWidget, super.key});
+  const DetailRow({
+    required this.label,
+    this.value,
+    this.valueWidget,
+    super.key,
+  });
 
   final String label;
   final String? value;
   final Widget? valueWidget;
 
+  /// The text size the user has asked for. `1.0` is the system default.
+  static double _textScale(BuildContext context) =>
+      MediaQuery.textScalerOf(context).scale(1);
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final bool largeType = _textScale(context) > 1.3;
+    final Widget labelText = Text(label, style: theme.textTheme.bodyMedium);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppTheme.space2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          SizedBox(width: 132, child: Text(label, style: theme.textTheme.bodyMedium)),
+          if (largeType)
+            Flexible(flex: 4, child: labelText)
+          else
+            SizedBox(width: 132, child: labelText),
+          const SizedBox(width: AppTheme.space3),
           Expanded(
+            flex: largeType ? 5 : 1,
             child:
                 valueWidget ??
                 Text(
                   value ?? '—',
-                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
           ),
         ],
@@ -441,6 +562,86 @@ void showErrorAction(
         action: SnackBarAction(label: actionLabel, onPressed: onAction),
       ),
     );
+}
+
+/// An informational message with a way out, for a fix that is elsewhere.
+///
+/// [showInfo] is right when reading the message is all the user has to do. It is
+/// wrong when the fix lives on a screen the app cannot reach: the message then
+/// names a problem and leaves the user to go find the setting.
+void showInfoAction(
+  BuildContext context,
+  String message, {
+  required String actionLabel,
+  required VoidCallback onAction,
+}) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 8),
+        action: SnackBarAction(label: actionLabel, onPressed: onAction),
+      ),
+    );
+}
+
+/// Whether the fix for [access] lives in the system settings, not in this app.
+bool locationNeedsSettings(LocationAccess access) =>
+    access == LocationAccess.deniedForever ||
+    access == LocationAccess.serviceDisabled;
+
+/// What to tell a user whose location could not be read, for [access].
+///
+/// [alternative] names what they can still do instead — the pickup map takes a
+/// tap, so a passenger without location can still book — for the screens where a
+/// refusal is not a wall.
+///
+/// Kept separate from [showLocationUnavailable] because the driver's jobs screen
+/// states the same thing inline, under the online switch, rather than in a
+/// snackbar that slides away.
+String locationRefusalMessage(LocationAccess access, {String? alternative}) {
+  final String tail = alternative == null ? '' : ' $alternative';
+  return switch (access) {
+    // Permission is fine, so the settings hold nothing to change: the read
+    // itself failed, and asking again is the only advice worth giving.
+    LocationAccess.granted => '未能取得位置，請再試一次。$tail',
+    // Transient — the system dialog returns on the next ask, so the way out is
+    // the button, not the settings.
+    LocationAccess.denied => '未取得定位權限，再按一次即可授權。$tail',
+    LocationAccess.deniedForever => '定位權限已被拒絕，需在設定中重新開啟。$tail',
+    LocationAccess.serviceDisabled => '手機的定位服務未開啟，需在設定中開啟。$tail',
+  };
+}
+
+/// Reports that no location fix could be taken, with a route out where one
+/// exists.
+///
+/// The four [LocationAccess] outcomes used to be flattened into one toast, and
+/// two of them are dead ends: a permanently-denied permission and a disabled
+/// location service can only be fixed in the system settings, and nothing in the
+/// app said so. The user tapped "定位", read "未能取得位置", and had no way to
+/// learn the app had been refused for good.
+void showLocationUnavailable(
+  BuildContext context,
+  LocationAccess access, {
+  required Future<void> Function() onOpenSettings,
+  String? alternative,
+}) {
+  final String message = locationRefusalMessage(
+    access,
+    alternative: alternative,
+  );
+  if (locationNeedsSettings(access)) {
+    showInfoAction(
+      context,
+      message,
+      actionLabel: '去設定',
+      onAction: () => unawaited(onOpenSettings()),
+    );
+  } else {
+    showInfo(context, message);
+  }
 }
 
 /// Ask before an irreversible action, and return whether the user agreed.

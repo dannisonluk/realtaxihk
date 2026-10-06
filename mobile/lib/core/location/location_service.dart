@@ -1,5 +1,10 @@
 import 'package:geolocator/geolocator.dart';
 
+// Screens that receive a fix from this service name `Position` in their own
+// signatures; re-exporting it keeps them from depending on `geolocator` just to
+// write the type down.
+export 'package:geolocator/geolocator.dart' show Position;
+
 /// Why a location read could not happen. Distinguishing these matters: a
 /// permanently-denied permission needs the app-settings screen, a disabled
 /// service needs the system toggle, and a transient denial just needs asking
@@ -35,7 +40,8 @@ class LocationService {
       permission = await Geolocator.requestPermission();
     }
     return switch (permission) {
-      LocationPermission.always || LocationPermission.whileInUse => LocationAccess.granted,
+      LocationPermission.always ||
+      LocationPermission.whileInUse => LocationAccess.granted,
       LocationPermission.deniedForever => LocationAccess.deniedForever,
       LocationPermission.denied => LocationAccess.denied,
       _ => LocationAccess.denied,
@@ -44,20 +50,31 @@ class LocationService {
 
   /// One fix, or null when unavailable or outside Hong Kong.
   ///
+  /// Pass [access] when `ensureAccess()` has just answered, so the answer is
+  /// reused. Asking twice is not harmless: a `denied` permission makes
+  /// `requestPermission()` raise the system dialog again, so one tap would put
+  /// the same question to the user twice.
+  ///
   /// [LocationSettings.timeLimit] is set because a `getCurrentPosition` with no
   /// fix and no limit hangs indefinitely on some Android devices.
   Future<Position?> current({
+    LocationAccess? access,
     LocationAccuracy accuracy = LocationAccuracy.high,
     Duration timeLimit = const Duration(seconds: 12),
   }) async {
-    if (await ensureAccess() != LocationAccess.granted) {
+    if ((access ?? await ensureAccess()) != LocationAccess.granted) {
       return null;
     }
     try {
       final Position position = await Geolocator.getCurrentPosition(
-        locationSettings: LocationSettings(accuracy: accuracy, timeLimit: timeLimit),
+        locationSettings: LocationSettings(
+          accuracy: accuracy,
+          timeLimit: timeLimit,
+        ),
       );
-      return isInHongKong(position.latitude, position.longitude) ? position : null;
+      return isInHongKong(position.latitude, position.longitude)
+          ? position
+          : null;
     } on Exception {
       return null;
     }
@@ -73,7 +90,10 @@ class LocationService {
     int distanceFilter = 10,
   }) {
     return Geolocator.getPositionStream(
-      locationSettings: LocationSettings(accuracy: accuracy, distanceFilter: distanceFilter),
+      locationSettings: LocationSettings(
+        accuracy: accuracy,
+        distanceFilter: distanceFilter,
+      ),
     );
   }
 

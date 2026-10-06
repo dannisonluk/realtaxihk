@@ -52,6 +52,18 @@ abstract final class AppTheme {
   /// never reads as a gain or a loss.
   static const Color pending = Color(0xFFF9A825);
 
+  /// A trip that is happening right now — the passenger is aboard and the meter
+  /// is running.
+  ///
+  /// Deliberately **not** [gain]. That one is a money direction, and painting a
+  /// *state* with it made `IN_TRIP` render red — on the one screen a passenger
+  /// watches while it matters, a live trip read like a loss. The admin console
+  /// draws the same state `ok` (`lib/labels.ts`), so the two interfaces were
+  /// also contradicting each other about a state both of them show. The value is
+  /// the green already on screen today (see [loss]), so this changes what the
+  /// token means rather than introducing an unmeasured colour.
+  static const Color statusLive = Color(0xFF2E7D32);
+
   // -- spacing ---------------------------------------------------------------
   //
   // A 4 pt grid. 16 is the standard horizontal content inset (`layout.md ›
