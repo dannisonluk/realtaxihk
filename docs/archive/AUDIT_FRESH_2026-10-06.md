@@ -19,6 +19,14 @@ reports were written from the working tree, not from prior audit files.
 | Mobile | Transient refresh failures no longer clear tokens or fire `sessionExpired` | `844d4d0` |
 | Admin | KYC/Analytics loading gating; safe licence doc URLs; detail retries; pagination disabled while loading; `scope="col"` on tables; locale parity | `4d4f6e3` |
 
+## Verification after this round
+
+- Backend: full pytest `1247 passed in 731.06s` (post-fix run). An earlier
+  `1245 passed in 703.81s` run predates the fixes above.
+- Mobile: `dart_check` 85 files / 0 diagnostics; harness `155 passed`;
+  contract fixtures `64/64`.
+- Admin: `tsc --noEmit` clean; vitest `87 passed` across 12 files.
+
 ## Remaining decisions (not code defects)
 
 - Backend revocation remains fail-open while Redis is unavailable; documented
