@@ -49,6 +49,7 @@ from app.api.schemas._envelope import (
     OkOut,
     OkRevokedOut,
     PageEnvelope,
+    PasswordForgotOut,
 )
 from app.api.schemas.admin import (
     AdminAccountCreatedOut,
@@ -244,6 +245,7 @@ __all__ = [
     "OrderPageOut",
     "OtpRequestOut",
     "PageEnvelope",
+    "PasswordForgotOut",
     "PhoneBindOut",
     "PhoneReverifyOut",
     "PremiumDestinationListOut",

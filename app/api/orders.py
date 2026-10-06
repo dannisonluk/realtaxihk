@@ -29,35 +29,65 @@ P-4 monthly phone re-verification, applied as a **soft** block:
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select, tuple_
+from sqlalchemy import select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas import OrderOut, OrderPageOut
+from app.core import cooldown as cooldown_mod
+from app.core.config import get_settings
 from app.core.db import get_session, get_session_factory
 from app.core.deps import Principal, require_active_user, require_phone_current
 from app.core.exceptions import BusinessRuleError
+from app.core.money import money_str
 from app.core.region import ALL_AREAS, is_valid_area
 from app.core.service_area import require_in_hong_kong
 from app.models import (
+    INTERRUPTION_REASONS_BY_PARTY,
+    SAFETY_INTERRUPTION_REASONS,
+    DisputeCategory,
+    DisputeSource,
+    DriverDeposit,
     DriverProfile,
     DriverStatus,
+    InterruptionReason,
     LedgerEntryType,
     Order,
+    OrderEventType,
     OrderFareMode,
+    OrderParty,
     OrderStatus,
     PaymentMethod,
+    User,
     UserRole,
 )
-from app.services.ledger.ledger_service import LedgerService, reference_for_fixed_ride
+from app.services.admin.dispute_service import DisputeService
+from app.services.ledger.ledger_service import (
+    LedgerService,
+    reference_for_cancellation_penalty,
+    reference_for_fixed_ride,
+    reference_for_trip_fee,
+)
+from app.services.order.fare_calculator import TaxiType, Tunnel, calculate_fare
 from app.services.order.geo_service import GeoService
 from app.services.order.grab_service import GrabService
-from app.services.order.order_service import OrderService, order_out
-from app.services.order.state_machine import assert_order_transition
+from app.services.order.order_event_service import record_order_event
+from app.services.order.order_service import (
+    OrderService,
+    _point_wkt,
+    fare_snapshot,
+    order_out,
+)
+from app.services.order.state_machine import (
+    CANCEL_LOCKED_STATUSES,
+    INTERRUPTIBLE_STATUSES,
+    assert_order_transition,
+)
 
 router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
 
@@ -84,6 +114,30 @@ def _redis(request: Request):
     # so caching one on `app.state` would break the moment uvicorn runs more
     # than one loop — see `app/core/db.py`.
     return request.app.state.redis_factory()
+
+
+async def _cooldown_guard(redis, party: str, account_id) -> None:
+    """Refuse a defaulting party with 429 + `Retry-After` (P4 DECISION-5).
+
+    **Fails open on a Redis error, deliberately.** A cool-down is a soft
+    anti-abuse measure; the alternative — refusing everyone when Redis blinks —
+    would turn a cache outage into a platform-wide booking outage, which is a
+    strictly worse failure than one defaulting party slipping through the
+    window. The error is logged, so it is visible without being fatal.
+    """
+    try:
+        remaining = await cooldown_mod.cooldown_remaining(redis, party, account_id)
+    except Exception:
+        import logging
+
+        logging.getLogger("realtaxihk.orders").exception("cool-down check unavailable")
+        return
+    if remaining > 0:
+        raise HTTPException(
+            status_code=429,
+            detail={"reason": "COOLDOWN", "retry_after_s": remaining},
+            headers={"Retry-After": str(remaining)},
+        )
 
 
 class AnimalDetailIn(BaseModel):
@@ -183,7 +237,77 @@ class OrderCreateIn(BaseModel):
 
 
 class CancelIn(BaseModel):
+    """A cancellation. `reason_code` becomes **required** from ACCEPTED onward.
+
+    Before P4 a cancel carried only free text, unvalidated. That is fine while a
+    cancellation is free (nobody is harmed by "changed my mind"), but from
+    ACCEPTED the driver has committed and the cancel carries a penalty — and an
+    unvalidated free-text field on a penalised action is a bypass, because
+    typing "passenger was drunk" exempted the driver. So the structured reason
+    is mandatory exactly where the money is, and optional where it is not.
+    """
+
     reason: str = Field(default="", max_length=500)
+    reason_code: InterruptionReason | None = None
+
+
+class ArrivalClaimIn(BaseModel):
+    """The driver's "I have arrived". Coordinates are optional and untrusted.
+
+    When supplied they must be in Hong Kong (`require_in_hong_kong`) and must
+    not disagree with the driver's last server-recorded GPS tick by more than
+    `arrival_gps_max_disagreement_m` — a body coordinate that contradicts the
+    WebSocket-verified position is the signature of a spoofing attempt. The
+    authoritative value is always the DB's `current_location`.
+    """
+
+    driver_lat: float | None = Field(default=None, ge=22.1, le=22.6)
+    driver_lng: float | None = Field(default=None, ge=113.8, le=114.5)
+
+
+class ArrivalConfirmIn(BaseModel):
+    """The passenger's confirmation, by the last 4 digits of *their own* number.
+
+    Option A from `docs/IN_TRIP_REDESIGN.md` §5.1.3: the passenger reads out
+    their own number's tail. The driver cannot know it, so the only way the
+    claim succeeds is if a real passenger is present to say it — which is the
+    whole point of the second factor.
+    """
+
+    phone_last4: str = Field(pattern=r"^\d{4}$")
+
+
+class ChangeDestinationIn(BaseModel):
+    """A new dropoff for a trip already under way (P4 §4.1).
+
+    `distance_km` is the **client's routed** distance for the whole new route
+    (pickup → new dropoff), matching how `OrderCreateIn.distance_km` is
+    supplied at creation. It is optional: the platform has no routing engine of
+    its own, so when the client omits it the server falls back to the PostGIS
+    straight-line distance between the frozen pickup and the new dropoff. That
+    fallback is a *lower bound* and the new `fare` snapshot says so
+    (`distance_source`), so nobody reads a straight line as a road distance.
+    """
+
+    dropoff_lat: float = Field(ge=22.1, le=22.6)
+    dropoff_lng: float = Field(ge=113.8, le=114.5)
+    dropoff_address: str = Field(min_length=3, max_length=255)
+    distance_km: Decimal | None = Field(default=None, gt=0, le=100)
+
+    @field_validator("distance_km")
+    @classmethod
+    def finite(cls, v: Decimal | None) -> Decimal | None:
+        if v is not None and not v.is_finite():
+            raise ValueError("must be a finite number")
+        return v
+
+
+class InterruptIn(BaseModel):
+    """Ending a trip early. `reason_code` is mandatory; `note` is mandatory for
+    `OTHER` (the enum classifies, the note explains)."""
+
+    reason_code: InterruptionReason
+    note: str = Field(default="", max_length=500)
 
 
 async def _get_order(session: AsyncSession, order_id: str, *, for_update: bool = False) -> Order:
@@ -245,6 +369,10 @@ async def create_order(
     limiter = request.app.state.rate_limiter
     if not await limiter.allow(f"order:create:{user.id}", _ORDER_RATE_LIMIT, _ORDER_WINDOW_S):
         raise HTTPException(status_code=429, detail="too many orders, slow down")
+    # P4 DECISION-5: a passenger who defaulted is barred from starting new
+    # business for 15 minutes. Checked before any other work so a cool-down
+    # costs one Redis round trip, not a fare calculation.
+    await _cooldown_guard(request.app.state.redis_factory(), cooldown_mod.PASSENGER, user.id)
     # Service area: only Hong Kong may create orders. The pydantic bounds above
     # are a cheap first pass, but they are a *box*, and the box contains
     # Shenzhen — see `app/core/hk_bounds.py` for the measurements. Checked after
@@ -479,6 +607,36 @@ async def grab_order(
     if profile is None or profile.status != DriverStatus.ACTIVE:
         raise HTTPException(status_code=403, detail="only ACTIVE drivers can grab orders")
 
+    # P4 §4.0.6 — two independent gates, both *before* `GrabService`. The order
+    # matters: running either after the atomic grab would lock the order for a
+    # driver who then cannot take it, and no other driver could take it either.
+    #
+    # 1) Cool-down (DECISION-5): a driver who defaulted waits 15 minutes. 429,
+    #    not 403 — "wait" and "you may not" are different answers.
+    await _cooldown_guard(redis, cooldown_mod.DRIVER, user.id)
+    # 2) Deposit in arrears (DECISION-3): 423, never 403. This is a state the
+    #    driver can clear by topping up, whereas 403 is a permission verdict;
+    #    conflating them would make "top up and retry" indistinguishable from
+    #    "you are banned". Only *new* grabs are gated — an in-flight trip is
+    #    unaffected, which is why this lives here and not on `/complete`.
+    deposit = (
+        (
+            await session.execute(
+                select(DriverDeposit).where(DriverDeposit.driver_profile_id == profile.id)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if deposit is not None and (deposit.balance_hkd + deposit.held_hkd) < 0:
+        raise HTTPException(
+            status_code=423,
+            detail={
+                "reason": "DEPOSIT_INSUFFICIENT",
+                "balance_hkd": money_str(deposit.balance_hkd),
+            },
+        )
+
     order = await _get_order(session, order_id)  # existence pre-check
     grab = GrabService(redis, factory)
     won = await grab.grab(order_id=str(order.id), driver_user_id=str(user.id))
@@ -503,16 +661,208 @@ async def _assigned_driver_guard(
     return profile
 
 
-@router.post("/{order_id}/arrive", response_model=OrderOut)
+async def _arrival_distances(
+    session: AsyncSession,
+    order: Order,
+    driver_profile_id,
+    *,
+    lat: float | None,
+    lng: float | None,
+) -> tuple[Decimal | None, Decimal | None]:
+    """Metres from the driver's last GPS tick to (a) the pickup, (b) a body point.
+
+    PostGIS, not a hand-rolled haversine: `ST_Distance` on two
+    `geography(POINT,4326)` values already returns metres, and re-deriving that
+    in Python is how the two answers drift apart.
+
+    `body_gap` is the disagreement between the client-supplied coordinate and
+    the server-recorded position — the spoofing signal. It is `None` when no
+    body coordinate was supplied, and the SQL is built without the second
+    expression in that case so asyncpg is never handed an untyped NULL.
+    """
+    from sqlalchemy import text as sa_text
+
+    base = (
+        "SELECT ST_Distance(dp.current_location, o.pickup_location) AS to_pickup"
+        "{extra} "
+        "FROM driver_profiles dp, orders o "
+        "WHERE dp.id = CAST(:dp AS uuid) AND o.id = CAST(:oid AS uuid)"
+    )
+    params: dict = {"dp": str(driver_profile_id), "oid": str(order.id)}
+    if lat is None or lng is None:
+        sql = base.format(extra="")
+    else:
+        sql = base.format(
+            extra=", ST_Distance(dp.current_location, "
+            "ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography) AS body_gap"
+        )
+        params["lat"] = lat
+        params["lng"] = lng
+
+    row = (await session.execute(sa_text(sql), params)).first()
+    if row is None:
+        return None, None
+    to_pickup = Decimal(row[0]) if row[0] is not None else None
+    body_gap = Decimal(row[1]) if len(row) > 1 and row[1] is not None else None
+    return to_pickup, body_gap
+
+
+@router.post("/{order_id}/arrival-claim", response_model=OrderOut)
+async def order_arrival_claim(
+    order_id: str,
+    payload: ArrivalClaimIn,
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Arrival, step 1: the driver claims it; GPS decides whether to believe.
+
+    Success moves the order to **`PENDING_ARRIVAL_CONFIRM`**, not
+    `DRIVER_ARRIVED`. The cancel right is deliberately *not* locked yet: a
+    driver must not be able to remove the passenger's right to cancel from 500 m
+    away. Only the passenger's confirmation (step 2) does that.
+    """
+    order = await _get_order(session, order_id, for_update=True)
+    profile = await _assigned_driver_guard(session, order, user)
+    if order.status != OrderStatus.ACCEPTED:
+        raise HTTPException(
+            status_code=409,
+            detail={"reason": "WRONG_STATUS", "status": order.status.value},
+        )
+
+    if payload.driver_lat is not None and payload.driver_lng is not None:
+        # A body coordinate is untrusted input, so it gets the same in-HK check
+        # as an order's pickup.
+        require_in_hong_kong(payload.driver_lat, payload.driver_lng, field="driver")
+
+    settings = get_settings()
+    distance, body_gap = await _arrival_distances(
+        session,
+        order,
+        profile.id,
+        lat=payload.driver_lat,
+        lng=payload.driver_lng,
+    )
+    if distance is None:
+        # No GPS tick on record. "Unknown" must never read as "close enough".
+        raise HTTPException(status_code=422, detail={"reason": "NO_LOCATION"})
+    if body_gap is not None and body_gap > settings.arrival_gps_max_disagreement_m:
+        raise HTTPException(
+            status_code=422,
+            detail={"reason": "GPS_MISMATCH", "disagreement_m": float(body_gap)},
+        )
+    if distance > settings.arrival_radius_m:
+        raise HTTPException(
+            status_code=422,
+            detail={"reason": "TOO_FAR", "distance_m": float(distance)},
+        )
+
+    from_status = order.status.value
+    order.arrival_gps_distance_m = distance
+    await OrderService(session).transition(order, OrderStatus.PENDING_ARRIVAL_CONFIRM)
+    await record_order_event(
+        session,
+        order_id=order.id,
+        event=OrderEventType.ARRIVAL_CLAIMED,
+        from_status=from_status,
+        to_status=OrderStatus.PENDING_ARRIVAL_CONFIRM.value,
+        actor_kind=OrderParty.DRIVER.value,
+        actor_id=user.id,
+        payload={"distance_m": float(distance)},
+    )
+    return order_out(order)
+
+
+@router.post("/{order_id}/arrival-confirm", response_model=OrderOut)
+async def order_arrival_confirm(
+    order_id: str,
+    payload: ArrivalConfirmIn,
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Arrival, step 2: the passenger confirms with their own number's last 4.
+
+    Success moves the order to `DRIVER_ARRIVED` and locks the cancel right.
+    Three failures return it to `ACCEPTED` and open a dispute: the usual causes
+    are a driver at the wrong pickup or a passenger in the wrong car, and that
+    needs a human, not a fourth guess.
+    """
+    order = await _get_order(session, order_id, for_update=True)
+    if order.passenger_id != user.id:
+        raise HTTPException(status_code=403, detail="not the passenger of this order")
+    if order.status != OrderStatus.PENDING_ARRIVAL_CONFIRM:
+        raise HTTPException(
+            status_code=409,
+            detail={"reason": "WRONG_STATUS", "status": order.status.value},
+        )
+
+    passenger = await session.get(User, order.passenger_id)
+    expected = (passenger.phone_e164 or "")[-4:] if passenger is not None else ""
+    settings = get_settings()
+
+    if not expected or payload.phone_last4 != expected:
+        order.arrival_pin_attempts = (order.arrival_pin_attempts or 0) + 1
+        remaining = settings.arrival_pin_max_attempts - order.arrival_pin_attempts
+        # Commit the increment before refusing: the request-scoped session rolls
+        # back on exception, so without this the attempt counter would never
+        # move and the 3-strike limit would never be reached.
+        await session.commit()
+        if remaining > 0:
+            raise HTTPException(
+                status_code=401,
+                detail={"reason": "PIN_MISMATCH", "attempts_remaining": remaining},
+            )
+        # Out of attempts: back to ACCEPTED and hand it to an operator.
+        from_status = order.status.value
+        await OrderService(session).transition(order, OrderStatus.ACCEPTED)
+        dispute = await DisputeService(session).open_case(
+            category=DisputeCategory.OTHER,
+            summary=(
+                f"Arrival could not be confirmed for order {order.id} after "
+                f"{order.arrival_pin_attempts} attempts."
+            ),
+            source=DisputeSource.PARTY_REPORT,
+            order_id=order.id,
+            raised_by_kind=OrderParty.PASSENGER.value,
+            raised_by_id=user.id,
+            against_kind=OrderParty.DRIVER.value,
+            against_id=order.driver_id,
+        )
+        await record_order_event(
+            session,
+            order_id=order.id,
+            event=OrderEventType.DISPUTE_OPENED,
+            actor_kind="SYSTEM",
+            payload={"dispute_id": str(dispute.id), "source": "ARRIVAL_CONFLICT"},
+        )
+        return order_out(order)
+
+    from_status = order.status.value
+    await OrderService(session).transition(order, OrderStatus.DRIVER_ARRIVED)
+    await record_order_event(
+        session,
+        order_id=order.id,
+        event=OrderEventType.ARRIVAL_CONFIRMED,
+        from_status=from_status,
+        to_status=OrderStatus.DRIVER_ARRIVED.value,
+        actor_kind=OrderParty.PASSENGER.value,
+        actor_id=user.id,
+    )
+    return order_out(order)
+
+
+@router.post("/{order_id}/arrive", response_model=OrderOut, deprecated=True)
 async def order_arrive(
     order_id: str,
     user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
-    order = await _get_order(session, order_id, for_update=True)
-    await _assigned_driver_guard(session, order, user)
-    await OrderService(session).transition(order, OrderStatus.DRIVER_ARRIVED)
-    return order_out(order)
+    """Deprecated alias for `arrival-claim` (no body coordinates).
+
+    Kept so an older client does not hard-fail, but it can only reach
+    `PENDING_ARRIVAL_CONFIRM` — the passenger's confirmation is what unlocks
+    `DRIVER_ARRIVED`, and no alias can skip it.
+    """
+    return await order_arrival_claim(order_id, ArrivalClaimIn(), user, session)
 
 
 @router.post("/{order_id}/start", response_model=OrderOut)
@@ -522,8 +872,36 @@ async def order_start(
     session: AsyncSession = Depends(get_session),
 ):
     order = await _get_order(session, order_id, for_update=True)
-    await _assigned_driver_guard(session, order, user)
+    profile = await _assigned_driver_guard(session, order, user)
+    from_status = order.status.value
     await OrderService(session).transition(order, OrderStatus.IN_TRIP)
+
+    # P4 DECISION-1: the per-trip platform fee, charged to the driver's deposit
+    # at departure. The fare itself never passes through the platform (Cap. 374D
+    # intermediary), so this is the platform's actual revenue from the trip.
+    # `reference_for_trip_fee` is unique per order, so a retried `/start`
+    # replays the entry instead of charging twice.
+    fee = Decimal(get_settings().platform_trip_fee_hkd)
+    await LedgerService(session).append(
+        driver_profile_id=profile.id,
+        entry_type=LedgerEntryType.PLATFORM_TRIP_FEE,
+        amount_hkd=-fee,
+        note=f"platform trip fee: {order.id}",
+        order_id=order.id,
+        created_by=user.id,
+        reference=reference_for_trip_fee(order.id),
+    )
+    order.platform_fee_charged_at = datetime.now(UTC)
+    await record_order_event(
+        session,
+        order_id=order.id,
+        event=OrderEventType.FEE_CHARGED,
+        from_status=from_status,
+        to_status=OrderStatus.IN_TRIP.value,
+        actor_kind=OrderParty.DRIVER.value,
+        actor_id=user.id,
+        payload={"entry_type": LedgerEntryType.PLATFORM_TRIP_FEE.value, "amount_hkd": str(-fee)},
+    )
     return order_out(order)
 
 
@@ -535,6 +913,7 @@ async def order_complete(
 ):
     order = await _get_order(session, order_id, for_update=True)
     await _assigned_driver_guard(session, order, user)
+    from_status = order.status.value
     await OrderService(session).transition(order, OrderStatus.COMPLETED)
 
     # Fixed-fare service fee is a real ledger event: the passenger's price
@@ -557,6 +936,355 @@ async def order_complete(
             reference=reference_for_fixed_ride(order.id),
         )
 
+    await record_order_event(
+        session,
+        order_id=order.id,
+        event=OrderEventType.STATE_CHANGED,
+        from_status=from_status,
+        to_status=OrderStatus.COMPLETED.value,
+        actor_kind=OrderParty.DRIVER.value,
+        actor_id=user.id,
+    )
+    return order_out(order)
+
+
+async def _straight_line_km(session: AsyncSession, order: Order, lat: float, lng: float) -> Decimal:
+    """Straight-line kilometres from the order's frozen pickup to a point.
+
+    PostGIS for the same reason `_arrival_distances` uses it: `ST_Distance` on
+    two `geography(POINT,4326)` values already returns metres, and re-deriving
+    that in Python is how the two answers drift apart.
+
+    Straight-line is a *lower bound* on the road distance, and the caller labels
+    it as such. It is the fallback, not the preferred input: a client that has a
+    routing engine sends `distance_km` and gets a real figure.
+    """
+    from sqlalchemy import text as sa_text
+
+    row = (
+        await session.execute(
+            sa_text(
+                "SELECT ST_Distance(o.pickup_location, "
+                "ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography) "
+                "FROM orders o WHERE o.id = CAST(:oid AS uuid)"
+            ),
+            {"oid": str(order.id), "lat": lat, "lng": lng},
+        )
+    ).first()
+    if row is None or row[0] is None:
+        # `pickup_location` is NOT NULL, so this is a "cannot happen" — but
+        # answering with 0 km would silently re-price the trip at the flagfall.
+        raise HTTPException(status_code=422, detail={"reason": "NO_LOCATION"})
+    return (Decimal(row[0]) / Decimal(1000)).quantize(Decimal("0.001"))
+
+
+def _reestimate_fare(
+    order: Order, *, distance_km: Decimal, distance_source: str
+) -> tuple[dict, Decimal]:
+    """Rebuild the fare snapshot for a changed destination (P4 §4.1 step 4).
+
+    Every input except the distance comes off the **order or its existing
+    snapshot**, never off the request. That is the point: a destination change
+    re-prices the same trip, it does not let the caller rewrite the terms they
+    already agreed to (`taxi_type`, `discount_percent`, tunnels, harbour
+    crossing, tip).
+
+    Two inputs are genuinely unrecoverable and are stated here rather than
+    quietly defaulted:
+
+    * `waiting_min` — waiting is a live meter quantity, not part of a pre-trip
+      estimate, and the order never stored the creation-time figure. Re-pricing
+      uses 0.
+    * `pickup_at_cross_harbour_stand` — never persisted. Re-pricing uses False,
+      so a stand surcharge drops out of the new estimate.
+
+    Both only ever move the *estimate*, which the snapshot already labels
+    `is_estimate: True` and which no charge is derived from (the fare itself
+    never passes through the platform — Cap. 374D).
+    """
+    old = dict(order.fare_json or {})
+    try:
+        tunnels = [Tunnel(str(t)) for t in (old.get("tunnels") or [])]
+    except ValueError:
+        # A snapshot carrying a tunnel code this build no longer knows must not
+        # 500 the change; the surcharge is dropped and the new snapshot simply
+        # has no tunnels.
+        tunnels = []
+    crosses_harbour = bool(old.get("crosses_harbour"))
+
+    bd = calculate_fare(
+        taxi_type=TaxiType(order.taxi_type),
+        distance_km=distance_km,
+        waiting_min=Decimal("0"),
+        tunnels=tunnels,
+        crosses_harbour=crosses_harbour,
+        pickup_at_cross_harbour_stand=False,
+        discount_percent=Decimal(order.discount_percent or 0),
+        tip=Decimal(old.get("tip") or 0),
+    )
+    snapshot = fare_snapshot(
+        bd,
+        tunnels=sorted({t.value for t in tunnels}),
+        crosses_harbour=crosses_harbour,
+    )
+    snapshot["fare_mode"] = OrderFareMode.METER.value
+    snapshot["distance_source"] = distance_source
+    snapshot["is_destination_change"] = True
+    return snapshot, Decimal(money_str(bd.total_fare))
+
+
+@router.post("/{order_id}/change-destination", response_model=OrderOut)
+async def order_change_destination(
+    order_id: str,
+    payload: ChangeDestinationIn,
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Move the dropoff of a trip already under way (P4 §4.1).
+
+    **No operator is involved.** Changing your mind about where you are going is
+    a normal thing to do mid-journey; routing it through support would be a
+    queue for something that needs no adjudication. What the change *does* need
+    is to be recorded and re-priced, which is all this endpoint does.
+
+    The order is left in `DESTINATION_CHANGED`, not returned to `IN_TRIP`. That
+    state is deliberately observable — the passenger's client shows the new
+    estimate off it, and every "a trip is still running" query in the codebase
+    lists it (`admin/live`, `admin/orders`, `refund_service`). A further change
+    while already in it re-stamps rather than looping through `IN_TRIP`, so the
+    documented transition table needs no self-edge.
+    """
+    order = await _get_order(session, order_id, for_update=True)
+    profile = await DriverProfile.for_user(session, user.id)
+    is_passenger = order.passenger_id == user.id
+    is_driver = profile is not None and order.driver_id == profile.id
+    if not (is_passenger or is_driver):
+        raise HTTPException(status_code=403, detail="not a party of this order")
+
+    if order.status not in (OrderStatus.IN_TRIP, OrderStatus.DESTINATION_CHANGED):
+        raise HTTPException(
+            status_code=409,
+            detail={"reason": "WRONG_STATUS", "status": order.status.value},
+        )
+
+    settings = get_settings()
+    changes = order.destination_change_count or 0
+    if changes >= settings.max_destination_changes:
+        # 429, not 403: the cap is a rate limit on a legitimate action, and the
+        # passenger's next step is to talk to the driver or interrupt — both of
+        # which are still available. A permission verdict would be a lie.
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "reason": "TOO_MANY_CHANGES",
+                "limit": settings.max_destination_changes,
+            },
+        )
+    require_in_hong_kong(payload.dropoff_lat, payload.dropoff_lng, field="dropoff")
+
+    # 1. Preserve the original destination exactly once, and never overwrite it
+    #    — "where did they originally ask to go" has to stay answerable for the
+    #    life of the order, including after a dispute.
+    #
+    #    The **geography** half is copied server-side, in its own UPDATE. Reading
+    #    `order.dropoff_location` hands back a geoalchemy2 `WKBElement` whose
+    #    bind processing reaches for Shapely — and `pyproject.toml` depends on
+    #    `geoalchemy2`, deliberately not on `geoalchemy2[shapely]`. A
+    #    column-to-column assignment in the same statement avoids both the
+    #    optional dependency and a round trip through WKT. The text half needs
+    #    none of that and is a plain attribute copy.
+    if changes == 0:
+        order.original_dropoff_address = order.dropoff_address
+        await session.execute(
+            update(Order)
+            .where(Order.id == order.id)
+            .values(original_dropoff_location=Order.dropoff_location)
+        )
+
+    previous_address = order.dropoff_address
+    previous_total = order.estimated_total_hkd
+
+    # 2. Re-price. The client's routed distance when it sent one, else the
+    #    PostGIS straight line — labelled either way.
+    if payload.distance_km is not None:
+        new_distance = Decimal(payload.distance_km)
+        distance_source = "client_route"
+    else:
+        new_distance = await _straight_line_km(
+            session, order, payload.dropoff_lat, payload.dropoff_lng
+        )
+        distance_source = "straight_line"
+
+    order.dropoff_location = _point_wkt(payload.dropoff_lat, payload.dropoff_lng)
+    order.dropoff_address = payload.dropoff_address
+    order.distance_km = new_distance
+
+    # A fixed fare (一口價) is a standing offer for **one route**. Once the
+    # dropoff moves, that contract no longer describes the trip, so the order
+    # reverts to a meter estimate rather than keeping a price for a journey
+    # nobody is taking. Silently honouring the old fixed price would charge the
+    # passenger for the wrong trip; refusing the change outright would strand
+    # them. Recorded in the event payload below.
+    was_fixed = order.fare_mode == OrderFareMode.FIXED
+    if was_fixed:
+        order.fare_mode = OrderFareMode.METER
+        order.fixed_offer_id = None
+        order.driver_price_hkd = None
+        order.platform_fee_hkd = None
+        order.passenger_price_hkd = None
+
+    snapshot, new_total = _reestimate_fare(
+        order, distance_km=new_distance, distance_source=distance_source
+    )
+    order.fare_json = snapshot
+    order.estimated_total_hkd = new_total
+
+    # 3. Count and move. `transition()` stamps `destination_changed_at`; when the
+    #    order is already in DESTINATION_CHANGED the transition table has no
+    #    self-edge, so the stamp is written here instead of asserting an edge
+    #    that does not exist.
+    from_status = order.status.value
+    order.destination_change_count = changes + 1
+    if order.status == OrderStatus.IN_TRIP:
+        await OrderService(session).transition(order, OrderStatus.DESTINATION_CHANGED)
+    else:
+        order.destination_changed_at = datetime.now(UTC)
+
+    await record_order_event(
+        session,
+        order_id=order.id,
+        event=OrderEventType.DEST_CHANGED,
+        from_status=from_status,
+        to_status=OrderStatus.DESTINATION_CHANGED.value,
+        actor_kind=(OrderParty.PASSENGER.value if is_passenger else OrderParty.DRIVER.value),
+        actor_id=user.id,
+        payload={
+            "change_number": order.destination_change_count,
+            "previous_address": previous_address,
+            "new_address": payload.dropoff_address,
+            "previous_estimated_total_hkd": money_str(Decimal(previous_total)),
+            "new_estimated_total_hkd": money_str(new_total),
+            "distance_km": str(new_distance),
+            "distance_source": distance_source,
+            "fixed_fare_downgraded": was_fixed,
+        },
+    )
+    return order_out(order)
+
+
+@router.post("/{order_id}/interrupt", response_model=OrderOut)
+async def order_interrupt(
+    order_id: str,
+    payload: InterruptIn,
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """End a trip early. **Instant, and effective immediately** (P4 DECISION-2).
+
+    Both parties may interrupt, and neither needs the other's agreement or an
+    operator's. A trip that has gone wrong — an accident, a confrontation, a
+    passenger taken ill — has to be stoppable by the person in the car, right
+    now; a state called `INTERRUPT_PENDING` would mean asking permission to stop
+    being in danger.
+
+    Because it is instant, the *money* question is deferred rather than decided:
+    the platform trip fee charged at `/start` is **not** refunded here (an
+    instant refund would let either side use "interrupt" to dodge the fee), and
+    a dispute is opened in this same transaction so the case cannot be lost to a
+    crash between the two writes.
+    """
+    order = await _get_order(session, order_id, for_update=True)
+    profile = await DriverProfile.for_user(session, user.id)
+    is_passenger = order.passenger_id == user.id
+    is_driver = profile is not None and order.driver_id == profile.id
+    if not (is_passenger or is_driver):
+        raise HTTPException(status_code=403, detail="not a party of this order")
+
+    if order.status not in INTERRUPTIBLE_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail={"reason": "WRONG_STATUS", "status": order.status.value},
+        )
+
+    note = payload.note.strip()
+    if payload.reason_code == InterruptionReason.OTHER and not note:
+        # The enum classifies; for OTHER the note *is* the classification.
+        raise HTTPException(status_code=422, detail={"reason": "NOTE_REQUIRED"})
+
+    party = OrderParty.PASSENGER if is_passenger else OrderParty.DRIVER
+    if payload.reason_code not in INTERRUPTION_REASONS_BY_PARTY[party]:
+        # §6.1 — the client's menu is filtered by role, but a hidden option is
+        # not a refused one. `PASSENGER_MISCONDUCT` filed by a passenger (or
+        # `DRIVER_MISCONDUCT` by a driver) names the filer, so accepting it
+        # writes a self-accusation into the evidence an operator judges from.
+        #
+        # 422 with a structured `reason`, matching `NOTE_REQUIRED` above: the
+        # enum member is valid, the *value in this body* is not usable — which
+        # is a bad request, not a permission verdict. 403 in this handler
+        # already means "you are not a party of this order".
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "reason": "REASON_NOT_FOR_PARTY",
+                "party": party.value,
+                "reason_code": payload.reason_code.value,
+            },
+        )
+    # The case is filed against the counterparty — a default, not a verdict.
+    # The dispute table is explicitly allowed to change it (§4.2).
+    against_id = order.driver_id if is_passenger else order.passenger_id
+    safety = payload.reason_code in SAFETY_INTERRUPTION_REASONS
+
+    from_status = order.status.value
+    order.interruption_reason = payload.reason_code
+    order.interrupted_by_kind = party
+    await OrderService(session).transition(order, OrderStatus.INTERRUPTED)
+
+    summary = f"{party.value} interrupted order {order.id}: {payload.reason_code.value}"
+    if note:
+        summary = f"{summary} — {note}"
+
+    dispute = await DisputeService(session).open_for_interruption(
+        session,
+        order_id=order.id,
+        interrupted_by_kind=party.value,
+        against_id=against_id,
+        safety=safety,
+        summary=summary[:2000],
+        raised_by_id=user.id,
+    )
+    await record_order_event(
+        session,
+        order_id=order.id,
+        event=OrderEventType.INTERRUPTED,
+        from_status=from_status,
+        to_status=OrderStatus.INTERRUPTED.value,
+        actor_kind=party.value,
+        actor_id=user.id,
+        payload={
+            "reason_code": payload.reason_code.value,
+            "note": note,
+            "safety": safety,
+            "dispute_id": str(dispute.id),
+        },
+    )
+    await record_order_event(
+        session,
+        order_id=order.id,
+        event=OrderEventType.DISPUTE_OPENED,
+        # `OrderParty` is the two *parties*; the dispute is opened by the
+        # platform, so the actor is the literal SYSTEM — the same value
+        # `DisputeService.open_for_interruption` writes into `raised_by_kind`.
+        actor_kind="SYSTEM",
+        payload={
+            "dispute_id": str(dispute.id),
+            "source": (
+                DisputeSource.AUTO_INTERRUPTED_SAFETY.value
+                if safety
+                else DisputeSource.AUTO_INTERRUPTED.value
+            ),
+        },
+    )
     return order_out(order)
 
 
@@ -568,6 +1296,35 @@ async def order_cancel(
     user: Principal = Depends(require_active_user),
     session: AsyncSession = Depends(get_session),
 ):
+    """Cancel a trip that has not been *proven* to have started (P4 §5.2.1).
+
+    Three regimes, and the boundary between them is an objective fact rather
+    than a judgement call — which is precisely why it can be automated:
+
+    * **`CREATED` / `BROADCASTING`** — nobody has committed to anything yet.
+      Free.
+    * **`ACCEPTED` / `PENDING_ARRIVAL_CONFIRM`** — the driver has committed and
+      is on their way, so cancelling is still allowed but now costs: **100% of
+      the estimate for a passenger, 50% for a driver**, charged immediately,
+      plus a 15-minute cool-down (DECISION-5). A structured `reason_code`
+      becomes mandatory here — an unvalidated free-text field on a penalised
+      action is a bypass, because "passenger was drunk" exempted the driver.
+      The penalty is priced off *this trip's* snapshot, not a flat fee: a $300
+      airport run and a $40 hop cannot default for the same money.
+    * **`DRIVER_ARRIVED` and later** — arrival is proven (GPS **and** the
+      passenger's own confirmation), so the cancel right is locked: **409**.
+      The ways out are `/complete` and `/interrupt`, and the driver's costs are
+      adjudicated by an operator afterwards.
+
+    **Known gap, stated rather than hidden.** The passenger half of the penalty
+    is *recorded* but not *collected*: `LedgerEntry.driver_profile_id` is NOT
+    NULL and there is no passenger wallet (`docs/IN_TRIP_REDESIGN.md` §1.3c —
+    the fare never passes through the platform, Cap. 374D). So a defaulting
+    passenger gets the cool-down and a `PENALTY_CHARGED` timeline entry with
+    `settled: false`, and the amount is owed rather than debited. Closing it
+    needs passenger-side money, which is future infrastructure, not a bug in
+    this handler.
+    """
     # Locked, because the penalty below is decided from this read and the
     # transition is written after it: two concurrent cancels would otherwise
     # both see ACCEPTED and both charge. See `_get_order`.
@@ -578,30 +1335,92 @@ async def order_cancel(
     if not (is_passenger or is_assigned_driver):
         raise HTTPException(status_code=403, detail="not a party of this order")
 
-    # legality first — never charge a penalty for an impossible transition
+    # The lock comes first, and it is a 409 rather than the 400 that
+    # `assert_order_transition` would raise: "you may not do this yet" and "this
+    # transition does not exist" are different answers to the client.
+    if order.status in CANCEL_LOCKED_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail={"reason": "CANCEL_LOCKED", "status": order.status.value},
+        )
+
+    # Legality next — never charge a penalty for an impossible transition.
     assert_order_transition(order.status, OrderStatus.CANCELLED)
+
+    defaulting = order.status in (
+        OrderStatus.ACCEPTED,
+        OrderStatus.PENDING_ARRIVAL_CONFIRM,
+    )
+    if defaulting and payload.reason_code is None:
+        raise HTTPException(status_code=422, detail={"reason": "REASON_REQUIRED"})
 
     if order.status == OrderStatus.BROADCASTING:
         await GeoService(request.app.state.redis_factory()).remove_order(str(order.id))
 
-    # `profile is not None` is implied by `is_assigned_driver` and is here only
-    # so the checker can narrow `profile` at the `profile.id` below.
-    if (
-        is_assigned_driver
-        and profile is not None
-        and order.status in (OrderStatus.ACCEPTED, OrderStatus.DRIVER_ARRIVED)
-    ):
-        from app.core.config import get_settings
-
-        penalty = Decimal(get_settings().no_show_penalty_hkd)
-        await LedgerService(session).append(
-            driver_profile_id=profile.id,
-            entry_type=LedgerEntryType.PENALTY_DEDUCTION,
-            amount_hkd=-penalty,
-            note=f"driver cancellation after acceptance: {payload.reason}"[:200],
-            order_id=order.id,
-            created_by=user.id,
+    party = OrderParty.PASSENGER if is_passenger else OrderParty.DRIVER
+    from_status = order.status.value
+    penalty = Decimal("0")
+    settled = False
+    if defaulting:
+        share = Decimal(100) if is_passenger else Decimal(50)
+        penalty = (Decimal(order.estimated_total_hkd or 0) * share / Decimal(100)).quantize(
+            Decimal("0.01")
         )
 
+    if defaulting and penalty > 0 and is_assigned_driver and profile is not None:
+        # Only the driver side has an account to debit. `ensure_deposit_row`
+        # first: an ACTIVE driver is *expected* to have one, but if the row is
+        # missing, `append` raises and the cancel — a legitimate action — fails
+        # entirely. Creating the zero-balance row and letting the penalty push
+        # it negative is exactly the arrears model the ledger already allows.
+        await LedgerService.ensure_deposit_row(session, profile)
+        await LedgerService(session).append(
+            driver_profile_id=profile.id,
+            entry_type=LedgerEntryType.CANCELLATION_PENALTY,
+            amount_hkd=-penalty,
+            note=(
+                f"driver default at {from_status}: "
+                f"{payload.reason_code.value if payload.reason_code else ''} {payload.reason}"
+            )[:200],
+            order_id=order.id,
+            created_by=user.id,
+            reference=reference_for_cancellation_penalty(order.id, party.value),
+        )
+        settled = True
+
+    if defaulting and penalty > 0:
+        await record_order_event(
+            session,
+            order_id=order.id,
+            event=OrderEventType.PENALTY_CHARGED,
+            from_status=from_status,
+            to_status=OrderStatus.CANCELLED.value,
+            actor_kind=party.value,
+            actor_id=user.id,
+            payload={
+                "entry_type": LedgerEntryType.CANCELLATION_PENALTY.value,
+                "amount_hkd": money_str(penalty),
+                "share_percent": "100" if is_passenger else "50",
+                "basis_hkd": money_str(Decimal(order.estimated_total_hkd or 0)),
+                "reason_code": payload.reason_code.value if payload.reason_code else None,
+                # False for a passenger: recorded, owed, not debited — see the
+                # docstring. The timeline is where an operator finds it.
+                "settled": settled,
+            },
+        )
+
+    order.cancellation_reason = payload.reason or (
+        payload.reason_code.value if payload.reason_code else None
+    )
     await OrderService(session).transition(order, OrderStatus.CANCELLED)
+
+    if defaulting:
+        # Armed *after* the transition succeeds, so a cancel that fails on
+        # legality does not leave the party in a cool-down for a trip they never
+        # cancelled. Every default re-arms the full window.
+        await cooldown_mod.set_cooldown(
+            request.app.state.redis_factory(),
+            cooldown_mod.PASSENGER if is_passenger else cooldown_mod.DRIVER,
+            user.id,
+        )
     return order_out(order)

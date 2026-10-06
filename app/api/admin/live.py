@@ -18,7 +18,13 @@ from app.core.deps import Principal, require_admin
 
 router = APIRouter()
 
-_ACTIVE_ORDER_STATUSES = ("ACCEPTED", "DRIVER_ARRIVED", "IN_TRIP")
+_ACTIVE_ORDER_STATUSES = (
+    "ACCEPTED",
+    "PENDING_ARRIVAL_CONFIRM",
+    "DRIVER_ARRIVED",
+    "IN_TRIP",
+    "DESTINATION_CHANGED",
+)
 
 
 _LIVE_DRIVERS_SQL = text(

@@ -50,6 +50,7 @@ from app.api.schemas import (
     AuthMeOut,
     OkRevokedOut,
     OtpRequestOut,
+    PasswordForgotOut,
     TokenPairOut,
 )
 from app.core.client_ip import client_ip
@@ -75,6 +76,7 @@ from app.services.auth.account_service import (
     AccountThrottled,
 )
 from app.services.auth.otp_service import OtpService
+from app.services.auth.password_service import PasswordService
 from app.services.auth.refresh_service import RefreshService
 
 logger = logging.getLogger("realtaxihk.auth")
@@ -168,7 +170,7 @@ async def _run(coro, session: AsyncSession):
 
     **Commits before raising**, for the same reason as `app.api.admin_auth._run`:
     `get_session` rolls back on exception, and every refusal here *is* an
-    exception — so without this, `_register_failure`'s increment and the lockout
+    exception — so without this, `register_failure`'s increment and the lockout
     it triggers would be discarded, and the visible symptom would be an account
     that accepts unlimited wrong passwords.
 
@@ -427,6 +429,137 @@ async def logout(
     # SEC-18: also invalidate the access token the caller is holding (and any
     # other one already issued to this user), not just the refresh tokens.
     await _revoke_access_tokens(request, user.id)
+    return {"ok": True, "revoked": revoked}
+
+
+# --------------------------------------------------------------------------- #
+# Password — change (signed in) and reset (forgotten)
+# --------------------------------------------------------------------------- #
+
+# Per-IP budgets for the two anonymous routes. `forgot` is tighter because it is
+# the one that causes an outbound email; `reset` only reads a digest.
+_FORGOT_IP_RATE_LIMIT = 10
+_FORGOT_IP_WINDOW_S = 3600
+_RESET_IP_RATE_LIMIT = 30
+_RESET_IP_WINDOW_S = 3600
+
+
+class PasswordChangeIn(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    # `min_length=1` only: the real policy is in `app/core/passwords.py`, and
+    # restating the 12-character rule here would answer with pydantic's "string
+    # too short" instead of the policy's sentence — the same reasoning as
+    # `RegisterIn.password`.
+    new_password: str = Field(min_length=1, max_length=256)
+
+
+class PasswordForgotIn(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    human_token: str | None = Field(default=None, max_length=_HUMAN_TOKEN_MAX)
+
+
+class PasswordResetIn(BaseModel):
+    # The link's token. `min_length=16` is a shape check only — the real length
+    # is 43 chars from `secrets.token_urlsafe(32)`, and a short value is a 400
+    # from the service rather than a wasted digest lookup.
+    token: str = Field(min_length=16, max_length=256)
+    new_password: str = Field(min_length=1, max_length=256)
+
+
+@router.post("/password/change", response_model=OkRevokedOut)
+async def password_change(
+    payload: PasswordChangeIn,
+    request: Request,
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Change the password of the signed-in account.
+
+    Requires the **current** password even though the caller already holds a
+    valid token. A stolen session must not be enough to take the account over
+    permanently — otherwise "someone got my phone for two minutes" escalates
+    from "they read my trips" to "they own my account".
+
+    The response is `OkRevokedOut`, the same shape as `POST /auth/logout`, and
+    `revoked` is the number of sessions killed — **including this one**. The
+    client is expected to discard its tokens and sign in again; that is the
+    point of the route, not a side effect. See `PasswordService.change`.
+    """
+    db_user = await session.get(User, user.id)
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    revoked = await _run(
+        PasswordService(session, request.app.state.auth_redis).change(
+            db_user,
+            current_password=payload.current_password,
+            new_password=payload.new_password,
+        ),
+        session,
+    )
+    logger.info("password changed user_id=%s", user.id)
+    return {"ok": True, "revoked": revoked}
+
+
+@router.post("/password/forgot", response_model=PasswordForgotOut)
+async def password_forgot(
+    payload: PasswordForgotIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """Email a reset link, if the address has an account.
+
+    **The answer does not depend on whether it does.** This route is anonymous,
+    so a response that differed would be a public "does this person have an
+    account on hkfastdc?" lookup — the disclosure `POST /auth/login` refuses to
+    make with its single generic message, and the one registration has to make
+    and nothing else should.
+
+    Local rate limits run before the human check, like `otp/request`: the check
+    is an outbound HTTPS call, so putting it first would let one address make us
+    perform an unbounded number of them.
+    """
+    limiter = request.app.state.rate_limiter
+    ip = client_ip(request)
+    if not await limiter.allow(f"pwreset:ip:{ip}", _FORGOT_IP_RATE_LIMIT, _FORGOT_IP_WINDOW_S):
+        raise HTTPException(status_code=429, detail="too many reset requests from this address")
+
+    await assert_human(payload.human_token, ip)
+
+    return await _run(
+        PasswordService(session, request.app.state.auth_redis).request_reset(payload.email, ip=ip),
+        session,
+    )
+
+
+@router.post("/password/reset", response_model=OkRevokedOut)
+async def password_reset(
+    payload: PasswordResetIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """Consume a reset link and set a new password.
+
+    Anonymous by necessity — the whole point is that the caller cannot sign in.
+    The token *is* the credential: 256 bits of CSPRNG, delivered only to the
+    account's mailbox, stored as a digest, single-use, and expiring.
+
+    Every failure (unknown, expired, already used) answers with one sentence, so
+    someone holding a stolen token cannot learn whether it was ever real. On
+    success every session is revoked, so a party who was already inside is
+    ejected — which is usually why the password is being reset at all.
+    """
+    limiter = request.app.state.rate_limiter
+    if not await limiter.allow(
+        f"pwreset:submit:ip:{client_ip(request)}", _RESET_IP_RATE_LIMIT, _RESET_IP_WINDOW_S
+    ):
+        raise HTTPException(status_code=429, detail="too many reset attempts")
+
+    revoked = await _run(
+        PasswordService(session, request.app.state.auth_redis).reset(
+            payload.token, payload.new_password
+        ),
+        session,
+    )
     return {"ok": True, "revoked": revoked}
 
 

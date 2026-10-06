@@ -200,11 +200,17 @@ class AccountAuthService:
             locked_until = locked_until.replace(tzinfo=dt.UTC)
         return locked_until > (now or dt.datetime.now(dt.UTC))
 
-    async def _register_failure(self, user: User) -> None:
+    async def register_failure(self, user: User) -> None:
         """Increment the counter and lock at the threshold.
 
         Written to the row rather than a Redis counter so the lock survives a
         Redis flush — losing Redis must not reset a brute-force lockout.
+
+        Public, and named for the *signal* rather than the route, because
+        `PasswordService` is a second caller: a wrong current password on
+        change-password is the same evidence as a wrong password on login, and
+        giving it its own counter would let someone holding a stolen session
+        brute-force the current password without ever tripping the login lock.
         """
         user.failed_login_count = (user.failed_login_count or 0) + 1
         if user.failed_login_count >= MAX_FAILED_LOGINS:
@@ -212,7 +218,14 @@ class AccountAuthService:
             logger.warning("account locked user_id=%s until=%s", user.id, user.locked_until)
         await self.session.flush()
 
-    async def _clear_failures(self, user: User) -> None:
+    async def clear_failures(self, user: User) -> None:
+        """Clear the lockout after a *proven* credential.
+
+        Called on login, and on a successful change/reset — without it, a user
+        who resets a forgotten password while locked out stays locked out, which
+        reads as "the reset did not work" and is the kind of bug that generates
+        a support ticket rather than a fix.
+        """
         if user.failed_login_count or user.locked_until:
             user.failed_login_count = 0
             user.locked_until = None
@@ -339,7 +352,7 @@ class AccountAuthService:
             # password" — and so the failure counter advances in both cases.
             if user.password_hash is None:
                 burn_password_time()
-            await self._register_failure(user)
+            await self.register_failure(user)
             raise AccountAuthError("invalid credentials")
 
         if not user.is_active:
@@ -353,7 +366,7 @@ class AccountAuthService:
 
         # Password is correct: clear the counter so a legitimate login wipes a
         # partial brute force.
-        await self._clear_failures(user)
+        await self.clear_failures(user)
 
         # Transparent hash upgrade: the verify succeeded, so re-hash with the
         # current parameters. This is how the cost is raised without a reset.

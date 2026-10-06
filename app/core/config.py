@@ -203,6 +203,12 @@ class Settings(BaseSettings):
     # A missing value in prod is caught by `_fail_closed` below, because a link
     # built from a default would send users to the wrong host.
     public_base_url: str = "http://127.0.0.1:8000"
+    # How long a password-reset link stays usable. Deliberately much shorter
+    # than `email_verify_ttl_hours`: a reset link is a full account takeover in
+    # one click, whereas a verification link only proves an address. Thirty
+    # minutes is enough for a mail queue and a person, and short enough that a
+    # link found later in a mailbox is already dead.
+    password_reset_ttl_minutes: int = 30
 
     # --- Human verification (Cloudflare Turnstile) ---
     # Gates registration, login and every "send me a code" endpoint. The secret
@@ -256,6 +262,29 @@ class Settings(BaseSettings):
 
     driver_deposit_default_hkd: int = 500
     no_show_penalty_hkd: int = 50
+
+    # --- P4 in-trip (docs/IN_TRIP_REDESIGN.md) ---------------------------
+    # Arrival is proven by GPS proximity before the passenger is even asked, so
+    # this radius is the first gate. Deliberately generous: HK high-rise GPS
+    # error reaches 50–100 m, and a tight radius does not stop a determined
+    # faker (they can move the pin) — it only produces false refusals for
+    # honest drivers.
+    arrival_radius_m: int = 150
+    # How far a client-supplied arrival coordinate may differ from the DB's
+    # last GPS tick before the claim is refused as likely spoofed.
+    arrival_gps_max_disagreement_m: int = 500
+    # Passenger confirmation attempts before the order falls back to ACCEPTED
+    # and a dispute is opened. Small on purpose: this is a 4-digit secret the
+    # passenger reads off their own phone, not a guessable PIN.
+    arrival_pin_max_attempts: int = 3
+    # The per-trip platform fee (DECISION-1), charged to the driver's deposit at
+    # `/start`. The fare itself never passes through the platform (Cap. 374D),
+    # so this is the platform's actual revenue from a completed trip.
+    platform_trip_fee_hkd: int = 5
+    # Cancelling after this many destination changes is refused (the change
+    # endpoint), to stop a passenger extending a trip indefinitely to dodge a
+    # cancellation penalty.
+    max_destination_changes: int = 3
 
     # --- Fixed-fare offers (一口價) --------------------------------------
     # The passenger pays `offer price + platform fee`; the driver receives the

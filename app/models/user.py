@@ -28,6 +28,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -51,17 +52,22 @@ if TYPE_CHECKING:
     from app.models.licence import DriverLicenceSubmission
 
 __all__ = [
+    "INTERRUPTION_REASONS_BY_PARTY",
+    "SAFETY_INTERRUPTION_REASONS",
     "AccountStatus",
     "Base",
     "DriverDeposit",
     "DriverProfile",
     "DriverStatus",
     "Gender",
+    "InterruptionReason",
     "LedgerEntry",
     "LedgerEntryType",
     "Order",
+    "OrderParty",
     "OrderStatus",
     "OtpCode",
+    "PasswordResetToken",
     "RefreshToken",
     "RefundRequest",
     "RefundStatus",
@@ -95,11 +101,31 @@ class DriverStatus(str, enum.Enum):
 
 
 class OrderStatus(str, enum.Enum):
+    """The order lifecycle (P4 widened this — see `docs/IN_TRIP_REDESIGN.md` §2).
+
+    Before P4 the machine ended at `IN_TRIP -> COMPLETED`, a dead end that could
+    not express a mid-trip destination change or an early end. Three states were
+    added, and the two invariants the old machine guaranteed are restated in
+    `app/services/order/state_machine.py`:
+
+    * `PENDING_ARRIVAL_CONFIRM` — the driver pressed "arrived" and the GPS check
+      passed, but the passenger has not yet confirmed. Arrival is a two-sided
+      fact, so this is a state rather than a flag.
+    * `DESTINATION_CHANGED` — **non-terminal**; the trip continues and falls
+      back to `IN_TRIP`.
+    * `INTERRUPTED` — **terminal**; the trip ended early. Distinct from
+      `CANCELLED` (which means "never departed"), because settlement, insurance
+      and the earnings reports treat the two differently.
+    """
+
     CREATED = "CREATED"
     BROADCASTING = "BROADCASTING"
     ACCEPTED = "ACCEPTED"
+    PENDING_ARRIVAL_CONFIRM = "PENDING_ARRIVAL_CONFIRM"
     DRIVER_ARRIVED = "DRIVER_ARRIVED"
     IN_TRIP = "IN_TRIP"
+    DESTINATION_CHANGED = "DESTINATION_CHANGED"
+    INTERRUPTED = "INTERRUPTED"
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
 
@@ -109,13 +135,108 @@ class OrderFareMode(str, enum.Enum):
     FIXED = "FIXED"
 
 
+class OrderParty(str, enum.Enum):
+    """Which side of an order acted. Used for `interrupted_by_kind`.
+
+    Uppercase members, matching `DisputePartyKind`, because
+    `DisputeService.open_for_interruption` compares against `"PASSENGER"` /
+    `"DRIVER"` to pick the counterparty — two spellings of the same idea is how
+    the auto-opened dispute silently ends up blaming the platform.
+    """
+
+    PASSENGER = "PASSENGER"
+    DRIVER = "DRIVER"
+
+
+class InterruptionReason(str, enum.Enum):
+    """Why a trip ended early. A closed set, not free text.
+
+    This is the evidence an operator judges afterwards, so it has to be
+    countable — "47 interruptions were `PASSENGER_SICK` this month" is a
+    sentence free text cannot produce. `OTHER` still requires a note; the enum
+    classifies, the note explains.
+
+    Both parties draw from this one enum. The client shows only the options
+    that make sense for the role, but the **server validates** the pair
+    (`interrupted_by_kind` x reason) — filtering in the UI is courtesy,
+    validating on the server is authorisation.
+    """
+
+    ACCIDENT = "ACCIDENT"  # crash / traffic accident
+    CONFLICT = "CONFLICT"  # an argument with the other party
+    PASSENGER_MISCONDUCT = "PASSENGER_MISCONDUCT"  # abusive behaviour
+    PASSENGER_SICK = "PASSENGER_SICK"  # vomiting / taken ill
+    DRIVER_MISCONDUCT = "DRIVER_MISCONDUCT"  # driver abusive or refusing to continue
+    VEHICLE_BREAKDOWN = "VEHICLE_BREAKDOWN"
+    UNSAFE_ROUTE = "UNSAFE_ROUTE"  # road / route unsafe
+    FARE_DISPUTE = "FARE_DISPUTE"
+    OTHER = "OTHER"  # a note is mandatory
+
+
+# Reasons that raise the dispute to a safety case (1-hour SLA, flag for
+# operator attention). Kept as a set beside the enum rather than a property, so
+# "which reasons are safety" is one visible list a reviewer can disagree with.
+SAFETY_INTERRUPTION_REASONS = frozenset(
+    {
+        InterruptionReason.ACCIDENT,
+        InterruptionReason.CONFLICT,
+        InterruptionReason.PASSENGER_MISCONDUCT,
+        InterruptionReason.DRIVER_MISCONDUCT,
+        InterruptionReason.UNSAFE_ROUTE,
+    }
+)
+
+# Reasons only one party can honestly give, because the reason *names* that
+# party. A passenger filing `PASSENGER_MISCONDUCT` is accusing themselves, and a
+# driver filing `DRIVER_MISCONDUCT` does the same; `PASSENGER_SICK` is the
+# driver's to report, because a passenger does not declare themselves ill in
+# order to end a trip they are paying for.
+#
+# `docs/IN_TRIP_REDESIGN.md` §6.1 — 「前端過濾是禮貌，後端校驗是授權」. The client
+# shows only its own role's menu (`InterruptionReason.forPassenger` /
+# `forDriver`), but a hidden option is not a refused one: this enum is the
+# evidence an operator judges from, so a pair the interrupting party cannot
+# honestly give is refused by the server rather than trusted to the menu.
+#
+# Derived from the enum rather than listed by hand, so a member added later is
+# allowed for **both** parties until someone deliberately excludes it. That is
+# the safe direction: the alternative silently makes a new reason unfilable.
+_PASSENGER_CANNOT_FILE = frozenset(
+    {InterruptionReason.PASSENGER_MISCONDUCT, InterruptionReason.PASSENGER_SICK}
+)
+_DRIVER_CANNOT_FILE = frozenset({InterruptionReason.DRIVER_MISCONDUCT})
+
+INTERRUPTION_REASONS_BY_PARTY: dict[OrderParty, frozenset[InterruptionReason]] = {
+    OrderParty.PASSENGER: frozenset(set(InterruptionReason) - _PASSENGER_CANNOT_FILE),
+    OrderParty.DRIVER: frozenset(set(InterruptionReason) - _DRIVER_CANNOT_FILE),
+}
+
+
 class LedgerEntryType(str, enum.Enum):
+    """`native_enum=False`, so adding a member needs no DB type change — but it
+    *does* widen the `ck_ledger_entries_entry_type` CHECK constraint, and that
+    is a migration (`alembic/versions/042a7bc3e54c…` is the precedent). The
+    longest member, `CANCELLATION_PENALTY`, is 20 chars, well inside the
+    `SAEnum` default `VARCHAR(30)`.
+    """
+
     DEPOSIT_TOPUP = "DEPOSIT_TOPUP"
     WEEKLY_FEE_DEDUCTION = "WEEKLY_FEE_DEDUCTION"
     PENALTY_DEDUCTION = "PENALTY_DEDUCTION"
     REFUND = "REFUND"
     ADJUSTMENT = "ADJUSTMENT"
     FIXED_RIDE_FEE = "FIXED_RIDE_FEE"
+    # P4: the per-trip platform fee, charged to the driver's deposit at `/start`
+    # (DECISION-1). The fare itself never passes through the platform (Cap. 374D
+    # intermediary), so this is the platform's actual revenue from a trip.
+    PLATFORM_TRIP_FEE = "PLATFORM_TRIP_FEE"
+    # P4: a defaulting party's cancellation penalty. The base is the order's own
+    # estimate snapshot, not a flat fee (DECISION-5).
+    CANCELLATION_PENALTY = "CANCELLATION_PENALTY"
+    # P4: an operator's dispute ruling that moves money — a refund of the trip
+    # fee, or a charge against one party. Distinct from ADJUSTMENT so a dispute
+    # outcome is separable in a driver's statement.
+    DISPUTE_ADJUSTMENT = "DISPUTE_ADJUSTMENT"
 
 
 class RefundStatus(str, enum.Enum):
@@ -469,6 +590,55 @@ class Order(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancellation_reason: Mapped[str | None] = mapped_column(Text)
+
+    # --- P4 in-trip lifecycle (docs/IN_TRIP_REDESIGN.md §3.1) --------------- #
+    # Arrival is proven in two steps, so it has two timestamps. `driver_arrived_at`
+    # (above) stays "arrival is CONFIRMED" and is written only alongside
+    # `arrival_confirmed_at`; `arrival_claimed_at` is the weaker "the driver says
+    # so" and may be refused. Collapsing them would let an unconfirmed claim lock
+    # the passenger's cancel right — the exact defect the two-step exists to stop.
+    arrival_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Distance at claim time, kept as dispute evidence. The live check only needs
+    # "within radius?"; this records *how* close, which is what an operator reads
+    # when the two accounts disagree.
+    arrival_gps_distance_m: Mapped[Decimal | None] = mapped_column(Numeric(7, 1))
+    arrival_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    arrival_pin_attempts: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")
+    # `IN_TRIP` start; the platform trip fee is charged against it.
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    platform_fee_charged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The original dropoff, copied once on the first destination change and never
+    # overwritten, so "where did they originally ask to go" stays answerable.
+    original_dropoff_address: Mapped[str | None] = mapped_column(Text)
+    original_dropoff_location: Mapped[object | None] = mapped_column(
+        Geography(geometry_type="POINT", srid=4326, spatial_index=False), nullable=True
+    )
+    destination_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    destination_change_count: Mapped[int] = mapped_column(
+        SmallInteger, default=0, server_default="0"
+    )
+    # How the trip ended early. `interruption_reason` is a closed set (evidence
+    # for the operator); `interrupted_by_kind` is which side ended it.
+    interruption_reason: Mapped[InterruptionReason | None] = mapped_column(
+        SAEnum(
+            InterruptionReason,
+            name="ck_orders_interruption_reason",
+            native_enum=False,
+            create_constraint=True,
+            length=32,
+        )
+    )
+    interrupted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    interrupted_by_kind: Mapped[OrderParty | None] = mapped_column(
+        SAEnum(
+            OrderParty,
+            name="ck_orders_interrupted_by_kind",
+            native_enum=False,
+            create_constraint=True,
+            length=16,
+        )
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -547,6 +717,40 @@ class RefreshToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PasswordResetToken(Base):
+    """A single-use, expiring link token for the "forgot password" flow.
+
+    Deliberately the same shape as `EmailVerificationToken`, for the same
+    reasons: SHA-256 rather than argon2 (the token is 256 bits of CSPRNG, so
+    there is no dictionary and no need for a memory-hard KDF — while argon2 at
+    64 MiB per click would turn the reset endpoint into a resource-exhaustion
+    lever), stored as a digest so a leaked backup yields no working links, and
+    consumed by stamping `consumed_at` rather than deleting, because "this link
+    was used at T, from this IP" is the account-takeover trail.
+
+    There is deliberately **no** `email` column (unlike the verification token):
+    a reset is always against the account's *current* address, resolved at
+    request time, so there is nothing to denormalise.
+    """
+
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # Unique, so a digest collision (or a replayed insert) cannot leave two live
+    # tokens for one secret.
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Kept for the audit trail; never shown to the user.
+    requested_ip: Mapped[str | None] = mapped_column(String(45))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
 
 class RefundRequest(Base):

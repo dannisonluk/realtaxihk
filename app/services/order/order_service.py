@@ -205,13 +205,37 @@ class OrderService:
         return order
 
     async def transition(self, order: Order, target: OrderStatus) -> Order:
+        """Move an order to `target`, stamping the timestamp that belongs to it.
+
+        This is the single writer of `Order.status`, so it is also where the
+        state machine's data invariants are enforced rather than merely asserted
+        by tests:
+
+        * `DRIVER_ARRIVED` writes `driver_arrived_at` **and**
+          `arrival_confirmed_at` together, because arrival is only ever reached
+          through the passenger's confirmation — a status claiming arrival with
+          no proof is the defect the two-step flow exists to stop.
+        * The "first time only" stamps (`accepted_at`, `started_at`) are not
+          overwritten on a re-entry. `PENDING_ARRIVAL_CONFIRM -> ACCEPTED`
+          (three failed confirmations) and `DESTINATION_CHANGED -> IN_TRIP` are
+          both legal returns, and re-stamping would rewrite history.
+        """
         assert_order_transition(order.status, target)
         order.status = target
         now = datetime.now(UTC)
         if target == OrderStatus.ACCEPTED:
-            order.accepted_at = now
+            order.accepted_at = order.accepted_at or now
+        elif target == OrderStatus.PENDING_ARRIVAL_CONFIRM:
+            order.arrival_claimed_at = now
         elif target == OrderStatus.DRIVER_ARRIVED:
             order.driver_arrived_at = now
+            order.arrival_confirmed_at = now
+        elif target == OrderStatus.IN_TRIP:
+            order.started_at = order.started_at or now
+        elif target == OrderStatus.DESTINATION_CHANGED:
+            order.destination_changed_at = now
+        elif target == OrderStatus.INTERRUPTED:
+            order.interrupted_at = now
         elif target == OrderStatus.COMPLETED:
             order.completed_at = now
         elif target == OrderStatus.CANCELLED:
@@ -248,4 +272,19 @@ def order_out(order: Order) -> dict:
         "passenger_price_hkd": money_str(order.passenger_price_hkd)
         if order.passenger_price_hkd is not None
         else None,
+        # P4 in-trip lifecycle. Every field is optional, so a client that ignores
+        # them sees exactly the payload it saw before — the addition is
+        # backward-compatible by construction.
+        "started_at": order.started_at.isoformat() if order.started_at else None,
+        "arrival_confirmed_at": (
+            order.arrival_confirmed_at.isoformat() if order.arrival_confirmed_at else None
+        ),
+        "destination_change_count": order.destination_change_count or 0,
+        "interruption_reason": (
+            order.interruption_reason.value if order.interruption_reason else None
+        ),
+        "interrupted_at": order.interrupted_at.isoformat() if order.interrupted_at else None,
+        "interrupted_by_kind": (
+            order.interrupted_by_kind.value if order.interrupted_by_kind else None
+        ),
     }

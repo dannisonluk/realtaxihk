@@ -34,8 +34,10 @@ _ORDER_OPEN_STATUSES = (
     OrderStatus.CREATED,
     OrderStatus.BROADCASTING,
     OrderStatus.ACCEPTED,
+    OrderStatus.PENDING_ARRIVAL_CONFIRM,
     OrderStatus.DRIVER_ARRIVED,
     OrderStatus.IN_TRIP,
+    OrderStatus.DESTINATION_CHANGED,
 )
 
 

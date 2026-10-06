@@ -58,6 +58,14 @@ class OrderOut(BaseModel):
     driver_price_hkd: str | None = None
     platform_fee_hkd: str | None = None
     passenger_price_hkd: str | None = None
+    # P4 in-trip lifecycle. All optional, so the addition is backward-compatible:
+    # a client that ignores them decodes exactly what it decoded before.
+    started_at: str | None = None
+    arrival_confirmed_at: str | None = None
+    destination_change_count: int = 0
+    interruption_reason: str | None = None
+    interrupted_at: str | None = None
+    interrupted_by_kind: str | None = None
 
 
 class OrderPageOut(BaseModel):

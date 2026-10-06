@@ -5,6 +5,8 @@ service-level grabs: exactly one must win, the rest must lose cleanly.
 """
 
 import asyncio
+import types
+from decimal import Decimal
 from typing import cast
 
 import pytest
@@ -77,6 +79,21 @@ def _create_order(client, passenger_token: str) -> dict:
     return r.json()
 
 
+def _set_driver_location(client, driver: dict, lat: float, lng: float):
+    """Publish the driver's GPS tick.
+
+    Required before `arrival-claim`: the arrival check reads
+    `driver_profiles.current_location`, and a missing position is a **422**,
+    never a pass ("unknown" must not read as "close enough"). Every test that
+    walks a trip past `ACCEPTED` therefore has to put the driver somewhere.
+    """
+    return client.post(
+        "/api/v1/drivers/location",
+        headers={"Authorization": f"Bearer {driver['token']}"},
+        json={"lat": lat, "lng": lng},
+    )
+
+
 @pytest.fixture()
 def passenger_token(client):
     return _mk_user_token(client, "+85291500001")
@@ -120,12 +137,34 @@ class TestOrderLifecycle:
         assert r.status_code == 403
 
     def test_full_lifecycle_to_completed(self, client, passenger_token):
+        """P4: arrival is a two-step proof, so the walk is longer than it was.
+
+        `grab -> arrival-claim (driver, GPS) -> arrival-confirm (passenger,
+        phone last-4) -> start -> complete`. A bare `/arrive` no longer reaches
+        `DRIVER_ARRIVED` on its own, and that is the point: a driver must not be
+        able to lock the passenger's cancel right from 500 m away by pressing a
+        button. The passenger's own number's last four digits are the second
+        factor — the driver cannot know them, so the claim can only succeed if a
+        real passenger is present to say them.
+        """
         oid = _create_order(client, passenger_token)["id"]
         d = _mk_active_driver(client, "+85291500003")
         h = {"Authorization": f"Bearer {d['token']}"}
         assert client.post(f"/api/v1/orders/{oid}/grab", headers=h).json()["status"] == "ACCEPTED"
-        r = client.post(f"/api/v1/orders/{oid}/arrive", headers=h)
-        assert r.json()["status"] == "DRIVER_ARRIVED"
+
+        # Step 1 — the driver is actually at the pickup (22.284, 114.158).
+        assert _set_driver_location(client, d, 22.284, 114.158).status_code == 200
+        r = client.post(f"/api/v1/orders/{oid}/arrival-claim", headers=h, json={})
+        assert r.json()["status"] == "PENDING_ARRIVAL_CONFIRM"
+
+        # Step 2 — the passenger reads out their own number's tail (…0001).
+        r = client.post(
+            f"/api/v1/orders/{oid}/arrival-confirm",
+            headers={"Authorization": f"Bearer {passenger_token}"},
+            json={"phone_last4": "0001"},
+        )
+        assert r.json()["status"] == "DRIVER_ARRIVED", r.text
+
         assert client.post(f"/api/v1/orders/{oid}/start", headers=h).json()["status"] == "IN_TRIP"
         r = client.post(f"/api/v1/orders/{oid}/complete", headers=h)
         assert r.json()["status"] == "COMPLETED"
@@ -155,15 +194,44 @@ class TestOrderLifecycle:
         assert r.status_code == 409
 
     def test_driver_cancel_after_accept_penalized(self, client, passenger_token):
-        oid = _create_order(client, passenger_token)["id"]
+        """P4: the penalty is 50% of **this trip's** estimate, and a reason is required.
+
+        The old rule was a flat `no_show_penalty_hkd` (HK$50), which made a $300
+        airport run and a $40 hop cost exactly the same to abandon — the wrong
+        incentive at both ends. Pricing off the frozen snapshot is the fix.
+
+        `reason_code` is required from `ACCEPTED` onward because from there the
+        driver has committed and the cancel carries money: an unvalidated
+        free-text field on a penalised action is a bypass, since typing
+        "passenger was drunk" exempted the driver.
+        """
+        order = _create_order(client, passenger_token)
+        oid = order["id"]
         d = _mk_active_driver(client, "+85291500007")
         h = {"Authorization": f"Bearer {d['token']}"}
         client.post(f"/api/v1/orders/{oid}/grab", headers=h)
+
+        # Free text alone is refused, and nothing is charged for the refusal.
         r = client.post(f"/api/v1/orders/{oid}/cancel", headers=h, json={"reason": "cant make it"})
-        assert r.status_code == 200
+        assert r.status_code == 422, r.text
+        assert r.json()["details"]["reason"] == "REASON_REQUIRED"
+
+        r = client.post(
+            f"/api/v1/orders/{oid}/cancel",
+            headers=h,
+            json={"reason_code": "VEHICLE_BREAKDOWN", "reason": "flat tyre"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "CANCELLED"
+
         ledger = client.get("/api/v1/drivers/me/ledger", headers=h).json()["items"]
-        penalties = [i for i in ledger if i["entry_type"] == "PENALTY_DEDUCTION"]
-        assert penalties and penalties[0]["amount_hkd"] == "-50.00"
+        penalties = [i for i in ledger if i["entry_type"] == "CANCELLATION_PENALTY"]
+        assert len(penalties) == 1, ledger
+        # Negative: a ledger amount is signed, debit-negative.
+        expected = -(Decimal(order["estimated_total_hkd"]) * Decimal("0.5")).quantize(
+            Decimal("0.01")
+        )
+        assert Decimal(penalties[0]["amount_hkd"]) == expected
         assert penalties[0]["order_id"] == oid
 
 
@@ -219,36 +287,60 @@ class TestConcurrentCancel:
         Driven through the real handler rather than a re-implementation of its
         logic, so the test cannot drift away from the route it protects.
         """
+        import redis.asyncio as aioredis
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
         from sqlalchemy.pool import NullPool
 
         from app.api.orders import CancelIn, order_cancel
+        from app.core.config import get_settings
         from app.core.deps import principal_from_token
+        from app.models import InterruptionReason
 
-        oid = _create_order(client, passenger_token)["id"]
+        order = _create_order(client, passenger_token)
+        oid = order["id"]
         drv = _mk_active_driver(client, "+85291500031")
         h = {"Authorization": f"Bearer {drv['token']}"}
         assert client.post(f"/api/v1/orders/{oid}/grab", headers=h).status_code == 200
 
         principal = principal_from_token(drv["token"])
 
+        class _State:
+            """`order_cancel` reaches for Redis on the defaulting path, to arm
+            the 15-minute cool-down.
+
+            It gets a **real** client, not a stub: a stub would make the
+            cool-down silently not happen, and this test would then be asserting
+            a world where defaulting costs nothing but the penalty.
+            """
+
+            def __init__(self, rds):
+                self._rds = rds
+
+            def redis_factory(self):
+                return self._rds
+
         class _Request:
             """`order_cancel` only reaches for `request` on the BROADCASTING
-            branch, to drop the Redis geo entry. This order is ACCEPTED, so it is
-            never touched — and if that ever changes, the AttributeError is a
-            loud failure rather than a silent pass."""
+            branch (to drop the Redis geo entry) and after a defaulting cancel.
+            This order is ACCEPTED, so the first is never touched — and if that
+            ever changes, the AttributeError is a loud failure rather than a
+            silent pass."""
+
+            def __init__(self, rds):
+                self.app = types.SimpleNamespace(state=_State(rds))
 
         async def hammer():
             engine = create_async_engine(client.db_url, poolclass=NullPool)
             factory = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+            rds = aioredis.from_url(get_settings().redis_url, decode_responses=True)
 
             async def cancel_once():
                 async with factory() as s:
                     try:
                         await order_cancel(
                             oid,
-                            CancelIn(reason="double tap"),
-                            cast(Request, _Request()),
+                            CancelIn(reason_code=InterruptionReason.VEHICLE_BREAKDOWN),
+                            cast(Request, _Request(rds)),
                             principal,
                             s,
                         )
@@ -262,18 +354,23 @@ class TestConcurrentCancel:
                 return await asyncio.gather(cancel_once(), cancel_once(), return_exceptions=True)
             finally:
                 await engine.dispose()
+                await rds.aclose()
 
         outcomes = sorted(str(o) for o in asyncio.run(hammer()))
         assert outcomes == ["BusinessRuleError", "cancelled"], outcomes
 
         ledger = client.get("/api/v1/drivers/me/ledger", headers=h).json()["items"]
-        penalties = [i for i in ledger if i["entry_type"] == "PENALTY_DEDUCTION"]
+        penalties = [i for i in ledger if i["entry_type"] == "CANCELLATION_PENALTY"]
         assert len(penalties) == 1, (
             f"one cancellation produced {len(penalties)} penalties: {penalties}. "
             "The penalty is appended from a read of `orders.status`, so that read "
             "has to be taken with FOR UPDATE."
         )
-        assert penalties[0]["amount_hkd"] == "-50.00"
+        # Negative: a ledger amount is signed, debit-negative.
+        expected = -(Decimal(order["estimated_total_hkd"]) * Decimal("0.5")).quantize(
+            Decimal("0.01")
+        )
+        assert Decimal(penalties[0]["amount_hkd"]) == expected
 
 
 class TestStateMachineInvariants:
@@ -299,23 +396,51 @@ class TestStateMachineInvariants:
         from app.models import OrderStatus
         from app.services.order.state_machine import ORDER_TRANSITIONS
 
-        for terminal in (OrderStatus.COMPLETED, OrderStatus.CANCELLED):
+        for terminal in (
+            OrderStatus.COMPLETED,
+            OrderStatus.INTERRUPTED,
+            OrderStatus.CANCELLED,
+        ):
             assert ORDER_TRANSITIONS[terminal] == set(), (
                 f"{terminal.value} is terminal but has outgoing edges: "
                 f"{ORDER_TRANSITIONS[terminal]}"
             )
 
-    def test_cancelled_is_unreachable_once_the_trip_is_under_way(self):
-        """A started trip ends by completion, never by cancellation.
+    def test_cancelled_is_unreachable_once_arrival_is_proven(self):
+        """A trip whose arrival has been *proven* never ends by cancellation.
 
-        P4 will add INTERRUPTED for the mid-trip case; CANCELLED must stay
-        unreachable from IN_TRIP even then, otherwise the two overlap and a
-        cancelled trip could still carry in-trip ledger entries.
+        P4 added `INTERRUPTED` for the mid-trip case, and it is the only way out
+        of `DRIVER_ARRIVED`/`IN_TRIP`/`DESTINATION_CHANGED`. `CANCELLED` must
+        stay unreachable from all three: otherwise the two overlap, and a
+        cancelled trip could still carry the in-trip ledger entries (the
+        platform trip fee charged at `/start`) that only an interrupted or
+        completed one should.
+
+        The boundary is `DRIVER_ARRIVED`, not `IN_TRIP`, and that is the P4
+        tightening — before it, `DRIVER_ARRIVED -> CANCELLED` was legal, so a
+        driver could cancel after the passenger had confirmed they were in the
+        car.
         """
         from app.models import OrderStatus
-        from app.services.order.state_machine import ORDER_TRANSITIONS
+        from app.services.order.state_machine import CANCEL_LOCKED_STATUSES, ORDER_TRANSITIONS
 
-        assert OrderStatus.CANCELLED not in ORDER_TRANSITIONS[OrderStatus.IN_TRIP]
+        assert {
+            OrderStatus.DRIVER_ARRIVED,
+            OrderStatus.IN_TRIP,
+            OrderStatus.DESTINATION_CHANGED,
+        } == CANCEL_LOCKED_STATUSES
+        for locked in CANCEL_LOCKED_STATUSES:
+            assert OrderStatus.CANCELLED not in ORDER_TRANSITIONS[locked], locked
+
+        # And the complement: every status *before* arrival must still allow it,
+        # or a passenger waiting for a car could not change their mind.
+        for open_status in (
+            OrderStatus.CREATED,
+            OrderStatus.BROADCASTING,
+            OrderStatus.ACCEPTED,
+            OrderStatus.PENDING_ARRIVAL_CONFIRM,
+        ):
+            assert OrderStatus.CANCELLED in ORDER_TRANSITIONS[open_status], open_status
 
     def test_every_status_is_a_key(self):
         """No status may be missing from the table.
@@ -341,12 +466,15 @@ class TestStateMachineInvariants:
             unknown = targets - known
             assert not unknown, f"{source.value} -> unknown targets {unknown}"
 
-    def test_completed_is_only_reachable_from_in_trip(self):
-        """Exactly one path to COMPLETED.
+    def test_completed_is_only_reachable_from_a_started_trip(self):
+        """No *pre-trip* status can complete an order.
 
-        A second inbound edge would mean a trip could be marked complete without
-        ever having been started, which is the shape a fare-fraud attempt takes:
-        complete an order that was never driven.
+        The invariant is "a trip cannot be marked complete without having been
+        started", not "only `IN_TRIP` may complete". P4 added
+        `DESTINATION_CHANGED -> COMPLETED` because a destination change can be
+        followed immediately by arrival at the new place — but both sources are
+        past `DRIVER_ARRIVED`, which is what actually matters: completing an
+        order that was never driven is the shape a fare-fraud attempt takes.
         """
         from app.models import OrderStatus
         from app.services.order.state_machine import ORDER_TRANSITIONS
@@ -354,7 +482,54 @@ class TestStateMachineInvariants:
         sources = {
             src for src, targets in ORDER_TRANSITIONS.items() if OrderStatus.COMPLETED in targets
         }
-        assert sources == {OrderStatus.IN_TRIP}, sources
+        assert sources == {OrderStatus.IN_TRIP, OrderStatus.DESTINATION_CHANGED}, sources
+
+        pre_trip = {
+            OrderStatus.CREATED,
+            OrderStatus.BROADCASTING,
+            OrderStatus.ACCEPTED,
+            OrderStatus.PENDING_ARRIVAL_CONFIRM,
+            OrderStatus.DRIVER_ARRIVED,
+        }
+        assert sources.isdisjoint(pre_trip), sources & pre_trip
+
+    def test_interrupted_is_reachable_from_every_proven_arrival_state(self):
+        """`INTERRUPTED` is the *only* exit when the trip cannot continue.
+
+        It has to be reachable from all three "the passenger is with the driver"
+        states, because P4 locks `CANCELLED` from exactly those. A missing edge
+        would not be a missing feature — it would be a dead end with no way out
+        of a car that is going wrong, which is the failure this state exists to
+        prevent. `DRIVER_ARRIVED` is the non-obvious one: the passenger can be
+        taken ill getting in, before the meter ever starts.
+        """
+        from app.models import OrderStatus
+        from app.services.order.state_machine import INTERRUPTIBLE_STATUSES, ORDER_TRANSITIONS
+
+        assert {
+            OrderStatus.DRIVER_ARRIVED,
+            OrderStatus.IN_TRIP,
+            OrderStatus.DESTINATION_CHANGED,
+        } == INTERRUPTIBLE_STATUSES
+        for status in INTERRUPTIBLE_STATUSES:
+            assert OrderStatus.INTERRUPTED in ORDER_TRANSITIONS[status], status
+            assert OrderStatus.CANCELLED not in ORDER_TRANSITIONS[status], status
+
+    def test_destination_changed_is_not_a_dead_end(self):
+        """A changed destination must still be able to reach a terminal state.
+
+        P4's `DESTINATION_CHANGED` is deliberately **not** terminal — the trip
+        continues, so it must keep both exits that `IN_TRIP` has. A state that
+        could only be entered would strand every order that used it.
+        """
+        from app.models import OrderStatus
+        from app.services.order.state_machine import ORDER_TRANSITIONS
+
+        assert ORDER_TRANSITIONS[OrderStatus.DESTINATION_CHANGED] == {
+            OrderStatus.IN_TRIP,
+            OrderStatus.COMPLETED,
+            OrderStatus.INTERRUPTED,
+        }
 
     def test_driver_terminated_is_terminal(self):
         from app.models import DriverStatus

@@ -27,8 +27,10 @@ Two defences now:
 
 The prefixes in use: `grant:` (admin top-up), `weekly:` (platform weekly fee),
 `fleet:` (fleet-member weekly fee), `refund:` (approved refund), `adj:` (manual
-balance correction), `fixed:` (fixed-ride platform fee). An `ADJUSTMENT` is
-always operator-initiated and always
+balance correction), `fixed:` (fixed-ride platform fee), `trip:` (per-trip
+platform fee, P4), `penalty:` (a defaulting party's cancellation penalty, P4),
+`dispute:` (an operator's dispute ruling that moves money, P4). An `ADJUSTMENT`
+is always operator-initiated and always
 carries a reason, which is slugged into its own reference.
 """
 
@@ -85,6 +87,40 @@ def reference_for_fixed_ride(order_id) -> str:
     other reference helper follows.
     """
     return f"fixed:{order_id}"
+
+
+def reference_for_trip_fee(order_id) -> str:
+    """The per-trip platform fee, charged once at `/start` (P4 DECISION-1).
+
+    A distinct `trip:` prefix from `fixed:` on purpose: a fixed-fare order
+    charges its own fee at *completion* (`fixed:`) **and** pays the trip fee at
+    *start* (`trip:`), so both references exist on the same order and must not
+    collide. This reference's uniqueness is also what makes a retried `/start`
+    idempotent — the second attempt replays the first entry instead of charging
+    again.
+    """
+    return f"trip:{order_id}"
+
+
+def reference_for_cancellation_penalty(order_id, party: str) -> str:
+    """A defaulting party's cancellation penalty (P4 DECISION-5).
+
+    The party is in the reference so the passenger's penalty and the driver's
+    are separate entries on the same order, and so a retried cancel cannot
+    double-charge either side.
+    """
+    return f"penalty:{order_id}:{party}"
+
+
+def reference_for_dispute_adjustment(dispute_id) -> str:
+    """An operator's dispute ruling that moves money (P4 §4.4).
+
+    Keyed on the dispute, not the order: one order can carry several disputes,
+    and each ruling is its own financial act. This is what lets a resolution be
+    applied exactly once — `resolve()` refuses a second resolution, and this
+    reference backstops a retry of the same one.
+    """
+    return f"dispute:{dispute_id}"
 
 
 def reference_for_adjustment(driver_profile_id, reason: str, client_key: str | None = None) -> str:

@@ -145,3 +145,14 @@ class FareSnapshotOut(BaseModel):
     driver_price_hkd: str | None = None
     platform_fee_hkd: str | None = None
     passenger_price_hkd: str | None = None
+    # P4 additions, written only by a destination change (`_reestimate_fare` in
+    # `app/api/orders.py`). Absent on every order that never had one, which is
+    # why they are optional rather than required.
+    #
+    # `distance_source` is not decoration. A change re-prices the trip, and the
+    # platform has no routing engine of its own: when the client does not send a
+    # routed distance the server falls back to a **straight line**, which
+    # understates the road distance. Saying which one produced this figure is
+    # what stops a lower bound being read as a measurement.
+    distance_source: str | None = None
+    is_destination_change: bool = False

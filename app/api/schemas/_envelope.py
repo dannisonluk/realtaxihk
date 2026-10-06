@@ -130,6 +130,29 @@ class OkLogoutOut(OkOut):
     revoked: bool
 
 
+class PasswordForgotOut(BaseModel):
+    """`{"sent": true, "expires_in": <seconds>}` — `POST /auth/password/forgot`.
+
+    `expires_in` is **seconds**, the same unit as `OtpRequestOut.expires_in` and
+    for the same reason: an integer duration survives a client with a skewed
+    clock, where an absolute timestamp does not.
+
+    There is no field that says whether the address was registered, and that is
+    deliberate — see `PasswordService.request_reset`. Adding one "for the
+    client's benefit" would turn this route into a public "does this person have
+    an account here?" lookup, which is the disclosure login goes out of its way
+    to avoid.
+
+    Not `OtpRequestOut`, although the shape is identical: that model is
+    documented as the OTP route's, and a shared model across two routes is how
+    one route's field ends up meaning two things — the same failure
+    `OkRevokedOut`/`OkLogoutOut` above exist to prevent.
+    """
+
+    sent: bool
+    expires_in: int
+
+
 class PageEnvelope(BaseModel):
     """`{"items", "total", "limit", "offset"}` — admin list responses.
 
