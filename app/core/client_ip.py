@@ -16,7 +16,12 @@ bypassable by rotating one header.
 What it is now: X-Forwarded-For is ignored entirely unless
 `TRUSTED_PROXY_COUNT > 0`, and when it is read the hops are counted **from the
 right** — `[-trusted_proxy_count]` is the peer as seen by the outermost trusted
-proxy, which no client can forge.
+proxy, which no client can forge. The standard single-proxy deployment
+(`docker-compose.prod.yml` sets `TRUSTED_PROXY_COUNT=1`) sends exactly one hop,
+so the exact-count case must also be accepted or every caller collapses onto the
+proxy's address. When the header is absent or has too few hops, the code falls
+back to `X-Real-IP`, which nginx overwrites with the peer it saw, then to the
+transport peer.
 
 Five copies meant five places to get that wrong, and any one of them drifting
 back to `[0]` would have silently reopened the hole for that endpoint alone.
@@ -43,13 +48,19 @@ def client_ip(request: Request) -> str:
         fwd = request.headers.get("x-forwarded-for")
         if fwd:
             hops = [h.strip() for h in fwd.split(",") if h.strip()]
-            # Only trust the header when it has at least one hop beyond the
-            # configured trusted proxies. With fewer hops the client supplied
-            # all of them (or an upstream proxy did not forward one), and the
-            # leftmost value is attacker-controlled. Fall back to the transport
-            # peer instead of echoing a forged value.
-            if len(hops) > settings.trusted_proxy_count:
+            # Trust the header when it has at least as many hops as the
+            # configured trusted proxies. With exactly that many hops the
+            # leftmost value was appended by the outermost trusted proxy (the
+            # standard single-nginx case); with more, count back from the right.
+            # Fewer hops than the configured chain means an upstream proxy did
+            # not forward one, so the leftmost value is attacker-controlled.
+            if len(hops) >= settings.trusted_proxy_count:
                 # Count from the right; see the module docstring.
                 idx = len(hops) - settings.trusted_proxy_count
                 return hops[idx]
+        # nginx overwrites X-Real-IP with the peer it saw, so unlike an
+        # X-Forwarded-For prefix this header cannot be minted by the client.
+        real_ip = request.headers.get("x-real-ip")
+        if real_ip:
+            return real_ip.strip()
     return request.client.host if request.client else "unknown"

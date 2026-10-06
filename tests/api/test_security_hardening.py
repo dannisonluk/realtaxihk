@@ -253,17 +253,21 @@ class TestForwardedFor:
         )
         assert client_ip(cast(Request, _Req())) == "198.51.100.7"
 
-    def test_header_without_a_proxy_appended_hop_falls_back_to_peer(self, monkeypatch):
-        """A client must not mint a fresh identity when no trusted proxy has
-        appended anything: with one trusted proxy and one supplied hop, the
-        only value in the header is attacker-controlled, so the transport peer
-        is the safe answer.
+    def test_exact_hop_count_returns_the_real_peer(self, monkeypatch):
+        """The standard single-proxy deployment appends exactly one hop.
+
+        `docker-compose.prod.yml` sets `TRUSTED_PROXY_COUNT=1` behind nginx,
+        whose `$proxy_add_x_forwarded_for` appends the peer it actually saw. A
+        client cannot shrink that to one hop: it would have to send an XFF the
+        proxy does not append to, which nginx always does. So an exactly-one-hop
+        header is the real peer, not a client-minted identity — and refusing it
+        would collapse every per-IP rate limit onto the proxy's address.
         """
         from app.core.client_ip import client_ip
 
         class _Req:
             def __init__(self):
-                self.headers = {"x-forwarded-for": "6.6.6.6"}
+                self.headers = {"x-forwarded-for": "198.51.100.7"}
                 self.client = type("C", (), {"host": "10.0.0.1"})()
 
         monkeypatch.setattr(
@@ -274,7 +278,70 @@ class TestForwardedFor:
                 trusted_proxy_count=1,
             ),
         )
-        assert client_ip(cast(Request, _Req())) == "10.0.0.1"
+        assert client_ip(cast(Request, _Req())) == "198.51.100.7"
+
+    def test_fewer_hops_than_proxies_falls_back_to_x_real_ip(self, monkeypatch):
+        """A header with fewer hops than the configured chain is not trusted —
+        an upstream proxy that did not forward one leaves a client-controlled
+        leftmost value. nginx's `X-Real-IP` is then used, and only if that too
+        is absent does the transport peer answer.
+        """
+        from app.core.client_ip import client_ip
+
+        class _Req:
+            def __init__(self):
+                self.headers = {
+                    "x-forwarded-for": "6.6.6.6",
+                    "x-real-ip": "198.51.100.7",
+                }
+                self.client = type("C", (), {"host": "10.0.0.1"})()
+
+        monkeypatch.setattr(
+            "app.core.client_ip.get_settings",
+            lambda: _settings(
+                app_env="dev",
+                jwt_secret_key=_STRONG_SECRET,
+                trusted_proxy_count=2,
+            ),
+        )
+        assert client_ip(cast(Request, _Req())) == "198.51.100.7"
+
+    def test_no_header_falls_back_to_x_real_ip_then_peer(self, monkeypatch):
+        """Without any X-Forwarded-For, `X-Real-IP` (overwritten by nginx with
+        the peer it saw) is the safe answer; without that either, the transport
+        peer is used rather than a made-up value.
+        """
+        from app.core.client_ip import client_ip
+
+        class _Req:
+            def __init__(self):
+                self.headers = {"x-real-ip": "198.51.100.7"}
+                self.client = type("C", (), {"host": "10.0.0.1"})()
+
+        monkeypatch.setattr(
+            "app.core.client_ip.get_settings",
+            lambda: _settings(
+                app_env="dev",
+                jwt_secret_key=_STRONG_SECRET,
+                trusted_proxy_count=1,
+            ),
+        )
+        assert client_ip(cast(Request, _Req())) == "198.51.100.7"
+
+        class _NoRealIp:
+            def __init__(self):
+                self.headers = {}
+                self.client = type("C", (), {"host": "10.0.0.1"})()
+
+        monkeypatch.setattr(
+            "app.core.client_ip.get_settings",
+            lambda: _settings(
+                app_env="dev",
+                jwt_secret_key=_STRONG_SECRET,
+                trusted_proxy_count=1,
+            ),
+        )
+        assert client_ip(cast(Request, _NoRealIp())) == "10.0.0.1"
 
     def test_every_module_shares_one_implementation(self):
         """Five byte-identical copies is five places to reintroduce SEC-07."""
