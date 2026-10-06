@@ -56,23 +56,34 @@ val googleMapsApiKey: String =
 //   keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA \
 //     -keysize 2048 -validity 10000 -alias upload
 //
-// While key.properties is absent the release build falls back to the debug keys,
-// so the build still runs on a machine that has no keystore. That APK is **not
-// shippable** — it cannot be uploaded, and it cannot update a published build
-// because the signature does not match. So a release task warns rather than
-// producing it quietly.
+// A release APK signed with the debug keys is **not shippable**: it cannot be
+// uploaded, and it cannot update a published build because the signature does not
+// match. So a release build without a keystore fails outright rather than
+// producing one quietly — a silent debug-signed release is worse than no release,
+// because it looks like it worked.
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 val hasReleaseKeystore = keystorePropertiesFile.exists()
 if (hasReleaseKeystore) {
     keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
 }
-if (!hasReleaseKeystore &&
-    gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
-) {
-    logger.warn(
-        "android/key.properties is missing: this release build will be signed with " +
-            "the DEBUG keys and cannot be published. See mobile/README.md.",
+
+// Does the requested Gradle invocation produce a release artifact? This matches
+// the release-specific tasks (`assembleRelease`, `bundleRelease`, …) and the
+// aggregate tasks that include them (`assemble`, `bundle`, `build`). It does *not*
+// match `assembleDebug`, so a debug-only build still runs on a machine that has no
+// keystore — which is what CI does (`flutter build apk --debug`).
+val releaseRequested =
+    gradle.startParameter.taskNames.any { task ->
+        val leaf = task.substringAfterLast(':').lowercase()
+        leaf.contains("release") || leaf == "assemble" || leaf == "bundle" || leaf == "build"
+    }
+if (!hasReleaseKeystore && releaseRequested) {
+    throw GradleException(
+        "android/key.properties is missing, so there is no release signing key. A " +
+            "debug-signed release APK cannot be uploaded and cannot update a published " +
+            "build. Create android/key.properties with storeFile / storePassword / " +
+            "keyAlias / keyPassword (see mobile/README.md), or build a debug variant instead.",
     )
 }
 
@@ -115,10 +126,32 @@ android {
 
     buildTypes {
         release {
+            // R8 (shrink + obfuscate) and resource shrinking, stated explicitly
+            // rather than left implicit.
+            //
+            // Flutter 3.44's Gradle plugin *does* set these for the release type
+            // (`FlutterPlugin.kt`: `releaseBuildType.isMinifyEnabled = true`), but
+            // only while `shouldShrinkResources` is true — and `-Pshrink=false`
+            // flips that off, silently producing an unminified, un-obfuscated
+            // release. Stating it here means the shipped artifact is shrunk no
+            // matter how Gradle was invoked.
+            //
+            // `proguard-rules.pro` carries the app/plugin keeps the plugin's own
+            // `flutter_proguard_rules.pro` does not cover; see that file for why
+            // each rule exists.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             signingConfig =
                 if (hasReleaseKeystore) {
                     signingConfigs.getByName("release")
                 } else {
+                    // A release task would have thrown above, so reaching here means
+                    // this is a debug-only build; the debug config keeps it
+                    // configuring. A release build never lands in this branch.
                     signingConfigs.getByName("debug")
                 }
         }

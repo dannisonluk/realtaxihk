@@ -115,10 +115,12 @@ Two things to settle before a release build means anything:
 
 * **Release signing is wired up, but there is no keystore yet.**
   `android/app/build.gradle.kts` reads `android/key.properties` (gitignored) and
-  creates a `release` signing config from it. While that file is absent the
-  release build falls back to the debug keys **and warns**, because the APK it
-  produces cannot be uploaded and cannot update a published build — the signature
-  would not match. The file it expects:
+  creates a `release` signing config from it. While that file is absent a release
+  build **fails** rather than falling back to the debug keys, because a
+  debug-signed APK cannot be uploaded and cannot update a published build — the
+  signature would not match, and a build that "succeeds" while producing one is
+  worse than no build. A debug-only build (`assembleDebug`) still runs without a
+  keystore; only the release path is refused. The file it expects:
 
   ```properties
   storeFile=/path/to/upload-keystore.jks
@@ -141,6 +143,35 @@ Two things to settle before a release build means anything:
   still succeeds — the manifest placeholder resolves to empty and the map
   surfaces render their labelled placeholder (`AppConfig.mapsConfigured`) — but
   no map will draw.
+
+### Release hardening
+
+Three things make the release artifact different from the debug one, and all
+three are stated in the build files rather than left to a default:
+
+* **R8 (shrink + obfuscate) and resource shrinking** are set explicitly in the
+  `release` build type (`isMinifyEnabled` / `isShrinkResources` /
+  `proguardFiles`). Flutter 3.44's Gradle plugin already enables them — but only
+  while `shouldShrinkResources` is true, which `-Pshrink=false` turns off. Writing
+  them in `android/app/build.gradle.kts` means a release is shrunk however Gradle
+  is invoked. The app-level keeps live in `android/app/proguard-rules.pro`, each
+  with the reason it exists.
+* **The Dart side is obfuscated by `tool/build_release.sh`**, which pins
+  `flutter build apk --release --obfuscate --split-debug-info=build/symbols`. R8
+  only covers the Java/Kotlin side; without `--obfuscate` every Dart class, symbol
+  and string literal in `libapp.so` is readable. Note the limit: `--obfuscate`
+  renames symbols but **keeps string literals in plain text**, so it is not a
+  place to hide secrets — nothing in this app treats a string literal as one.
+* **The symbol files must be archived.** `--split-debug-info=build/symbols` writes
+  the mapping that turns an obfuscated crash stack back into named frames. It is
+  the only copy: lose it and that build's crashes can never be symbolicated.
+  Archive `build/symbols/` alongside each release, the way the keystore is kept.
+
+The command, from `mobile/`:
+
+```bash
+tool/build_release.sh
+```
 
 ### One trap in `android/app/build.gradle.kts`
 
