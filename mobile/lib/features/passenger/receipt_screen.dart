@@ -195,15 +195,9 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
                   DetailRow(label: '落車', value: receipt.dropoffAddress),
                   DetailRow(label: '距離', value: '${receipt.distanceKm} km'),
                   if (receipt.pickupArea != null)
-                    DetailRow(
-                      label: '上車地區',
-                      value: _areaLabel(receipt.pickupArea!),
-                    ),
+                    DetailRow(label: '上車地區', value: _areaLabel(receipt.pickupArea!)),
                   if (receipt.destinationArea != null)
-                    DetailRow(
-                      label: '落車地區',
-                      value: _areaLabel(receipt.destinationArea!),
-                    ),
+                    DetailRow(label: '落車地區', value: _areaLabel(receipt.destinationArea!)),
                 ],
               ),
             ),
@@ -229,15 +223,9 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
                     Text('付款方式', style: theme.textTheme.titleMedium),
                     const SizedBox(height: AppTheme.space2),
                     if (receipt.paymentPreference.isNotEmpty)
-                      DetailRow(
-                        label: '乘客偏好',
-                        value: _methods(receipt.paymentPreference),
-                      ),
+                      DetailRow(label: '乘客偏好', value: _methods(receipt.paymentPreference)),
                     if (receipt.driverPaymentMethods.isNotEmpty)
-                      DetailRow(
-                        label: '司機接受',
-                        value: _methods(receipt.driverPaymentMethods),
-                      ),
+                      DetailRow(label: '司機接受', value: _methods(receipt.driverPaymentMethods)),
                     const SizedBox(height: AppTheme.space2),
                     Text(
                       '付款方式由司機自行聲明，平台不會代為保證。',
@@ -278,15 +266,11 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
 
           Text(
             receipt.disclaimerZh,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           Text(
             'Tariff ${receipt.tariffVersion}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -318,16 +302,12 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
             const SizedBox(height: AppTheme.space3),
             if (passengerPrice != null)
               DetailRow(label: '乘客應付', valueWidget: MoneyText(passengerPrice)),
-            if (driverPrice != null)
-              DetailRow(label: '司機收取', valueWidget: MoneyText(driverPrice)),
-            if (platformFee != null)
-              DetailRow(label: '平台服務費', valueWidget: MoneyText(platformFee)),
+            if (driverPrice != null) DetailRow(label: '司機收取', valueWidget: MoneyText(driverPrice)),
+            if (platformFee != null) DetailRow(label: '平台服務費', valueWidget: MoneyText(platformFee)),
             const SizedBox(height: AppTheme.space2),
             Text(
               '服務費為乘客應付與司機收取之差額，已於收據列明。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -338,11 +318,13 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
   static String _methods(List<String> methods) => methods.join('、');
 
   /// Area codes are wire values; show the Chinese label the rest of the app uses.
-  static String _areaLabel(String code) => const <String, String>{
-    'HK_ISLAND': '港島',
-    'KOWLOON': '九龍',
-    'NT': '新界',
-    'AIRPORT': '機場',
-    'LANTAU': '大嶼山',
-  }[code] ?? code;
+  static String _areaLabel(String code) =>
+      const <String, String>{
+        'HK_ISLAND': '港島',
+        'KOWLOON': '九龍',
+        'NT': '新界',
+        'AIRPORT': '機場',
+        'LANTAU': '大嶼山',
+      }[code] ??
+      code;
 }

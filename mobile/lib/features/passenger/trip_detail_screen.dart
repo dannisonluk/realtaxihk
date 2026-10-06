@@ -86,8 +86,7 @@ class TripDetailScreen extends ConsumerWidget {
                 onPressed: () async {
                   await Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (BuildContext _) =>
-                          ReceiptScreen(orderId: o.id, autoIssue: true),
+                      builder: (BuildContext _) => ReceiptScreen(orderId: o.id, autoIssue: true),
                     ),
                   );
                 },
@@ -191,9 +190,7 @@ class _RequirementsCard extends StatelessWidget {
             const SizedBox(height: AppTheme.space2),
             Text(
               '以上為乘客提出的要求，由司機自行決定是否合適；平台僅屬資訊中介。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -233,21 +230,13 @@ class _PaymentCard extends StatelessWidget {
             Text('付款方式', style: theme.textTheme.titleMedium),
             const SizedBox(height: AppTheme.space2),
             if (order.paymentPreference.isNotEmpty)
-              DetailRow(
-                label: '乘客偏好',
-                value: _methods(order.paymentPreference),
-              ),
+              DetailRow(label: '乘客偏好', value: _methods(order.paymentPreference)),
             if (order.driverPaymentMethods.isNotEmpty)
-              DetailRow(
-                label: '司機接受',
-                value: _methods(order.driverPaymentMethods),
-              ),
+              DetailRow(label: '司機接受', value: _methods(order.driverPaymentMethods)),
             const SizedBox(height: AppTheme.space2),
             Text(
               '付款方式由司機自行聲明，平台不會代為保證。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
         ),

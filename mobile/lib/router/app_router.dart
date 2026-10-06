@@ -8,6 +8,8 @@ import '../features/admin/admin_kyc_screen.dart';
 import '../features/admin/admin_refunds_screen.dart';
 import '../features/admin/admin_screen.dart';
 import '../features/admin/admin_settlement_screen.dart';
+import '../features/auth/change_password_screen.dart';
+import '../features/auth/forgot_password_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/otp_screen.dart';
 import '../features/auth/phone_login_screen.dart';
@@ -15,9 +17,11 @@ import '../features/auth/phone_unlock_screen.dart';
 import '../features/auth/register_screen.dart';
 import '../features/driver/driver_active_trip_screen.dart';
 import '../features/driver/driver_earnings_screen.dart';
+import '../features/driver/driver_environment_screen.dart';
 import '../features/driver/driver_jobs_screen.dart';
 import '../features/driver/driver_onboarding_screen.dart';
 import '../features/driver/driver_screen.dart';
+import '../features/driver/fixed_offers_screen.dart';
 import '../features/fleet/fleet_screen.dart';
 import '../features/passenger/passenger_screen.dart';
 import '../features/passenger/request_ride_screen.dart';
@@ -25,6 +29,7 @@ import '../features/passenger/trip_detail_screen.dart';
 import '../features/passenger/trip_history_screen.dart';
 import '../features/passenger/trip_tracking_screen.dart';
 import '../features/shared/account_screen.dart';
+import '../features/shared/profile_setup_screen.dart';
 import '../features/splash_screen.dart';
 import '../models/auth.dart';
 import '../state/providers.dart';
@@ -78,6 +83,10 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
             builder: (BuildContext context, GoRouterState state) => const PhoneLoginScreen(),
           ),
           GoRoute(
+            path: 'forgot',
+            builder: (BuildContext context, GoRouterState state) => const ForgotPasswordScreen(),
+          ),
+          GoRoute(
             path: 'otp',
             builder: (BuildContext context, GoRouterState state) {
               // `state.extra` is null when `/login/otp` is reached directly (a
@@ -106,6 +115,23 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
         path: Routes.phoneUnlock,
         parentNavigatorKey: _rootNavigatorKey,
         builder: (BuildContext context, GoRouterState state) => const PhoneUnlockScreen(),
+      ),
+
+      GoRoute(
+        // The profile form. Root navigator and **outside** `/login`, like the
+        // phone unlock — see `Routes.profileSetup` for why it is not a gate.
+        path: Routes.profileSetup,
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (BuildContext context, GoRouterState state) => const ProfileSetupScreen(),
+      ),
+
+      GoRoute(
+        // Change password. Root navigator and outside `/login`, like the phone
+        // unlock: the account that needs it is already signed in, and the
+        // redirect sends a signed-in user away from every `/login` path.
+        path: Routes.passwordChange,
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (BuildContext context, GoRouterState state) => const ChangePasswordScreen(),
       ),
 
       // ---- passenger -----------------------------------------------------
@@ -173,6 +199,20 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
         path: Routes.driverFleet,
         parentNavigatorKey: _rootNavigatorKey,
         builder: (BuildContext context, GoRouterState state) => const FleetScreen(),
+      ),
+      GoRoute(
+        // Like [Routes.driverFleet]: a settings form outside the shell, reached
+        // from the driver account screen.
+        path: Routes.driverEnvironment,
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (BuildContext context, GoRouterState state) => const DriverEnvironmentScreen(),
+      ),
+      GoRoute(
+        // Like [Routes.driverFleet]: a pricing form outside the shell, reached
+        // from the driver account screen, and managed as a settings page.
+        path: Routes.fixedOffers,
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (BuildContext context, GoRouterState state) => const FixedOffersScreen(),
       ),
       StatefulShellRoute.indexedStack(
         builder: (BuildContext context, GoRouterState state, StatefulNavigationShell shell) =>

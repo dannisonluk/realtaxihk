@@ -42,13 +42,7 @@ class NearbyFilter {
   final Set<String> excludes;
 
   /// The closed set of destination areas, matching `app/core/region.py`.
-  static const List<String> areaCodes = <String>[
-    'HK_ISLAND',
-    'KOWLOON',
-    'NT',
-    'AIRPORT',
-    'LANTAU',
-  ];
+  static const List<String> areaCodes = <String>['HK_ISLAND', 'KOWLOON', 'NT', 'AIRPORT', 'LANTAU'];
 
   static const Map<String, String> areaLabelsZh = <String, String>{
     'HK_ISLAND': '港島',
@@ -105,8 +99,7 @@ class NearbyFilter {
   Map<String, dynamic> toQuery() => <String, dynamic>{
     if (fareMode != null) 'fare_mode': fareMode,
     if (destinationArea != null) 'destination_area': destinationArea,
-    if (premiumDestinationId != null)
-      'premium_destination_id': premiumDestinationId,
+    if (premiumDestinationId != null) 'premium_destination_id': premiumDestinationId,
     if (requires.isNotEmpty) 'requires': requires.join(','),
     if (excludes.isNotEmpty) 'excludes': excludes.join(','),
   };
@@ -129,8 +122,7 @@ class NearbyFilter {
     Object.hashAllUnordered(excludes),
   );
 
-  static bool _sameSet(Set<String> a, Set<String> b) =>
-      a.length == b.length && a.containsAll(b);
+  static bool _sameSet(Set<String> a, Set<String> b) => a.length == b.length && a.containsAll(b);
 }
 
 const Object _unset = Object();

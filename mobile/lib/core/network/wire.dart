@@ -14,6 +14,7 @@
 /// Every helper here names the field it failed on.
 library;
 
+import '../format/money.dart';
 import '../network/api_exception.dart';
 
 Map<String, dynamic> asMap(Object? value, String field) {
@@ -111,9 +112,18 @@ List<String> asStringListOrEmpty(Object? value, String field) {
   if (value == null) {
     return const <String>[];
   }
-  return asList(value, field)
-      .map((Object? item) => asString(item, '$field[]'))
-      .toList(growable: false);
+  return asList(
+    value,
+    field,
+  ).map((Object? item) => asString(item, '$field[]')).toList(growable: false);
+}
+
+/// A [Money] value, or null when the key is absent.
+Money? asMoneyOrNull(Object? value, String field) {
+  if (value == null) {
+    return null;
+  }
+  return Money.parse(value as String);
 }
 
 /// A list of enums decoded from their wire tokens.

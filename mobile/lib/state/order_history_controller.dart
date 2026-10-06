@@ -127,11 +127,7 @@ class OrderHistoryController extends AsyncNotifier<OrderHistoryState> {
       final bool tooMany = merged.length > _pageSize * _maxPages;
 
       state = AsyncData<OrderHistoryState>(
-        OrderHistoryState(
-          items: merged,
-          loadingMore: false,
-          exhausted: shortPage || tooMany,
-        ),
+        OrderHistoryState(items: merged, loadingMore: false, exhausted: shortPage || tooMany),
       );
     } catch (error) {
       // Keep what is on screen and surface the failure beside the list; the

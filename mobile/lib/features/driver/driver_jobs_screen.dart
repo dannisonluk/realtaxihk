@@ -199,12 +199,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
   Widget _nearbyList(MapPoint me) {
     final NearbyFilter filter = ref.watch(nearbyFilterProvider);
     final AsyncValue<NearbyOrders> nearby = ref.watch(
-      filteredNearbyOrdersProvider((
-        lat: me.lat,
-        lng: me.lng,
-        radiusKm: 3,
-        filter: filter,
-      )),
+      filteredNearbyOrdersProvider((lat: me.lat, lng: me.lng, radiusKm: 3, filter: filter)),
     );
 
     return Column(
@@ -324,10 +319,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
         runSpacing: AppTheme.space1,
         children: <Widget>[
           if (premium != null)
-            Chip(
-              avatar: const Icon(Icons.flight_takeoff, size: 18),
-              label: Text(premium.nameZh),
-            ),
+            Chip(avatar: const Icon(Icons.flight_takeoff, size: 18), label: Text(premium.nameZh)),
           for (final String key in requirements.enabledFlags)
             Chip(
               avatar: Icon(_requirementIcon(key), size: 18),
@@ -369,10 +361,9 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
   /// Renders nothing when the list is empty or still loading: a spinner for
   /// optional metadata above a working job list would be noise.
   Widget _premiumPins() {
-    final AsyncValue<PremiumDestinationPage> destinations = ref.watch(
-      premiumDestinationsProvider,
-    );
-    final List<PremiumDestination> items = destinations.value?.items ?? const <PremiumDestination>[];
+    final AsyncValue<PremiumDestinationPage> destinations = ref.watch(premiumDestinationsProvider);
+    final List<PremiumDestination> items =
+        destinations.value?.items ?? const <PremiumDestination>[];
     if (items.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -382,12 +373,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
       height: 44,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(
-          AppTheme.space4,
-          AppTheme.space3,
-          AppTheme.space4,
-          0,
-        ),
+        padding: const EdgeInsets.fromLTRB(AppTheme.space4, AppTheme.space3, AppTheme.space4, 0),
         children: <Widget>[
           for (final PremiumDestination d in items) ...<Widget>[
             FilterChip(
@@ -397,9 +383,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
               onSelected: (bool nowSelected) => ref
                   .read(nearbyFilterProvider.notifier)
                   .patch(
-                    (NearbyFilter f) => f.copyWith(
-                      premiumDestinationId: nowSelected ? d.id : null,
-                    ),
+                    (NearbyFilter f) => f.copyWith(premiumDestinationId: nowSelected ? d.id : null),
                   ),
             ),
             const SizedBox(width: AppTheme.space2),
@@ -419,12 +403,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
   Widget _filterBar(NearbyFilter filter) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(
-        AppTheme.space4,
-        AppTheme.space2,
-        AppTheme.space4,
-        0,
-      ),
+      padding: const EdgeInsets.fromLTRB(AppTheme.space4, AppTheme.space2, AppTheme.space4, 0),
       child: Row(
         children: <Widget>[
           _filterMenu(

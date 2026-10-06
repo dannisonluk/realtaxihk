@@ -18,18 +18,17 @@ class PremiumDestination {
     this.avatarKey,
   });
 
-  factory PremiumDestination.fromJson(Map<String, dynamic> json) =>
-      PremiumDestination(
-        id: asString(json['id'], 'premium_destination.id'),
-        code: asString(json['code'], 'premium_destination.code'),
-        nameZh: asString(json['name_zh'], 'premium_destination.name_zh'),
-        nameEn: asString(json['name_en'], 'premium_destination.name_en'),
-        lat: asDouble(json['lat'], 'premium_destination.lat'),
-        lng: asDouble(json['lng'], 'premium_destination.lng'),
-        radiusM: asInt(json['radius_m'], 'premium_destination.radius_m'),
-        status: asString(json['status'], 'premium_destination.status'),
-        avatarKey: asStringOrNull(json['avatar_key'], 'premium_destination.avatar_key'),
-      );
+  factory PremiumDestination.fromJson(Map<String, dynamic> json) => PremiumDestination(
+    id: asString(json['id'], 'premium_destination.id'),
+    code: asString(json['code'], 'premium_destination.code'),
+    nameZh: asString(json['name_zh'], 'premium_destination.name_zh'),
+    nameEn: asString(json['name_en'], 'premium_destination.name_en'),
+    lat: asDouble(json['lat'], 'premium_destination.lat'),
+    lng: asDouble(json['lng'], 'premium_destination.lng'),
+    radiusM: asInt(json['radius_m'], 'premium_destination.radius_m'),
+    status: asString(json['status'], 'premium_destination.status'),
+    avatarKey: asStringOrNull(json['avatar_key'], 'premium_destination.avatar_key'),
+  );
 
   final String id;
   final String code;
@@ -46,14 +45,9 @@ class PremiumDestination {
 class PremiumDestinationPage {
   const PremiumDestinationPage({required this.items});
 
-  factory PremiumDestinationPage.fromJson(Map<String, dynamic> json) =>
-      PremiumDestinationPage(
-        items: asObjectList(
-          json['items'],
-          'premium_destination.items',
-          PremiumDestination.fromJson,
-        ),
-      );
+  factory PremiumDestinationPage.fromJson(Map<String, dynamic> json) => PremiumDestinationPage(
+    items: asObjectList(json['items'], 'premium_destination.items', PremiumDestination.fromJson),
+  );
 
   final List<PremiumDestination> items;
 }
@@ -79,6 +73,12 @@ class FareSnapshot {
     required this.disclaimerEn,
     required this.disclaimerZh,
     required this.surcharges,
+    this.fareMode,
+    this.driverPriceHkd,
+    this.platformFeeHkd,
+    this.passengerPriceHkd,
+    this.distanceSource,
+    this.isDestinationChange = false,
   });
 
   factory FareSnapshot.fromJson(Map<String, dynamic> json) => FareSnapshot(
@@ -95,6 +95,12 @@ class FareSnapshot {
     disclaimerEn: asString(json['disclaimer_en'], 'disclaimer_en'),
     disclaimerZh: asString(json['disclaimer_zh'], 'disclaimer_zh'),
     surcharges: asObjectList(json['surcharges'], 'surcharges', FareSurcharge.fromJson),
+    fareMode: asStringOrNull(json['fare_mode'], 'fare.fare_mode'),
+    driverPriceHkd: asMoneyOrNull(json['driver_price_hkd'], 'fare.driver_price_hkd'),
+    platformFeeHkd: asMoneyOrNull(json['platform_fee_hkd'], 'fare.platform_fee_hkd'),
+    passengerPriceHkd: asMoneyOrNull(json['passenger_price_hkd'], 'fare.passenger_price_hkd'),
+    distanceSource: asStringOrNull(json['distance_source'], 'fare.distance_source'),
+    isDestinationChange: json['is_destination_change'] as bool? ?? false,
   );
 
   final Money meterFare;
@@ -123,14 +129,35 @@ class FareSnapshot {
   final String disclaimerZh;
   final List<FareSurcharge> surcharges;
 
+  /// Phase 2 fixed-fare (一口價) metadata. Null on METER orders.
+  final String? fareMode;
+  final Money? driverPriceHkd;
+  final Money? platformFeeHkd;
+  final Money? passengerPriceHkd;
+
+  /// P4: how the distance behind a **re-priced** snapshot was obtained —
+  /// `client_route` when the client supplied a routed distance, `straight_line`
+  /// when the server fell back to the PostGIS line between pickup and the new
+  /// dropoff. Null on a snapshot that has never been re-priced. A straight line
+  /// is a *lower bound*, so the UI should not present the two the same way.
+  final String? distanceSource;
+
+  /// P4: true only on a snapshot written by a destination change. Lets the
+  /// receipt say "新估價" rather than pretending the price was always this.
+  final bool isDestinationChange;
+
   /// The meter had a discount applied — so the receipt shows both the original
   /// meter fare and the discounted one, instead of one unexplained number.
   bool get hasDiscount => discountPercent > 0;
+
+  /// True when the re-price used a straight line rather than a driven route.
+  bool get distanceIsStraightLine => distanceSource == 'straight_line';
 }
 
 /// `order_out()` in `app/services/order_service.py` — the shape returned by
-/// every order endpoint: create, list, detail, grab, arrive, start, complete,
-/// cancel, and each item of `/orders/nearby`.
+/// every order endpoint: create, list, detail, grab, arrival-claim,
+/// arrival-confirm, start, complete, change-destination, interrupt, cancel, and
+/// each item of `/orders/nearby`.
 class Order {
   const Order({
     required this.id,
@@ -145,6 +172,18 @@ class Order {
     this.driverPaymentMethods = const <String>[],
     this.premiumDestination,
     this.destinationArea,
+    this.pickupArea,
+    this.fareMode,
+    this.fixedOfferId,
+    this.driverPriceHkd,
+    this.platformFeeHkd,
+    this.passengerPriceHkd,
+    this.startedAt,
+    this.arrivalConfirmedAt,
+    this.destinationChangeCount = 0,
+    this.interruptionReason,
+    this.interruptedAt,
+    this.interruptedByKind,
   });
 
   factory Order.fromJson(Map<String, dynamic> json) => Order(
@@ -155,20 +194,36 @@ class Order {
     estimatedTotalHkd: Money.parse(json['estimated_total_hkd']),
     completedAt: asDateOrNull(json['completed_at'], 'order.completed_at'),
     createdAt: asDateOrNull(json['created_at'], 'order.created_at'),
-    requirements:
-        json['requirements'] == null
-            ? null
-            : asMap(json['requirements'], 'order.requirements'),
+    requirements: json['requirements'] == null
+        ? null
+        : asMap(json['requirements'], 'order.requirements'),
     paymentPreference: asStringListOrEmpty(json['payment_preference'], 'order.payment_preference'),
-    driverPaymentMethods:
-        asStringListOrEmpty(json['driver_payment_methods'], 'order.driver_payment_methods'),
-    premiumDestination:
-        json['premium_destination'] == null
-            ? null
-            : PremiumDestination.fromJson(
-                asMap(json['premium_destination'], 'order.premium_destination'),
-              ),
+    driverPaymentMethods: asStringListOrEmpty(
+      json['driver_payment_methods'],
+      'order.driver_payment_methods',
+    ),
+    premiumDestination: json['premium_destination'] == null
+        ? null
+        : PremiumDestination.fromJson(
+            asMap(json['premium_destination'], 'order.premium_destination'),
+          ),
     destinationArea: asStringOrNull(json['destination_area'], 'order.destination_area'),
+    pickupArea: asStringOrNull(json['pickup_area'], 'order.pickup_area'),
+    fareMode: asStringOrNull(json['fare_mode'], 'order.fare_mode'),
+    fixedOfferId: asStringOrNull(json['fixed_offer_id'], 'order.fixed_offer_id'),
+    driverPriceHkd: asMoneyOrNull(json['driver_price_hkd'], 'order.driver_price_hkd'),
+    platformFeeHkd: asMoneyOrNull(json['platform_fee_hkd'], 'order.platform_fee_hkd'),
+    passengerPriceHkd: asMoneyOrNull(json['passenger_price_hkd'], 'order.passenger_price_hkd'),
+    startedAt: asDateOrNull(json['started_at'], 'order.started_at'),
+    arrivalConfirmedAt: asDateOrNull(json['arrival_confirmed_at'], 'order.arrival_confirmed_at'),
+    destinationChangeCount: asIntOrNull(json['destination_change_count'], 'order.dc_count') ?? 0,
+    interruptionReason: json['interruption_reason'] == null
+        ? null
+        : InterruptionReason.fromWire(
+            asString(json['interruption_reason'], 'order.interruption_reason'),
+          ),
+    interruptedAt: asDateOrNull(json['interrupted_at'], 'order.interrupted_at'),
+    interruptedByKind: asStringOrNull(json['interrupted_by_kind'], 'order.interrupted_by_kind'),
   );
 
   final String id;
@@ -194,6 +249,44 @@ class Order {
 
   /// Coarse destination area (e.g. `AIRPORT`) derived server-side.
   final String? destinationArea;
+
+  /// Coarse pickup area (e.g. `KOWLOON`) derived server-side.
+  final String? pickupArea;
+
+  /// Phase 2 fixed-fare (一口價) fields. Null/empty on METER orders.
+  final String? fareMode;
+  final String? fixedOfferId;
+  final Money? driverPriceHkd;
+  final Money? platformFeeHkd;
+  final Money? passengerPriceHkd;
+
+  /// P4: stamped at `/start`. Null before departure.
+  final DateTime? startedAt;
+
+  /// P4: stamped when the passenger confirmed arrival. Its presence is the
+  /// client-side evidence that the cancel right is locked — the server also
+  /// refuses with 409 `CANCEL_LOCKED`, but showing a cancel button that can
+  /// only fail is worse than not showing one (P4 §6.1).
+  final DateTime? arrivalConfirmedAt;
+
+  /// P4: how many times the destination has been changed. The server caps it
+  /// (`max_destination_changes`); the UI disables the action at the cap rather
+  /// than letting the user discover a 429.
+  final int destinationChangeCount;
+
+  /// P4: why the trip ended early. Null unless `status == interrupted`.
+  final InterruptionReason? interruptionReason;
+
+  /// P4: when it ended early.
+  final DateTime? interruptedAt;
+
+  /// P4: which side ended it — `'PASSENGER'` / `'DRIVER'`. A string rather than
+  /// an enum because the value is informational here and the client only needs
+  /// "was it me", which is answered by comparing to the caller's own role.
+  final String? interruptedByKind;
+
+  /// P4: the trip is under way, so the in-trip actions apply.
+  bool get isUnderWay => status == OrderStatus.inTrip || status == OrderStatus.destinationChanged;
 }
 
 /// `GET /api/v1/orders` — newest first, keyset-paginated.

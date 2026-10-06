@@ -207,10 +207,12 @@ class FleetSettlementRun {
     memberCount: asInt(json['member_count'], 'fleet_settlement.member_count'),
     charged: asInt(json['charged'], 'fleet_settlement.charged'),
     skipped: asInt(json['skipped'], 'fleet_settlement.skipped'),
-    skippedNoDepositAccount: asIntOrNull(
-      json['skipped_no_deposit_account'],
-      'fleet_settlement.skipped_no_deposit_account',
-    ) ?? 0,
+    skippedNoDepositAccount:
+        asIntOrNull(
+          json['skipped_no_deposit_account'],
+          'fleet_settlement.skipped_no_deposit_account',
+        ) ??
+        0,
     failed: asInt(json['failed'], 'fleet_settlement.failed'),
     tampered: asInt(json['tampered'], 'fleet_settlement.tampered'),
     collectedHkd: Money.parse(json['collected_hkd']),

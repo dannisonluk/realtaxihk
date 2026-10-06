@@ -297,10 +297,18 @@ class StatusChip extends StatelessWidget {
       color: switch (status) {
         OrderStatus.created => scheme.onSurfaceVariant,
         OrderStatus.broadcasting => AppTheme.pending,
+        // P4: waiting on the passenger to confirm boarding — still "pending",
+        // but the driver has already done their part.
+        OrderStatus.pendingArrivalConfirm => AppTheme.pending,
         OrderStatus.accepted || OrderStatus.driverArrived => scheme.primary,
-        OrderStatus.inTrip => AppTheme.gain,
+        // `DESTINATION_CHANGED` is a live trip that happens to have a new
+        // dropoff, so it reads the same as `IN_TRIP`.
+        OrderStatus.inTrip || OrderStatus.destinationChanged => AppTheme.gain,
         OrderStatus.completed => AppTheme.loss,
-        OrderStatus.cancelled => scheme.error,
+        // Interrupted and cancelled are both "did not complete"; the label
+        // carries the distinction (a trip that ended early vs one that never
+        // departed), and the settlement difference is not a UI colour.
+        OrderStatus.cancelled || OrderStatus.interrupted => scheme.error,
       },
     );
   }

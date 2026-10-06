@@ -4,10 +4,9 @@ import '../core/network/wire.dart';
 class DriverPaymentMethods {
   const DriverPaymentMethods({required this.methods});
 
-  factory DriverPaymentMethods.fromJson(Map<String, dynamic> json) =>
-      DriverPaymentMethods(
-        methods: asStringListOrEmpty(json['methods'], 'payment_methods.methods'),
-      );
+  factory DriverPaymentMethods.fromJson(Map<String, dynamic> json) => DriverPaymentMethods(
+    methods: asStringListOrEmpty(json['methods'], 'payment_methods.methods'),
+  );
 
   final List<String> methods;
 
@@ -47,13 +46,12 @@ class DriverEnvironment {
     required this.noPerfume,
   });
 
-  factory DriverEnvironment.fromJson(Map<String, dynamic> json) =>
-      DriverEnvironment(
-        silentRide: json['silent_ride'] as bool? ?? false,
-        noRadioMusic: json['no_radio_music'] as bool? ?? false,
-        noSmoke: json['no_smoke'] as bool? ?? false,
-        noPerfume: json['no_perfume'] as bool? ?? false,
-      );
+  factory DriverEnvironment.fromJson(Map<String, dynamic> json) => DriverEnvironment(
+    silentRide: json['silent_ride'] as bool? ?? false,
+    noRadioMusic: json['no_radio_music'] as bool? ?? false,
+    noSmoke: json['no_smoke'] as bool? ?? false,
+    noPerfume: json['no_perfume'] as bool? ?? false,
+  );
 
   final bool silentRide;
   final bool noRadioMusic;

@@ -78,11 +78,7 @@ class AnimalDetail {
     if (kind is! String || kind.isEmpty || height == null || weight == null) {
       return null;
     }
-    return AnimalDetail(
-      kind: kind,
-      heightCm: _toDouble(height),
-      weightKg: _toDouble(weight),
-    );
+    return AnimalDetail(kind: kind, heightCm: _toDouble(height), weightKg: _toDouble(weight));
   }
 
   static double _toDouble(Object value) =>
@@ -133,8 +129,7 @@ class RideRequirements {
     'no_perfume': '不使用香水、香薰或空氣清新劑',
   };
 
-  bool get isEmpty =>
-      !silentRide && !noRadioMusic && !noSmoke && !noPerfume && animal == null;
+  bool get isEmpty => !silentRide && !noRadioMusic && !noSmoke && !noPerfume && animal == null;
 
   /// The enabled flags as wire keys — used to render "what this order asks for"
   /// badges on the driver's job card.

@@ -127,6 +127,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ),
               const SizedBox(height: AppTheme.space2),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _busy ? null : () => context.push(Routes.passwordForgot),
+                  child: const Text('忘記密碼？'),
+                ),
+              ),
               TurnstileChallenge(
                 key: _turnstile,
                 onToken: (String token) => _humanToken = token,

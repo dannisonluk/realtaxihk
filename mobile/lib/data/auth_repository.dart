@@ -133,4 +133,60 @@ class AuthRepository {
   Future<void> logout() async {
     await _api.post('/api/v1/auth/logout');
   }
+
+  /// `POST /auth/password/change` — change the signed-in account's password.
+  ///
+  /// The **current** password is required even though the caller already holds a
+  /// valid token: a stolen session must not be enough to take the account over
+  /// permanently. A wrong current password counts toward the same lockout as a
+  /// failed sign-in, so five wrong guesses lock the account for
+  /// `LOCKOUT_MINUTES`.
+  ///
+  /// **Every session is revoked, this one included.** The access token is dead
+  /// when this returns, so the caller must clear the local store and send the
+  /// user back to sign in — that is the point, not a side effect: if the password
+  /// was changed because someone else had it, leaving other devices signed in
+  /// would defeat it.
+  Future<PasswordChangedResult> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final Map<String, dynamic> json = await _api.post(
+      '/api/v1/auth/password/change',
+      data: <String, dynamic>{'current_password': currentPassword, 'new_password': newPassword},
+    );
+    return PasswordChangedResult.fromJson(json);
+  }
+
+  /// `POST /auth/password/forgot` — email a reset link.
+  ///
+  /// The answer is identical for a registered and an unregistered address, so
+  /// the UI must show the same "if that address exists, a link is on its way"
+  /// copy either way. [humanToken] is required in production.
+  Future<PasswordResetRequested> forgotPassword(String email, {String? humanToken}) async {
+    final Map<String, dynamic> json = await _api.post(
+      '/api/v1/auth/password/forgot',
+      data: <String, dynamic>{'email': email, 'human_token': ?humanToken},
+      authenticated: false,
+    );
+    return PasswordResetRequested.fromJson(json);
+  }
+
+  /// `POST /auth/password/reset` — set a new password from the emailed token.
+  ///
+  /// The token is **single-use** and time-limited. A bad, already-used or
+  /// expired token all answer the same 400 sentence on purpose, so the caller
+  /// cannot tell them apart — and neither can anyone probing the route. Like
+  /// [changePassword], success revokes every session.
+  Future<PasswordChangedResult> resetPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    final Map<String, dynamic> json = await _api.post(
+      '/api/v1/auth/password/reset',
+      data: <String, dynamic>{'token': token, 'new_password': newPassword},
+      authenticated: false,
+    );
+    return PasswordChangedResult.fromJson(json);
+  }
 }

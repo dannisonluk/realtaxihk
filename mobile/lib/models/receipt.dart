@@ -51,21 +51,24 @@ class Receipt {
     fareMode: asStringOrNull(json['fare_mode'], 'receipt.fare_mode'),
     pickupArea: asStringOrNull(json['pickup_area'], 'receipt.pickup_area'),
     destinationArea: asStringOrNull(json['destination_area'], 'receipt.destination_area'),
-    premiumDestination:
-        json['premium_destination'] == null
-            ? null
-            : asMap(json['premium_destination'], 'receipt.premium_destination'),
-    fixedFare:
-        json['fixed_fare'] == null ? null : asMap(json['fixed_fare'], 'receipt.fixed_fare'),
-    requirements:
-        json['requirements'] == null ? null : asMap(json['requirements'], 'receipt.requirements'),
+    premiumDestination: json['premium_destination'] == null
+        ? null
+        : asMap(json['premium_destination'], 'receipt.premium_destination'),
+    fixedFare: json['fixed_fare'] == null ? null : asMap(json['fixed_fare'], 'receipt.fixed_fare'),
+    requirements: json['requirements'] == null
+        ? null
+        : asMap(json['requirements'], 'receipt.requirements'),
     passengerName: asStringOrNull(json['passenger_name'], 'receipt.passenger_name'),
     createdAt: asDateOrNull(json['created_at'], 'receipt.created_at'),
     completedAt: asDateOrNull(json['completed_at'], 'receipt.completed_at'),
-    paymentPreference:
-        asStringListOrEmpty(json['payment_preference'], 'receipt.payment_preference'),
-    driverPaymentMethods:
-        asStringListOrEmpty(json['driver_payment_methods'], 'receipt.driver_payment_methods'),
+    paymentPreference: asStringListOrEmpty(
+      json['payment_preference'],
+      'receipt.payment_preference',
+    ),
+    driverPaymentMethods: asStringListOrEmpty(
+      json['driver_payment_methods'],
+      'receipt.driver_payment_methods',
+    ),
   );
 
   final String orderId;

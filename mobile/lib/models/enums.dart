@@ -80,12 +80,28 @@ enum DriverStatus {
   };
 }
 
+/// The order lifecycle. P4 widened this (`docs/IN_TRIP_REDESIGN.md` §2): the
+/// machine used to end at `IN_TRIP -> COMPLETED`, a dead end that could express
+/// neither a mid-trip destination change nor an early end.
 enum OrderStatus {
   created('CREATED'),
   broadcasting('BROADCASTING'),
   accepted('ACCEPTED'),
+
+  /// The driver pressed "arrived" and the GPS check passed, but the passenger
+  /// has not yet confirmed. Arrival is a two-sided fact, so it is a state
+  /// rather than a flag — and cancelling is *not* locked here (§5.1.4).
+  pendingArrivalConfirm('PENDING_ARRIVAL_CONFIRM'),
   driverArrived('DRIVER_ARRIVED'),
   inTrip('IN_TRIP'),
+
+  /// **Non-terminal.** The trip continues; a second change re-stamps rather
+  /// than looping back through `IN_TRIP`.
+  destinationChanged('DESTINATION_CHANGED'),
+
+  /// **Terminal.** The trip ended early. Distinct from `CANCELLED` ("never
+  /// departed") because settlement and earnings treat the two differently.
+  interrupted('INTERRUPTED'),
   completed('COMPLETED'),
   cancelled('CANCELLED');
 
@@ -96,22 +112,130 @@ enum OrderStatus {
   static OrderStatus fromWire(String value) =>
       _decode(values, (OrderStatus v) => v.wire, value, 'OrderStatus');
 
-  bool get isTerminal => this == OrderStatus.completed || this == OrderStatus.cancelled;
+  bool get isTerminal =>
+      this == OrderStatus.completed ||
+      this == OrderStatus.cancelled ||
+      this == OrderStatus.interrupted;
 
   /// The order has a driver attached, so a live-trip channel is meaningful.
   bool get hasDriver =>
       this == OrderStatus.accepted ||
+      this == OrderStatus.pendingArrivalConfirm ||
       this == OrderStatus.driverArrived ||
-      this == OrderStatus.inTrip;
+      this == OrderStatus.inTrip ||
+      this == OrderStatus.destinationChanged;
+
+  /// A new dropoff is meaningful (P4 §4.1). `DESTINATION_CHANGED` is included:
+  /// changing again is allowed, up to the server's cap.
+  bool get canChangeDestination =>
+      this == OrderStatus.inTrip || this == OrderStatus.destinationChanged;
+
+  /// The trip can be ended early (P4 §4.2). `DRIVER_ARRIVED` is included on
+  /// purpose: arrival locks *cancelling*, so interrupting is the only way out
+  /// of a car the passenger no longer wants to be in (§5.2).
+  bool get canInterrupt =>
+      this == OrderStatus.driverArrived ||
+      this == OrderStatus.inTrip ||
+      this == OrderStatus.destinationChanged;
+
+  /// Cancelling is still possible. From `ACCEPTED` it costs money and needs a
+  /// reason; from `DRIVER_ARRIVED` onward the server answers 409 `CANCEL_LOCKED`
+  /// and no cancel button is shown at all — a button that can only fail is worse
+  /// than no button (P4 §6.1).
+  bool get canCancel =>
+      this == OrderStatus.created ||
+      this == OrderStatus.broadcasting ||
+      this == OrderStatus.accepted ||
+      this == OrderStatus.pendingArrivalConfirm;
+
+  /// A cancellation from here carries a penalty (passenger 100%, driver 50% of
+  /// `estimated_total_hkd`) and a mandatory `reason_code` (P4 §5.2.1).
+  bool get cancelNeedsReason =>
+      this == OrderStatus.accepted || this == OrderStatus.pendingArrivalConfirm;
+
+  /// The driver may claim arrival from here (P4 §4.0.1).
+  bool get canClaimArrival => this == OrderStatus.accepted;
 
   String get labelZh => switch (this) {
     OrderStatus.created => '已建立',
     OrderStatus.broadcasting => '等候司機',
     OrderStatus.accepted => '司機已接單',
+    OrderStatus.pendingArrivalConfirm => '等候確認上車',
     OrderStatus.driverArrived => '司機已到達',
     OrderStatus.inTrip => '行程中',
+    OrderStatus.destinationChanged => '已改目的地',
+    OrderStatus.interrupted => '行程已中斷',
     OrderStatus.completed => '已完成',
     OrderStatus.cancelled => '已取消',
+  };
+}
+
+/// Why a trip ended early (`app/models/user.py::InterruptionReason`).
+///
+/// A closed set, not free text: this is the evidence an operator judges
+/// afterwards, so it has to be countable. `OTHER` still requires a note — the
+/// enum classifies, the note explains.
+///
+/// Both parties draw from the one enum. The client shows only the options that
+/// make sense for the role, but the **server validates** the pair; filtering in
+/// the UI is courtesy, validating on the server is authorisation.
+enum InterruptionReason {
+  accident('ACCIDENT'),
+  conflict('CONFLICT'),
+  passengerMisconduct('PASSENGER_MISCONDUCT'),
+  passengerSick('PASSENGER_SICK'),
+  driverMisconduct('DRIVER_MISCONDUCT'),
+  vehicleBreakdown('VEHICLE_BREAKDOWN'),
+  unsafeRoute('UNSAFE_ROUTE'),
+  fareDispute('FARE_DISPUTE'),
+  other('OTHER');
+
+  const InterruptionReason(this.wire);
+
+  final String wire;
+
+  static InterruptionReason fromWire(String value) =>
+      _decode(values, (InterruptionReason v) => v.wire, value, 'InterruptionReason');
+
+  /// `OTHER` is the only member that needs a free-text note; the server answers
+  /// 422 `NOTE_REQUIRED` without one.
+  bool get requiresNote => this == InterruptionReason.other;
+
+  /// The passenger's menu (P4 §6.1). `PASSENGER_*` reasons are the driver's to
+  /// raise, never the passenger's — offering them here would be a reason the
+  /// passenger cannot honestly give.
+  static const List<InterruptionReason> forPassenger = <InterruptionReason>[
+    InterruptionReason.accident,
+    InterruptionReason.conflict,
+    InterruptionReason.driverMisconduct,
+    InterruptionReason.vehicleBreakdown,
+    InterruptionReason.unsafeRoute,
+    InterruptionReason.fareDispute,
+    InterruptionReason.other,
+  ];
+
+  /// The driver's menu (P4 §6.2) — the mirror image.
+  static const List<InterruptionReason> forDriver = <InterruptionReason>[
+    InterruptionReason.accident,
+    InterruptionReason.conflict,
+    InterruptionReason.passengerMisconduct,
+    InterruptionReason.passengerSick,
+    InterruptionReason.vehicleBreakdown,
+    InterruptionReason.unsafeRoute,
+    InterruptionReason.fareDispute,
+    InterruptionReason.other,
+  ];
+
+  String get labelZh => switch (this) {
+    InterruptionReason.accident => '交通意外 / 撞車',
+    InterruptionReason.conflict => '與對方發生衝突',
+    InterruptionReason.passengerMisconduct => '乘客態度惡劣',
+    InterruptionReason.passengerSick => '乘客嘔吐 / 嚴重不適',
+    InterruptionReason.driverMisconduct => '司機態度惡劣',
+    InterruptionReason.vehicleBreakdown => '車輛故障',
+    InterruptionReason.unsafeRoute => '路線不安全',
+    InterruptionReason.fareDispute => '車資爭議',
+    InterruptionReason.other => '其他（需填寫說明）',
   };
 }
 
@@ -120,7 +244,20 @@ enum LedgerEntryType {
   weeklyFeeDeduction('WEEKLY_FEE_DEDUCTION'),
   penaltyDeduction('PENALTY_DEDUCTION'),
   refund('REFUND'),
-  adjustment('ADJUSTMENT');
+  adjustment('ADJUSTMENT'),
+  fixedRideFee('FIXED_RIDE_FEE'),
+
+  /// P4: the per-trip platform fee, charged to the driver's deposit at
+  /// `/start`. The fare itself never passes through the platform (Cap. 374D
+  /// intermediary), so this is the platform's actual revenue from a trip.
+  platformTripFee('PLATFORM_TRIP_FEE'),
+
+  /// P4: a defaulting party's cancellation penalty, based on the order's own
+  /// estimate rather than a flat fee.
+  cancellationPenalty('CANCELLATION_PENALTY'),
+
+  /// P4: an operator's dispute ruling that moves money.
+  disputeAdjustment('DISPUTE_ADJUSTMENT');
 
   const LedgerEntryType(this.wire);
 
@@ -142,6 +279,10 @@ enum LedgerEntryType {
     LedgerEntryType.penaltyDeduction => '違規罰款',
     LedgerEntryType.refund => '按金退回',
     LedgerEntryType.adjustment => '調整',
+    LedgerEntryType.fixedRideFee => '一口價服務費',
+    LedgerEntryType.platformTripFee => '平台行程費',
+    LedgerEntryType.cancellationPenalty => '違約罰款',
+    LedgerEntryType.disputeAdjustment => '爭議裁決調整',
   };
 }
 

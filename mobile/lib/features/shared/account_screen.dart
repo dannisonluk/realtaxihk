@@ -132,6 +132,16 @@ class AccountScreen extends ConsumerWidget {
             child: Column(
               children: <Widget>[
                 ListTile(
+                  leading: const Icon(Icons.password_outlined),
+                  title: const Text('更改密碼'),
+                  // Said up front, because it is the surprising part: the user
+                  // will be signed out of this device too.
+                  subtitle: const Text('需要目前密碼；更改後所有裝置都會被登出'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push(Routes.passwordChange),
+                ),
+                const Divider(height: 1),
+                ListTile(
                   leading: const Icon(Icons.logout),
                   title: const Text('登出'),
                   subtitle: const Text('會撤銷此帳戶所有有效憑證'),
@@ -219,9 +229,15 @@ class _DriverSection extends ConsumerWidget {
               DetailRow(label: '的士證號', value: driver.taxiDriverPlateNo),
               DetailRow(label: '車輛登記', value: driver.vehicleRegMark),
               if (driver.deposit != null)
-                DetailRow(label: '按金', valueWidget: MoneyText(driver.deposit!.balanceHkd, signed: true)),
+                DetailRow(
+                  label: '按金',
+                  valueWidget: MoneyText(driver.deposit!.balanceHkd, signed: true),
+                ),
               if (driver.deposit != null && !driver.deposit!.isFulfilled)
-                DetailRow(label: '尚欠', valueWidget: MoneyText(driver.deposit!.shortfall, signed: true)),
+                DetailRow(
+                  label: '尚欠',
+                  valueWidget: MoneyText(driver.deposit!.shortfall, signed: true),
+                ),
             ],
           ),
         ),
@@ -236,6 +252,20 @@ class _DriverSection extends ConsumerWidget {
           subtitle: const Text('名單、每週車隊收費與結算紀錄'),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => context.push(Routes.driverFleet),
+        ),
+        ListTile(
+          leading: const Icon(Icons.air_outlined),
+          title: const Text('車內環境'),
+          subtitle: const Text('靜音、無煙、無香水、不播音樂'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push(Routes.driverEnvironment),
+        ),
+        ListTile(
+          leading: const Icon(Icons.request_quote_outlined),
+          title: const Text('一口價'),
+          subtitle: const Text('設定固定路線與司機實收價'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push(Routes.fixedOffers),
         ),
         if (canDrive)
           ListTile(

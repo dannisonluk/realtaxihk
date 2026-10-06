@@ -139,9 +139,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
     setState(() {
       _requirements = switch (key) {
         'silent_ride' => _requirements.copyWith(silentRide: !_requirements.silentRide),
-        'no_radio_music' => _requirements.copyWith(
-          noRadioMusic: !_requirements.noRadioMusic,
-        ),
+        'no_radio_music' => _requirements.copyWith(noRadioMusic: !_requirements.noRadioMusic),
         'no_smoke' => _requirements.copyWith(noSmoke: !_requirements.noSmoke),
         'no_perfume' => _requirements.copyWith(noPerfume: !_requirements.noPerfume),
         _ => _requirements,
@@ -465,7 +463,8 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
                   // intermediary (Cap. 374D) and does not verify the car.
                   GroupedSection(
                     title: '車內環境要求',
-                    footnote: '這些要求會顯示給司機，讓對方在接單前決定是否合適；'
+                    footnote:
+                        '這些要求會顯示給司機，讓對方在接單前決定是否合適；'
                         '平台僅屬資訊中介，不會代司機保證。',
                     children: <Widget>[
                       for (final MapEntry<String, String> entry
@@ -521,9 +520,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
                           children: <Widget>[
                             for (final String method in DriverPaymentMethods.all)
                               FilterChip(
-                                label: Text(
-                                  DriverPaymentMethods.labelsZh[method] ?? method,
-                                ),
+                                label: Text(DriverPaymentMethods.labelsZh[method] ?? method),
                                 selected: _paymentPreference.contains(method),
                                 onSelected: (bool _) => _togglePayment(method),
                               ),
@@ -604,7 +601,10 @@ class _FareBreakdownCard extends StatelessWidget {
             const Divider(height: AppTheme.space6),
             DetailRow(label: '起錶', valueWidget: MoneyText(estimate.meterFare, showSymbol: false)),
             if (!estimate.discountPercent.isZero)
-              DetailRow(label: '折扣率', valueWidget: MoneyText(estimate.discountPercent, showSymbol: false)),
+              DetailRow(
+                label: '折扣率',
+                valueWidget: MoneyText(estimate.discountPercent, showSymbol: false),
+              ),
             if (!estimate.meterDiscount.isZero)
               DetailRow(label: '折扣', valueWidget: MoneyText(estimate.meterDiscount, signed: true)),
             if (!estimate.surchargesTotal.isZero)
@@ -685,10 +685,7 @@ class _AnimalSheet extends StatelessWidget {
               SegmentedButton<String>(
                 segments: <ButtonSegment<String>>[
                   for (final String k in AnimalDetail.kinds)
-                    ButtonSegment<String>(
-                      value: k,
-                      label: Text(AnimalDetail.kindLabelsZh[k] ?? k),
-                    ),
+                    ButtonSegment<String>(value: k, label: Text(AnimalDetail.kindLabelsZh[k] ?? k)),
                 ],
                 selected: <String>{kind},
                 onSelectionChanged: (Set<String> value) => onKindChanged(value.first),
@@ -700,10 +697,7 @@ class _AnimalSheet extends StatelessWidget {
                     child: TextField(
                       controller: heightController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        labelText: '高度',
-                        suffixText: 'cm',
-                      ),
+                      decoration: const InputDecoration(labelText: '高度', suffixText: 'cm'),
                     ),
                   ),
                   const SizedBox(width: AppTheme.space3),
@@ -711,10 +705,7 @@ class _AnimalSheet extends StatelessWidget {
                     child: TextField(
                       controller: weightController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        labelText: '重量',
-                        suffixText: 'kg',
-                      ),
+                      decoration: const InputDecoration(labelText: '重量', suffixText: 'kg'),
                     ),
                   ),
                 ],

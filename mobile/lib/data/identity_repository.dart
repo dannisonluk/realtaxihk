@@ -1,4 +1,5 @@
 import '../core/network/api_client.dart';
+import '../core/network/wire.dart';
 import '../models/auth.dart';
 import '../models/identity.dart';
 
@@ -35,6 +36,65 @@ class IdentityRepository {
   Future<Profile> me() async {
     final Map<String, dynamic> json = await _api.get('/api/v1/identity/me');
     return Profile.fromJson(json);
+  }
+
+  /// `POST /identity/profile` — fill the profile in.
+  ///
+  /// Returns the **whole** profile rather than the echoed username, because
+  /// completing it is often what flips `account_status` — the caller has to
+  /// re-render the gate it is sitting behind, and `{username}` would not say so.
+  ///
+  /// [avatarKey] is an R2 object key from `POST /identity/avatar/uploads`, never
+  /// a URL: the service rejects anything carrying a scheme, so a `javascript:`
+  /// value cannot reach an `<img src>`. Uploading writes nothing — the key is
+  /// claimed here, which is what stops a row pointing at an object that never
+  /// arrived.
+  ///
+  /// Both optional fields are omitted rather than sent as null. The server
+  /// treats an absent `gender` as "leave it alone" and an absent `avatar_key` the
+  /// same way, so sending an explicit null would be a different request with the
+  /// same shape — exactly the kind of thing that reads as equivalent and is not.
+  Future<Profile> completeProfile({
+    required String username,
+    required String givenName,
+    required String familyName,
+    String? gender,
+    String? avatarKey,
+  }) async {
+    final Map<String, dynamic> json = await _api.post(
+      '/api/v1/identity/profile',
+      data: <String, dynamic>{
+        'username': username,
+        'given_name': givenName,
+        'family_name': familyName,
+        'gender': ?gender,
+        'avatar_key': ?avatarKey,
+      },
+    );
+    return Profile.fromJson(json);
+  }
+
+  /// `GET /identity/username-check` — availability, for live form feedback.
+  ///
+  /// **A hint, never the authority.** Two reasons it cannot be the last word:
+  ///
+  ///  * It is rate-limited server-side (120 checks a minute per IP) because a
+  ///    field that polls this on every keystroke is an enumeration surface, so a
+  ///    429 is a normal answer here and must not surface as a form error.
+  ///  * It races. Two people can be told the same handle is free; exactly one
+  ///    `POST /identity/profile` wins, and the loser is refused with "that
+  ///    username is taken". So [completeProfile]'s refusal has to be rendered
+  ///    even when this said yes.
+  ///
+  /// The server normalises before answering — it echoes back
+  /// `username.strip().lower()` — so a caller that renders the answer should
+  /// compare against what it sent, not against what the user typed.
+  Future<bool> usernameAvailable(String username) async {
+    final Map<String, dynamic> json = await _api.get(
+      '/api/v1/identity/username-check',
+      query: <String, dynamic>{'username': username},
+    );
+    return asBool(json['available'], 'username_check.available');
   }
 
   /// `POST /identity/phone/request` — send a code to a number to be **bound**.

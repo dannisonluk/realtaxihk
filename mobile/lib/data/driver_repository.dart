@@ -1,6 +1,7 @@
 import '../core/network/api_client.dart';
 import '../models/driver.dart';
 import '../models/driver_attributes.dart';
+import '../models/fixed_offer.dart';
 import '../models/ledger.dart';
 import '../models/refund.dart';
 
@@ -103,5 +104,29 @@ class DriverRepository {
       data: environment.toJson(),
     );
     return DriverEnvironment.fromJson(json);
+  }
+
+  /// `GET /drivers/me/fixed-offers` — the driver's standing 一口價 offers.
+  Future<FixedOfferPage> fixedOffers() async {
+    final Map<String, dynamic> json = await _api.get('/api/v1/drivers/me/fixed-offers');
+    return FixedOfferPage.fromJson(json);
+  }
+
+  /// `POST /drivers/me/fixed-offers` — publish a standing fixed-fare offer.
+  Future<FixedOffer> createFixedOffer(FixedOfferCreateRequest request) async {
+    final Map<String, dynamic> json = await _api.post(
+      '/api/v1/drivers/me/fixed-offers',
+      data: request.toJson(),
+    );
+    return FixedOffer.fromJson(json);
+  }
+
+  /// `PATCH /drivers/me/fixed-offers/{id}` — pause or change the price.
+  Future<FixedOffer> updateFixedOffer(String offerId, FixedOfferUpdateRequest request) async {
+    final Map<String, dynamic> json = await _api.patch(
+      '/api/v1/drivers/me/fixed-offers/$offerId',
+      data: request.toJson(),
+    );
+    return FixedOffer.fromJson(json);
   }
 }

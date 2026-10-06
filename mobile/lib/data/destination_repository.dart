@@ -12,10 +12,7 @@ class DestinationRepository {
 
   /// `GET /api/v1/destinations` — only ACTIVE rows.
   Future<PremiumDestinationPage> list() async {
-    final Map<String, dynamic> json = await _api.get(
-      '/api/v1/destinations',
-      authenticated: false,
-    );
+    final Map<String, dynamic> json = await _api.get('/api/v1/destinations', authenticated: false);
     return PremiumDestinationPage.fromJson(json);
   }
 }

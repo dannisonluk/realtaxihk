@@ -7,6 +7,7 @@ import '../models/auth.dart';
 import '../models/driver.dart';
 import '../models/driver_attributes.dart';
 import '../models/enums.dart';
+import '../models/fixed_offer.dart';
 import '../models/fleet.dart';
 import '../models/identity.dart';
 import '../models/ledger.dart';
@@ -99,6 +100,11 @@ final FutureProvider<DriverEnvironment> driverEnvironmentProvider =
     FutureProvider<DriverEnvironment>(
       (Ref ref) => ref.watch(driverRepositoryProvider).environment(),
     );
+
+/// The driver's standing fixed-fare offers (一口價).
+final FutureProvider<List<FixedOffer>> fixedOffersProvider = FutureProvider<List<FixedOffer>>(
+  (Ref ref) async => (await ref.watch(driverRepositoryProvider).fixedOffers()).items,
+);
 
 /// Active premium destinations shown as avatar pins on the map.
 final FutureProvider<PremiumDestinationPage> premiumDestinationsProvider =

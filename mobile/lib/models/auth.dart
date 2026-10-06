@@ -97,3 +97,50 @@ class AuthOutcome {
   /// True only when *this call* created the account.
   final bool created;
 }
+
+/// `{"ok": true, "revoked": <n>}` — the password routes that end every session.
+///
+/// `revoked` is an **int**: the number of refresh tokens killed. `POST
+/// /auth/logout` shares this shape, and the admin logout route deliberately does
+/// *not* (its `revoked` is a boolean) — which is exactly why the field is parsed
+/// as a count here instead of being treated as a flag.
+///
+/// A password change or reset revokes **every** session, including the caller's.
+/// The access token is dead by the time this returns, so a client that succeeds
+/// must treat itself as signed out.
+class PasswordChangedResult {
+  const PasswordChangedResult({required this.ok, required this.revoked});
+
+  factory PasswordChangedResult.fromJson(Map<String, dynamic> json) => PasswordChangedResult(
+    ok: asBool(json['ok'], 'password.ok'),
+    revoked: asInt(json['revoked'], 'password.revoked'),
+  );
+
+  final bool ok;
+
+  /// How many refresh tokens were revoked.
+  final int revoked;
+}
+
+/// `{"sent": true, "expires_in": <seconds>}` — `POST /auth/password/forgot`.
+///
+/// `sent` is true for **any** address, registered or not: the route answers
+/// identically either way so it cannot be used to ask "does this person have an
+/// account here?". Do not branch on it, and never tell the user their address
+/// was not found — there is no field that says so.
+///
+/// `expiresIn` is seconds, not a timestamp, so a client with a skewed clock
+/// still reads it correctly.
+class PasswordResetRequested {
+  const PasswordResetRequested({required this.sent, required this.expiresIn});
+
+  factory PasswordResetRequested.fromJson(Map<String, dynamic> json) => PasswordResetRequested(
+    sent: asBool(json['sent'], 'password_forgot.sent'),
+    expiresIn: asInt(json['expires_in'], 'password_forgot.expires_in'),
+  );
+
+  final bool sent;
+
+  /// Seconds the emailed link stays valid.
+  final int expiresIn;
+}

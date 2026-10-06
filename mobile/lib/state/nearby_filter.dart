@@ -17,12 +17,10 @@ class NearbyFilterController extends Notifier<NearbyFilter> {
   void set(NearbyFilter next) => state = next;
 
   /// Replace one field, leaving the rest alone.
-  void patch(NearbyFilter Function(NearbyFilter current) update) =>
-      state = update(state);
+  void patch(NearbyFilter Function(NearbyFilter current) update) => state = update(state);
 
-  void toggleRequires(String key) => state = state.copyWith(
-    requires: _toggled(state.requires, key),
-  );
+  void toggleRequires(String key) =>
+      state = state.copyWith(requires: _toggled(state.requires, key));
 
   void toggleExcludes(String key) =>
       state = state.copyWith(excludes: _toggled(state.excludes, key));
@@ -41,9 +39,7 @@ class NearbyFilterController extends Notifier<NearbyFilter> {
 }
 
 final NotifierProvider<NearbyFilterController, NearbyFilter> nearbyFilterProvider =
-    NotifierProvider<NearbyFilterController, NearbyFilter>(
-      NearbyFilterController.new,
-    );
+    NotifierProvider<NearbyFilterController, NearbyFilter>(NearbyFilterController.new);
 
 /// `GET /orders/nearby` with [NearbyFilter] applied.
 ///
@@ -51,12 +47,12 @@ final NotifierProvider<NearbyFilterController, NearbyFilter> nearbyFilterProvide
 /// change is a new cache entry rather than a stale list that keeps showing
 /// orders the driver just filtered out. Records compare structurally and
 /// [NearbyFilter] implements `==`, so identical queries share one entry.
-final filteredNearbyOrdersProvider = FutureProvider.family<
-  NearbyOrders,
-  ({double lat, double lng, double radiusKm, NearbyFilter filter})
->(
-  (Ref ref, ({double lat, double lng, double radiusKm, NearbyFilter filter}) q) =>
-      ref
+final filteredNearbyOrdersProvider =
+    FutureProvider.family<
+      NearbyOrders,
+      ({double lat, double lng, double radiusKm, NearbyFilter filter})
+    >(
+      (Ref ref, ({double lat, double lng, double radiusKm, NearbyFilter filter}) q) => ref
           .watch(orderRepositoryProvider)
           .nearby(lat: q.lat, lng: q.lng, radiusKm: q.radiusKm, filter: q.filter),
-);
+    );

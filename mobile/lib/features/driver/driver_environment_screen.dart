@@ -72,22 +72,21 @@ class _DriverEnvironmentScreenState extends ConsumerState<DriverEnvironmentScree
             children: <Widget>[
               GroupedSection(
                 title: '我可以提供的環境',
-                footnote: '這些是你自行聲明的車廂條件，乘客會在下單時看到；'
+                footnote:
+                    '這些是你自行聲明的車廂條件，乘客會在下單時看到；'
                     '平台僅屬資訊中介，不會代你保證。',
                 children: <Widget>[
                   _flag(
                     title: '完全靜音',
                     subtitle: '全程不交談、不播放聲音',
                     value: draft.silentRide,
-                    onChanged: (bool v) =>
-                        setState(() => _draft = _copy(silentRide: v)),
+                    onChanged: (bool v) => setState(() => _draft = _copy(silentRide: v)),
                   ),
                   _flag(
                     title: '不播放電台／音樂',
                     subtitle: '收音機與音響全程關閉',
                     value: draft.noRadioMusic,
-                    onChanged: (bool v) =>
-                        setState(() => _draft = _copy(noRadioMusic: v)),
+                    onChanged: (bool v) => setState(() => _draft = _copy(noRadioMusic: v)),
                   ),
                   _flag(
                     title: '無煙車廂',
@@ -123,12 +122,7 @@ class _DriverEnvironmentScreenState extends ConsumerState<DriverEnvironmentScree
 
   /// A copy with one flag replaced. `DriverEnvironment` is immutable, so every
   /// toggle rebuilds the whole value rather than mutating a field.
-  DriverEnvironment _copy({
-    bool? silentRide,
-    bool? noRadioMusic,
-    bool? noSmoke,
-    bool? noPerfume,
-  }) {
+  DriverEnvironment _copy({bool? silentRide, bool? noRadioMusic, bool? noSmoke, bool? noPerfume}) {
     final DriverEnvironment base = _draft!;
     return DriverEnvironment(
       silentRide: silentRide ?? base.silentRide,

@@ -26,6 +26,18 @@ abstract final class Routes {
 
   static const String otp = '/login/otp';
 
+  /// Request a password-reset link. Nested under [login] so the existing
+  /// `location.startsWith(Routes.login)` case keeps it pre-auth: the person who
+  /// needs it is, by definition, unable to sign in.
+  static const String passwordForgot = '/login/forgot';
+
+  /// Changing the password of an account that is already signed in.
+  ///
+  /// **Deliberately not under `/login`**, for the same reason as [phoneUnlock]:
+  /// `resolveRedirect` sends a signed-in user away from every `/login` path, so
+  /// a route there would be unreachable for exactly the accounts that need it.
+  static const String passwordChange = '/password/change';
+
   /// Proving a phone number — the call車 unlock.
   ///
   /// **Deliberately not under `/login`.** `resolveRedirect` sends a signed-in user
@@ -35,6 +47,21 @@ abstract final class Routes {
   /// [driverOnboarding], because it is reached from the passenger account screen,
   /// from the driver account screen, and from a 403 on the ride-request screen.
   static const String phoneUnlock = '/phone/unlock';
+
+  /// Filling in the account's own record — username, names, gender.
+  ///
+  /// Mounted on the root navigator and **outside `/login`**, for the same reason
+  /// as [phoneUnlock]: the accounts that need it are already signed in, and
+  /// `resolveRedirect` sends a signed-in user away from every `/login` path.
+  ///
+  /// It is deliberately **not** a gate, and there is no rule for it below. The
+  /// server treats a missing username as an incomplete profile rather than as a
+  /// refusal — `account_status` is a completeness flag, and no dependency in
+  /// `app/core/deps.py` reads it — so a client-side redirect here would be
+  /// stricter than the API and would strand a user on a screen the backend was
+  /// happy to serve. The screen is *offered*, from the account screen and from
+  /// the booking screen, and the user may walk away from it.
+  static const String profileSetup = '/profile/setup';
 
   static const String request = '/passenger/request';
   static const String trips = '/passenger/trips';
@@ -52,9 +79,21 @@ abstract final class Routes {
   static const String driverEarnings = '/driver/earnings';
   static const String driverActiveTrip = '/driver/active';
 
+  /// The driver's priced standing routes (一口價). Pushed on the root
+  /// navigator from the driver account screen, like [driverFleet]: it is a
+  /// settings page the driver manages outside the driver shell.
+  static const String fixedOffers = '/driver/fixed-offers';
+
   /// The driver's own fleet (的士車隊), if they are on a roster. Pushed on the
   /// root navigator from the account screen, like onboarding.
   static const String driverFleet = '/driver/fleet';
+
+  /// The driver's declared in-car environment (靜音 / 無煙 / 無香水 / 不播音樂).
+  ///
+  /// Pushed on the root navigator from the driver account screen, like
+  /// [driverFleet]: it is a settings form the driver dips into and leaves, not a
+  /// branch of the driver shell.
+  static const String driverEnvironment = '/driver/environment';
 
   static const String adminKyc = '/admin/kyc';
   static const String adminRefunds = '/admin/refunds';
@@ -111,6 +150,16 @@ String? resolveRedirect({
   // Sitting on a pre-auth route while signed in.
   if (location == Routes.splash || location.startsWith(Routes.login)) {
     return home;
+  }
+
+  // Changing a password is not a role-specific surface. Both an admin and a
+  // passenger own one, and the mobile admin shell renders the *same*
+  // `AccountScreen` — so without this carve-out the split below would bounce an
+  // admin straight back to the console and the tile would be a dead affordance.
+  // `/password/change` is deliberately not under `/login`, which is why it is
+  // not already covered by the branch above.
+  if (location.startsWith(Routes.passwordChange)) {
+    return null;
   }
 
   // An admin account has no passenger or driver surface, and vice versa: the
