@@ -56,14 +56,14 @@ ROOT = Path(__file__).resolve().parent
 #
 # Two builds live side by side: the legacy hand-rolled ES-module bundle at
 # `admin-web/legacy/` (`index.html`, `js/`, `styles.css`) and the Vite +
-# React rewrite at `admin-web/web/dist`. They are kept separate so the
-# legacy console keeps working until the port is verified; `--dist` selects
-# the rewrite. The legacy files sit in their own directory so that the
-# admin-web root is not a mix of two generations.
+# React rewrite at `admin-web/web/dist`. The rewrite is now the default;
+# `--legacy` selects the old bundle, kept only as a fallback while existing
+# deployments migrate. The legacy files sit in their own directory so that
+# the admin-web root is not a mix of two generations.
 #
 # Set by `main()` from the flag, and read by the handler, because
 # `SimpleHTTPRequestHandler` is constructed by the server rather than by us.
-SERVE_ROOT: Path = ROOT / "legacy"
+SERVE_ROOT: Path = ROOT / "web" / "dist"
 
 # Paths forwarded to the API rather than served from disk. Prefix-matched.
 PROXY_PREFIXES = ("/api/", "/health")
@@ -292,19 +292,18 @@ def main() -> int:
         help="Upstream API for /api/* and /health (default: http://127.0.0.1:8000)",
     )
     parser.add_argument(
-        "--dist",
+        "--legacy",
         action="store_true",
-        help="Serve the Vite + React build (admin-web/web/dist) instead of the legacy bundle.",
+        help=(
+            "Serve the legacy hand-rolled bundle (admin-web/legacy) instead "
+            "of the Vite + React build."
+        ),
     )
     args = parser.parse_args()
 
     global SERVE_ROOT
-    if args.dist:
-        SERVE_ROOT = ROOT / "web" / "dist"
-        if not (SERVE_ROOT / "index.html").is_file():
-            raise SystemExit(
-                f"{SERVE_ROOT} has no index.html — run `npm run build` in admin-web/web first."
-            )
+    if args.legacy:
+        SERVE_ROOT = ROOT / "legacy"
     if not (SERVE_ROOT / "index.html").is_file():
         raise SystemExit(f"index.html not found in {SERVE_ROOT}")
 

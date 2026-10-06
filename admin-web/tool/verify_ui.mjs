@@ -329,12 +329,12 @@ async function main() {
 
   // ------------------------------------------------------------------ preflight
   //
-  // `serve.py` defaults to the **legacy** bundle; the React build needs `--dist`.
-  // The two consoles have entirely different sign-in screens, so pointing this
-  // verifier at the default gets a phone-OTP form where it expects a username
-  // field, and it dies on a 30s `waitForSelector` timeout that reads like "the
-  // console is broken" — while the console is fine and the URL is simply the
-  // other product.
+  // `serve.py` now serves the **React** build by default; the legacy bundle is
+  // opt-in via `--legacy`. The two consoles have entirely different sign-in
+  // screens, so pointing this verifier at the legacy one gets a phone-OTP form
+  // where it expects a username field, and it dies on a 30s `waitForSelector`
+  // timeout that reads like "the console is broken" — while the console is fine
+  // and the URL is simply the other product.
   //
   // Fetched rather than assumed: the served `index.html` names its own bundle,
   // and the legacy one loads `/js/`, the Vite build `/assets/`. This is a
@@ -348,8 +348,8 @@ async function main() {
       console.error(
         `refusing to run: ${BASE} is serving the LEGACY console (admin-web/legacy).\n` +
           'This verifier only drives the React build.\n' +
-          `Restart the server with --dist, e.g.\n` +
-          `  python admin-web/serve.py --port 8081 --dist\n` +
+          `Restart the server without --legacy, e.g.\n` +
+          `  python admin-web/serve.py --port 8081\n` +
           'then re-run with --base pointing at it.',
       );
       process.exit(2);

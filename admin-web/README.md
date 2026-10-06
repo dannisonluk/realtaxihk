@@ -4,8 +4,8 @@ The web console for the platform's management and admin teams: the KYC queue, th
 refund decisions, the weekly platform settlement, and the taxi-fleet register with
 its rosters and fleet-level settlement.
 
-There are **two builds**, and they live side by side. `serve.py --dist` picks
-between them; without the flag the legacy one is served.
+There are **two builds**, and they live side by side. `serve.py --legacy` picks
+the old hand-rolled bundle; without the flag the React build is served.
 
 | | entry | build |
 |---|---|---|
@@ -44,12 +44,12 @@ The API must be up first, and the console is served as static files:
 # API on :8000 (see the root README for the full stack)
 .venv/Scripts/python.exe -m uvicorn app.main:app --port 8000
 
-# the React console — build once, then serve
+# the React console — build once, then serve (the default)
 cd admin-web/web && npm install && npm run build && cd ../..
-.venv/Scripts/python.exe admin-web/serve.py --dist
-
-# the legacy console, unchanged
 .venv/Scripts/python.exe admin-web/serve.py
+
+# the legacy console (fallback)
+.venv/Scripts/python.exe admin-web/serve.py --legacy
 .venv/Scripts/python.exe admin-web/serve.py --port 8081   # or pick a port
 ```
 
@@ -101,14 +101,14 @@ admin-web/web/
     styles.css          design tokens (iOS type scale, 4pt grid, 44px targets)
 ```
 
-Verify the React build with the browser verifier — it drives the **React build
-only**, so `serve.py` must be started with `--dist` (without the flag it serves
-the legacy bundle, whose login form has no `#login-username` and the run dies on
-a 30s timeout that reads like a console defect). `verify_ui.mjs` refuses to run
-against the legacy bundle and says so:
+Verify the React build with the browser verifier. `serve.py` serves the React
+build **by default**; the legacy bundle is opt-in via `--legacy`. The verifier
+drives the **React build only** and refuses the legacy one (whose login form has
+no `#login-username`, so the run dies on a 30s timeout that reads like a console
+defect). Start a server with no flag, then run it:
 
 ```bash
-.venv/Scripts/python.exe admin-web/serve.py --port 8081 --dist
+.venv/Scripts/python.exe admin-web/serve.py --port 8081
 NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@playwright/cli/node_modules" \
   node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 \
     --username ops-admin --password "$ADMIN_PASSWORD" --totp-secret "$ADMIN_TOTP_SECRET"
@@ -124,10 +124,10 @@ way a server survives between tool calls in this environment:
    --username verify-ui --password '<pw>' --totp-secret '<secret>'"
 ```
 
-It starts `serve.py` **with `--dist`** — without it the legacy bundle is served
-and the verifier refuses to run, so the one-command form used to abort every
-time. It also resolves `NODE_PATH` to the nested Playwright install; the old
-hard-coded `node/workspace/node_modules` is empty, so `import 'playwright'`
+It starts `serve.py` with no flag, i.e. against the React build in `web/dist`.
+The verifier refuses the legacy bundle, so the one-command form must never pass
+`--legacy`. It also resolves `NODE_PATH` to the nested Playwright install; the
+old hard-coded `node/workspace/node_modules` is empty, so `import 'playwright'`
 failed with `MODULE_NOT_FOUND` before the browser ever opened.
 
 Credentials do not have to be asked for. Provision an account, then enrol it
@@ -226,10 +226,11 @@ the real API.
 more: the two builds now have different login flows. The React build signs in
 against `admin_accounts` with username + password + TOTP; the legacy build still
 posts to `/auth/otp/request` with a phone number and reads `#login-phone`. The
-verifier drives the former, so point `--base` at `serve.py --dist`.
+verifier drives the former, so point `--base` at a server running the React build
+(the default; never pass `--legacy`).
 
 ```bash
-.venv/Scripts/python.exe admin-web/serve.py --port 8081 --dist &
+.venv/Scripts/python.exe admin-web/serve.py --port 8081 &
 
 NODE_PATH="$HOME/.workbuddy-ai/binaries/node/versions/22.22.2-3/node_modules/@playwright/cli/node_modules" \
   node admin-web/tool/verify_ui.mjs --base http://127.0.0.1:8081 \

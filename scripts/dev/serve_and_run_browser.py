@@ -171,13 +171,11 @@ try:
         print(api_out.read()[-4000:], flush=True)
         sys.exit(1)
 
-    # `--dist` is not optional here. Without it `serve.py` serves the *legacy*
-    # hand-rolled bundle, and `verify_ui.mjs` deliberately refuses to run against
-    # it (no `#login-username`, different asset paths) — so the one-command flow
-    # this script exists to provide would abort on every run.
-    serve = spawn(
-        [PY, "admin-web/serve.py", "--port", "8081", "--dist"], "console", env, stream=True
-    )
+    # The React build is now the default. Keep this comment as a guard so nobody
+    # reintroduces `--legacy` here: `verify_ui.mjs` deliberately refuses the
+    # legacy bundle (no `#login-username`, different asset paths), so the
+    # one-command flow must always target `web/dist`.
+    serve = spawn([PY, "admin-web/serve.py", "--port", "8081"], "console", env, stream=True)
     if not wait_port("127.0.0.1", 8081, 30, "console"):
         sys.exit(1)
 

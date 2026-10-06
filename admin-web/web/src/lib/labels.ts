@@ -109,8 +109,17 @@ const ORDER_STATUS_TONE: Record<string, ChipTone> = {
   CREATED: 'neutral',
   BROADCASTING: 'brand',
   ACCEPTED: 'ok',
+  // P4: the driver has claimed arrival and the passenger has not confirmed yet.
+  // `warn`, not `ok` — the claim is one-sided until the last-4 check passes, and
+  // an operator looking at a stuck order needs to see which side it is waiting on.
+  PENDING_ARRIVAL_CONFIRM: 'warn',
   DRIVER_ARRIVED: 'ok',
   IN_TRIP: 'ok',
+  // A live trip that happens to have a new dropoff — still working as intended.
+  DESTINATION_CHANGED: 'ok',
+  // Terminal, like CANCELLED, but not the same thing: the trip departed and then
+  // ended early. Both need an operator's eyes, so both are `danger`.
+  INTERRUPTED: 'danger',
   COMPLETED: 'neutral',
   CANCELLED: 'danger',
   NO_DRIVER: 'danger',
