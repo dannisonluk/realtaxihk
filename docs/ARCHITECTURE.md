@@ -643,7 +643,7 @@ stdio，所以在這個沙盒裡 `dart analyze` / `flutter test` 全部會
 | 11 | `APP_ENV` 未設／非白名單 → 啟動失敗 | `prod_boot_drill.py`（12 案例） |
 | 12 | prod 下每個必填設定缺失 → 拒絕啟動 | 同上 |
 | 13 | 深圳灣口岸區在境內，蛇口在境外 | `test_hk_bounds.py`（87 條） |
-| 14 | `response_model` 不丟失任何夹具的鍵 | `audit_response_models.py`（68 blocks） |
+| 14 | `response_model` 不丟失任何夹具的鍵 | `audit_response_models.py`（73 blocks） |
 | 15 | 連線池 `(pool+overflow)×workers ≤ 100` | `test_prod_compose_pool_arithmetic.py` |
 | 16 | 遷移可以在沒有 PostGIS 的 Postgres 上跑 | `test_migration_schema_parity.py` |
 | 17 | 腳本不自算 repo root 深度 | `test_scripts_root.py`（26 條） |

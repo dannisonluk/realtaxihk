@@ -14,10 +14,13 @@
 
 - 最新 commit：以 `git log --oneline -5` 為準（本檔唔再硬寫 hash，避免每次 commit 都要改）
 - 目前 branch：見 `git branch --show-current`
-- Alembic head：`c1f2e3d4a5b6`（2026-10-05 實跑 `alembic heads` 確認，**只有一個 head**）。
-  注意：本文件舊版寫 `f1c2d3e4a5b6` —— 那支現在只是**鏈中間**的一支
-  （`f1c2d3e4a5b6 -> 7a1b2c3d4e5f -> 042a7bc3e54c -> 5e1a9c7d4b02 -> c1f2e3d4a5b6`），已非 head。
+- Alembic head：`b8d1f2a3c4e5`（2026-10-06 實跑 `alembic heads` 確認，**只有一個 head**）。
+  注意：本文件舊版寫 `c1f2e3d4a5b6` —— 那支現在只是**鏈中間**的一支
+  （`… -> 5e1a9c7d4b02 -> c1f2e3d4a5b6 -> b8d1f2a3c4e5`），已非 head。
   **一律用 `alembic heads` 現查，不要信任何文檔寫死的 hash。**
+  另外：**dev DB 與 test DB 是兩件事**。dev DB 2026-10-06 之前一直停在 `c1f2e3d4a5b6`
+  （P4 migration 從未套用），所以 `POST /orders` 一直 500；測試看不到，因為 conftest 用
+  `Base.metadata.create_all` 建 schema。跑任何 dev script 前先 `alembic current`。
 
 ### 已 commit 嘅進度
 
@@ -130,6 +133,149 @@
   - 已跑 migration parity：3 passed；ruff format 已套用。
 
 ## Last updated
+
+- 2026-10-06（Ezra：**P4 收尾 —— 補回 §6.1 後端校驗、修好 fixtures 生命週期、dev DB 首次升到 head**）
+  - **補回一個「文件寫了但沒實作」的 P4 缺口**：`docs/IN_TRIP_REDESIGN.md` §6.1 明寫
+    「前端過濾是禮貌，後端校驗是授權」，但 `POST /orders/{id}/interrupt` **從未校驗**
+    `(interrupted_by_kind, reason_code)` —— `InterruptIn` 沒有 validator、handler 只檢查
+    `OTHER` + note，所以乘客可以申報 `PASSENGER_MISCONDUCT`（自我指控），而這個 enum 正是
+    admin 判決所憑的證據。新增 `app/models/user.py::INTERRUPTION_REASONS_BY_PARTY`
+    （由 enum **推導**：`全部成員 − 對方專屬原因`，日後新增成員預設兩邊都准，不會靜默變成
+    「存在但沒人能填報」）；拒絕時 **422 `REASON_NOT_FOR_PARTY`**，且在狀態轉換**之前**。
+    同時改正設計文件裡**寫反了**的示例（原文：「`interrupted_by_kind='driver'` 時拒絕
+    `PASSENGER_MISCONDUCT`」，方向剛好相反）。新增 5 條測試，`test_orders_p4.py`
+    由 27 條增至 **32 條**。
+  - **`gen_mobile_fixtures.py` 其實早就跑不動**：舊 code 是
+    `for action in ("arrive", "start", "complete")`，而 P4 之後 `/arrive` 只到
+    `PENDING_ARRIVAL_CONFIRM`。已改走 `arrival-claim` → `arrival-confirm`（**乘客**）→
+    `start` → `change-destination` → `complete`，另加**第二張單**走 `interrupt`
+    （`INTERRUPTED` 不可能與 `COMPLETED` 共用一張單）。新 fixture：
+    `order_arrival_claim` / `order_arrival_confirm` / `order_change_destination` /
+    `order_interrupted`；`order_arrive` **退場**（它斷言 `/arrive` 回 `DRIVER_ARRIVED`，
+    而那已不可能）。生成器尾端加 **prune**（不在本次 `FIXTURES` 內的 `*.json` 一律刪）。
+  - **但真正跑不動的原因不在生成器**：dev DB 停在 `c1f2e3d4a5b6`，**P4 migration 從未套用** →
+    任何 `POST /orders` 都是 500 `column "arrival_claimed_at" of relation "orders" does not
+    exist`。測試看不到，因為 `tests/conftest.py` 用 `Base.metadata.create_all` 建 schema、
+    從不跑 migration —— **即 P4 從頭到尾只對住 test schema 跑過**。已 `alembic upgrade head`
+    （dev DB 現為 `b8d1f2a3c4e5`）。
+  - 套用後第二個 P4 遺留物即現：`reset_dev_state()` 刪 `orders` 時撞上 P4 新表
+    `order_events` / `order_disputes` 的 **RESTRICT** 外鍵（兩者都不 FK 去 `users`，
+    `actor_id` / `raised_by_id` 是純 UUID，刻意讓「誰做過」捱得過刪號）。已加兩個前置刪除。
+  - 生成器原本把 uvicorn 的 stdout+stderr 都掉去 `DEVNULL`，上面兩個錯都只顯示成
+    `assert status == 201`。已加 `GEN_SERVER_LOG=`（**兩條** stream 都要收，帶 traceback
+    的是 app 自己的 `realtaxihk.unhandled` logger）。
+  - **順手清一個 drift**：`alembic check` 由 11 項回到 **baseline 9 項** ——
+    `recurring_rides.status` / `.frequency` 漏 `SAEnum(length=)`，model 推導寬度（9 / 6）
+    與 migration 建的 `VARCHAR(16)` 不符。補 `length=16`。
+  - **同步更新的名冊**：`mobile/tool/verify_contract.dart`（4 個新 decoder、移除
+    `order_arrive`）、`scripts/verify/audit_response_models.py`（`MODEL_OF` / `NESTED`）。
+  - **驗證（全部實跑）**：`pytest tests` **1213 passed / 0 failed / 0 error / 0 skipped**
+    （685s 單一 process）；改 `recurring.py` 後補跑 `tests/infra` + `test_recurring_rides`
+    + `test_orders_p4` = **149 passed** · `ruff check` All passed · `ruff format --check`
+    rc=0 · `mypy app` 128/0 · `uv lock --check` rc=0 · `alembic check` = baseline 9 ·
+    `audit_response_models.py` OK（78 blocks / 119 ops）· `dart_check.py mobile` 84 files /
+    0 diagnostics · `dart format --set-exit-if-changed` rc=0 · `run_tests.dart`
+    **153 passed / 0 failed** · `verify_contract.dart` **64 fixtures / 0 failures**
+    （三個新狀態 + `InterruptionReason` 首次有解碼覆蓋）。
+  - **收尾重跑，順手查清「rc=1 但全綠」**：全套再跑一次仍是 **1213 passed / 0 failed /
+    0 error / 0 skipped**（673.97s），但 `pytest` **回 rc=1** —— 原因不是測試：pytest
+    自己的 tmpdir GC 要 `rmtree` 一個 `pytest-of-user/garbage-*`（379 檔），沙盒的
+    bulk-delete 守衛拒絕，那個拒絕就變成 exit code，summary 行亦被 `[safe-delete]`
+    marker 蓋掉。**本機 `pytest` 的 exit code 一律不可信，只讀 `--junit-xml=` 的 XML。**
+    同一道守衛也擋 `npm run build`（Vite 清 `dist/assets`，295 檔 > 50）→ `x Build
+    failed in 1.20s`，看起來像編譯錯誤；把 `dist/` 移走後 **build rc=0**。
+  - **console 三閘首次一併實跑**（先前只記錄到 `tsc`）：`npm run typecheck` OK ·
+    `vitest` **81 passed（11 檔）** · `npm run build` OK（清空 `dist/` 後）。
+  - **跑大 suite 前清 5 個 orphan test DB**（`realtaxihk_t_*`，先前中斷的 run 留下）——
+    不清理的話大 suite 會 error（`relation "..." does not exist`），表面像 code bug。
+  - **文件計數器全部重新量測並同步（43 處）**：`README.md` §7、`docs/README.md`
+    量測基準表、`docs/WORK_SUMMARY.md`、`mobile/README.md`。帶日期的量測記錄
+    （`docs/archive/**`、`ERROR_SCAN_2026-10-05.md`、`AUDIT_REPORT_2026-10-04.md`、
+    `AUDIT_FINDINGS_LINEBYLINE.md`、本檔的舊日期條目）**刻意不改數字** —— 改了等於
+    偽造量測記錄。
+
+- 2026-10-06（Ezra：**P4 in-trip 重新設計 + 改密碼／忘記密碼流程完成**）
+  - **P4 狀態機**：`OrderStatus` 加 `PENDING_ARRIVAL_CONFIRM` / `DESTINATION_CHANGED`（非終態）/
+    `INTERRUPTED`（終態）；`ORDER_TRANSITIONS` 重寫，兩條不變式（終態無出邊、到達被證實後
+    `CANCELLED` 不可達）都保住；`InterruptionReason` 9 個成員 + `SAFETY_INTERRUPTION_REASONS`。
+    `orders.status` 要 `alter_column` 加寬（`String(14)`→`String(23)`），否則
+    `test_migration_schema_parity` 會紅。
+  - **新端點**：`POST /orders/{id}/arrival-claim`（用 DB 記錄的 GPS 判定，成功只到
+    `PENDING_ARRIVAL_CONFIRM`）、`arrival-confirm`（乘客**自己**號碼尾 4 位；3 次失敗回
+    `ACCEPTED` 並自動開 dispute）、`change-destination`（重估價、只抄一次原目的地、有上限、
+    FIXED 降回 METER）、`interrupt`（**即時生效**，同 transaction 開 dispute，不退款）；
+    舊 `/arrive` 降為 deprecated alias。`/start` 扣 $5 `PLATFORM_TRIP_FEE`
+    （`reference="trip:{id}"` 冪等）；`cancel` 加 `reason_code`（`ACCEPTED` 起必填）+
+    違約扣款（乘客 100% / 司機 50% 估價）+ 15 分鐘 Redis 冷靜期；`grab` 兩道閘
+    （429 `COOLDOWN` / 423 `DEPOSIT_INSUFFICIENT`，順序：先冷靜期後餘額）。
+  - **兩個真 bug（不是測試問題）**：① `order.original_dropoff_location =
+    order.dropoff_location` 會 round-trip 一個 `WKBElement`，而本專案 `geoalchemy2`
+    **刻意沒裝 `[shapely]`** → `ImportError`；改用 server-side column-to-column `update()`。
+    ② mobile 的 `LedgerEntryType.fromWire` 會 throw，而後端早就有 `FIXED_RIDE_FEE`
+    → **司機一開賬本就 crash**；已補齊 4 個成員。
+  - **密碼**：`POST /auth/password/{change,forgot,reset}`；新檔
+    `app/services/auth/password_service.py`；`account_service` 的
+    `_register_failure` / `_clear_failures` 改為公開（改密碼是第二個呼叫者）；
+    `config.password_reset_ttl_minutes=30`。change/reset 成功都撤銷**全部** session
+    （包括呼叫者自己）。forgot 對已註冊與未註冊地址回答**完全相同**。
+  - **測試**：新檔 `tests/api/test_orders_p4.py`（27）、`tests/api/test_password_flow.py`（22）；
+    `test_orders_module.py` 改寫至 P4 合約；`test_fixed_fare_offers.py` 改走兩步到達
+    （並修正 $5 行程費令 fixed-ride 的 `balance_after` 由 485 → 480）；
+    `test_security_hardening.py` 的 `_PUBLIC_PATHS` 加兩條密碼路由（pre-auth by definition，
+    附理由註釋）；`.env.example` 補 6 個設定。
+  - **App**：`trip_tracking_screen.dart`（到達確認面板、［改目的地］［中斷行程］**並排**、
+    `DRIVER_ARRIVED` 起**不再顯示取消**、`INTERRUPTED` 結束卡）、
+    `driver_active_trip_screen.dart`（「我已到達」+ GPS 提示、`PENDING_ARRIVAL_CONFIRM`
+    等候卡、`DRIVER_ARRIVED` 起只有中斷）；新檔 `change_destination_sheet.dart` /
+    `interrupt_sheet.dart` / `change_password_screen.dart` / `forgot_password_screen.dart`；
+    `Routes.passwordChange`（authed、root navigator）/
+    `Routes.passwordForgot`（`/login/forgot`，pre-auth）。
+  - **admin-web**：`ORDER_STATUS_TONE` 與雙語 i18n 補 3 個新狀態 + 4 個 ledger entry type
+    （原本會 fallback 成中性色／顯示原文）。
+  - **仍未做（已寫入 `WORK_SUMMARY.md` §4C）**：P4 §3.6 / §4.0.3–4.0.5 預約服務
+    （`SCHEDULED` 訂單、`landmarks` 表、司機預約偏好）**零程式碼**；乘客端無「提出申訴」
+    端點；乘客違約罰款只記錄未收款；DECISION-3 的「補款後手動放行」未做；admin 爭議詳情
+    未顯示到達驗證記錄；忘記密碼連結是網頁 URL，App 無 deep link。
+  - **驗證（全部實跑）**：`pytest tests` **1208 passed / 0 failed / 0 error**（11 分鐘，
+    單一 process）· `ruff check` 0 · `ruff format --check` rc=0 · `mypy app` 128 files 0 ·
+    `uv lock --check` OK · `audit_response_models.py` OK（119 ops）· `tests/infra` 108 passed ·
+    `alembic heads` 單一 `b8d1f2a3c4e5` · Dart `dart_check.py mobile` 84 files /
+    **0 diagnostics** · `dart format --set-exit-if-changed` rc=0 · admin-web `tsc` 0 +
+    `vitest` 81 + `vite build` OK。
+
+- 2026-10-06（Ezra：**全庫審計 + 收斂**）
+  - **修好 AC-05 flag 翻轉漏改**：`admin-web/README.md`（4 處）、`admin-web/tool/verify_ui.mjs`
+    （註釋 + 拒絕訊息）、`README.md`（2 處）、`docs/QA_TEST_ENVIRONMENT.md`、
+    `docs/STRUCTURE_REVIEW.md` 仍寫 `serve.py --dist`，但該 flag 已改名 `--legacy`
+    且 React build 已成預設 → 照抄會直接 `unrecognized arguments` 失敗。
+    全部改為「預設 React build；`--legacy` 才係舊版」。
+  - **後端驗證缺口（`FixedFareService.create_offer`）**：唔驗 `destination_area` /
+    `pickup_area` → 司機可建立一個永遠 match 唔到嘅死 offer（`region.ALL_AREAS`
+    嘅存在正正係要防呢種「typo 靜靜 match 唔到」）；`premium_destination_id` 用 FK，
+    dangling id 會被 `except Exception` 誤報成「duplicate route」。已改：area 用
+    `app.core.region.is_valid_area` 驗（422）、premium 先查存在、`except` 收窄為
+    `IntegrityError`。新增 3 個回歸測試。
+  - **GEO key namespace（ERROR_SCAN 列為未修項）**：`geo:orders:active` 冇
+    per-process namespace，並行 pytest 會互相污染。已改為
+    `geo_orders_key()` = `f"{settings.redis_key_namespace}geo:orders:active"`；
+    三個消費點（`geo_service` / `grab_service` / `maintenance`）全部改用。
+    `grab_service` 之前**硬寫字串**，順手改為共用（改 key 時會漂移嘅隱患）。
+  - **全庫 gate 實跑**：`ruff check .` 0 · `ruff format --check .` 212 formatted ·
+    `mypy app` 124/0 · **`pytest tests` 1157 passed / 0 failed / 0 error（首次單一
+    full-suite 全綠）** · console `tsc` 0 + vitest 81 · Dart harness 149 ·
+    contract 61 fixtures · `dart_check` 80 files / **0 diagnostics**。
+  - **`dart format` 排版閘（新發現，已修）**：CI mobile job 有
+    `dart format --line-length 100 --output=none --set-exit-if-changed lib tool`
+    （`.github/workflows/ci.yml`），但 `HEAD`／`origin/main` 實測 **19 檔唔過**
+    （工作區連 WIP 共 24 檔）—— 即個閘自 `ae97e61` 加落之後**再度漂移**，而 CI
+    顯然從未真正執行過佢（`ae97e61` 本身係綠）。本機 Flutter **3.44.0** / bundled
+    Dart **3.12.0** 與 CI 釘嘅版本**完全一致**，所以本機 formatter 輸出 == CI 期望。
+    已 `dart format --line-length 100 lib tool`（24 檔），逐檔核對「非空白、非尾逗號」
+    內容**零改動**；現況 `--set-exit-if-changed` = **0 changed**，而 run_tests 149、
+    contract 61、`dart_check.py` 80/0 全部照過。
+  - **文件**：`ERROR_SCAN_2026-10-05.md` 按 `docs/README.md` 嘅歸類**留在 `docs/`**
+    （與 `AUDIT_REPORT_2026-10-04.md` 同類：帶日期但列作現行報告，索引有註明
+    「不追現況」）；`docs/README.md` 量測基準表與計數器更新至 2026-10-06。
 
 - 2026-10-05（本 agent：**audit 安全批次完成**——NEW-9/15/16/17/24/25/26 + M-M-2/M-M-5 + AC-06 + F-06）
   - **NEW-9（body size cap 對 chunked body 失效）**：`app/core/middleware.py`。原本 chunked（無 `Content-Length`）超過上限時由 `receive()` 拋 `_BodyTooLarge`，但 `add_middleware()` 令本 middleware 喺 Starlette `ExceptionMiddleware` **外**，所以個 raise 永遠到唔到本 class：內層 `BaseHTTPMiddleware` 會變成 `RuntimeError: No response returned.`，而舊嘅 `Exception` 版本就被 FastAPI body parsing 嘅 `except Exception` 吞成 400 `BAD_REQUEST` → **413 分支係死碼**。改法：唔再拋例外，超標時將餵俾 app 嘅 body 換成「空、最後一塊」（**任何超標內容都唔會被 parse**），再喺 `guard_send` 將 app 嘅回應改寫成 413。`_BodyTooLarge` 已刪。`tests/api/test_security_hardening.py` **49 passed**。

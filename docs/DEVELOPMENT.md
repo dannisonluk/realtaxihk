@@ -121,8 +121,9 @@ RBAC 的設計理由（為什麼是四級、為什麼排名比較、為什麼必
    guard 它看不見 —— 要加一個 no-op dependency 並補行為 test 證明 guard 真在。
 10. **`orders.driver_id` 指向 `driver_profiles.id`，不是 `users.id`**。
 11. **`app.routes` 抽不到 `response_model`**：此 FastAPI 版本把 `include_router`
-    包成 `_IncludedRouter` 不攤平 —— 行 `app.routes` 只見 21 條且全部 `MISSING`。
-    **要用 `app.openapi()`**。
+    包成 `_IncludedRouter` 不攤平 —— 行 `app.routes` 只見到零星幾條且全部 `MISSING`
+    （2026-10-05 實測：6 條路由、5 條無 `response_model`）。
+    **要用 `app.openapi()`**。（這個數字會隨版本／掛載方式變，別把它當常數。）
 12. **`app/api/service_area_route.py` 是 HTTP 端點，`app/core/service_area.py` 是
     強制執行的閘門** —— 兩層不同，名字刻意區分（兩者曾經同名，grep 時極易搞混）。
     `tracking.py` 掛 `/api/v1/drivers`（複數）。

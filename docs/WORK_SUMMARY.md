@@ -27,22 +27,42 @@
   `git rev-list --count origin/main..HEAD` —— 而 **0 的意思是 HEAD 等於
   origin/main**（即所有改動都未 commit），**不是**「都推上去了」。
 
-- **現時狀態**：`pytest` **1060 passed / 0 failed / 0 error / 0 skipped**（以
-  `--junit-xml` 讀，44 個 `test_*.py` 模組）·
-  > 📌 **這一批由 964 起點修掉 108 個失敗**（登入／註冊與電話驗證分離的改動，
-  > 見 §4C）。舊文檔寫的 961 對應的是改動前的 `HEAD`。此數字為 2026-10-04 實跑
-  > （`.tmp/full4.xml` 讀出，與 `--collect-only` 的 1060 一致）。
-  `ruff check` **只剩 `app/api/fleets.py` 的 2 條**（`I001` + `F401`，那是用戶自己
-  未 staged 的改動，刻意不動）· `ruff format --check` clean（184 files）·
-  console `tsc` clean + **69 vitest passed（9 files）** · `npm run build` 主包
-  468.49 kB（gzip 146.50 kB）＋地圖分包 155.70 kB（gzip 45.58 kB，按需載入）·
-  Dart **127 passed**（登入分拆一批加了 30 條）· contract **54 fixtures decoded,
-  0 failure** · `dart_check` 68 files, 0 diagnostics · `audit_layout` **52 renders
-  clean** ·
-  `tool/check_contrast.py` OK · API **86 paths / 93 operations，全部已声明
-  response model** · fixture↔schema 审计 **68/68 块无数据丢失** ·
-  pyright（1.1.408）`app/` + `scripts/` + `tests/` **0 errors** —— `tests/` 原有
-  140 條，2026-10-03 清零（見 §7）。
+- **現時狀態**（2026-10-06 重新量測）：
+  > ✅ **後端 `pytest` 全套一次過實跑全綠**（Docker Desktop 開住、`realtaxi-db` ＋
+  > `realtaxi-redis` 兩隻 container 都 healthy）：
+  > `pytest tests -q --junit-xml=.tmp/final.xml` = **1213 passed / 0 failed / 0 error /
+  > 0 skipped**（2026-10-06）。先前「一次過跑會中途中止、唔敢宣稱 full-suite 全綠」
+  > 嘅情況**已經消失** —— 現在單一 process 順序跑就穩定全綠。
+  > ```
+  > docker compose up -d db redis
+  > .venv/Scripts/python.exe -m pytest tests -q --junit-xml=.tmp/final.xml
+  > ```
+  > ⚠️ 並行跑兩隻 pytest 仍**不建議**（兩隻 heavy run 爭同一 DB/Redis 資源），
+  > 但「互相污染出假 failed」嘅根因已消除：GEO index 已納入
+  > `REDIS_KEY_NAMESPACE`（per-process），同 rate-limit key 一樣。見
+  > [`README.md`](../README.md) §7.2。
+  >
+  > 計數器的量法統一記在 [`README.md`](README.md) 的「量測基準」表 —— 改架構後先重跑量法再改這裡。
+  - **實跑得到**：`ruff check .` **All checks passed!**（全樹）· `ruff format --check .`
+    **218 files already formatted** · `mypy app` **128 files / 0 errors** · `compileall app` rc=0 ·
+    console `tsc --noEmit` **exit 0（乾淨）** · console vitest **81 passed（11 檔）** ·
+    Dart harness **153 passed / 0 failed** · `dart_check.py` **84 files / 0 diagnostics** ·
+    contract **64 fixtures decoded, 0 failure**（共 65 個 fixture json）·
+    `audit_response_models.py` **OK（78 fixture blocks / 119 operations 全有 `response_model`）** ·
+    API **106 paths / 119 operations** · `alembic heads` **單一 head `b8d1f2a3c4e5`**（20 個 migration）。
+  - ✅ **現時無未修項。** 先前列為「未提交 WIP、未經同意去改」嘅 mobile
+    `fixed_offers_screen.dart` `$` escape 問題，**已隨 WIP 收斂修好**：`dart_check.py`
+    對 `mobile/lib` 現報 **0 diagnostics**。逐條歷史見
+    [`ERROR_SCAN_2026-10-05.md`](ERROR_SCAN_2026-10-05.md)。
+  - ✅ **`dart format` 排版閘（2026-10-06 修）。** CI 的 mobile job 一直有
+    `dart format --line-length 100 --output=none --set-exit-if-changed lib tool`
+    （`.github/workflows/ci.yml`），但**加閘時只修了 8 個檔，之後再度漂移** ——
+    實測 `HEAD`／`origin/main` 都係 **19 檔唔過**（工作區連 WIP 共 24 檔），
+    即係呢個閘由頭到尾都係「聲明咗但未真正綠過」。已用**同 CI 完全一致**嘅
+    SDK（本機 Flutter **3.44.0** / bundled Dart **3.12.0** == CI 釘嘅版本）重排
+    全樹；非空白／非尾逗號內容逐檔核對**零改動**。現況：
+    `dart format --line-length 100 --output=none --set-exit-if-changed lib tool`
+    = **0 changed**，而 assertions 153、contract 64、`dart_check.py` 84/0 全部照過。
 
 > **本文件的用途**：一份可以單獨看完的總覽。其他 `docs/*` 是**主題深入報告**；
 > `.workbuddy-ai/memory/*.md` 是**逐日流水**（append-only，不整理）。
@@ -54,9 +74,9 @@
 
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **86 paths / 93 operations** · 1060 tests |
-| Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**24 個畫面**，三角色）；品牌資產由 `tool/gen_branding_assets.py` 由 `branding/source/` 的原圖產生 | ✅ 127 tests · 68 files / 0 diagnostics · APK 曾 BUILD SUCCESSFUL（2026-10-04；本機現時跑不完，見 §4C） |
-| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/legacy/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **69 vitest** · UI verifier PASS |
+| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **106 paths / 119 operations，全部有 `response_model`** · 128 檔 / 26,725 LOC · pytest 全套 **1213 / 0**（2026-10-06 單一 process 實跑） |
+| Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**29 個畫面**，三角色）；品牌資產由 `tool/gen_branding_assets.py` 由 `branding/source/` 的原圖產生 | ✅ 153 tests · 82 檔 / 17,042 LOC · APK 曾 BUILD SUCCESSFUL（2026-10-04；本機現時跑不完，見 §4C） |
+| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/legacy/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **81 vitest passed（11 檔）** · `tsc --noEmit` **exit 0** |
 
 一個 repo、三件完整交付物。定位：**Cap. 374D 合規的士資訊中介**（非的士營運商）。
 
@@ -81,17 +101,18 @@ uv run mypy                                            # types; no DB needed（�
 # tests/ 或 scripts/ 時，需要臨時 pyrightconfig.json：
 #   {"venvPath":".","venv":".venv","pythonVersion":"3.12"}   ← 用完即刪，不要入 repo
 npx --yes pyright@1.1.408 app/ scripts/ tests/         # 現為 0 errors
-uv run pytest -q                                       # 1060 passed（用 --junit-xml 讀，見下）
-uv run python scripts/verify/audit_response_models.py  # 68 块夹具 vs response_model，0 丢失
+uv run pytest -q --junit-xml=.tmp/final.xml             # 全套 2026-10-06 實跑：1213 passed / 0 failed（需 Docker，見 §0）
+uv run python scripts/verify/audit_response_models.py  # 78 塊 fixture vs response_model，0 遺失
 cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run --no-file-parallelism --pool=forks
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
+cd mobile && dart format --line-length 100 --output=none --set-exit-if-changed lib tool  # CI 排版閘；必須 0 changed
 cd mobile && python tool/dart_check.py mobile          # LSP，非 flutter analyze；要帶路徑
 cd mobile && dart --packages=.dart_tool/package_config.json tool/verify_contract.dart
 # 品牌資產問的是「有沒有跟上原圖」，不是「能不能編譯」——不跑這條檢查就沒有人會發現
 .venv/Scripts/python mobile/tool/gen_branding_assets.py --check
 # 圖示、`assets:`、以及 Flutter plugin 集合，只有真正建置 APK 才驗得到：
 # dart_check 與 run_tests 看不到 res/，也看不到 Gradle 專案。而本機這條路
-# **現在跑不完**（kernel compiler 撞 ERROR_PIPE_BUSY 231，見 §5a）——
+# **現在跑不完**（kernel compiler 撞 ERROR_PIPE_BUSY 231，見 §7）——
 # 所以它現在的實際身份是「CI 的閘」，不是本機的閘。
 cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebug
 # 備份：不止跑 backup，還要跑 drill
@@ -138,10 +159,12 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
 
 | 缺口 | 影響 | 為什麼現在是這樣 |
 |---|---|---|
-| **P4 in-trip 重新設計未實作（最大的一項）** | 訂單狀態機仍是 `IN_TRIP → COMPLETED` 的死巷（`app/services/order/state_machine.py`）。行程中改目的地、司機中途結束、到達雙重驗證、違約扣款、$5 平台費全部沒有 —— 乘客與司機在行程中都只有「完成」一個動作 | 設計已完成且**七個 DECISION 全部拍板**，只差實作，見 [`IN_TRIP_REDESIGN.md`](IN_TRIP_REDESIGN.md) §9。它會動 `ORDER_TRANSITIONS` 與兩條由測試守住的不變式（終態無出邊、行程中不可達 `CANCELLED`），所以不能順手改 |
-| **沒有補完個人資料的畫面** | `POST /identity/profile` 要 username／given name／family name，而 App 沒有任何地方呼叫它，所以註冊出來的帳號 `username IS NULL`，帳戶頁只能退回顯示遮蔽後的電話 | 註冊刻意不收姓名 —— 那會在一個以「短」為目的的表格上加第四個必填欄位。要補就是登入後的一次性提示，不是把它塞回註冊 |
-| **沒有改密碼／忘記密碼流程** | 忘記密碼的帳號只剩「已驗證號碼 + OTP」這條次要登入，而它要求 `phone_verified_at IS NOT NULL` —— **未驗證電話又忘了密碼的帳號無路可走** | 後端也沒有 `POST /auth/password/*`，所以這同時是後端缺口。次要登入覆蓋得到一部分，覆蓋不到這一類 |
-| **`GET /identity/me` 不在 `mobile/test/fixtures/` 內** | `tool/verify_contract.dart` 的 fixture 迴圈**驗不到 `Profile`**，而 `Profile` 是唯一帶 `phone_verified` 的模型 —— 也就是「能不能叫車」的判準。它目前只有 `run_tests.dart` 裡手寫的樣本 | 產 fixture 需要跑著的 API（`scripts/dev/gen_mobile_fixtures.py`）。補上之後 `Profile` 才會像其他模型一樣被真回應釘住 |
+| **P4 §3.6 預約服務（pre-booking）未實作** | 只有即時單。`SCHEDULED` 訂單（提前 2 小時至 3 天）、`landmarks` 表（地標＝終點）、司機預約偏好（`GET/PUT /drivers/me/booking-preferences`）與廣播前置視窗全部沒有 —— 程式碼中零引用 | 設計文件 §3.6 與 §4.0.3–4.0.5 已完成，但這是獨立的一個功能面（新表、新端點、新前端頁），與 in-trip 生命週期沒有耦合，所以先做生命週期那半。要做就照 §3.6 逐節落地；`IN_TRIP_REDESIGN.md` 的狀態標頭已如實標明這一點 |
+| **乘客端沒有「提出申訴」端點** | 行程中斷時平台會在**同一個 transaction** 自動開一張 dispute，所以中斷那條路是有個案的；但 `DRIVER_ARRIVED` 鎖死取消權之後、或純粹想申訴時，App 的［提出申訴］只能顯示行程編號與客服指引，**打不出任何東西** | 後端只有 `/api/v1/admin/disputes`（管理端）。當事人開案需要一支新端點（`POST /orders/{id}/disputes` 之類），加上「誰可以對誰開案」的規則。現時 App 的按鈕已如實說明會發生什麼，不會假裝送出了 |
+| **乘客違約罰款「有記錄、未收錢」** | 乘客在 `ACCEPTED` 之後取消，會寫 `PENALTY_CHARGED` 事件（`settled: false`）並設 15 分鐘冷靜期，但**錢沒有實際扣到** | `ledger_entries.driver_profile_id` 是 NOT NULL，而乘客沒有錢包 —— 收乘客的錢要先有乘客錢包／預授權。在沒有支付渠道之前，記錄 + 冷靜期是能做到的全部；admin 事後裁決仍可依事件記錄處理 |
+| **DECISION-3 的「補款後手動放行」未實作** | 負餘額會令 `grab` 回 423 `DEPOSIT_INSUFFICIENT`（已實作），但「補款後要等 admin 放行」那一步（`acceptance_unlocked_at`）未做 —— 現在是補款即自動恢復接單 | DECISION-3 有兩半，先做了會擋人的那一半。另一半做不做取決於風控政策（自動恢復對司機友善，手動放行對平台安全） |
+| **admin 爭議詳情未顯示「到達驗證記錄」** | 設計 §6.3 把 `arrival_claimed_at`、當時 GPS 距離、核對嘗試次數列為裁決的關鍵欄位，但 `/api/v1/admin/disputes/{id}` 的回應沒有帶這三個欄位 | 資料已經在 `orders` 上（`arrival_gps_distance_m` 等），只是沒有 expose。admin console 的爭議頁已存在，加這一段是純擴充，不牽涉狀態機 |
+| **忘記密碼的連結是網頁 URL，App 沒有 deep link** | 電郵連結指向 `{PUBLIC_BASE_URL}/reset-password?token=…`。App 內的「忘記密碼」能寄出信件，但**開連結會開瀏覽器**，不會回到 App | 要讓連結回到 App 需要 Android App Links（`intent-filter` + `assetlinks.json`），而那要求已部署的 HTTPS 網域與簽署指紋。網頁那條路本身是完整的，不是半成品 |
 | **本機跑不完 APK build：`webview_flutter` 只算「已解析、未證明」** | Gradle 的 `:app:compileFlutterBuildDebug` 會叫 `flutter assemble`，而它要 spawn kernel compiler 與 native-assets hook，兩者都撞 `ERROR_PIPE_BUSY`（231）。所以 `res/`、`assets:`、plugin 集合在本機**沒有任何閘** | 231 是資源耗盡而非政策拒絕 —— 同一條命令在 2026-10-03 與 2026-10-04 00:44 成功過。CI 的 `flutter build apk --debug` 是唯一的閘，但**還沒在這些 commit 上跑過**。另注意 `dart pub get` **不會**重寫 `.flutter-plugins-dependencies`（只有 `flutter pub get` 會），那是 Gradle 決定要編哪些 plugin 子專案的依據 |
 | **`serve_and_probe.py` 把 uvicorn 寫死在 `127.0.0.1`** | 真機連不到 API，而 `APP_HOST=0.0.0.0` 對它**無效**（沒有任何 dev 啟動腳本讀那個設定）。現時要手動 `adb reverse tcp:8000 tcp:8000` | 不是 bug（本機開發預設綁 loopback 是對的），是 dev 工具缺口。要修就是讓該腳本接受 `--host` |
 | **沒有「一鍵造一個能叫車的帳號」的 ops 腳本** | 每次要新開一個能叫車的測試帳號，都要依序打 3 個端點（`/auth/register` → `/identity/phone/request` → `/identity/phone/confirm`，見 `QA_TEST_ENVIRONMENT.md` §6.4） | 刻意**先不做**：這 3 步走的正是正式流程，等於順手驗證了後端。**注意「審查者帳號」已有 ops 腳本**（`scripts/ops/create_reviewer_account.py`，有到期日、不能動錢，見 §6.6），但它解決的是「給外部審查者一個能登入的帳號」，**不是**這條。若日後要頻繁重跑，再加 `scripts/ops/` 腳本，但必須走 service 層而不是 `UPDATE users` |
@@ -154,6 +177,47 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
   只保留「已失效」註記（重新編號會假裝那些發現仍描述現況）。
 - **部署目標已定**：選項 A（單台 VPS + Compose），反代用 nginx。產物見
   `deploy/README.md`、`docker-compose.prod.yml`。
+- **P4 in-trip 重新設計已實作**（2026-10-06）。狀態機新增
+  `PENDING_ARRIVAL_CONFIRM`（到達待乘客確認）、`DESTINATION_CHANGED`（**非終態**）、
+  `INTERRUPTED`（**終態**，與 `CANCELLED` 分開，因為結算與保險處理不同）；
+  兩步到達驗證（`arrival-claim` 用 DB 記錄的 GPS 判定 → `arrival-confirm` 乘客
+  自己手機號碼尾 4 位，3 次失敗回 `ACCEPTED` 並自動開 dispute）；
+  `POST /interrupt`（**即時生效**，同一 transaction 自動開 dispute，不退款）；
+  `POST /change-destination`（重新估價、只抄一次原目的地、有次數上限、FIXED 降回
+  METER）；`/start` 扣 $5 `PLATFORM_TRIP_FEE`（`reference="trip:{id}"` 冪等）；
+  違約扣款（乘客 100% / 司機 50% 估價）+ 15 分鐘 Redis 冷靜期；
+  `grab` 兩道閘（429 `COOLDOWN` / 423 `DEPOSIT_INSUFFICIENT`）。
+  測試：`tests/api/test_orders_p4.py`（32 條）；App 端見
+  `trip_tracking_screen.dart`、`driver_active_trip_screen.dart`、
+  `change_destination_sheet.dart`、`interrupt_sheet.dart`。
+- **改密碼／忘記密碼已實作**（2026-10-06）。`POST /auth/password/change`（需目前
+  密碼；成功後撤銷**全部** session，包括呼叫者自己）、
+  `POST /auth/password/forgot`（對已註冊與未註冊地址回答**完全相同**，避免成為
+  「這個地址有沒有帳號」的查詢工具）、`POST /auth/password/reset`（單次使用、
+  只存 SHA-256 digest、所有失敗同一句 400）。測試：
+  `tests/api/test_password_flow.py`（22 條）；App 端見
+  `change_password_screen.dart`、`forgot_password_screen.dart`。
+- **P4 的 `interrupt` 補回後端 `(party, reason)` 校驗**（2026-10-06）。設計文件 §6.1 明寫
+  「前端過濾是禮貌，後端校驗是授權」，但端點從未校驗：`InterruptIn` 沒有 validator、
+  handler 只檢查 `OTHER` + note，所以乘客可以申報 `PASSENGER_MISCONDUCT`（自我指控），
+  而這個 enum 正是 admin 判決所憑的證據。現以
+  `app/models/user.py::INTERRUPTION_REASONS_BY_PARTY` 由 enum 推導
+  （新增成員預設兩邊都准，不會靜默變成「存在但沒人能填報」），拒絕時回
+  **422 `REASON_NOT_FOR_PARTY`**，且在狀態轉換之前。文件裡寫反的示例亦已改正
+  （原文說「`interrupted_by_kind='driver'` 時拒絕 `PASSENGER_MISCONDUCT`」，方向剛好相反）。
+- **P4 首次真正對住「已 migrate 的資料庫」跑過**（2026-10-06）。在此之前 dev DB 停在
+  `c1f2e3d4a5b6`，P4 migration 從未套用 → 任何 `POST /orders` 都是 500
+  `column "arrival_claimed_at" of relation "orders" does not exist`。測試看不到，因為
+  `tests/conftest.py` 用 `Base.metadata.create_all` 建 schema、從不跑 migration。
+  套用 `alembic upgrade head` 後第二個遺留物即現：
+  `gen_mobile_fixtures.py::reset_dev_state()` 刪 `orders` 時撞上 P4 新表
+  `order_events` / `order_disputes` 的 RESTRICT 外鍵。兩者都已修；生成器亦已改走
+  P4 的兩步到達 → 中途改目的地 → 完成，另加一張單走中斷，並在尾端清除過期 fixture。
+  契約 fixture 由 61 增至 64，三個新狀態與 `InterruptionReason` 首次有解碼覆蓋。
+- **`alembic check` 的 drift 由 11 項回到 baseline 9 項**（2026-10-06）：
+  `recurring_rides.status` / `.frequency` 漏了 `SAEnum(length=)`，model 推導出的寬度
+  （9 / 6）與 migration 建的 `VARCHAR(16)` 不符 → 每次都報 `modify_type`。已補
+  `length=16`。這是專案自己的 `SAEnum` 規則，只是這兩處漏了。
 
 ---
 
@@ -241,14 +305,21 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 ## 8. 一頁看完
 
 ```
-✅ 後端 86 paths / 93 ops / 1060 tests / ruff format clean — 生產就緒
+✅ 後端 106 paths / 119 ops / ruff+mypy 0 / 20 migrations 單一 head — 代碼層生產就緒
+   ✅ pytest 全套 1213/0/0（2026-10-06 單一 process 實跑）· 見 §0
 ✅ 登入改為 email + 密碼；電話只解鎖 call車（`PHONE_NOT_VERIFIED`）；鎖定回 401
 ✅ auth 三面 rate limit + Cloudflare Turnstile（prod 缺密鑰拒啟動）+ 受限審查者帳號
 ✅ App 已接新登入流程：三個入口分開、電話只解鎖 call車、四條 Turnstile 門都帶 token
 ⚠️ APK build 在本機跑不完（`ERROR_PIPE_BUSY`）→ `webview_flutter` 與 `res/`／`assets:`
    只有 CI 驗得到，而 CI 還沒在這些 commit 上跑過（見 §4C）
-✅ mobile 24 畫面 / 127 tests / 0 diagnostics      — 三角色完整
-✅ admin-web React / 69 vitest / typecheck + build clean / UI verifier PASS
+✅ 現時無未修項（先前的 mobile `fixed_offers_screen.dart` `$` escape 已隨 WIP 收斂）
+✅ mobile 29 畫面 / 153 tests / 17,042 LOC            — 三角色完整
+✅ mobile 排版閘（`dart format --set-exit-if-changed lib tool`）已修至 0 changed
+   （HEAD/origin-main 原本 19 檔唔過 — 閘聲明咗但從未綠過）
+✅ P4 首次對住「已 migrate 的 dev DB」跑過（原停在 `c1f2e3d4a5b6`，2026-10-06 升到
+   `b8d1f2a3c4e5`）；契約 fixture 61 → 64，三個新狀態首次有解碼覆蓋
+✅ `alembic check` drift 回到 baseline 9 項（修好 `recurring_rides` 漏 `length=` 那兩項）
+✅ admin-web React / 81 vitest / tsc exit 0 / UI verifier PASS
 ✅ 後台治理：四級 RBAC（rank 比較、live row 為權威）+ 審計覆蓋金錢／狀態改動
 ✅ 後台新增：帳戶管理 / 訂單監控 / 結算預覽+confirm token+CSV / 爭議 / 主體搜尋 / 頭像上傳
 ✅ 後台實時地圖 `#/live`：Leaflet + OpenStreetMap（免金鑰、不計費）、15 秒輪詢；路由 code-split
@@ -262,8 +333,8 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 ✅ P1-4 備份 script + 還原演練實跑 PASS（27 tests）
 ✅ TOTP 對 RFC 6238 / 4226 全部 16 條官方向量 PASS（實測）
 ✅ `app/models` 拆包：886 行 → 5 個 bounded-context 模組，零呼叫點改動
-✅ 全部 89 個 operation 都有 `response_model=`
+✅ 全部 112 個 operation 都有 `response_model=`（audit script 實跑驗證）
 ⚠️ push 未做 — 用戶指示「只需 commit」（見 §5）
 ⬜ 真正等 credentials 的只有 3 家 provider：Google Maps / FCM / WhatsApp
-⬜ 主機名未定（三種拼法並存）— §4A
+✅ 主機名已定：`hkfastdc.com`（單一 origin，2026-10-04）— §4A
 ```

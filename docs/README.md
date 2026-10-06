@@ -1,11 +1,11 @@
 # `docs/` — 文檔索引
 
-> **EN — Docs index.** Thirteen living documents plus an `archive/` of dated
+> **EN — Docs index.** Seventeen living documents plus an `archive/` of dated
 > snapshots. Start with `ARCHITECTURE.md` if you want to understand the system,
 > `DEVELOPMENT.md` if you are about to change it, and `WORK_SUMMARY.md` if you
 > need to know what is still outstanding.
 >
-> **中文摘要**：13 份現行文檔 + 一個放歷史快照的 `archive/`。要**理解系統**讀
+> **中文摘要**：17 份現行文檔 + 一個放歷史快照的 `archive/`。要**理解系統**讀
 > `ARCHITECTURE.md`；要**動手改**讀 `DEVELOPMENT.md`；要知道**還欠什麼**讀
 > `WORK_SUMMARY.md`。
 
@@ -20,7 +20,9 @@
 | **要上線／運維** | [`DEPLOYMENT_REQUIREMENTS.md`](DEPLOYMENT_REQUIREMENTS.md) → [`DEPLOY_TARGET_DECISION.md`](DEPLOY_TARGET_DECISION.md) → [`../deploy/README.md`](../deploy/README.md) |
 | **做安全審視** | [`SECURITY.md`](SECURITY.md) → [`archive/SECURITY_AUDIT.md`](archive/SECURITY_AUDIT.md) |
 | **做 QA／測試** | [`QA_TEST_ENVIRONMENT.md`](QA_TEST_ENVIRONMENT.md) |
-| **接手未完成的產品工作** | [`WORK_SUMMARY.md`](WORK_SUMMARY.md) §4 → [`IN_TRIP_REDESIGN.md`](IN_TRIP_REDESIGN.md) |
+| **接手未完成的產品工作** | [`WORK_SUMMARY.md`](WORK_SUMMARY.md) §4 → [`FEATURE_EXPANSION_2026-10-05.md`](FEATURE_EXPANSION_2026-10-05.md) |
+| **接手未修的審計項** | [`AUDIT_FINDINGS_LINEBYLINE.md`](AUDIT_FINDINGS_LINEBYLINE.md)（**全項目 open items 的權威清單**） |
+| **想知道現在有什麼壞掉** | [`ERROR_SCAN_2026-10-05.md`](ERROR_SCAN_2026-10-05.md) |
 
 ---
 
@@ -28,7 +30,7 @@
 
 | 文檔 | 讀它來了解 | 性質 |
 |---|---|---|
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | **起點。** 一程車由叫車到收費的完整流程、錢在哪裡被改動、18 條不變式清單、值得學的教訓 | 導讀 |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | **起點。** 一程車由叫車到收費的完整流程、錢在哪裡被改動、**23 條不變式清單**（每條都曾經是 bug）、值得學的教訓 | 導讀 |
 | [`DEVELOPMENT.md`](DEVELOPMENT.md) | 分層規範（後端／Flutter／React）、**12 條非顯而易見的後端行為怪癖**、lint gate、環境限制、方法論教訓 | 指南 |
 | [`WORK_SUMMARY.md`](WORK_SUMMARY.md) | 已建了什麼、實跑驗證了什麼、**還有什麼未做與為什麼**（§4 分憑證阻塞／刻意取捨） | 索引 |
 | [`SECURITY.md`](SECURITY.md) | 安全模型、已驗證的控制、SEV 分級發現、加固路線圖 | 報告 |
@@ -41,6 +43,16 @@
 | [`LANDMARK_COORDINATES.md`](LANDMARK_COORDINATES.md) | 19 個地標落客座標（供人手覆核）＋深圳灣口岸港方口岸區的完整幾何分析與法律依據 | 參考資料 |
 | [`REALTIME_POSITION_COST.md`](REALTIME_POSITION_COST.md) | 一個 GPS tick 的成本實測、不同並發下的開銷、擴展天花板、5 項按投報率排序的優化 | 分析 |
 | [`STRUCTURE_REVIEW.md`](STRUCTURE_REVIEW.md) | 目錄佈局的評估：已很好的部分、8 項按價值／風險排序的建議、以及比目錄更重要的那個結構盲點 | 評估 |
+| [`AUDIT_FINDINGS_LINEBYLINE.md`](AUDIT_FINDINGS_LINEBYLINE.md) | **逐行審計的 findings log（活文件）**：每個發現的編號、證據（檔案:行號）、修復狀態。要查「還有哪項未修」以這裡為權威 | 審計 |
+| [`AUDIT_REPORT_2026-10-04.md`](AUDIT_REPORT_2026-10-04.md) | 企業級全量審計報告 v4（修復輪）：分輪發現與處置（帶日期，見下方說明） | 報告 |
+| [`FEATURE_EXPANSION_2026-10-05.md`](FEATURE_EXPANSION_2026-10-05.md) | 下一波產品功能的整合設計 backlog（取代舊的分散提案） | 提案 |
+| [`ERROR_SCAN_2026-10-05.md`](ERROR_SCAN_2026-10-05.md) | **實跑式全專案錯誤掃描**：每個 gate 的真實輸出、已驗證乾淨項、以及哪些 gate 因環境未跑（帶日期） | 報告 |
+
+> **「現行」與「帶日期」的界線**：`AUDIT_FINDINGS_LINEBYLINE.md` 是**活文件**——
+> 條目狀態會隨修復進度更新，是 open items 的權威。
+> `AUDIT_REPORT_2026-10-04.md` 與 `ERROR_SCAN_2026-10-05.md` 帶日期、記的是
+> **當天量到什麼**（含當天的 HEAD），按第 3 條守則**不追現況**；要今天的狀態讀
+> `WORK_SUMMARY.md`。
 
 ## 相關文檔（不在 `docs/`）
 
@@ -81,6 +93,44 @@
 3. **「現值」vs「有日期快照」是判斷標準，不是「數字舊不舊」。**
    現行文檔的測試數、路徑數要跟現況；帶日期的快照**刻意不改**。
 4. **`docs/archive/` 只進不出**：新的審計／審查報告用帶日期的檔名，直接寫進
-   `archive/`，不要混進現行文檔。
+   `archive/`，不要混進現行文檔。**唯一的例外**是上表下方註解點名的那兩份帶日期
+   報告（`AUDIT_REPORT_2026-10-04.md`、`ERROR_SCAN_2026-10-05.md`）：它們刻意留在
+   `docs/`，因為索引要讓人找得到「當天量到什麼」。除此之外的新報告一律入
+   `archive/`。
 5. **改了架構就同步**：`ARCHITECTURE.md`、`DEVELOPMENT.md`、`WORK_SUMMARY.md`
    三者是最容易漂移的，改動後要一起看。
+6. **計數器只寫「實跑量到」的數字，並講明用什麼方法量。**
+   寫一個沒跑過的測試數，等於偽造量測記錄 —— 與第 3 條同一個道理。
+   量不到就寫「未驗證」並註明原因（例如環境缺 DB），**不要**沿用上一個數字。
+
+---
+
+## 量測基準（2026-10-06）
+
+本表是**現行文檔引用的計數器的唯一來源**。改了架構或加了測試／畫面，先重跑下面的
+量法，再更新引用它的文檔（`../README.md`、`WORK_SUMMARY.md`）。
+
+| 計數器 | 現值 | 怎樣量 |
+|---|---|---|
+| 後端 `app/` | 128 個 `.py` · 26,725 LOC | `find app -name "*.py" \| wc -l` |
+| API surface | **106 paths / 119 operations** | `create_app().openapi()['paths']` |
+| response_model 覆蓋 | 97/101 schema reachable；119 operations 全有 `response_model` | `scripts/verify/audit_response_models.py` |
+| Alembic | **20** migrations · 單一 head `b8d1f2a3c4e5` | `alembic heads` / `ls alembic/versions/*.py` |
+| `tests/` | 55 個 `.py`（54 個 `test_*.py` · 992 個 `def test_`） | `find tests -name "test_*.py" \| wc -l` |
+| 後端 pytest | **全套 1213 passed / 0 failed / 0 error**（2026-10-06 單一 process 實跑） | `python -m pytest -q --junit-xml=…` |
+| `mobile/lib` | 82 個 `.dart` · 17,042 LOC · **29** 個 `*_screen.dart` | `find mobile/lib -name "*.dart"` |
+| Dart harness | **153 passed / 0 failed** | `dart … tool/run_tests.dart` |
+| Dart LSP check | **84 files opened / 0 diagnostics** | `python mobile/tool/dart_check.py mobile` |
+| Contract | 65 個 fixture json；harness 解到 **64** 個 · 0 failure | `dart … tool/verify_contract.dart` |
+| `admin-web/web/src` | 49 個 `.ts/.tsx` · 16,965 LOC · 18 個頁面 | `ls src/pages/*.tsx \| grep -v .test.` |
+| 後台 vitest | **81 passed（11 檔）** | `npx vitest run --no-file-parallelism --pool=forks` |
+| `scripts/` | 22 個 `.py` | `find scripts -name "*.py"` |
+
+> ✅ **後端測試 2026-10-06 全套一次過實跑全綠**（Docker Desktop 開住、`realtaxi-db` ＋
+> `realtaxi-redis` healthy）：`.venv/Scripts/python.exe -m pytest tests -q --junit-xml=.tmp/final.xml`
+> = **1213 passed / 0 failed / 0 error / 0 skipped**。先前「一次過跑會中途中止、唔敢
+> 宣稱 full-suite 全綠」嘅情況已經消失；單一 process 順序跑穩定。
+> ⚠️ 並行跑兩隻 pytest 仍不建議（爭同一 DB/Redis 資源）。**GEO index 已納入
+> `REDIS_KEY_NAMESPACE`**（`app/services/order/geo_service.py::geo_orders_key`），
+> 所以「兩隻 run 互相污染出假 failed」嘅根因已消除。
+> 逐次掃描的歷史快照見 [`ERROR_SCAN_2026-10-05.md`](ERROR_SCAN_2026-10-05.md)。

@@ -6,8 +6,10 @@ three roles, and a web admin console.
 
 > 香港的士配對平台，走**資訊中介**定位（非承運人）。一個 repo 內含三件完整交付物。
 
-**Status: production-hardened.** 961 backend tests · 97 mobile assertions · 54
-contract fixtures · 69 console tests · browser UI verifier PASS.
+**Status: production-hardened.** Backend test count is not quoted here — it drifts
+and this line had gone stale twice; see [`docs/README.md`](docs/README.md) for the
+measurement baseline. Mobile: 153 assertions · 64 contract fixtures decoded (65 files) ·
+console: 81 vitest tests · browser UI verifier PASS.
 
 **New here? Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first** — a guided
 tour of how a trip flows from hail to settlement, where money is allowed to
@@ -53,13 +55,13 @@ carries the passenger.
 
 | # | Deliverable | Path | Scale | Tech |
 |---|---|---|---|---|
-| 1 | **Backend** | `app/` | 82 files · 20,132 LOC | FastAPI async · PostgreSQL 16/PostGIS · Redis 7 · SQLAlchemy 2.0 · Alembic |
-| 2 | **Mobile** | `mobile/` | 56 Dart files · 10,108 LOC | Flutter 3.44 · Riverpod · go_router · Dio · flutter_secure_storage |
-| 3 | **Admin console** | `admin-web/` | 46 TS/TSX files · 15,271 LOC | React 18 + Vite + TypeScript (current) · hand-written ES modules (legacy) |
+| 1 | **Backend** | `app/` | 128 files · 26,725 LOC | FastAPI async · PostgreSQL 16/PostGIS · Redis 7 · SQLAlchemy 2.0 · Alembic |
+| 2 | **Mobile** | `mobile/` | 82 Dart files · 17,042 LOC | Flutter 3.44 · Riverpod · go_router · Dio · flutter_secure_storage |
+| 3 | **Admin console** | `admin-web/` | 49 TS/TSX files · 16,965 LOC | React 18 + Vite + TypeScript (current) · hand-written ES modules (legacy) |
 
-Plus the glue that keeps them honest: `scripts/` (21 tools), `tests/` (39 files),
-`docs/` (12 living documents + `docs/archive/` for dated snapshots),
-`alembic/` (11 migrations), `deploy/`.
+Plus the glue that keeps them honest: `scripts/` (22 tools), `tests/` (55 files),
+`docs/` (17 living documents + `docs/archive/` for dated snapshots),
+`alembic/` (20 migrations), `deploy/`.
 
 ### 1.3 How they fit together
 
@@ -117,7 +119,7 @@ cp .env.example .env          # adjust if needed; see §8.2 Configuration
 # 4. run + verify
 .venv/Scripts/python scripts/dev/serve_and_probe.py   # detached uvicorn + health wait
 .venv/Scripts/python scripts/verify/verify_api.py     # one-shot API smoke
-.venv/Scripts/python -m pytest -q                     # 1060 tests
+.venv/Scripts/python -m pytest -q                     # needs `docker compose up -d db redis`
 uv run ruff check . && uv run ruff format --check .
 ```
 
@@ -139,10 +141,11 @@ cd android && ./gradlew :app:assembleDebug   # → build/app/outputs/flutter-apk
 cd admin-web/web
 npm install
 npm run typecheck && npx vitest run && npm run build   # → web/dist
-cd .. && python serve.py --dist                        # serve the React build
+cd .. && python serve.py                               # serve the React build (default)
 ```
 
-> `serve.py` without `--dist` serves the **legacy** console. See §5.
+> `serve.py` serves the **React** build by default; `--legacy` serves the old
+> console. See §5.
 
 ---
 
@@ -332,12 +335,12 @@ lib/
 
 `lib/models/` mirrors the backend schema — but nothing enforces that at build
 time. So the wire format is **captured from a running API** into
-`test/fixtures/` (54 fixtures) and every one is decoded with the real Dart models:
+`test/fixtures/` (63 fixtures) and every one is decoded with the real Dart models:
 
 ```bash
 .venv/Scripts/python scripts/dev/gen_mobile_fixtures.py     # capture
 cd mobile && dart --packages=.dart_tool/package_config.json tool/verify_contract.dart
-# → 54 fixture(s) decoded, 0 failure(s)
+# → 64 fixture(s) decoded, 0 failure(s)
 ```
 
 A backend field rename that the Dart model does not expect fails here, before
@@ -387,7 +390,7 @@ three ways the LSP driver silently reports "0 diagnostics" while being wrong.
 | **React (current)** | `web/` | Vite + React 18 + TypeScript → `web/dist` | supported |
 | **Legacy** | `legacy/` (`index.html`, `js/`, `styles.css`) | none — hand-written ES modules | kept as reference |
 
-`serve.py --dist` serves the React build; without the flag, the legacy one
+`serve.py` serves the React build by default; `--legacy` serves the old one
 (`legacy/`).
 
 The legacy bundle is kept because it still works **and it is the reference the
@@ -466,9 +469,9 @@ enforces that they agree**. This section is the mitigation.
 
 | Boundary | Mechanism | Failure it catches |
 |---|---|---|
-| API → mobile | 54 fixtures captured from a **running** API, decoded by real Dart models | A renamed/removed field, before an APK is built |
+| API → mobile | 63 fixtures captured from a **running** API, decoded by real Dart models | A renamed/removed field, before an APK is built |
 | API → console | TypeScript types in `api/`, `npm run typecheck` | A changed response shape at compile time |
-| Response shape → itself | `audit_response_models.py` vs captured fixtures (68 blocks) | A `response_model` that silently drops a field |
+| Response shape → itself | `audit_response_models.py` vs captured fixtures (73 blocks) | A `response_model` that silently drops a field |
 | DB schema → models | `test_migration_schema_parity.py` — the **only** test that runs migrations | Model/migration drift |
 | Enum shape → DB | `test_enum_check_constraints.py` + CHECK constraints | A value the app cannot read back |
 
@@ -499,28 +502,55 @@ uv run mypy                                        # types; no database needed
 
 # mobile (Dart, in mobile/)
 python tool/dart_check.py .                        # 0 diagnostics expected
-dart --packages=.dart_tool/package_config.json tool/run_tests.dart      # 97 passed
-dart --packages=.dart_tool/package_config.json tool/verify_contract.dart # 54 fixtures
+dart --packages=.dart_tool/package_config.json tool/run_tests.dart      # 153 passed
+dart --packages=.dart_tool/package_config.json tool/verify_contract.dart # 64 fixtures
 
 # console (in admin-web/web/)
 npm run typecheck && npx vitest run && npm run build
 ```
 
-> `--junit-xml=` is not optional here: a `[safe-delete]` marker is injected into
-> stdout and truncates the summary, so the printed total and exit code are both
-> unreliable. **Read the XML.**
+> `--junit-xml=` is not optional here. On this dev host `pytest` **always exits 1**
+> and never prints its summary line: pytest's own tmpdir garbage collector tries to
+> `rmtree` a `pytest-of-user/garbage-*` directory holding several hundred files, the
+> sandbox's bulk-delete guard refuses, and that refusal becomes pytest's exit code.
+> The tests themselves are clean -- the run that produced 1213 passed reported rc=1.
+> **Read the XML, never the exit code.**
 >
-> 判斷結果一定要讀 XML。stdout 會被注入 marker 截斷，連 exit code 都不可信。
+> `--junit-xml=` 不是可選項。本機 `pytest` **必定回傳 1**，而且永遠不會印出 summary
+> 行：pytest 自己的 tmpdir GC 要 `rmtree` 一個載着幾百個檔案的
+> `pytest-of-user/garbage-*`，沙盒的 bulk-delete 守衛拒絕，那個拒絕就變成 pytest
+> 的 exit code。測試本身是乾淨的。**只讀 XML，不要看 exit code。**
+>
+> The same shim blocks `npm run build`: Vite empties `dist/assets` before writing, and
+> once that directory holds more than 50 files the sandbox refuses the bulk delete —
+> the build then dies with `x Build failed in 1.20s`, which reads like a compile error
+> and is not one. Move `dist/` aside first; with a clean `dist` the build is green.
+>
+> 同一道守衛也會擋 `npm run build`：Vite 寫入前會清空 `dist/assets`，一旦該目錄超過
+> 50 個檔案，沙盒就拒絕批量刪除，build 會以 `x Build failed in 1.20s` 收場 —— 看起來
+> 像編譯錯誤，其實不是。先把 `dist/` 移走再 build 就綠。
 
 ### 7.2 What is covered
 
 | Suite | Count | Covers |
 |---|---|---|
-| `tests/` (39 files) | **961** | fare unit · per-module API · WS streaming · fleets/roster/settlement · backup retention + restore drill · console contrast · hardening regressions |
-| `mobile/tool/run_tests.dart` | **97** | Dart unit assertions |
-| `mobile/tool/verify_contract.dart` | **54 fixtures** | every wire shape, decoded by the real models |
-| `admin-web/web` (vitest) | **69** | page-level behaviour |
+| `tests/`（55 files；api 37 + domain 7 + infra 10 + conftest） | **全套 1213 passed / 0 failed / 0 error**（單一 process 實跑，2026-10-06） | fare unit · per-module API · WS streaming · fleets/roster/settlement · backup retention + restore drill · console contrast · hardening regressions |
+| `mobile/tool/run_tests.dart` | **153** | Dart unit assertions |
+| `mobile/tool/verify_contract.dart` | **64 fixtures**（共 65 個 fixture json） | every wire shape, decoded by the real models |
+| `admin-web/web` (vitest) | **81** | page-level behaviour |
 | `verify_ui.mjs` + `audit_layout.mjs` | PASS | real-browser E2E, layout, both themes |
+
+> 後端 pytest 狀態（2026-10-06）：**一次過 `pytest tests` 全套實跑全綠 =
+> 1213 passed / 0 failed / 0 error / 0 skipped**（junit `.tmp/final.xml`；rc=1 是
+> 沙盒擋住 pytest 的 tmpdir GC，見 §7.1）。
+> 先前「一次過跑會中途中止、唔敢宣稱 full-suite 全綠」嘅情況**已經消失**。
+> 跑法：`docker compose up -d db redis` 之後
+> `.venv/Scripts/python.exe -m pytest tests -q --junit-xml=.tmp/full2.xml`。
+>
+> ⚠️ 並行跑兩隻 pytest 仍**不建議**（爭同一 DB/Redis 資源），但「互相污染出假
+> failed」嘅根因已消除：**Redis GEO index 已納入 `REDIS_KEY_NAMESPACE`**
+> （`geo_orders_key()`，per-process），同 rate-limit key 一樣。
+> 見 [`docs/README.md`](docs/README.md) 的量測基準表。
 
 Per-test isolated Postgres databases (template clone) — no cross-test state.
 
@@ -535,7 +565,7 @@ Per-test isolated Postgres databases (template clone) — no cross-test state.
 These answer questions, they do not just exercise code:
 
 ```bash
-.venv/Scripts/python scripts/verify/audit_response_models.py   # 68 blocks, OK
+.venv/Scripts/python scripts/verify/audit_response_models.py   # 73 blocks, OK
 .venv/Scripts/python scripts/verify/prod_boot_drill.py         # 12 fail-fast cases
 .venv/Scripts/python scripts/verify/live_smoke.py              # 9-check E2E
 .venv/Scripts/python scripts/verify/security_verify.py         # re-run every finding
@@ -675,15 +705,15 @@ mobile/           Flutter client (Android first) — see §4
 admin-web/        Web console, React + legacy — see §5
 
 alembic/          async migrations (postgis tables filtered via include_object)
-tests/            39 pytest files, grouped by what they need — and the only place
+tests/            52 pytest files, grouped by what they need — and the only place
                   migrations are actually run
-  api/              24 drive the HTTP surface (they take the `client` fixture)
-  domain/            6 pure logic, no database (fare, money, bounds, totp)
-  infra/             9 guards over files and configuration (migration parity,
+  api/              35 drive the HTTP surface (they take the `client` fixture)
+  domain/            7 pure logic, no database (fare, money, bounds, totp)
+  infra/            10 guards over files and configuration (migration parity,
                      pool arithmetic, backup, compose, `scripts/` root, contrast)
 scripts/          tooling, grouped by what you are doing
   ops/              operate a real environment — db_backup, create_admin,
-                    create_admin_account, enrol_admin_totp
+                    create_admin_account, create_reviewer_account, enrol_admin_totp
   verify/           produce a pass/fail verdict — audit_response_models, live_smoke,
                     security_probe + security_verify, prod_boot_drill, verify_api,
                     bench_location_pipeline, the three connection probes
@@ -692,7 +722,7 @@ scripts/          tooling, grouped by what you are doing
   _root.py          the repo root, computed once (not fifteen times)
 
 deploy/           nginx TLS terminator + README
-docs/             12 living documents + archive/ — start with docs/README.md
+docs/             17 living documents + archive/ — start with docs/README.md
 docker-compose.yml
 docker-compose.prod.yml   overlay, not standalone
 Dockerfile        multi-stage; `uv sync --frozen`
@@ -708,6 +738,7 @@ what" by role.
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **Start here** — guided tour, business flow, invariants |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Conventions, backend quirks, lint gate, methodology |
 | [`docs/WORK_SUMMARY.md`](docs/WORK_SUMMARY.md) | Current state, everything outstanding |
+| [`docs/AUDIT_FINDINGS_LINEBYLINE.md`](docs/AUDIT_FINDINGS_LINEBYLINE.md) | **The authoritative open-items list** — every audit finding, its evidence, its fix state |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Security model + hardening guide |
 | [`docs/ADMIN_AUTH.md`](docs/ADMIN_AUTH.md) | Admin auth model, authenticator choice |
 | [`docs/ADMIN_CONSOLE_DESIGN.md`](docs/ADMIN_CONSOLE_DESIGN.md) | Console design + four-level RBAC |

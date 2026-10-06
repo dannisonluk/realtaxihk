@@ -225,11 +225,11 @@ Vite dev server 自己代理 `/api`，所以**不需要** CORS，也用不到 `C
 
 ```bash
 npm run build          # → admin-web/web/dist
-cd .. && python serve.py --dist      # → http://127.0.0.1:3000
+cd .. && python serve.py             # → http://127.0.0.1:3000
 ```
 
-`serve.py` 預設埠 **3000**（`CORS_ORIGINS` 裡本來就有它）；不加 `--dist` 時它服務
-的是**舊版** console。
+`serve.py` 預設埠 **3000**（`CORS_ORIGINS` 裡本來就有它），而且**預設服務新版**
+React build（`web/dist`）；要服務舊版 console 才加 `--legacy`。
 
 ### 5.3 手機 App
 

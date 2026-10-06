@@ -165,9 +165,10 @@ two are errors: AGP 9 deprecates the old DSL, but Flutter's template pins
 `android.newDsl=false`, so the old `android { }` block is still the supported
 path and the notice is a warning. The footer counts warnings and errors together.
 
-The Dart source is verified too, and all of it passes: the four commands above
-(`tool/dart_check.py` reports 68 files / 0 diagnostics), `tool/run_tests.dart`
-(127 cases) and `tool/verify_contract.dart` (54 fixtures, 0 failures).
+The Dart source is verified too: the four commands above. As of **2026-10-06** the
+numbers are `tool/dart_check.py` → **84 files opened, 0 with diagnostics**;
+`tool/run_tests.dart` → **153 cases, 0 failed**; `tool/verify_contract.dart`
+→ **64 fixtures decoded, 0 failure** (65 fixture files on disk).
 
 What none of the four can see: `res/`, the `assets:` block, and the Flutter plugin
 set. The Dart analyzer does not read Android resources, and the two scripts never
@@ -269,7 +270,7 @@ python ../scripts/dev/gen_mobile_fixtures.py      # boots the API, captures real
 dart --packages=.dart_tool/package_config.json tool/verify_contract.dart
 ```
 
-The generator writes 54 raw responses to `test/fixtures/`, each with the
+The generator writes **63** raw responses to `test/fixtures/`, each with the
 endpoint it came from in `manifest.json`. The verifier decodes every one with
 the **real** models, and fails if a fixture has no decoder or a decoder has no
 fixture — so a new endpoint cannot be added to the generator and quietly go
@@ -437,14 +438,22 @@ password login need no such switch, but they do need a Turnstile token once
 dart --packages=.dart_tool/package_config.json tool/run_tests.dart
 ```
 
-127 cases over the code with no Flutter dependency: money and date formatting, the
+**149** cases over the code with no Flutter dependency: money and date formatting, the
 wire decoders, the enums, the error envelope, websocket frames, pagination, the
 models (including the fleet and profile shapes), the router redirect rules, the
 password policy, the HK phone format, and the Turnstile widget protocol.
 
 Formatting is `dart format --line-length 100` — the flag matters, the repo is
 written at 100 columns and the tool defaults to 80, which would reformat every
-file in the tree.
+file in the tree. CI enforces it with `--set-exit-if-changed lib tool`, so a
+non-conforming file fails the build rather than merely being reported.
+
+The pinned SDK is Flutter **3.44.0** (bundled Dart **3.12.0**), and the format
+output is version-specific: the Dart 3.12 formatter joins lines the older one
+split, so a tree formatted by a different SDK is not conforming here. When the
+gate was first added only eight files were fixed; drift accumulated afterwards
+(nineteen files at `HEAD`), which is why the whole tree was reformatted. If you
+touch `lib/` or `tool/`, run the formatter before committing.
 
 Not `package:test`, because neither `flutter test` nor `dart test` can start
 here — both go through `dartdev`, which is what trips the pipe bug. `tool/run_tests.dart`
@@ -505,19 +514,17 @@ it imports must not reach `package:flutter`.
   writes. Whether Cloudflare **accepts** the token additionally depends on the
   site key's allowed-domain list containing the host in `TURNSTILE_BASE_URL`.
 * Push notifications are not wired up; the trip screen polls instead.
-* **No profile-completion screen.** `POST /identity/profile` wants a username, a
-  given name and a family name, and nothing in the app calls it — so a registered
-  account has `username IS NULL` and the account screen falls back to the masked
-  phone. Registration deliberately does not collect a name: that would be a fourth
-  required field on a form whose whole point is being short.
 * **No change-password or forgotten-password flow.** There is no
   `POST /auth/password/*` on the server either, so this is a backend gap as much
   as a client one.
-* **`GET /identity/me` is not in `test/fixtures/`.** `Profile` is decoded in
-  `tool/run_tests.dart` against a hand-built body instead, so the fixture loop —
-  the check that runs the real decoder over the real bytes — does not cover it.
-  Closing that needs a case in `scripts/dev/gen_mobile_fixtures.py` plus a decoder
-  in `tool/verify_contract.dart`, and the generator needs the API running.
+* ~~No profile-completion screen~~ — **closed.** `lib/features/shared/profile_setup_screen.dart`
+  calls `POST /identity/profile` (username + given/family name + optional gender), offered
+  from the account screen and the booking screen. It is deliberately **not** a gate: the
+  server never refuses anything for an incomplete profile, so a client-side redirect would be
+  stricter than the API. Registration still does not collect a name.
+* ~~`GET /identity/me` is not in `test/fixtures/`~~ — **closed.** `identity_me.json` and
+  `identity_profile.json` are captured by `scripts/dev/gen_mobile_fixtures.py` and decoded by
+  the real `Profile` in `tool/verify_contract.dart`, so the fixture loop now covers it.
 * **A reviewer account that has expired still gets a session from `/auth/login`
   if it was signed in before the expiry.** Cold start is handled — a 403
   `REVIEWER_ACCOUNT_EXPIRED` from `/auth/me` clears the stored session rather than

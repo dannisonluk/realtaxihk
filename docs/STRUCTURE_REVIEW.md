@@ -144,8 +144,8 @@ React build（`web/`）、驗證腳本（`tool/`）、`serve.py`、`README.md`�
 **已把 legacy 三件搬入 `admin-web/legacy/`**，`admin-web/` 頂層現在只餘
 `README.md` · `serve.py` · `legacy/` · `tool/` · `web/`。
 
-- `serve.py` 的 `SERVE_ROOT` 預設改為 `ROOT / "legacy"`（`--dist` 仍然指向
-  `web/dist` 不變）。已直接載入模組驗證三個檔案都在新位置。
+- `serve.py` 的 `SERVE_ROOT` 預設改為 `ROOT / "web" / "dist"`（React build）；
+  `--legacy` 才指向 `legacy/`。已直接載入模組驗證三個檔案都在新位置。
 - `verify_ui.mjs` 的拒絕訊息由 `admin-web/js` 改為 `admin-web/legacy`。
   它的偵測邏輯不受影響 —— 它讀的是**已服務的 HTML**（legacy 仍然載入
   `/js/app.js`，Vite build 載入 `/assets/`），不是磁碟路徑。

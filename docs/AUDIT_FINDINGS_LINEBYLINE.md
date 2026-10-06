@@ -894,11 +894,12 @@ generator captures*, not in the tool's design.
 ## Verified green by hand (not taken from a report)
 
 - **`scripts/verify/audit_response_models.py`** — run directly:
-  `68 fixture blocks checked`, `93 operations with a response_model`,
-  `OK — every fixture key survives its response_model`, exit 0. The 5 schemas it lists as
-  "declared but not reachable" are each explained in its own allow-list
+  `73 fixture blocks checked`, `112 operations with a response_model`,
+  `OK — every fixture key survives its response_model`, exit 0. (2026-10-05 re-run;
+  the earlier revision of this line said 68/93 — the API has since grown.) The 5 schemas it
+  lists as "declared but not reachable" are each explained in its own allow-list
   (`ChallengeOut` = "declared for symmetry; never returned", `AdminDepositOut` = "base class of
-  `AdminDepositOut`Detail"), so the list is accounted for, not a gap.
+  `AdminDepositOutDetail`"), so the list is accounted for, not a gap.
 - **`tests/` has no disabled tests.** `grep -rn "pytest.mark.skip\|xfail\|skipif" tests/` finds no
   markers; the only skip is a documented guard at `test_security_hardening.py:833-836`
   (`pytest.importorskip("uvicorn.middleware.proxy_headers")` → `pytest.skip("uvicorn internals

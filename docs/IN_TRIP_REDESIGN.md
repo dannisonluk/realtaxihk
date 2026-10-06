@@ -1,18 +1,23 @@
 # In-Trip 業務邏輯重新設計 / In-Trip Redesign
 
-> **EN — Summary.** A redesign proposal for the in-trip phase (P4), not yet
-> implemented. It widens the order state machine beyond today's `IN_TRIP →
-> COMPLETED` dead end, adding `DESTINATION_CHANGED` (non-terminal) and
-> `INTERRUPTED` (terminal), plus a per-trip platform fee and the rules for when
-> a driver may refuse or end a trip.
+> **EN — Summary.** The in-trip redesign (P4). **Implemented 2026-10-06, with one
+> exception: §3.6 and §4.0.3–4.0.5 — pre-booking (`SCHEDULED` orders, the
+> `landmarks` table, driver booking preferences) — are still a proposal and have
+> no code.** What landed widens the order state machine beyond the old
+> `IN_TRIP → COMPLETED` dead end, adding `DESTINATION_CHANGED` (non-terminal) and
+> `INTERRUPTED` (terminal), plus the two-step arrival proof, mid-trip destination
+> change, interrupt, the per-trip platform fee and the default penalties.
 >
 > **Read this before editing `ORDER_TRANSITIONS`.** The state machine has two
 > invariants asserted by tests — terminal states have no outgoing edges, and
-> `CANCELLED` is unreachable once a trip is under way. `INTERRUPTED` is terminal
-> while `DESTINATION_CHANGED` is not, so both must be re-checked when this lands.
+> `CANCELLED` is unreachable once arrival is proven. `INTERRUPTED` is terminal
+> while `DESTINATION_CHANGED` is not, so both are re-checked on every change.
 
-> **中文摘要**：**P4 in-trip 重新設計提案，尚未實作**。把訂單狀態機由 `IN_TRIP →
-> COMPLETED` 的死巷擴闊，加入 `DESTINATION_CHANGED`（非終態）與 `INTERRUPTED`（終態）。
+> **中文摘要**：**P4 in-trip 重新設計 —— 2026-10-06 已實作，但有一項例外：§3.6 與
+> §4.0.3–4.0.5（預約服務：`SCHEDULED` 訂單、`landmarks` 表、司機預約偏好）仍未實作，
+> 程式碼中完全不存在，仍屬提案。** 已落地的部分把訂單狀態機由 `IN_TRIP → COMPLETED`
+> 的死巷擴闊，加入 `DESTINATION_CHANGED`（非終態）與 `INTERRUPTED`（終態），以及兩步
+> 到達驗證、行程中改目的地、中斷、平台行程費與違約罰款。
 > **改動 `ORDER_TRANSITIONS` 前務必先讀** —— 狀態機有兩條由測試守住的不變式。涵蓋資料庫
 > schema、API 設計、狀態機、前端流程。**七個 DECISION 全部已拍板，集中於 §9。** 座標完整
 > 清單（含 Google Maps 連結）見 `docs/LANDMARK_COORDINATES.md`。
@@ -881,8 +886,14 @@ haversine。`current_location` 可能為 NULL（從未上線 / GPS 失敗）→ 
 - **中斷行程原因（司機版）**：與乘客版對稱但選項不同 —— 交通意外 / 撞車、與乘客發生衝突、
   乘客態度惡劣、乘客嘔吐 / 嚴重不適（需求點名）、車輛故障、路線不安全、車資爭議、其他。
   > 兩邊共用同一 `InterruptionReason` enum，前端只顯示該角色合理選項，**後端仍要校驗**
-  > （`interrupted_by_kind='driver'` 時拒絕 `PASSENGER_MISCONDUCT` 等）—— 前端過濾是禮貌，
-  > 後端校驗是授權。
+  > （乘客提出時拒絕 `PASSENGER_MISCONDUCT` / `PASSENGER_SICK`，司機提出時拒絕
+  > `DRIVER_MISCONDUCT`）—— 前端過濾是禮貌，後端校驗是授權。
+  >
+  > **已實作（2026-10-06）**：`app/models/user.py::INTERRUPTION_REASONS_BY_PARTY`，
+  > 由 enum 推導（`全部成員 − 對方專屬原因`），所以日後新增成員預設兩邊都准，不會
+  > 靜默變成「存在但沒人能填報」。`POST /orders/{id}/interrupt` 拒絕時回
+  > **422 `REASON_NOT_FOR_PARTY`**（與 `NOTE_REQUIRED` 同級：值合法，只是這個角色
+  > 不能這樣填），且在狀態轉換之前就拒絕。
 - **「我已到達」按鈕（新增）**：顯示上車點 +「✅ GPS 已定位（距上車點 42 米）」＋［我已到達］；
   太遠 →「你距離上車點約 480 米，請再接近」＋［重新定位］；GPS 不可用 →「無法取得你的位置，
   請確認已開啟定位權限」＋［開啟設定］。
