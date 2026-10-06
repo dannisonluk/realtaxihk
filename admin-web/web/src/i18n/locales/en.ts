@@ -659,6 +659,7 @@ export const en = {
     errPeriod: 'Period must be YYYY-Www, for example 2026-W38.',
     settleDone: 'Fleet settlement complete: charged {{count}}.',
     fieldWeek: 'ISO week (blank for this week)',
+    weekPlaceholder: '2026-W38',
     fieldWeekHint: 'This week is {{week}}.',
     runNow: 'Run this week’s fleet settlement',
     running: 'Running…',
@@ -860,6 +861,7 @@ export const en = {
     manualNote:
       'The system runs it automatically every 7 days. Use this to back-fill a specific week; re-running the same week will not charge twice.',
     fieldWeek: 'ISO week (blank for this week)',
+    weekPlaceholder: '2026-W38',
     fieldWeekHint: 'Format is YYYY-Www, for example 2026-W38.',
     preview: 'Preview (no charge)',
     exportCsv: 'Export CSV',

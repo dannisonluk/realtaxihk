@@ -198,7 +198,7 @@ export function SettlementPage() {
           <input
             id="settle-period"
             type="text"
-            placeholder="2026-W38"
+            placeholder={t('settlement.weekPlaceholder')}
             value={period}
             onChange={(event) => {
               setPeriod(event.target.value);
