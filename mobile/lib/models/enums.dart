@@ -80,6 +80,20 @@ enum DriverStatus {
   };
 }
 
+/// What generated a driver's in-app inbox row
+/// (`app/models/driver_notification.py::DriverNotificationKind`).
+enum DriverNotificationKind {
+  premium('PREMIUM'),
+  fixedFare('FIXED_FARE');
+
+  const DriverNotificationKind(this.wire);
+
+  final String wire;
+
+  static DriverNotificationKind fromWire(String value) =>
+      _decode(values, (DriverNotificationKind v) => v.wire, value, 'DriverNotificationKind');
+}
+
 /// The order lifecycle. P4 widened this (`docs/IN_TRIP_REDESIGN.md` §2): the
 /// machine used to end at `IN_TRIP -> COMPLETED`, a dead end that could express
 /// neither a mid-trip destination change nor an early end.
