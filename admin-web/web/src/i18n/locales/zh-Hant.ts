@@ -599,6 +599,11 @@ export const zhHant = {
     fieldLng: '經度',
     fieldRadius: '偵測範圍（米）',
     fieldRadiusHint: '50–5000 米。訂單落地點落入範圍會自動標記此目的地。',
+    radiusValue: '{{metres}} 米',
+    errRequired: '代碼、中文名稱同英文名稱都必須填寫。',
+    errLat: '緯度必須喺 -90 至 90 之間。',
+    errLng: '經度必須喺 -180 至 180 之間。',
+    errRadius: '範圍必須喺 50 至 5000 米之間。',
   },
 
   fleetDetail: {
@@ -727,6 +732,9 @@ export const zhHant = {
     reactivate: '重新啟用',
     deactivated: '已停用 {{username}}，並已撤銷其工作階段。',
     reactivated: '已重新啟用 {{username}}。',
+    deactivateTitle: '確定停用 {{username}}？',
+    deactivateConfirmNote:
+      '此操作會撤銷該帳戶所有目前的工作階段，並在重新啟用前禁止其登入。帳戶資料不會被刪除。',
     cannotDisableSelf: '你不能停用自己的帳戶',
     cannotDisableLast: '不能停用最後一位超級管理員',
     fieldUsername: '帳號',

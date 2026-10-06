@@ -44,7 +44,7 @@ export function useFormDialog() {
   const close = useCallback(() => setSpec(null), []);
 
   async function submit() {
-    if (!spec) return;
+    if (!spec || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -117,7 +117,7 @@ export function useConfirmDialog(danger = true) {
   }, []);
 
   async function confirm() {
-    if (!spec) return;
+    if (!spec || busy) return;
     setBusy(true);
     setError(null);
     try {

@@ -10,7 +10,6 @@
  * next slice (presigned R2 upload), so `avatar_key` stays optional here.
  */
 
-import { useEffect, useState } from 'react';
 import { useApp } from '../app/AppContext';
 import { useFormDialog } from '../app/useDialogs';
 import { useLoad } from '../app/useLoad';
@@ -35,7 +34,10 @@ function emptyDraft(): DestinationDraft {
   return { code: '', nameZh: '', nameEn: '', lat: '', lng: '', radiusM: '200' };
 }
 
-function validateDraft(draft: DestinationDraft): {
+function validateDraft(
+  draft: DestinationDraft,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): {
   code: string;
   name_zh: string;
   name_en: string;
@@ -50,16 +52,16 @@ function validateDraft(draft: DestinationDraft): {
   const lng = Number(draft.lng);
   const radius = Number(draft.radiusM);
   if (!code || !nameZh || !nameEn) {
-    throw new Error('Code, Chinese name and English name are required.');
+    throw new Error(t('destinations.errRequired'));
   }
   if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
-    throw new Error('Latitude must be a number between -90 and 90.');
+    throw new Error(t('destinations.errLat'));
   }
   if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
-    throw new Error('Longitude must be a number between -180 and 180.');
+    throw new Error(t('destinations.errLng'));
   }
   if (!Number.isFinite(radius) || radius < 50 || radius > 5000) {
-    throw new Error('Radius must be a number between 50 and 5000 metres.');
+    throw new Error(t('destinations.errRadius'));
   }
   return { code, name_zh: nameZh, name_en: nameEn, lat, lng, radius_m: Math.round(radius) };
 }
@@ -68,16 +70,12 @@ export function DestinationsPage() {
   const { client, notify } = useApp();
   const { t, formatLocale } = useI18n();
   const dialog = useFormDialog();
-  const [items, setItems] = useState<PremiumDestination[]>([]);
 
   const { data, error, loading, reload } = useLoad(
     () => endpoints.destinations.list(client),
     [client],
   );
-
-  useEffect(() => {
-    setItems(data?.items ?? []);
-  }, [data]);
+  const items = data?.items ?? [];
 
   function create() {
     const draft = emptyDraft();
@@ -91,7 +89,7 @@ export function DestinationsPage() {
         />
       ),
       onSubmit: async () => {
-        const payload = validateDraft(draft);
+        const payload = validateDraft(draft, t);
         const created = await endpoints.destinations.create(client, payload);
         notify(t('destinations.created', { code: created.code }));
         reload();
@@ -118,7 +116,7 @@ export function DestinationsPage() {
         />
       ),
       onSubmit: async () => {
-        const payload = validateDraft(draft);
+        const payload = validateDraft(draft, t);
         await endpoints.destinations.update(client, destination.id, payload);
         notify(t('destinations.updated', { code: destination.code }));
         reload();
@@ -192,7 +190,9 @@ export function DestinationsPage() {
                       <td>{destination.name_en}</td>
                       <td className="num">{destination.lat.toFixed(6)}</td>
                       <td className="num">{destination.lng.toFixed(6)}</td>
-                      <td className="num">{destination.radius_m} m</td>
+                      <td className="num">
+                        {t('destinations.radiusValue', { metres: destination.radius_m })}
+                      </td>
                       <td>
                         <Chip tone={destination.status === 'ACTIVE' ? 'ok' : 'neutral'}>
                           {t(

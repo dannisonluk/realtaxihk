@@ -54,14 +54,14 @@ export interface StoredSession {
 }
 
 /**
- * The CSRF cookie's name, and its `__Host-` variant.
+ * The CSRF cookie's name.
  *
- * Two spellings because the server picks the prefix from the environment: a
- * production deploy sets `__Host-realtaxi_admin_csrf` (enforced by the browser
- * to mean Secure + path=/ + no Domain), while http dev uses the bare name. Both
- * are read so the console works on either without a build flag.
+ * The server deliberately does not use `__Host-`: that prefix forces `path=/`,
+ * which would widen the cookie scope from `/api/v1/admin/auth` where it is
+ * needed. The legacy `__Host-` spelling is still tolerated here so a browser
+ * with a cookie set before the deploy keeps refreshing through the transition.
  */
-const CSRF_COOKIE_NAMES = ['__Host-realtaxi_admin_csrf', 'realtaxi_admin_csrf'];
+const CSRF_COOKIE_NAMES = ['realtaxi_admin_csrf', '__Host-realtaxi_admin_csrf'];
 
 let cached: StoredSession | null = null;
 

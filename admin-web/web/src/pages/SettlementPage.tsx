@@ -33,7 +33,7 @@
  * does not protect anyone across them.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { endpoints } from '../api/endpoints';
 import type { SettlementPreview, SettlementRunResult } from '../api/types';
 import { Card, DetailRow, Money, Rows } from '../components/primitives';
@@ -49,6 +49,7 @@ export function SettlementPage() {
   const { client, notify, refreshBadges } = useApp();
   const [period, setPeriod] = useState('');
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const [preview, setPreview] = useState<SettlementPreview | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [result, setResult] = useState<SettlementRunResult | null>(null);
@@ -63,27 +64,29 @@ export function SettlementPage() {
     return trimmed;
   }
 
-  const previewSettlement = useCallback(async () => {
+  function previewSettlement() {
     const wanted = checkPeriod();
     if (wanted === null) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     setResult(null);
-    try {
-      const outcome = await endpoints.settlement.previewWeekly(client, {
-        period: wanted || undefined,
-      });
-      setPreview(outcome);
-      setSecondsLeft(outcome.confirm_expires_in_seconds);
-    } catch (cause) {
-      setError(normaliseError(cause));
-    } finally {
-      setBusy(false);
-    }
-    // `checkPeriod` reads `period` from the closure and is re-created each
-    // render, so the only honest dependency here is `period` itself.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, period, notify]);
+    void (async () => {
+      try {
+        const outcome = await endpoints.settlement.previewWeekly(client, {
+          period: wanted || undefined,
+        });
+        setPreview(outcome);
+        setSecondsLeft(outcome.confirm_expires_in_seconds);
+      } catch (cause) {
+        setError(normaliseError(cause));
+      } finally {
+        busyRef.current = false;
+        setBusy(false);
+      }
+    })();
+  }
 
   /**
    * The token countdown.
@@ -111,7 +114,8 @@ export function SettlementPage() {
       setPreview(null);
       return;
     }
-
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -126,6 +130,7 @@ export function SettlementPage() {
     } catch (cause) {
       setError(normaliseError(cause));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -144,6 +149,8 @@ export function SettlementPage() {
       notify(t('settlement.errNeedWeek'), 'error');
       return;
     }
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -163,6 +170,7 @@ export function SettlementPage() {
     } catch (cause) {
       setError(normaliseError(cause));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -196,8 +204,10 @@ export function SettlementPage() {
               setPeriod(event.target.value);
               // Any edit invalidates the preview: the token is bound to the
               // numbers that were shown, and those numbers were for a different
-              // period.
+              // period. A stale result/error for another period is just as wrong.
               setPreview(null);
+              setResult(null);
+              setError(null);
             }}
           />
           <div className="t-footnote dim">{t('settlement.fieldWeekHint')}</div>

@@ -127,7 +127,7 @@ export function RefundsPage() {
       {loading ? <LoadingState /> : null}
       {error ? <ErrorState error={error} onRetry={reload} /> : null}
 
-      {data ? (
+      {!loading && data ? (
         data.length === 0 ? (
           <div className="card">
             <div className="empty">{t('refunds.empty')}</div>

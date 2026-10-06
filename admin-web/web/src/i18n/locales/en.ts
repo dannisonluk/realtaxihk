@@ -595,6 +595,11 @@ export const en = {
     fieldRadius: 'Detection radius (m)',
     fieldRadiusHint:
       '50–5000 m. An order whose drop-off falls inside the radius is automatically tagged with this destination.',
+    radiusValue: '{{metres}} m',
+    errRequired: 'Code, Chinese name and English name are required.',
+    errLat: 'Latitude must be a number between -90 and 90.',
+    errLng: 'Longitude must be a number between -180 and 180.',
+    errRadius: 'Radius must be a number between 50 and 5000 metres.',
   },
 
   fleetDetail: {
@@ -727,6 +732,9 @@ export const en = {
     reactivate: 'Reactivate',
     deactivated: 'Deactivated {{username}} and revoked their sessions.',
     reactivated: 'Reactivated {{username}}.',
+    deactivateTitle: 'Deactivate {{username}}?',
+    deactivateConfirmNote:
+      'This revokes all current sessions and blocks the account from signing in until it is reactivated. The account data remains intact.',
     cannotDisableSelf: 'You cannot deactivate your own account',
     cannotDisableLast: 'Cannot deactivate the last super admin',
     fieldUsername: 'Username',

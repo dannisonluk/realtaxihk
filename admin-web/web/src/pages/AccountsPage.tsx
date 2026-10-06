@@ -38,7 +38,7 @@ import { ADMIN_ROLES } from '../api/types';
 import { Card, Chip, Empty } from '../components/primitives';
 import { ErrorState, LoadingState } from '../components/states';
 import { useApp } from '../app/AppContext';
-import { useFormDialog } from '../app/useDialogs';
+import { useFormDialog, useConfirmDialog } from '../app/useDialogs';
 import { useLoad } from '../app/useLoad';
 import { formatTime } from '../lib/labels';
 import { useI18n } from '../i18n';
@@ -50,6 +50,7 @@ export function AccountsPage() {
   const roleLabel = useRoleLabel();
   const createDialog = useFormDialog();
   const resetDialog = useFormDialog();
+  const deactivateDialog = useConfirmDialog();
   /**
    * Which account's role buttons are in flight.
    *
@@ -180,22 +181,35 @@ export function AccountsPage() {
    * routine role moves beside it.
    */
   function changeActive(account: AdminAccount, next: boolean) {
-    void (async () => {
-      setPendingId(account.id);
-      try {
-        const result = await endpoints.accounts.setActive(client, account.id, next);
-        notify(
-          result.is_active
-            ? t('accounts.reactivated', { username: account.username })
-            : t('accounts.deactivated', { username: account.username }),
-        );
-        reload();
-      } catch (cause) {
-        notify(cause instanceof Error ? cause.message : String(cause), 'error');
-      } finally {
-        setPendingId(null);
-      }
-    })();
+    if (!next) {
+      deactivateDialog.open({
+        title: t('accounts.deactivateTitle'),
+        message: t('accounts.deactivateConfirmNote', { username: account.username }),
+        confirmLabel: t('accounts.deactivate'),
+        onConfirm: async () => {
+          await performActiveChange(account, false);
+        },
+      });
+      return;
+    }
+    void performActiveChange(account, true);
+  }
+
+  async function performActiveChange(account: AdminAccount, next: boolean) {
+    setPendingId(account.id);
+    try {
+      const result = await endpoints.accounts.setActive(client, account.id, next);
+      notify(
+        result.is_active
+          ? t('accounts.reactivated', { username: account.username })
+          : t('accounts.deactivated', { username: account.username }),
+      );
+      reload();
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : String(cause), 'error');
+    } finally {
+      setPendingId(null);
+    }
   }
 
   if (loading) return <LoadingState />;
@@ -359,6 +373,7 @@ export function AccountsPage() {
 
       {createDialog.element}
       {resetDialog.element}
+      {deactivateDialog.element}
     </>
   );
 }
