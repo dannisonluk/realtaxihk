@@ -12,6 +12,7 @@ import '../features/auth/change_password_screen.dart';
 import '../features/auth/forgot_password_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/otp_screen.dart';
+import '../features/auth/password_reset_screen.dart';
 import '../features/auth/phone_login_screen.dart';
 import '../features/auth/phone_unlock_screen.dart';
 import '../features/auth/register_screen.dart';
@@ -63,9 +64,15 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
   final _AuthListenable listenable = _AuthListenable(ref);
   ref.onDispose(listenable.dispose);
 
+  final String initialLocation =
+      passwordResetDeepLinkRoute(
+        WidgetsBinding.instance.platformDispatcher.defaultRouteName,
+      ) ??
+      Routes.splash;
+
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
-    initialLocation: Routes.splash,
+    initialLocation: initialLocation,
     refreshListenable: listenable,
     redirect: (BuildContext context, GoRouterState state) => _redirect(ref, state),
     routes: <RouteBase>[
@@ -118,6 +125,17 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
         path: Routes.phoneUnlock,
         parentNavigatorKey: _rootNavigatorKey,
         builder: (BuildContext context, GoRouterState state) => const PhoneUnlockScreen(),
+      ),
+
+      GoRoute(
+        // Password reset from an email App Link. Root navigator and **outside**
+        // `/login` for the same reason as the phone unlock: the reset must work
+        // for signed-out users, and a signed-in user with a valid token should
+        // not be bounced back to the home screen.
+        path: Routes.passwordReset,
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (BuildContext context, GoRouterState state) =>
+            PasswordResetScreen(token: state.uri.queryParameters['token']),
       ),
 
       GoRoute(

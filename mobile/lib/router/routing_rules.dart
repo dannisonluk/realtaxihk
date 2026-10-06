@@ -38,6 +38,13 @@ abstract final class Routes {
   /// a route there would be unreachable for exactly the accounts that need it.
   static const String passwordChange = '/password/change';
 
+  /// Resetting a forgotten password from an email App Link.
+  ///
+  /// Mounted on the root navigator and **outside `/login`**, like
+  /// [phoneUnlock]: a signed-out user must be able to land on the link without
+  /// being redirected to login first.
+  static const String passwordReset = '/password/reset';
+
   /// Proving a phone number — the call車 unlock.
   ///
   /// **Deliberately not under `/login`.** `resolveRedirect` sends a signed-in user
@@ -124,6 +131,36 @@ abstract final class Routes {
 /// profile exists. An account can legitimately be both.
 String homeRouteFor(AppUser user) => user.role == UserRole.admin ? Routes.adminKyc : Routes.request;
 
+/// App-link parser for password-reset cold starts.
+///
+/// External deep-link packages are excluded by design. Android's
+/// `flutter_deeplinking_enabled` delivers a cold-start App Link as the engine's
+/// initial route, so this pure function can translate that raw route/URI into
+/// the in-app `/password/reset` location without another dependency. It only
+/// accepts the documented site host (`hkfastdc.com`).
+const String passwordResetHost = 'hkfastdc.com';
+const Set<String> _passwordResetLinkPaths = {'/reset-password', '/magic'};
+
+String? passwordResetDeepLinkRoute(String rawRouteName) {
+  if (rawRouteName.isEmpty) {
+    return null;
+  }
+  final String source = rawRouteName.startsWith('/')
+      ? 'https://$passwordResetHost$rawRouteName'
+      : rawRouteName;
+  final Uri? uri = Uri.tryParse(source);
+  if (uri == null || !_passwordResetLinkPaths.contains(uri.path)) {
+    return null;
+  }
+  if (uri.host.isNotEmpty) {
+    final bool validScheme = uri.scheme == 'https' || uri.scheme == 'http';
+    if (!validScheme || uri.host != passwordResetHost) {
+      return null;
+    }
+  }
+  return uri.replace(path: Routes.passwordReset).toString();
+}
+
 /// The router's redirect decision.
 ///
 /// Returns the location to go to, or null to stay put.
@@ -140,14 +177,23 @@ String? resolveRedirect({
   required AppUser? user,
 }) {
   if (restoring) {
-    return location == Routes.splash ? null : Routes.splash;
+    if (location == Routes.splash || location == Routes.passwordReset) {
+      return null;
+    }
+    return Routes.splash;
   }
 
   if (user == null) {
     if (hasError) {
-      return location == Routes.splash ? null : Routes.splash;
+      if (location == Routes.splash || location == Routes.passwordReset) {
+        return null;
+      }
+      return Routes.splash;
     }
-    return location.startsWith(Routes.login) ? null : Routes.login;
+    if (location.startsWith(Routes.login) || location.startsWith(Routes.passwordReset)) {
+      return null;
+    }
+    return Routes.login;
   }
 
   final bool isAdmin = user.role == UserRole.admin;
@@ -164,7 +210,7 @@ String? resolveRedirect({
   // admin straight back to the console and the tile would be a dead affordance.
   // `/password/change` is deliberately not under `/login`, which is why it is
   // not already covered by the branch above.
-  if (location.startsWith(Routes.passwordChange)) {
+  if (location.startsWith(Routes.passwordChange) || location.startsWith(Routes.passwordReset)) {
     return null;
   }
 
