@@ -41,10 +41,10 @@ async def revoke_user_tokens(redis, user_id) -> bool:
     """
     try:
         await redis.set(_epoch_key(str(user_id)), f"{time.time():.6f}", ex=_EPOCH_TTL_S)
-        return True
     except Exception:
         logger.exception("could not record token revocation epoch for %s", user_id)
         return False
+    return True
 
 
 async def is_token_revoked(redis, user_id, issued_at) -> bool:

@@ -15,28 +15,13 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
 
+from app.api.schemas import ServiceAreaBounds, ServiceAreaCheckResult
 from app.core.deps import Principal, require_active_user
 from app.core.hk_bounds import HK_BBOX, is_in_hong_kong
 from app.core.service_area import REASON_OUTSIDE_HK
 
 router = APIRouter(prefix="/api/v1/service-area", tags=["service-area"])
-
-
-class ServiceAreaCheckResult(BaseModel):
-    allowed: bool
-    reason: str | None
-    message: str | None = None
-    lat: float
-    lng: float
-
-
-class ServiceAreaBounds(BaseModel):
-    lat_min: float
-    lat_max: float
-    lng_min: float
-    lng_max: float
 
 
 @router.get("/check", response_model=ServiceAreaCheckResult)

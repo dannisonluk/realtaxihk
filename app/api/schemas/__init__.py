@@ -161,7 +161,6 @@ from app.api.schemas.licence import (
 from app.api.schemas.order import (
     LedgerEntryOut,
     LedgerPageOut,
-    OrderDisputeIn,
     OrderOut,
     OrderPageOut,
     PassengerDisputeOut,
@@ -173,6 +172,7 @@ from app.api.schemas.premium import (
 )
 from app.api.schemas.receipt import ReceiptOut
 from app.api.schemas.recurring import RecurringRideListOut, RecurringRideOut
+from app.api.schemas.service_area import ServiceAreaBounds, ServiceAreaCheckResult
 
 __all__ = [
     "AdminAccountCreatedOut",
@@ -253,7 +253,6 @@ __all__ = [
     "OkLogoutOut",
     "OkOut",
     "OkRevokedOut",
-    "OrderDisputeIn",
     "OrderOut",
     "OrderPageOut",
     "OtpRequestOut",
@@ -275,6 +274,8 @@ __all__ = [
     "RefundRequestOut",
     "RefundViewOut",
     "ReviewDocumentOut",
+    "ServiceAreaBounds",
+    "ServiceAreaCheckResult",
     "SettlementPreviewOut",
     "SettlementRunOut",
     "TokenPairOut",

@@ -38,7 +38,8 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.schemas import OrderDisputeIn, OrderOut, OrderPageOut, PassengerDisputeOut
+from app.api.schemas import OrderOut, OrderPageOut, PassengerDisputeOut
+from app.api.schemas.order import OrderDisputeIn
 from app.core import cooldown as cooldown_mod
 from app.core.config import get_settings
 from app.core.db import get_session, get_session_factory
