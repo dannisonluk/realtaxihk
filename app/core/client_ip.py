@@ -43,8 +43,13 @@ def client_ip(request: Request) -> str:
         fwd = request.headers.get("x-forwarded-for")
         if fwd:
             hops = [h.strip() for h in fwd.split(",") if h.strip()]
-            if hops:
+            # Only trust the header when it has at least one hop beyond the
+            # configured trusted proxies. With fewer hops the client supplied
+            # all of them (or an upstream proxy did not forward one), and the
+            # leftmost value is attacker-controlled. Fall back to the transport
+            # peer instead of echoing a forged value.
+            if len(hops) > settings.trusted_proxy_count:
                 # Count from the right; see the module docstring.
-                idx = max(0, len(hops) - settings.trusted_proxy_count)
+                idx = len(hops) - settings.trusted_proxy_count
                 return hops[idx]
     return request.client.host if request.client else "unknown"

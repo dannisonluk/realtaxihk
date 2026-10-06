@@ -253,6 +253,29 @@ class TestForwardedFor:
         )
         assert client_ip(cast(Request, _Req())) == "198.51.100.7"
 
+    def test_header_without_a_proxy_appended_hop_falls_back_to_peer(self, monkeypatch):
+        """A client must not mint a fresh identity when no trusted proxy has
+        appended anything: with one trusted proxy and one supplied hop, the
+        only value in the header is attacker-controlled, so the transport peer
+        is the safe answer.
+        """
+        from app.core.client_ip import client_ip
+
+        class _Req:
+            def __init__(self):
+                self.headers = {"x-forwarded-for": "6.6.6.6"}
+                self.client = type("C", (), {"host": "10.0.0.1"})()
+
+        monkeypatch.setattr(
+            "app.core.client_ip.get_settings",
+            lambda: _settings(
+                app_env="dev",
+                jwt_secret_key=_STRONG_SECRET,
+                trusted_proxy_count=1,
+            ),
+        )
+        assert client_ip(cast(Request, _Req())) == "10.0.0.1"
+
     def test_every_module_shares_one_implementation(self):
         """Five byte-identical copies is five places to reintroduce SEC-07."""
         from app.api import admin_auth, auth, fare, identity, licence
