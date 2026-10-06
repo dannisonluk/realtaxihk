@@ -1,5 +1,6 @@
 """Spawn uvicorn detached, wait for health, then exit (server keeps running)."""
 
+import argparse
 import subprocess
 import sys
 import time
@@ -11,6 +12,17 @@ import uvicorn
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from _root import REPO_ROOT as PROJECT_ROOT
 
+parser = argparse.ArgumentParser(
+    description="Start the API detached and wait for /health, then exit.",
+)
+parser.add_argument(
+    "--host",
+    default="127.0.0.1",
+    help="bind address (default 127.0.0.1; pass 0.0.0.0 so a real device can reach it)",
+)
+args = parser.parse_args()
+host = args.host
+
 tmp = PROJECT_ROOT / ".tmp"
 tmp.mkdir(exist_ok=True)
 # handle stays open on purpose: the child process inherits it as stdout
@@ -21,7 +33,7 @@ log = open(tmp / "uvicorn.log", "w", encoding="utf-8")  # noqa: SIM115
 # every IP rate limit became spoofable. The app's own TRUSTED_PROXY_COUNT is the
 # single place that decides whether to believe the header.
 config = uvicorn.Config(
-    "app.main:app", host="127.0.0.1", port=8000, log_level="info", proxy_headers=False
+    "app.main:app", host=host, port=8000, log_level="info", proxy_headers=False
 )
 server = uvicorn.Server(config)
 proc = subprocess.Popen(
@@ -31,7 +43,7 @@ proc = subprocess.Popen(
         "uvicorn",
         "app.main:app",
         "--host",
-        "127.0.0.1",
+        host,
         "--port",
         "8000",
         "--no-proxy-headers",
@@ -40,9 +52,12 @@ proc = subprocess.Popen(
     stderr=subprocess.STDOUT,
     cwd=str(PROJECT_ROOT),
 )
+# A wildcard bind has no single address to probe; loopback is what the machine
+# itself listens on for both 0.0.0.0 and ::.
+probe_host = "127.0.0.1" if host in ("0.0.0.0", "::") else host  # noqa: S104 -- dev-only opt-in
 for _ in range(40):
     try:
-        r = httpx.get("http://127.0.0.1:8000/health", timeout=1)
+        r = httpx.get(f"http://{probe_host}:8000/health", timeout=1)
         print("READY:", r.status_code, r.json())
         sys.exit(0)
     except Exception:
