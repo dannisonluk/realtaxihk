@@ -1,4 +1,18 @@
-# Agent Handoff / 協作進度
+> ## ⚠️ 歷史快照（2026-10-06 歸檔）—— **不是現行指引**
+>
+> 本檔記錄 2026-09 ~ 2026-10-06 期間**多個 agent 並行協作**時的檔案認領約定
+> 與逐輪進度。該協作模式**已經結束**（2026-10-06 起改為單一 agent 全權承接），
+> 所以檔內「檔案認領」、「唔好改另一 agent 嘅檔」、「commit 前只 add 自己嘅檔案」、
+> 「等 sibling 入 HEAD 之後才可加…」等規則**全部失效**，亦**不是**任何人現在
+> 應該遵守的流程。內容原樣保留，只作歷史證據（改了等於偽造量測記錄）。
+>
+> - 現在的狀態、仍未做項 → [`../WORK_SUMMARY.md`](../WORK_SUMMARY.md)
+> - 全部 open items 權威清單 → [`../AUDIT_FINDINGS_LINEBYLINE.md`](../AUDIT_FINDINGS_LINEBYLINE.md)
+> - 文檔全貌 → [`../README.md`](../README.md)
+>
+> 未 commit 檔案清單（下文「worktree」段落）是**當時**的快照，不代表現在。
+
+# Agent Handoff / 協作進度（已歸檔）
 
 這個檔是 realtaxihk repo 內多個 agent 的共享協作進度。任何 agent 在 commit 或開始大改之前，請先讀這個檔，並在改動後更新對應區段，避免互相覆蓋。
 

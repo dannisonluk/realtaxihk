@@ -43,6 +43,7 @@
 | [`CODE_REVIEW_2026-10-01.md`](CODE_REVIEW_2026-10-01.md) | 深度程式碼審查：6 高 / 4 中 / 6 註釋級，含並行測試互相干擾的證據 | 2026-10-01 | — |
 | [`CODE_REVIEW_2026-10-12.md`](CODE_REVIEW_2026-10-12.md) | 全代碼庫逐行審閱：P0 / P1 / P2 + migrations / 資料庫層 + 前端，含 **5 條已撤銷的誤報**（誤報本身是可複用教訓） | 2026-10-12 | [`../DEVELOPMENT.md`](../DEVELOPMENT.md) §6 |
 | [`UI_DESIGN_REVIEW_2026-10-02.md`](UI_DESIGN_REVIEW_2026-10-02.md) | 管理後台 UI 設計審查（Apple HIG）：4 High / 8 Medium / 5 Low，對比度、無障礙、觸控目標、主題 token | 2026-10-02 | [`../ADMIN_CONSOLE_DESIGN.md`](../ADMIN_CONSOLE_DESIGN.md) |
+| [`AGENT_HANDOFF_multi-agent-2026-10-06.md`](AGENT_HANDOFF_multi-agent-2026-10-06.md) | **多 agent 並行協作期**的檔案認領約定、分工表與逐輪進度。協作模式已於 2026-10-06 結束（改為單一 agent 全權承接），檔內「認領」「唔好改另一 agent 嘅檔」等規則**全部失效**；保留只作歷史證據 | 2026-09 ~ 10-06 | [`../WORK_SUMMARY.md`](../WORK_SUMMARY.md) |
 
 ---
 

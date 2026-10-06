@@ -80,6 +80,7 @@
 | [`archive/CODE_REVIEW_2026-10-01.md`](archive/CODE_REVIEW_2026-10-01.md) | 深度程式碼審查（6 高 / 4 中 / 6 註釋級） | 2026-10-01 |
 | [`archive/CODE_REVIEW_2026-10-12.md`](archive/CODE_REVIEW_2026-10-12.md) | 全代碼庫逐行審閱（P0 / P1 / P2 + migrations + 前端），含已撤銷的誤報 | 2026-10-12 |
 | [`archive/UI_DESIGN_REVIEW_2026-10-02.md`](archive/UI_DESIGN_REVIEW_2026-10-02.md) | 管理後台 UI 設計審查（Apple HIG、對比度、無障礙） | 2026-10-02 |
+| [`archive/AGENT_HANDOFF_multi-agent-2026-10-06.md`](archive/AGENT_HANDOFF_multi-agent-2026-10-06.md) | 多 agent 並行協作期的檔案認領與分工進度（該模式已結束，規則失效） | 2026-09 ~ 10-06 |
 
 > 詳見 [`archive/README.md`](archive/README.md)。
 
@@ -105,31 +106,31 @@
 
 ---
 
-## 量測基準（2026-10-06）
+## 量測基準（2026-10-06 實跑）
 
 本表是**現行文檔引用的計數器的唯一來源**。改了架構或加了測試／畫面，先重跑下面的
 量法，再更新引用它的文檔（`../README.md`、`WORK_SUMMARY.md`）。
 
 | 計數器 | 現值 | 怎樣量 |
 |---|---|---|
-| 後端 `app/` | 128 個 `.py` · 26,725 LOC | `find app -name "*.py" \| wc -l` |
+| 後端 `app/` | 130 個 `.py` · 27,000 LOC | `find app -name "*.py" \| wc -l` |
 | API surface | **106 paths / 119 operations** | `create_app().openapi()['paths']` |
-| response_model 覆蓋 | 97/101 schema reachable；119 operations 全有 `response_model` | `scripts/verify/audit_response_models.py` |
+| response_model 覆蓋 | 101 exported／97 reachable；119 operations 全有 `response_model`；81 個 fixture block 全過 | `scripts/verify/audit_response_models.py` |
 | Alembic | **20** migrations · 單一 head `b8d1f2a3c4e5` | `alembic heads` / `ls alembic/versions/*.py` |
-| `tests/` | 56 個 `.py`（55 個 `test_*.py` · 998 個 `def test_`） | `find tests -name "test_*.py" \| wc -l` |
-| 後端 pytest | **全套 1219 passed / 0 failed / 0 error**（2026-10-06 單一 process 實跑） | `python -m pytest -q --junit-xml=…` |
-| `mobile/lib` | 82 個 `.dart` · 17,042 LOC · **29** 個 `*_screen.dart` | `find mobile/lib -name "*.dart"` |
-| Dart harness | **153 passed / 0 failed** | `dart … tool/run_tests.dart` |
-| Dart LSP check | **84 files opened / 0 diagnostics** | `python mobile/tool/dart_check.py mobile` |
+| `tests/` | 58 個 `.py`（57 個 `test_*.py` · 1,023 個 `def test_`） | `grep -rho "def test_[a-zA-Z_0-9]*" tests/ \| wc -l` |
+| 後端 pytest | **全套 1244 passed / 0 failed / 0 error**（2026-10-06 單一 process 實跑，725s） | `.venv/Scripts/python.exe -m pytest -q` |
+| `mobile/lib` | 83 個 `.dart` · 17,254 LOC · **30** 個 `*_screen.dart` | `find mobile/lib -name "*.dart"` |
+| Dart harness | **155 passed / 0 failed** | `dart … tool/run_tests.dart` |
+| Dart LSP check | **85 files opened / 0 diagnostics** | `python mobile/tool/dart_check.py mobile` |
 | Contract | 65 個 fixture json；harness 解到 **64** 個 · 0 failure | `dart … tool/verify_contract.dart` |
-| `admin-web/web/src` | 49 個 `.ts/.tsx` · 16,965 LOC · 18 個頁面 | `ls src/pages/*.tsx \| grep -v .test.` |
-| 後台 vitest | **81 passed（11 檔）** | `npx vitest run --no-file-parallelism --pool=forks` |
+| `admin-web/web/src` | 50 個 `.ts/.tsx`（含 12 個 test 檔；非 test 38 個 · 14,281 LOC）· 17,326 LOC · 18 個頁面 | `find admin-web/web/src -name "*.ts*" \| wc -l` |
+| 後台 vitest | **87 passed（12 檔）** | `npx vitest run --no-file-parallelism --pool=forks` |
 | `scripts/` | 22 個 `.py` | `find scripts -name "*.py"` |
 
 > ✅ **後端測試 2026-10-06 全套一次過實跑全綠**（Docker Desktop 開住、`realtaxi-db` ＋
-> `realtaxi-redis` healthy）：`.venv/Scripts/python.exe -m pytest tests -q --junit-xml=.tmp/final2.xml`
-> = **1219 passed / 0 failed / 0 error / 0 skipped**。先前「一次過跑會中途中止、唔敢
-> 宣稱 full-suite 全綠」嘅情況已經消失；單一 process 順序跑穩定。
+> `realtaxi-redis` healthy）：`.venv/Scripts/python.exe -m pytest -q` =
+> **1244 passed / 0 failed / 0 error / 0 skipped**（12m05s）。單一 process 順序跑穩定；
+> 先前「一次過跑會中途中止」的情況已消失。
 > ⚠️ 並行跑兩隻 pytest 仍不建議（爭同一 DB/Redis 資源）。**GEO index 已納入
 > `REDIS_KEY_NAMESPACE`**（`app/services/order/geo_service.py::geo_orders_key`），
 > 所以「兩隻 run 互相污染出假 failed」嘅根因已消除。
