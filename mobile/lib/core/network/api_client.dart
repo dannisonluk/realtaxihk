@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:io' show X509Certificate;
 
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kReleaseMode;
 
 import '../config/app_config.dart';
 import '../storage/token_store.dart';
 import 'api_exception.dart';
+import 'cert_pinning.dart';
 
 /// Request-level flags. `extra` survives a `dio.fetch()` replay, which is what
 /// makes the retry-once guard work.
@@ -49,6 +53,35 @@ class ApiClient {
         responseType: ResponseType.json,
       ),
     );
+
+    // TLS pinning. The pins are a build-time input; the decision about what an
+    // absent value means is a pure function so it can be tested (see
+    // `cert_pinning.dart`).
+    final Set<String> pins = parsePinnedFingerprints(AppConfig.apiCertSha256);
+    final CertPinMode pinMode = resolveCertPinMode(
+      pinsConfigured: pins.isNotEmpty,
+      releaseMode: kReleaseMode,
+    );
+    if (pinMode == CertPinMode.misconfigured) {
+      // Fail-closed, exactly like `AppConfig.apiBaseUrl` does for a missing
+      // `API_BASE_URL`: a release that cannot pin must not connect at all.
+      throw StateError(
+        'API_CERT_SHA256 must be set with --dart-define in release builds; '
+        'refusing to connect without certificate pinning.',
+      );
+    }
+    if (pinMode == CertPinMode.warnOnly) {
+      // Logged once per client, not per request.
+      debugPrint(
+        'certificate pinning disabled: no API_CERT_SHA256 was supplied. '
+        'This is allowed in development only.',
+      );
+    }
+    // An injected `httpClient` is a test double and keeps its own adapter.
+    if (httpClient == null) {
+      _dio.httpClientAdapter = _pinnedAdapter(pins);
+    }
+    _refreshDio.httpClientAdapter = _pinnedAdapter(pins);
 
     _dio.interceptors.add(
       _AuthInterceptor(
@@ -158,6 +191,33 @@ class ApiClient {
     _refreshDio.close(force: true);
     await _sessionExpired.close();
   }
+
+  /// An adapter that pins the leaf certificate's SHA-256 against [pins].
+  ///
+  /// Dio's `validateCertificate` is the leaf-level hook: it runs on **every**
+  /// connection, once the platform has accepted the chain, which is what makes it
+  /// real pinning. (`badCertificateCallback`, by contrast, only fires for a
+  /// certificate the platform *already* rejected — a valid CA-signed certificate
+  /// would never be checked against the pin, which is a false sense of security.)
+  ///
+  /// With no pins (a development build) every certificate is allowed; the
+  /// release-mode refusal happens in the constructor, before this is ever built.
+  IOHttpClientAdapter _pinnedAdapter(Set<String> pins) => IOHttpClientAdapter(
+    validateCertificate: (X509Certificate? certificate, String host, int port) {
+      if (pins.isEmpty) {
+        return true;
+      }
+      if (certificate == null) {
+        return false;
+      }
+      final bool matches = matchesAnyPin(certificate.der, pins);
+      if (!matches) {
+        final String presented = fingerprintOfDer(certificate.der);
+        debugPrint('certificate pin mismatch for $host: SHA-256 $presented');
+      }
+      return matches;
+    },
+  );
 
   /// Runs [call], decodes the body, and normalises every failure.
   Future<T> _send<T>(Future<Response<dynamic>> Function() call) async {

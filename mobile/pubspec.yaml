@@ -7,6 +7,10 @@ environment:
   sdk: ^3.12.0
 
 dependencies:
+  # SHA-256, for the TLS certificate pins in `core/network/cert_pinning.dart`.
+  # It was already present transitively, but the client imports it directly now,
+  # so it is declared directly.
+  crypto: ^3.0.7
   dio: ^5.11.1
   flutter:
     sdk: flutter

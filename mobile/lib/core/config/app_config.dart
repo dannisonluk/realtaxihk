@@ -58,6 +58,20 @@ class AppConfig {
   /// for what a release build does about it.
   static bool get humanVerificationConfigured => turnstileSiteKey.isNotEmpty;
 
+  /// SHA-256 fingerprints of the API host's certificate, for TLS pinning.
+  ///
+  /// Comma-separated so more than one pin can be supplied during a rotation —
+  /// the client accepts any of them, so a new certificate can be pinned before
+  /// the old one is retired:
+  ///
+  ///   flutter build apk --release --dart-define=API_CERT_SHA256=aa:bb:…
+  ///
+  /// **A release build refuses to start without it** (fail-closed), the same way
+  /// [apiBaseUrl] refuses a missing `API_BASE_URL` — see
+  /// `core/network/cert_pinning.dart` and `ApiClient`. A debug/profile build may
+  /// omit it, and logs a warning instead.
+  static const String apiCertSha256 = String.fromEnvironment('API_CERT_SHA256');
+
   /// The Android emulator reaches the host machine on 10.0.2.2, never on
   /// 127.0.0.1 — the latter is the emulator's own loopback.
   static String get _devHost {
