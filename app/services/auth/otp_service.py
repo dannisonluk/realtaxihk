@@ -22,7 +22,8 @@ Security properties:
 - resend cooldown prevents OTP-flooding a phone number;
 - comparison is constant-time (SEC-28);
 - PDPO: expired/consumed codes are short-lived rows (periodic purge in
-  `app/services/infra/maintenance.py`).
+  `app/services/infra/maintenance.py`, started as `pdpo_purge` in
+  `app/main.py`).
 
 SEC-02: the code is NEVER returned in the response body, in any environment.
 It used to be echoed as `dev_code` whenever `ALLOW_DEV_OTP` was on, which handed
