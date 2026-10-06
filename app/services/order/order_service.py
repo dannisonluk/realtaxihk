@@ -37,6 +37,50 @@ def _point_wkt(lat: float, lng: float) -> str:
     return f"POINT({lng} {lat})"
 
 
+def _point_from_wkb(value) -> tuple[float, float] | None:
+    """Best-effort point decode without a Shapely dependency.
+
+    PostGIS hands back a `WKBElement` when the row is read through the ORM.
+    Parsing the stored bytes directly keeps `geoalchemy2` unextended: the
+    project deliberately does not depend on `geoalchemy2[shapely]`.
+    """
+    if value is None:
+        return None
+    if hasattr(value, "data") and isinstance(value.data, (bytes, bytearray, memoryview)):
+        data = bytes(value.data)
+        if len(data) < 25:
+            return None
+        byte_order = data[0]
+        marker = "<" if byte_order else ">"
+        try:
+            import struct
+
+            x, y = struct.unpack(f"{marker}dd", data[9:25])
+            return y, x  # PostGIS stores POINT(lng lat)
+        except (struct.error, ValueError):
+            return None
+    text = str(value).strip()
+    if text.upper().startswith("POINT") and "(" in text and ")" in text:
+        inner = text[text.index("(") + 1 : text.rindex(")")]
+        parts = inner.split()
+        if len(parts) == 2:
+            try:
+                return float(parts[1]), float(parts[0])
+            except ValueError:
+                return None
+    return None
+
+
+def _point_lat(value) -> float | None:
+    point = _point_from_wkb(value)
+    return point[0] if point else None
+
+
+def _point_lng(value) -> float | None:
+    point = _point_from_wkb(value)
+    return point[1] if point else None
+
+
 def fare_snapshot(bd, tunnels: list[str] | None = None, crosses_harbour: bool = False) -> dict:
     """The fare breakdown frozen onto an order, in the *meter's* 1-dp form.
 
@@ -260,6 +304,17 @@ def order_out(order: Order) -> dict:
         "premium_destination": order.premium_destination_json,
         "destination_area": order.destination_area,
         "pickup_area": order.pickup_area,
+        # Phase 3: route template. PostGIS stores `POINT(lng lat)` WKT, and
+        # without `geoalchemy2[shapely]` the safest read path is to parse that
+        # text rather than touch the WKBElement half. Old rows keep lat/lng
+        # null until a client re-enters the route.
+        "pickup_lat": _point_lat(order.pickup_location),
+        "pickup_lng": _point_lng(order.pickup_location),
+        "pickup_address": order.pickup_address if order.pickup_address else None,
+        "dropoff_lat": _point_lat(order.dropoff_location),
+        "dropoff_lng": _point_lng(order.dropoff_location),
+        "dropoff_address": order.dropoff_address if order.dropoff_address else None,
+        "distance_km": float(order.distance_km) if order.distance_km is not None else None,
         # Phase 2: fixed-fare fields.
         "fare_mode": order.fare_mode.value if order.fare_mode else None,
         "fixed_offer_id": str(order.fixed_offer_id) if order.fixed_offer_id else None,

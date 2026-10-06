@@ -66,6 +66,7 @@ abstract final class Routes {
   static const String request = '/passenger/request';
   static const String trips = '/passenger/trips';
   static const String passengerAccount = '/passenger/account';
+  static const String recurringRides = '/passenger/recurring';
   static const String trackTrip = '/passenger/trip';
 
   /// The frozen receipt for one order. A sibling of [trackTrip] rather than a

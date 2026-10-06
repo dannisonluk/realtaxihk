@@ -12,6 +12,7 @@ import '../models/fleet.dart';
 import '../models/identity.dart';
 import '../models/ledger.dart';
 import '../models/order.dart';
+import '../models/recurring_ride.dart';
 import '../models/refund.dart';
 import 'providers.dart';
 
@@ -105,6 +106,12 @@ final FutureProvider<DriverEnvironment> driverEnvironmentProvider =
 final FutureProvider<List<FixedOffer>> fixedOffersProvider = FutureProvider<List<FixedOffer>>(
   (Ref ref) async => (await ref.watch(driverRepositoryProvider).fixedOffers()).items,
 );
+
+/// The passenger's weekly ride templates.
+final FutureProvider<List<RecurringRide>> recurringRidesProvider =
+    FutureProvider<List<RecurringRide>>(
+      (Ref ref) => ref.watch(recurringRideRepositoryProvider).list(),
+    );
 
 /// Active premium destinations shown as avatar pins on the map.
 final FutureProvider<PremiumDestinationPage> premiumDestinationsProvider =

@@ -784,6 +784,27 @@ void _modelTests() {
       expectList(json['tunnels'] as List<dynamic>, <String>['cross_harbour']);
     });
 
+    test('a history order becomes a book-again / repeat-weekly template', () {
+      final Order order = Order.fromJson(<String, dynamic>{
+        ..._orderJson('28cb175c-e851-430e-9800-f936a0696bcb'),
+        'pickup_lat': 22.3193,
+        'pickup_lng': 114.1694,
+        'pickup_address': 'Central',
+        'dropoff_lat': 22.2783,
+        'dropoff_lng': 114.1747,
+        'dropoff_address': 'Causeway Bay',
+        'distance_km': '6.4',
+      });
+      final OrderCreateRequest? request = order.toOrderCreateRequest();
+      expectTrue(request != null, reason: 'route template');
+      expect(request!.pickupLat, 22.3193);
+      expect(request.dropoffLat, 22.2783);
+      expect(request.distanceKm, 6.4);
+      expect(request.taxiType, TaxiType.urban);
+      expectList(request.tunnels, order.fare.tunnels);
+      expectTrue(request.crossesHarbour, reason: 'crosses_harbour');
+    });
+
     test('an unfunded deposit reports the shortfall', () {
       final DriverDeposit deposit = DriverDeposit.fromJson(<String, dynamic>{
         'required_hkd': '500.0',

@@ -52,6 +52,16 @@ class OrderOut(BaseModel):
     premium_destination: dict | None = None
     destination_area: str | None = None
     pickup_area: str | None = None
+    # Phase 3: route template for "book again / repeat weekly". Optional so
+    # old orders and existing fixtures keep decoding. The geography is stored
+    # in PostGIS, so `order_out` emits lat/lng separately from the address.
+    pickup_lat: float | None = None
+    pickup_lng: float | None = None
+    pickup_address: str | None = None
+    dropoff_lat: float | None = None
+    dropoff_lng: float | None = None
+    dropoff_address: str | None = None
+    distance_km: float | None = None
     # Phase 2: fixed-fare (一口價) fields, optional on METER orders.
     fare_mode: str | None = None
     fixed_offer_id: str | None = None

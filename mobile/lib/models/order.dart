@@ -173,6 +173,13 @@ class Order {
     this.premiumDestination,
     this.destinationArea,
     this.pickupArea,
+    this.pickupLat,
+    this.pickupLng,
+    this.pickupAddress,
+    this.dropoffLat,
+    this.dropoffLng,
+    this.dropoffAddress,
+    this.distanceKm,
     this.fareMode,
     this.fixedOfferId,
     this.driverPriceHkd,
@@ -209,6 +216,13 @@ class Order {
           ),
     destinationArea: asStringOrNull(json['destination_area'], 'order.destination_area'),
     pickupArea: asStringOrNull(json['pickup_area'], 'order.pickup_area'),
+    pickupLat: asDoubleOrNull(json['pickup_lat'], 'order.pickup_lat'),
+    pickupLng: asDoubleOrNull(json['pickup_lng'], 'order.pickup_lng'),
+    pickupAddress: asStringOrNull(json['pickup_address'], 'order.pickup_address'),
+    dropoffLat: asDoubleOrNull(json['dropoff_lat'], 'order.dropoff_lat'),
+    dropoffLng: asDoubleOrNull(json['dropoff_lng'], 'order.dropoff_lng'),
+    dropoffAddress: asStringOrNull(json['dropoff_address'], 'order.dropoff_address'),
+    distanceKm: asDoubleOrNull(json['distance_km'], 'order.distance_km'),
     fareMode: asStringOrNull(json['fare_mode'], 'order.fare_mode'),
     fixedOfferId: asStringOrNull(json['fixed_offer_id'], 'order.fixed_offer_id'),
     driverPriceHkd: asMoneyOrNull(json['driver_price_hkd'], 'order.driver_price_hkd'),
@@ -252,6 +266,43 @@ class Order {
 
   /// Coarse pickup area (e.g. `KOWLOON`) derived server-side.
   final String? pickupArea;
+
+  /// Phase 3 route template. The server only emits these on order payloads
+  /// after the route fields were added; old fixtures decode as null.
+  final double? pickupLat;
+  final double? pickupLng;
+  final String? pickupAddress;
+  final double? dropoffLat;
+  final double? dropoffLng;
+  final String? dropoffAddress;
+  final double? distanceKm;
+
+  bool get hasRouteTemplate =>
+      pickupLat != null && pickupLng != null && dropoffLat != null && dropoffLng != null;
+
+  /// Builds the request body for `POST /orders` from a history row, so
+  /// "book again" does not need the user to re-tap the map.
+  OrderCreateRequest? toOrderCreateRequest() {
+    if (!hasRouteTemplate || distanceKm == null) {
+      return null;
+    }
+    return OrderCreateRequest(
+      pickupLat: pickupLat!,
+      pickupLng: pickupLng!,
+      dropoffLat: dropoffLat!,
+      dropoffLng: dropoffLng!,
+      pickupAddress: pickupAddress ?? '',
+      dropoffAddress: dropoffAddress ?? '',
+      distanceKm: distanceKm!,
+      taxiType: taxiType,
+      requirements: requirements,
+      paymentPreference: paymentPreference,
+      discountPercent: fare.discountPercent,
+      tip: fare.tip.asDouble,
+      tunnels: fare.tunnels,
+      crossesHarbour: fare.crossesHarbour,
+    );
+  }
 
   /// Phase 2 fixed-fare (一口價) fields. Null/empty on METER orders.
   final String? fareMode;

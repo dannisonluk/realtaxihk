@@ -109,6 +109,21 @@ class TestOrderLifecycle:
         assert body["fare"]["tariff_version"]
         assert float(body["fare"]["total_fare"]) > 0
 
+    def test_create_order_returns_route_template(self, client, passenger_token):
+        """Phase 3: every order can seed "book again / repeat weekly".
+
+        `order_out` decodes the PostGIS point back into lat/lng so a mobile
+        client does not need receipt details to rebuild a route template.
+        """
+        body = _create_order(client, passenger_token)
+        assert body["pickup_lat"] == pytest.approx(22.284)
+        assert body["pickup_lng"] == pytest.approx(114.158)
+        assert body["pickup_address"] == "Statue Square, Central"
+        assert body["dropoff_lat"] == pytest.approx(22.315)
+        assert body["dropoff_lng"] == pytest.approx(114.219)
+        assert body["dropoff_address"] == "Harbour North, North Point"
+        assert body["distance_km"] == pytest.approx(4.2)
+
     def test_validation_rejects_bad_payload(self, client, passenger_token):
         r = client.post(
             "/api/v1/orders",

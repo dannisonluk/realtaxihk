@@ -24,6 +24,7 @@ import '../features/driver/driver_screen.dart';
 import '../features/driver/fixed_offers_screen.dart';
 import '../features/fleet/fleet_screen.dart';
 import '../features/passenger/passenger_screen.dart';
+import '../features/passenger/recurring_rides_screen.dart';
 import '../features/passenger/request_ride_screen.dart';
 import '../features/passenger/trip_detail_screen.dart';
 import '../features/passenger/trip_history_screen.dart';
@@ -32,6 +33,7 @@ import '../features/shared/account_screen.dart';
 import '../features/shared/profile_setup_screen.dart';
 import '../features/splash_screen.dart';
 import '../models/auth.dart';
+import '../models/order.dart';
 import '../state/providers.dart';
 import 'routing_rules.dart';
 
@@ -143,7 +145,13 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
             routes: <RouteBase>[
               GoRoute(
                 path: Routes.request,
-                builder: (BuildContext context, GoRouterState state) => const RequestRideScreen(),
+                builder: (BuildContext context, GoRouterState state) {
+                  final Object? extra = state.extra;
+                  if (extra is OrderCreateRequest) {
+                    return RequestRideScreen(prefill: extra);
+                  }
+                  return const RequestRideScreen();
+                },
               ),
             ],
           ),
@@ -179,6 +187,26 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (BuildContext context, GoRouterState state) =>
             TripDetailScreen(orderId: state.pathParameters['orderId']!),
+      ),
+      GoRoute(
+        // Recurring rides are a passenger settings surface, opened from the
+        // trip history "repeat weekly" action. Root navigator so the bottom
+        // bar does not stay mounted while the form is in use.
+        path: Routes.recurringRides,
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (BuildContext context, GoRouterState state) {
+          final Object? extra = state.extra;
+          if (extra is RecurringRidePrefill) {
+            return RecurringRideScreen(
+              prefill: extra.order,
+              sourceOrderId: extra.sourceOrderId,
+            );
+          }
+          if (extra is OrderCreateRequest) {
+            return RecurringRideScreen(prefill: extra);
+          }
+          return const RecurringRideScreen();
+        },
       ),
 
       // ---- driver --------------------------------------------------------

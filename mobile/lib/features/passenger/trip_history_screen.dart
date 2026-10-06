@@ -11,6 +11,7 @@ import '../../models/order.dart';
 import '../../router/app_router.dart';
 import '../../state/order_history_controller.dart';
 import '../shared/widgets.dart';
+import 'recurring_rides_screen.dart' show RecurringRidePrefill;
 
 /// The passenger's own order history, one page at a time.
 ///
@@ -185,42 +186,85 @@ class _OrderTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final DateTime? at = order.createdAt;
+    final OrderCreateRequest? template = order.toOrderCreateRequest();
+    final bool canRepeat =
+        order.status == OrderStatus.completed && template != null;
 
     return Card(
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: AppTheme.space4,
-          vertical: AppTheme.space2,
-        ),
-        title: Row(
-          children: <Widget>[
-            StatusChip.order(order.status, context),
-            const Spacer(),
-            MoneyText(order.estimatedTotalHkd),
-          ],
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: AppTheme.space2),
-          child: Text(
-            <String>[
-              order.taxiType.labelZh,
-              if (at != null)
-                '${at.year}-${at.month.toString().padLeft(2, '0')}-'
-                    '${at.day.toString().padLeft(2, '0')} '
-                    '${at.hour.toString().padLeft(2, '0')}:'
-                    '${at.minute.toString().padLeft(2, '0')}',
-              if (order.fare.tunnels.isNotEmpty)
-                order.fare.tunnels.map((Tunnel t) => t.labelZh).join('、'),
-            ].join('  ·  '),
-            style: theme.textTheme.bodySmall,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: AppTheme.space4,
+              vertical: AppTheme.space2,
+            ),
+            title: Row(
+              children: <Widget>[
+                StatusChip.order(order.status, context),
+                const Spacer(),
+                MoneyText(order.estimatedTotalHkd),
+              ],
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: AppTheme.space2),
+              child: Text(
+                <String>[
+                  order.taxiType.labelZh,
+                  if (at != null)
+                    '${at.year}-${at.month.toString().padLeft(2, '0')}-'
+                        '${at.day.toString().padLeft(2, '0')} '
+                        '${at.hour.toString().padLeft(2, '0')} '
+                        '${at.minute.toString().padLeft(2, '0')}',
+                  if (order.fare.tunnels.isNotEmpty)
+                    order.fare.tunnels.map((Tunnel t) => t.labelZh).join('、'),
+                ].join('  ·  '),
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            // Every order has a receipt, so every row opens the detail page. An
+            // in-flight one additionally has a live map, which the detail page
+            // offers as a further step — a terminal order stops there, because a
+            // socket for a finished trip would never update.
+            onTap: () => context.push('${Routes.tripDetail}/${order.id}'),
           ),
-        ),
-        trailing: const Icon(Icons.chevron_right),
-        // Every order has a receipt, so every row opens the detail page. An
-        // in-flight one additionally has a live map, which the detail page
-        // offers as a further step — a terminal order stops there, because a
-        // socket for a finished trip would never update.
-        onTap: () => context.push('${Routes.tripDetail}/${order.id}'),
+          if (canRepeat)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppTheme.space4,
+                0,
+                AppTheme.space4,
+                AppTheme.space3,
+              ),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                          context.push(Routes.request, extra: template),
+                      icon: const Icon(Icons.navigation_outlined, size: 18),
+                      label: const Text('再次叫車'),
+                    ),
+                  ),
+                  const SizedBox(width: AppTheme.space2),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => context.push(
+                        Routes.recurringRides,
+                        extra: RecurringRidePrefill(
+                          order: template,
+                          sourceOrderId: order.id,
+                        ),
+                      ),
+                      icon: const Icon(Icons.event_repeat, size: 18),
+                      label: const Text('每週重複'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

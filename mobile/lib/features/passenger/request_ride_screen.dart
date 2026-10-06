@@ -30,7 +30,10 @@ enum _Target { pickup, dropoff }
 /// reproducible in the order snapshot — the passenger would be quoted a total the
 /// order never carries. Those three belong on a standalone calculator, not here.
 class RequestRideScreen extends ConsumerStatefulWidget {
-  const RequestRideScreen({super.key});
+  const RequestRideScreen({super.key, this.prefill});
+
+  /// Route/requirements template from a history row, for "book again".
+  final OrderCreateRequest? prefill;
 
   @override
   ConsumerState<RequestRideScreen> createState() => _RequestRideScreenState();
@@ -75,6 +78,32 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
   @override
   void initState() {
     super.initState();
+    final OrderCreateRequest? prefill = widget.prefill;
+    if (prefill != null) {
+      _pickup = MapPoint(
+        lat: prefill.pickupLat,
+        lng: prefill.pickupLng,
+        label: prefill.pickupAddress.isEmpty ? '上車點' : prefill.pickupAddress,
+      );
+      _dropoff = MapPoint(
+        lat: prefill.dropoffLat,
+        lng: prefill.dropoffLng,
+        label: prefill.dropoffAddress.isEmpty ? '落車點' : prefill.dropoffAddress,
+      );
+      _taxiType = prefill.taxiType;
+      _tunnels
+        ..clear()
+        ..addAll(prefill.tunnels);
+      _crossesHarbour = prefill.crossesHarbour;
+      _atCrossHarbourStand = prefill.pickupAtCrossHarbourStand;
+      _distance.text = prefill.distanceKm.toStringAsFixed(1);
+      _tip.text = prefill.tip.toStringAsFixed(1);
+      _requirements = RideRequirements.fromJson(prefill.requirements);
+      _paymentPreference
+        ..clear()
+        ..addAll(prefill.paymentPreference);
+      return;
+    }
     _locate();
   }
 
@@ -303,6 +332,9 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
     final ThemeData theme = Theme.of(context);
     final MapPoint? pickup = _pickup;
     final MapPoint? dropoff = _dropoff;
+    final PremiumDestinationPage premium =
+        ref.watch(premiumDestinationsProvider).value ??
+        const PremiumDestinationPage(items: <PremiumDestination>[]);
     // Null while the profile is still loading, which is deliberately treated as
     // "no prompt" rather than "no username" — a card that appears and then
     // vanishes on every cold start reads as a bug.
@@ -331,7 +363,18 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
             height: MediaQuery.sizeOf(context).height * 0.32,
             child: MapPanel(
               centre: dropoff ?? pickup,
-              markers: <MapPoint>[?pickup, ?dropoff],
+              markers: <MapPoint>[
+                ?pickup,
+                ?dropoff,
+                for (final PremiumDestination pin in premium.items)
+                  if (pin.lat != pickup?.lat || pin.lng != pickup?.lng)
+                    if (pin.lat != dropoff?.lat || pin.lng != dropoff?.lng)
+                      MapPoint(
+                        lat: pin.lat,
+                        lng: pin.lng,
+                        label: '★ ${pin.nameZh}',
+                      ),
+              ],
               route: (pickup != null && dropoff != null)
                   ? <MapPoint>[pickup, dropoff]
                   : null,

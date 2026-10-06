@@ -12,6 +12,7 @@ import '../data/fare_repository.dart';
 import '../data/fleet_repository.dart';
 import '../data/identity_repository.dart';
 import '../data/order_repository.dart';
+import '../data/recurring_ride_repository.dart';
 import '../data/trip_repository.dart';
 import '../models/auth.dart';
 import 'auth_controller.dart';
@@ -68,6 +69,13 @@ final Provider<FleetRepository> fleetRepositoryProvider = Provider<FleetReposito
 final Provider<TripRepository> tripRepositoryProvider = Provider<TripRepository>(
   (Ref ref) => TripRepository(ref.watch(apiClientProvider)),
 );
+
+/// Recurring rides: weekly templates the passenger owns. The scheduler is
+/// server-side, so the repository never mints an order itself.
+final Provider<RecurringRideRepository> recurringRideRepositoryProvider =
+    Provider<RecurringRideRepository>(
+      (Ref ref) => RecurringRideRepository(ref.watch(apiClientProvider)),
+    );
 
 /// The session. `AsyncValue<AppUser?>`: loading while the stored token is being
 /// re-validated, `data(null)` when signed out, `data(user)` when signed in.
