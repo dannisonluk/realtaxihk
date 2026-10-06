@@ -94,35 +94,38 @@ class _MapPanelState extends State<MapPanel> {
 
     final MapPoint centre = widget.centre ?? widget.markers.firstOrNull ?? _fallback;
 
-    return GoogleMap(
-      initialCameraPosition: CameraPosition(target: centre.latLng, zoom: widget.zoom),
-      onMapCreated: (GoogleMapController controller) => _controller = controller,
-      onTap: widget.onTap == null
-          ? null
-          : (LatLng point) =>
-                widget.onTap!(MapPoint(lat: point.latitude, lng: point.longitude, label: 'Pinned')),
-      markers: <Marker>{
-        for (final MapPoint point in widget.markers)
-          Marker(
-            markerId: MarkerId('${point.lat},${point.lng},${point.label}'),
-            position: point.latLng,
-            infoWindow: InfoWindow(title: point.label),
-          ),
-      },
-      polylines: <Polyline>{
-        if (widget.route != null && widget.route!.length >= 2)
-          Polyline(
-            polylineId: const PolylineId('route'),
-            points: widget.route!.map((MapPoint p) => p.latLng).toList(growable: false),
-            width: 4,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-      },
-      myLocationEnabled: widget.showMyLocation,
-      myLocationButtonEnabled: widget.showMyLocation,
-      compassEnabled: true,
-      mapToolbarEnabled: false,
-      zoomControlsEnabled: false,
+    return Semantics(
+      label: '地圖',
+      child: GoogleMap(
+        initialCameraPosition: CameraPosition(target: centre.latLng, zoom: widget.zoom),
+        onMapCreated: (GoogleMapController controller) => _controller = controller,
+        onTap: widget.onTap == null
+            ? null
+            : (LatLng point) =>
+                  widget.onTap!(MapPoint(lat: point.latitude, lng: point.longitude, label: 'Pinned')),
+        markers: <Marker>{
+          for (final MapPoint point in widget.markers)
+            Marker(
+              markerId: MarkerId('${point.lat},${point.lng},${point.label}'),
+              position: point.latLng,
+              infoWindow: InfoWindow(title: point.label),
+            ),
+        },
+        polylines: <Polyline>{
+          if (widget.route != null && widget.route!.length >= 2)
+            Polyline(
+              polylineId: const PolylineId('route'),
+              points: widget.route!.map((MapPoint p) => p.latLng).toList(growable: false),
+              width: 4,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+        },
+        myLocationEnabled: widget.showMyLocation,
+        myLocationButtonEnabled: widget.showMyLocation,
+        compassEnabled: true,
+        mapToolbarEnabled: false,
+        zoomControlsEnabled: false,
+      ),
     );
   }
 }

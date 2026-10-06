@@ -144,6 +144,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
         context,
         access,
         onOpenSettings: () => _location.openSettings(access),
+        onRetry: _locate,
         alternative: '可在地圖上點選上車點',
       );
     }

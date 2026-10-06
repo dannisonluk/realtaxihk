@@ -68,7 +68,7 @@ class AsyncValueView<T> extends StatelessWidget {
 class BrandLogo extends StatelessWidget {
   const BrandLogo({
     required this.size,
-    this.semanticLabel = 'hkfastdc',
+    this.semanticLabel = '香港Call的士',
     super.key,
   });
 
@@ -81,10 +81,11 @@ class BrandLogo extends StatelessWidget {
   /// What a screen reader announces, and the wordmark the fallback draws.
   final String semanticLabel;
 
-  static String _asset(BuildContext context) {
-    return Localizations.localeOf(context).languageCode == 'en'
-        ? 'assets/branding/logo-en.webp'
-        : 'assets/branding/logo-zh.webp';
+  static String _asset() {
+    // The app currently ships Chinese-only copy, so the in-app wordmark is
+    // always the Chinese one. `logo-en.webp` remains generated for a future
+    // English UI, but there is no branch to it while no English resources exist.
+    return 'assets/branding/logo-zh.webp';
   }
 
   @override
@@ -95,7 +96,7 @@ class BrandLogo extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(size * 0.22),
         child: Image.asset(
-          _asset(context),
+          _asset(),
           width: size,
           height: size,
           filterQuality: FilterQuality.medium,
@@ -185,7 +186,7 @@ class ErrorView extends StatelessWidget {
               // A prominent action, per `buttons.md`: one obvious thing to do.
               FilledButton.tonal(
                 onPressed: onRetry,
-                child: const Text('Try Again'),
+                child: const Text('請再試'),
               ),
             ],
           ],
@@ -626,6 +627,7 @@ void showLocationUnavailable(
   BuildContext context,
   LocationAccess access, {
   required Future<void> Function() onOpenSettings,
+  Future<void> Function()? onRetry,
   String? alternative,
 }) {
   final String message = locationRefusalMessage(
@@ -638,6 +640,13 @@ void showLocationUnavailable(
       message,
       actionLabel: '去設定',
       onAction: () => unawaited(onOpenSettings()),
+    );
+  } else if (onRetry != null) {
+    showInfoAction(
+      context,
+      message,
+      actionLabel: '重新授權',
+      onAction: () => unawaited(onRetry()),
     );
   } else {
     showInfo(context, message);
