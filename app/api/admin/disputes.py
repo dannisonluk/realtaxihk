@@ -36,6 +36,7 @@ from app.models import (
     DisputeSeverity,
     DisputeSource,
     DisputeStatus,
+    Order,
     OrderDispute,
 )
 from app.services.admin.audit_service import (
@@ -47,6 +48,7 @@ from app.services.admin.audit_service import (
     record_audit,
 )
 from app.services.admin.dispute_service import DisputeService, case_is_overdue
+from app.services.order.trip_event_service import publish_lifecycle
 
 router = APIRouter()
 
@@ -534,7 +536,31 @@ async def resolve_dispute(
             },
             request=request,
         )
-        await session.commit()
+        # P4 §7: the resolution is the moment both parties stop waiting, so it
+        # goes out on the order's channel. A case is not always tied to an order
+        # (a general conduct report has no `order_id`), hence the guard.
+        #
+        # Exactly **one** commit happens on each path. `publish_lifecycle`
+        # commits before it publishes — that ordering is the point, because a
+        # subscriber reacts by re-reading the row. Committing here *as well*
+        # would make the resolution durable and then still allow a 500 out of
+        # the second commit; the client's retry would reach an already-resolved
+        # dispute, i.e. money moved while the request reported failure.
+        resolved_order = (
+            await session.get(Order, dispute.order_id) if dispute.order_id is not None else None
+        )
+
+        if resolved_order is not None:
+            await publish_lifecycle(
+                session,
+                resolved_order,
+                "DISPUTE_RESOLVED",
+                dispute_id=str(dispute.id),
+                resolution=resolution.value,
+                close=payload.close,
+            )
+        else:
+            await session.commit()
     finally:
         await session.close()
 
