@@ -293,7 +293,7 @@ class _AuthInterceptor extends Interceptor {
   /// At most one refresh is in flight. Without this, ten concurrent 401s would
   /// fire ten refreshes; nine of them would present an already-rotated token and
   /// the server would treat that as replay and revoke every session (`SEC-17`).
-  Future<String?>? _inFlight;
+  Future<_RefreshOutcome>? _inFlight;
 
   @override
   Future<void> onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
@@ -317,39 +317,44 @@ class _AuthInterceptor extends Interceptor {
       return;
     }
 
-    final String? token = await _refreshOnce();
-    if (token == null) {
-      onRefreshFailed();
-      handler.next(err);
-      return;
-    }
-
-    request.extra[_kRetried] = true;
-    request.headers['Authorization'] = 'Bearer $token';
-    try {
-      final Response<dynamic> replay = await dio.fetch<dynamic>(request);
-      handler.resolve(replay);
-    } on DioException catch (e) {
-      handler.next(e);
+    final _RefreshOutcome outcome = await _refreshOnce();
+    switch (outcome) {
+      case _RefreshSuccess(:final accessToken):
+        request.extra[_kRetried] = true;
+        request.headers['Authorization'] = 'Bearer $accessToken';
+        try {
+          final Response<dynamic> replay = await dio.fetch<dynamic>(request);
+          handler.resolve(replay);
+        } on DioException catch (e) {
+          handler.next(e);
+        }
+      case _RefreshFatal():
+        onRefreshFailed();
+        handler.next(err);
+      case _RefreshRetryable():
+        // Network/timeout/5xx: the refresh token may still be valid, so keep
+        // it and let a later 401 retry the refresh. Signing the user out here
+        // would turn a transient outage into a lost session.
+        handler.next(err);
     }
   }
 
-  Future<String?> _refreshOnce() {
-    final Future<String?>? existing = _inFlight;
+  Future<_RefreshOutcome> _refreshOnce() {
+    final Future<_RefreshOutcome>? existing = _inFlight;
     if (existing != null) {
       return existing;
     }
-    final Future<String?> attempt = _refresh();
+    final Future<_RefreshOutcome> attempt = _refresh();
     _inFlight = attempt;
     return attempt.whenComplete(() {
       _inFlight = null;
     });
   }
 
-  Future<String?> _refresh() async {
+  Future<_RefreshOutcome> _refresh() async {
     final String? refreshToken = await tokenStore.refreshToken();
     if (refreshToken == null) {
-      return null;
+      return const _RefreshFatal();
     }
     try {
       final Response<dynamic> response = await refreshDio.post<dynamic>(
@@ -361,13 +366,40 @@ class _AuthInterceptor extends Interceptor {
       final String access = asString(body['access_token'], 'refresh.access_token');
       final String rotated = asString(body['refresh_token'], 'refresh.refresh_token');
       await tokenStore.updateTokens(accessToken: access, refreshToken: rotated);
-      return access;
-    } on DioException {
-      // 401 here means the token was replayed or expired; the server has
-      // already revoked everything. 5xx/network means we simply cannot refresh
-      // right now — either way the caller has no usable token.
-      await tokenStore.clear();
-      return null;
+      return _RefreshSuccess(access);
+    } on DioException catch (e) {
+      // A 401 here means the server replayed or expired the refresh token and
+      // has already revoked the whole family; clear locally and sign out.
+      if (e.response?.statusCode == 401) {
+        await tokenStore.clear();
+        return const _RefreshFatal();
+      }
+      // Network, timeout, 5xx: nothing says the session is dead. Preserve the
+      // tokens so the next attempt can rotate instead of forcing a new login.
+      return const _RefreshRetryable();
     }
   }
+}
+
+/// Outcome of an access-token refresh attempt.
+///
+/// Split into success / fatal / retryable so a transient refresh failure does
+/// not destroy a still-valid session.
+sealed class _RefreshOutcome {
+  const _RefreshOutcome();
+}
+
+class _RefreshSuccess extends _RefreshOutcome {
+  const _RefreshSuccess(this.accessToken);
+  final String accessToken;
+}
+
+/// The server explicitly rejected the refresh token (replay or expiry).
+class _RefreshFatal extends _RefreshOutcome {
+  const _RefreshFatal();
+}
+
+/// Network, timeout, or server error: keep the tokens for a later retry.
+class _RefreshRetryable extends _RefreshOutcome {
+  const _RefreshRetryable();
 }
