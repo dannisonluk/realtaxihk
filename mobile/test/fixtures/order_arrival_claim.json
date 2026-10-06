@@ -1,6 +1,6 @@
 {
   "id": "85f78fd1-00cc-4236-80e2-bf073b51c39f",
-  "status": "BROADCASTING",
+  "status": "PENDING_ARRIVAL_CONFIRM",
   "taxi_type": "URBAN",
   "fare": {
     "meter_fare": "75.2",
@@ -56,7 +56,10 @@
     "CASH",
     "OCTOPUS"
   ],
-  "driver_payment_methods": [],
+  "driver_payment_methods": [
+    "CASH",
+    "OCTOPUS"
+  ],
   "premium_destination": null,
   "destination_area": "KOWLOON",
   "pickup_area": "KOWLOON",

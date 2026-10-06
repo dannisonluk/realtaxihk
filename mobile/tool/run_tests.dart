@@ -399,6 +399,42 @@ void _enumTests() {
       expect(DriverStatus.pendingKyc.labelZh, '審核中');
       expect(RefundStatus.pending.labelZh, '待審批');
     });
+
+    test('the two interruption menus together cover every reason', () {
+      // The mirror of the server's `INTERRUPTION_REASONS_BY_PARTY`, pinned the
+      // same way in `tests/api/test_orders_p4.py`. A reason no menu offers
+      // exists on the wire but can never be filed, so both ends assert the
+      // union covers the enum — and that each side really drops something, or
+      // the per-role filtering has quietly become a no-op.
+      final Set<InterruptionReason> every = InterruptionReason.values.toSet();
+      final Set<InterruptionReason> covered = <InterruptionReason>{
+        ...InterruptionReason.forPassenger,
+        ...InterruptionReason.forDriver,
+      };
+      expectTrue(
+        covered.containsAll(every),
+        reason: 'no menu offers: ${every.difference(covered)}',
+      );
+      expectTrue(
+        InterruptionReason.forPassenger.length < every.length,
+        reason: 'the passenger menu is not actually filtered',
+      );
+      expectTrue(
+        InterruptionReason.forDriver.length < every.length,
+        reason: 'the driver menu is not actually filtered',
+      );
+    });
+
+    test('a party cannot file a reason that names themselves', () {
+      // §6.1 — the server refuses these with 422 `REASON_NOT_FOR_PARTY`, so
+      // offering one here would be a button that always fails.
+      expectFalse(InterruptionReason.forPassenger.contains(InterruptionReason.passengerMisconduct));
+      expectFalse(InterruptionReason.forPassenger.contains(InterruptionReason.passengerSick));
+      expectFalse(InterruptionReason.forDriver.contains(InterruptionReason.driverMisconduct));
+      // ...and the mirror stays available, or the guard has over-reached.
+      expectTrue(InterruptionReason.forPassenger.contains(InterruptionReason.driverMisconduct));
+      expectTrue(InterruptionReason.forDriver.contains(InterruptionReason.passengerSick));
+    });
   });
 }
 
@@ -519,11 +555,7 @@ void _tripEventTests() {
     });
 
     test('treats DRIVER_NOT_ACTIVE and OUTSIDE_HK as fatal', () {
-      for (final String code in <String>[
-        'READ_ONLY',
-        'RATE_LIMITED',
-        'BAD_MESSAGE',
-      ]) {
+      for (final String code in <String>['READ_ONLY', 'RATE_LIMITED', 'BAD_MESSAGE']) {
         expectFalse(TripErrorEvent(code: code).isFatal, reason: code);
       }
       expectTrue(const TripErrorEvent(code: 'DRIVER_NOT_ACTIVE').isFatal);
@@ -1196,6 +1228,24 @@ void _routingTests() {
       expect(go(location: Routes.adminKyc, user: driver), Routes.request);
     });
 
+    test('password change is reachable by both roles', () {
+      // Not a role-specific surface: an admin and a passenger both own a
+      // password, and the mobile admin shell renders the same account screen —
+      // so the admin/passenger split must not bounce an admin off it.
+      expect(go(location: Routes.passwordChange, user: passenger), null);
+      expect(go(location: Routes.passwordChange, user: admin), null);
+      expect(go(location: Routes.passwordChange), Routes.login, reason: 'still needs a session');
+    });
+
+    test('forgot password stays pre-auth', () {
+      // Reached from the login screen by someone who cannot sign in, so a
+      // signed-in account is sent home rather than being allowed to sit on it.
+      expectTrue(Routes.passwordForgot.startsWith(Routes.login));
+      expect(go(location: Routes.passwordForgot), null);
+      expect(go(location: Routes.passwordForgot, user: passenger), Routes.request);
+      expect(go(location: Routes.passwordForgot, user: admin), Routes.adminKyc);
+    });
+
     test('lets a driver-mode account reach the driver surfaces', () {
       // Driver mode is entered from the account screen, so those paths must not
       // be redirected away for a passenger account.
@@ -1683,10 +1733,7 @@ void _identityTests() {
       expect(q['premium_destination_id'], '8b1f0c3e-0000-4000-8000-000000000001');
       // The harness compares with `==`, which on a List is identity and on a Set
       // is never content equality — sort into a list and compare element-wise.
-      expectList(
-        (q['requires'] as String).split(',')..sort(),
-        <String>['no_smoke', 'silent_ride'],
-      );
+      expectList((q['requires'] as String).split(',')..sort(), <String>['no_smoke', 'silent_ride']);
       expect(q['excludes'], 'animal');
       expect(f.isEmpty, false);
     });
@@ -1725,10 +1772,7 @@ void _identityTests() {
         NearbyFilter.areaLabelsZh.keys.toList()..sort(),
         NearbyFilter.areaCodes.toList()..sort(),
       );
-      expectList(
-        NearbyFilter.fareModeLabelsZh.keys.toList()..sort(),
-        <String>['FIXED', 'METER'],
-      );
+      expectList(NearbyFilter.fareModeLabelsZh.keys.toList()..sort(), <String>['FIXED', 'METER']);
       expectFalse(NearbyFilter.environmentKeys.contains(NearbyFilter.animalKey));
       expectList(
         NearbyFilter.environmentLabelsZh.keys.toList()..sort(),
@@ -1785,23 +1829,14 @@ void _identityTests() {
       // filled-in animal would show a phantom pet on the job card.
       expect(RideRequirements.fromJson(null).isEmpty, true);
       expect(RideRequirements.fromJson(<String, dynamic>{}).isEmpty, true);
-      expect(
-        RideRequirements.fromJson(<String, dynamic>{'animal': null}).animal,
-        null,
-      );
-      expect(
-        RideRequirements.fromJson(<String, dynamic>{'silent_ride': true}).silentRide,
-        true,
-      );
+      expect(RideRequirements.fromJson(<String, dynamic>{'animal': null}).animal, null);
+      expect(RideRequirements.fromJson(<String, dynamic>{'silent_ride': true}).silentRide, true);
     });
 
     test('a half-written animal object decodes to no animal rather than crashing', () {
       // Tolerant on purpose: a partially-filled object is not a promise a driver
       // can act on, and the alternative is a decode exception on the job list.
-      expect(
-        AnimalDetail.fromJson(<String, dynamic>{'kind': 'DOG'}).runtimeType,
-        Null,
-      );
+      expect(AnimalDetail.fromJson(<String, dynamic>{'kind': 'DOG'}).runtimeType, Null);
       expect(AnimalDetail.fromJson('DOG').runtimeType, Null);
       expect(AnimalDetail.fromJson(null).runtimeType, Null);
     });
@@ -1813,19 +1848,18 @@ void _identityTests() {
       expect(AnimalDetail.isValidWeight(8), true);
       const AnimalDetail d = AnimalDetail(kind: 'DOG', heightCm: 35, weightKg: 8);
       expect(d.isValid, true);
-      expect(
-        const AnimalDetail(kind: 'DOG', heightCm: 35, weightKg: 0).isValid,
-        false,
-      );
+      expect(const AnimalDetail(kind: 'DOG', heightCm: 35, weightKg: 0).isValid, false);
     });
 
     test('the flag mirrors the driver filter reads are the same four keys', () {
       // `NearbyFilter.environmentKeys` is now read from here, so this pins the
       // single-source claim rather than a copy of it.
-      expectList(
-        RideRequirements.flagKeys.toList()..sort(),
-        <String>['no_perfume', 'no_radio_music', 'no_smoke', 'silent_ride'],
-      );
+      expectList(RideRequirements.flagKeys.toList()..sort(), <String>[
+        'no_perfume',
+        'no_radio_music',
+        'no_smoke',
+        'silent_ride',
+      ]);
       expectList(
         RideRequirements.flagLabelsZh.keys.toList()..sort(),
         RideRequirements.flagKeys.toList()..sort(),
@@ -1848,10 +1882,10 @@ void _identityTests() {
       const DriverPaymentMethods methods = DriverPaymentMethods(
         methods: <String>['CASH', 'OCTOPUS'],
       );
-      expectList(
-        DriverPaymentMethods.fromJson(methods.toJson()).methods,
-        <String>['CASH', 'OCTOPUS'],
-      );
+      expectList(DriverPaymentMethods.fromJson(methods.toJson()).methods, <String>[
+        'CASH',
+        'OCTOPUS',
+      ]);
     });
   });
 }

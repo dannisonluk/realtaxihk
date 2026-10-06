@@ -1,5 +1,5 @@
 {
-  "id": "ae77923f-63ea-469e-af9d-d16bbba60553",
+  "id": "2c9f1b75-c6ec-4ba9-936a-58f96ff42728",
   "username": "fixture-passenger",
   "given_name": "Ka Ming",
   "family_name": "Chan",
@@ -9,8 +9,8 @@
   "email_verified": false,
   "phone_masked": "+852****0002",
   "phone_verified": true,
-  "phone_reverify_due_at": "2026-11-04T05:06:58.549399+00:00",
-  "phone_reverify_grace_ends_at": "2026-11-11T05:06:58.549399+00:00",
+  "phone_reverify_due_at": "2026-11-05T01:47:00.367131+00:00",
+  "phone_reverify_grace_ends_at": "2026-11-12T01:47:00.367131+00:00",
   "phone_reverify_due": false,
   "phone_reverify_blocked": false,
   "phone_reverify_days_remaining": 29,

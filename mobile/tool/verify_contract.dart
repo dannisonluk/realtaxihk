@@ -353,10 +353,7 @@ final Map<String, Decoder> _decoders = <String, Decoder>{
   'order_detail': (Object? body) => _order(body, status: OrderStatus.broadcasting).status.wire,
   'order_with_requirements': (Object? body) {
     final Order order = _order(body, status: OrderStatus.broadcasting);
-    _expect(
-      order.requirements != null,
-      'an order created with requirements must retain them',
-    );
+    _expect(order.requirements != null, 'an order created with requirements must retain them');
     return '${order.status.wire} req=${order.requirements?.length} '
         'pay=${order.paymentPreference.join(",")}';
   },
@@ -367,18 +364,46 @@ final Map<String, Decoder> _decoders = <String, Decoder>{
   'order_receipt': (Object? body) {
     final Receipt receipt = Receipt.fromJson(asMap(body, 'body'));
     _expect(receipt.text.isNotEmpty, 'a receipt must carry its rendered text');
-    _expect(
-      receipt.text.contains(receipt.orderId),
-      'the rendered receipt must name its own order',
-    );
+    _expect(receipt.text.contains(receipt.orderId), 'the rendered receipt must name its own order');
     return '${receipt.status} total=${receipt.totalHkd.hkd} fixed=${receipt.isFixedFare}';
   },
-  'order_arrive': (Object? body) => _order(body, status: OrderStatus.driverArrived).status.wire,
+  // P4 arrival is two steps, so the old `order_arrive` fixture is gone: the
+  // one-step `/arrive` alias is deprecated and can no longer reach
+  // `DRIVER_ARRIVED`, which means the fixture was asserting a status that
+  // endpoint cannot produce. These two replace it.
+  'order_arrival_claim': (Object? body) =>
+      _order(body, status: OrderStatus.pendingArrivalConfirm).status.wire,
+  'order_arrival_confirm': (Object? body) =>
+      _order(body, status: OrderStatus.driverArrived).status.wire,
   'order_start': (Object? body) => _order(body, status: OrderStatus.inTrip).status.wire,
+  'order_change_destination': (Object? body) {
+    final Order order = _order(body, status: OrderStatus.destinationChanged);
+    // The count is what the cap is enforced against and the state is what the
+    // passenger's re-estimate reads, so both must survive `response_model=`.
+    _expect(order.destinationChangeCount == 1, 'got ${order.destinationChangeCount}');
+    _expect(
+      order.fare.distanceIsStraightLine,
+      'no distance_km was sent, so the snapshot must be labelled straight_line',
+    );
+    return '${order.status.wire} changes=${order.destinationChangeCount} '
+        'total=${order.estimatedTotalHkd.hkd} src=${order.fare.distanceSource}';
+  },
   'order_complete': (Object? body) {
     final Order order = _order(body, status: OrderStatus.completed);
     _expect(order.completedAt != null, 'a completed order must carry completed_at');
     return '${order.status.wire} completed_at=${order.completedAt}';
+  },
+  'order_interrupted': (Object? body) {
+    final Order order = _order(body, status: OrderStatus.interrupted);
+    // The three fields an interruption exists to record. The reason is decoded
+    // through `InterruptionReason.fromWire`, which throws on a value the client
+    // does not know — so this fixture is what proves the two enums still agree,
+    // rather than trusting that they were written out identically.
+    _expect(order.interruptionReason != null, 'an interrupted order must carry its reason');
+    _expect(order.interruptedAt != null, 'and when it happened');
+    _expect(order.interruptedByKind != null, 'and which side ended it');
+    return '${order.status.wire} reason=${order.interruptionReason?.wire} '
+        'by=${order.interruptedByKind}';
   },
   'orders_page': (Object? body) {
     final Map<String, dynamic> m = asMap(body, 'body');
@@ -448,8 +473,7 @@ final Map<String, Decoder> _decoders = <String, Decoder>{
         'required=${deposit.requiredHkd.hkd} fulfilled=${deposit.isFulfilled}';
   },
   'driver_payment_methods': (Object? body) {
-    final DriverPaymentMethods methods =
-        DriverPaymentMethods.fromJson(asMap(body, 'body'));
+    final DriverPaymentMethods methods = DriverPaymentMethods.fromJson(asMap(body, 'body'));
     _expect(
       methods.methods.contains('CASH'),
       'the driver should declare CASH, got ${methods.methods.join(",")}',
@@ -457,8 +481,7 @@ final Map<String, Decoder> _decoders = <String, Decoder>{
     return 'methods=${methods.methods.join(",")}';
   },
   'driver_payment_methods_read': (Object? body) {
-    final DriverPaymentMethods methods =
-        DriverPaymentMethods.fromJson(asMap(body, 'body'));
+    final DriverPaymentMethods methods = DriverPaymentMethods.fromJson(asMap(body, 'body'));
     _expect(methods.methods.isNotEmpty, 'the read path should return methods');
     return 'methods=${methods.methods.join(",")}';
   },

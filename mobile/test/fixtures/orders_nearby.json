@@ -1,7 +1,7 @@
 {
   "items": [
     {
-      "id": "b8700fe3-761d-4f6e-8039-64b102e48eeb",
+      "id": "85f78fd1-00cc-4236-80e2-bf073b51c39f",
       "status": "BROADCASTING",
       "taxi_type": "URBAN",
       "fare": {
@@ -36,11 +36,13 @@
         "fare_mode": null,
         "driver_price_hkd": null,
         "platform_fee_hkd": null,
-        "passenger_price_hkd": null
+        "passenger_price_hkd": null,
+        "distance_source": null,
+        "is_destination_change": false
       },
       "estimated_total_hkd": "130.20",
       "completed_at": null,
-      "created_at": "2026-10-05T05:06:58.590069+00:00",
+      "created_at": "2026-10-06T01:47:00.408180+00:00",
       "requirements": {
         "animal": {
           "kind": "small dog in carrier",
@@ -64,7 +66,13 @@
       "fixed_offer_id": null,
       "driver_price_hkd": null,
       "platform_fee_hkd": null,
-      "passenger_price_hkd": null
+      "passenger_price_hkd": null,
+      "started_at": null,
+      "arrival_confirmed_at": null,
+      "destination_change_count": 0,
+      "interruption_reason": null,
+      "interrupted_at": null,
+      "interrupted_by_kind": null
     }
   ],
   "degraded": null

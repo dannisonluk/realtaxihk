@@ -156,6 +156,12 @@ def reset_dev_state() -> None:
     and `refund_requests` are `CASCADE`, so deleting the `users` row is enough
     for those.
 
+    The P4 tables join that list: `order_events` and `order_disputes` are both
+    `RESTRICT` on `orders.id`, so an order's timeline and its cases are removed
+    before the order itself. Nothing in either table FKs to `users` — `actor_id`
+    and `raised_by_id` are plain UUIDs, so a record of who acted survives the
+    account — which is why the user delete needs no extra step.
+
     The fixture fleet is deleted too. It is not tied to a phone number, and
     `fleets.name` / `fleets.license_no` are UNIQUE, so leaving it behind makes
     the next run 409 on create. `fleet_memberships` and `fleet_settlement_runs`
@@ -174,6 +180,8 @@ def reset_dev_state() -> None:
         Fleet,
         LedgerEntry,
         Order,
+        OrderDispute,
+        OrderEvent,
         OtpCode,
         RefreshToken,
         RefundRequest,
@@ -196,14 +204,21 @@ def reset_dev_state() -> None:
             await session.execute(
                 delete(LedgerEntry).where(LedgerEntry.driver_profile_id.in_(profile_ids))
             )
-            await session.execute(
-                delete(Order).where(
-                    or_(
-                        Order.passenger_id.in_(user_ids),
-                        Order.driver_id.in_(profile_ids),
-                    )
+            order_ids = select(Order.id).where(
+                or_(
+                    Order.passenger_id.in_(user_ids),
+                    Order.driver_id.in_(profile_ids),
                 )
             )
+            # P4: both of these are `RESTRICT` on `orders.id` — deliberately, so
+            # a timeline or an open case cannot be lost by deleting the order it
+            # describes. That means the children go first, and `order_disputes`
+            # cascades to its own notes. Nothing here FKs to `users`
+            # (`actor_id` / `raised_by_id` are plain UUIDs on purpose), so the
+            # user delete below is unaffected.
+            await session.execute(delete(OrderEvent).where(OrderEvent.order_id.in_(order_ids)))
+            await session.execute(delete(OrderDispute).where(OrderDispute.order_id.in_(order_ids)))
+            await session.execute(delete(Order).where(Order.id.in_(order_ids)))
             await session.execute(delete(RefreshToken).where(RefreshToken.user_id.in_(user_ids)))
             await session.execute(delete(OtpCode).where(OtpCode.phone_e164.in_(TEST_PHONES)))
             # RefundRequests and deposits are RESTRICT (money must not
@@ -517,6 +532,17 @@ def main() -> int:  # a linear script, not a library
     reset_dev_state()
     admin_cli("--phone", ADMIN_PHONE)
 
+    # The server's own traceback is the only thing that explains a failed step,
+    # and it used to be discarded — so a 500 from inside a route surfaced as
+    # `assert status == 201` with no cause at all. Quiet by default; a debugging
+    # run keeps it with `GEN_SERVER_LOG=.tmp/server.log`.
+    log_path = os.environ.get("GEN_SERVER_LOG")
+    # Not a `with`: the handle has to outlive this statement and be closed in
+    # the `finally` below, alongside the process it belongs to.
+    server_err: Any = subprocess.DEVNULL
+    if log_path:
+        server_err = open(log_path, "w", encoding="utf-8")  # noqa: SIM115
+
     proc = subprocess.Popen(
         [
             sys.executable,
@@ -531,8 +557,10 @@ def main() -> int:  # a linear script, not a library
         ],
         cwd=ROOT,
         env={**os.environ, "ALLOW_DEV_OTP": "true"},
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        # Both streams: the app's own logging config decides which one it uses,
+        # and `realtaxihk.unhandled` is the logger that carries the traceback.
+        stdout=server_err,
+        stderr=server_err,
     )
 
     try:
@@ -563,6 +591,18 @@ def main() -> int:  # a linear script, not a library
             (OUT / f"{name}.json").write_text(
                 json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
             )
+
+        # Prune what this run did not produce. The directory is generator-owned,
+        # so anything else is stale by definition — and without this a retired
+        # fixture lingers and `verify_contract.dart` fails with "fixture has no
+        # decoder", naming a file no one can find a producer for. That is how
+        # the superseded `order_arrive` fixture would have survived the P4
+        # split into `arrival-claim` + `arrival-confirm`.
+        for stale in sorted(OUT.glob("*.json")):
+            if stale.name != "manifest.json" and stale.stem not in FIXTURES:
+                stale.unlink()
+                print(f"  pruned stale fixture: {stale.name}")
+
         print(f"--- wrote {len(FIXTURES)} fixture(s) + manifest.json to {OUT} ---")
         for name in sorted(FIXTURES):
             print(f"  {name}.json  <-  {SOURCES[name]}")
@@ -572,6 +612,8 @@ def main() -> int:  # a linear script, not a library
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
+        if log_path:
+            server_err.close()
         # Leave an ADMIN behind, deliberately. This used to `--revoke`, on the
         # theory that the grant should be undone — but `reset_dev_state()` deleted
         # the whole user row at the start of the run, so there is no earlier state
@@ -860,7 +902,10 @@ def _capture(record: Any) -> None:  # a linear capture sequence
     )
 
     # ---- driver works the order ----------------------------------------
-    # ---- driver works the order ----------------------------------------
+    # The tick has to land inside `ARRIVAL_RADIUS_M` (150 m) of the pickup
+    # below, because `arrival-claim` reads *this* recorded position rather than
+    # trusting a coordinate in the request body. These two points are ~99 m
+    # apart; move either one and the claim starts answering `TOO_FAR`.
     status, located = req(
         "POST",
         "/api/v1/drivers/location",
@@ -874,10 +919,73 @@ def _capture(record: Any) -> None:  # a linear capture sequence
     assert status == 200, grabbed
     record("order_grabbed", "POST /api/v1/orders/{id}/grab", grabbed)
 
-    for action in ("arrive", "start", "complete"):
-        status, body = req("POST", f"/api/v1/orders/{order_id}/{action}", token=driver_token)
-        assert status == 200, f"{action}: {body}"
-        record(f"order_{action}", f"POST /api/v1/orders/{{id}}/{action}", body)
+    # Arrival is two steps as of P4, and the one-step `/arrive` alias is
+    # deprecated: it can only reach `PENDING_ARRIVAL_CONFIRM`, because the
+    # passenger's own confirmation is what unlocks `DRIVER_ARRIVED`. The old
+    # `order_arrive` fixture asserted `DRIVER_ARRIVED` off `/arrive`, which is
+    # no longer producible, so it is replaced by the pair below. Both new
+    # statuses are pinned, because a fixture set that only ever sees `CREATED`
+    # and `COMPLETED` cannot decode them — which is exactly how the missing
+    # `LedgerEntryType` members stayed hidden until they crashed a screen.
+    status, claimed = req(
+        "POST",
+        f"/api/v1/orders/{order_id}/arrival-claim",
+        {},
+        token=driver_token,
+    )
+    assert status == 200, claimed
+    assert claimed["status"] == "PENDING_ARRIVAL_CONFIRM", claimed
+    record(
+        "order_arrival_claim",
+        "POST /api/v1/orders/{id}/arrival-claim (PENDING_ARRIVAL_CONFIRM)",
+        claimed,
+    )
+
+    status, confirmed = req(
+        "POST",
+        f"/api/v1/orders/{order_id}/arrival-confirm",
+        {"phone_last4": PASSENGER_PHONE[-4:]},
+        token=passenger_token,
+    )
+    assert status == 200, confirmed
+    assert confirmed["status"] == "DRIVER_ARRIVED", confirmed
+    record(
+        "order_arrival_confirm",
+        "POST /api/v1/orders/{id}/arrival-confirm (DRIVER_ARRIVED)",
+        confirmed,
+    )
+
+    status, started = req("POST", f"/api/v1/orders/{order_id}/start", token=driver_token)
+    assert status == 200, started
+    record("order_start", "POST /api/v1/orders/{id}/start", started)
+
+    # A mid-trip dropoff change. The order is left in `DESTINATION_CHANGED`
+    # rather than returned to `IN_TRIP` — that state is observable and the
+    # passenger's client re-estimates off it — so it needs a fixture of its own.
+    # No `distance_km`: that makes the server fall back to the PostGIS straight
+    # line and label the snapshot `distance_source: "straight_line"`, which is
+    # the branch a client is most likely to render as a road distance.
+    status, changed = req(
+        "POST",
+        f"/api/v1/orders/{order_id}/change-destination",
+        {
+            "dropoff_lat": 22.2840,
+            "dropoff_lng": 114.2150,
+            "dropoff_address": "Quarry Bay",
+        },
+        token=passenger_token,
+    )
+    assert status == 200, changed
+    assert changed["status"] == "DESTINATION_CHANGED", changed
+    record(
+        "order_change_destination",
+        "POST /api/v1/orders/{id}/change-destination (DESTINATION_CHANGED)",
+        changed,
+    )
+
+    status, completed = req("POST", f"/api/v1/orders/{order_id}/complete", token=driver_token)
+    assert status == 200, completed
+    record("order_complete", "POST /api/v1/orders/{id}/complete", completed)
 
     status, driver_history = req("GET", "/api/v1/orders?role=driver", token=driver_token)
     assert status == 200, driver_history
@@ -1035,6 +1143,76 @@ def _capture(record: Any) -> None:  # a linear capture sequence
     assert status == 200, decided
     record("admin_refund_decision", "POST /api/v1/admin/refunds/{id}/decision", decided)
 
+    # ---- a second order, interrupted ------------------------------------
+    # `INTERRUPTED` needs an order of its own: an interrupted trip cannot be
+    # completed, so it cannot ride along on the walk above. It is captured here,
+    # after the refund fixtures, because interrupting opens a dispute in the
+    # same transaction and those fixtures were read before that case existed.
+    #
+    # The reason is deliberately a *safety* one, so the fixture pins both the
+    # escalated branch (`AUTO_INTERRUPTED_SAFETY`) and the
+    # `interruption_reason` value the client decodes through
+    # `InterruptionReason.fromWire` — a decode that had no fixture at all until
+    # now, which is the same blind spot that let the missing `LedgerEntryType`
+    # members reach a screen before anything noticed.
+    #
+    # Same pickup as the first order, so the recorded ~99 m tick still satisfies
+    # `ARRIVAL_RADIUS_M`; the tick is re-sent rather than assumed to have stuck.
+    status, _ = req(
+        "POST",
+        "/api/v1/drivers/location",
+        {"lat": 22.3200, "lng": 114.1700, "online": True},
+        token=driver_token,
+    )
+    assert status == 200, _
+
+    status, second_order = req(
+        "POST",
+        "/api/v1/orders",
+        {
+            "pickup_lat": 22.3193,
+            "pickup_lng": 114.1694,
+            "dropoff_lat": 22.2783,
+            "dropoff_lng": 114.1747,
+            "pickup_address": "Central",
+            "dropoff_address": "Causeway Bay",
+            "distance_km": "6.4",
+            "taxi_type": "URBAN",
+        },
+        token=passenger_token,
+    )
+    assert status == 201, second_order
+    second_id = second_order["id"]
+
+    status, _ = req("POST", f"/api/v1/orders/{second_id}/grab", token=driver_token)
+    assert status == 200, _
+
+    status, _ = req("POST", f"/api/v1/orders/{second_id}/arrival-claim", {}, token=driver_token)
+    assert status == 200, _
+
+    status, _ = req(
+        "POST",
+        f"/api/v1/orders/{second_id}/arrival-confirm",
+        {"phone_last4": PASSENGER_PHONE[-4:]},
+        token=passenger_token,
+    )
+    assert status == 200, _
+
+    status, interrupted = req(
+        "POST",
+        f"/api/v1/orders/{second_id}/interrupt",
+        {"reason_code": "ACCIDENT", "note": "fixture: rear-ended at the lights"},
+        token=passenger_token,
+    )
+    assert status == 200, interrupted
+    assert interrupted["status"] == "INTERRUPTED", interrupted
+    assert interrupted["interrupted_by_kind"] == "PASSENGER", interrupted
+    record(
+        "order_interrupted",
+        "POST /api/v1/orders/{id}/interrupt (INTERRUPTED)",
+        interrupted,
+    )
+
     # ---- errors: the envelope every client must parse -------------------
     status, not_found = req(
         "GET", "/api/v1/orders/00000000-0000-0000-0000-000000000000", token=passenger_token
@@ -1151,6 +1329,19 @@ def _capture_websocket(record: Any, order_id: str, passenger_token: str, driver_
             await passenger.send(json.dumps({"lat": 22.32, "lng": 114.17}))
             readonly = json.loads(await asyncio.wait_for(passenger.recv(), timeout=10))
             record("ws_read_only_error", "WS /ws/trip/{id} passenger push rejected", readonly)
+
+            # A driver tick outside Hong Kong is refused outright, and the
+            # refusal is *fatal* — the app must not treat it like the retryable
+            # RATE_LIMITED hiccup, because standing in the same place and
+            # trying again can never succeed. Guangzhou (23.1291, 113.2644)
+            # is outside `HK_BBOX`, so this fails on the cheap reject.
+            await driver.send(json.dumps({"lat": 23.1291, "lng": 113.2644}))
+            outside = json.loads(await asyncio.wait_for(driver.recv(), timeout=10))
+            record(
+                "ws_outside_hk_error",
+                "WS /ws/trip/{id} driver tick outside HK refused",
+                outside,
+            )
 
     asyncio.run(run())
 

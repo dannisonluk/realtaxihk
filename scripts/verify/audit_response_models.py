@@ -111,7 +111,14 @@ MODEL_OF: dict[str, object] = {
     "order_with_requirements": OrderOut,
     "order_receipt": ReceiptOut,
     "order_grabbed": OrderOut,
-    "order_arrive": OrderOut,
+    # P4 replaced the one-step `/arrive` with a two-step arrival, so
+    # `order_arrive` is gone rather than renamed — the deprecated alias can no
+    # longer produce the body it used to. `order_change_destination` and
+    # `order_interrupted` are the other two new statuses.
+    "order_arrival_claim": OrderOut,
+    "order_arrival_confirm": OrderOut,
+    "order_change_destination": OrderOut,
+    "order_interrupted": OrderOut,
     "order_start": OrderOut,
     "order_complete": OrderOut,
     "orders_page": OrderPageOut,
@@ -164,7 +171,10 @@ NESTED = {
     ("order_detail", "fare"): FareSnapshotOut,
     ("order_with_requirements", "fare"): FareSnapshotOut,
     ("order_grabbed", "fare"): FareSnapshotOut,
-    ("order_arrive", "fare"): FareSnapshotOut,
+    ("order_arrival_claim", "fare"): FareSnapshotOut,
+    ("order_arrival_confirm", "fare"): FareSnapshotOut,
+    ("order_change_destination", "fare"): FareSnapshotOut,
+    ("order_interrupted", "fare"): FareSnapshotOut,
     ("order_start", "fare"): FareSnapshotOut,
     ("order_complete", "fare"): FareSnapshotOut,
     ("order_created", "fare.surcharges[0]"): FareSurchargeOut,
