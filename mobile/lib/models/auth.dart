@@ -34,9 +34,9 @@ class AppUser {
   const AppUser({required this.id, required this.phoneMasked, required this.role});
 
   factory AppUser.fromJson(Map<String, dynamic> json) => AppUser(
-    id: json['id'] as String,
-    phoneMasked: json['phone_masked'] as String? ?? '',
-    role: UserRole.fromWire(json['role'] as String),
+    id: asString(json['id'], 'user.id'),
+    phoneMasked: asStringOrNull(json['phone_masked'], 'user.phone_masked') ?? '',
+    role: UserRole.fromWire(asString(json['role'], 'user.role')),
   );
 
   final String id;
@@ -61,9 +61,9 @@ class AuthSession {
   const AuthSession({required this.accessToken, required this.refreshToken, required this.user});
 
   factory AuthSession.fromJson(Map<String, dynamic> json) => AuthSession(
-    accessToken: json['access_token'] as String,
-    refreshToken: json['refresh_token'] as String,
-    user: AppUser.fromJson(json['user'] as Map<String, dynamic>),
+    accessToken: asString(json['access_token'], 'session.access_token'),
+    refreshToken: asString(json['refresh_token'], 'session.refresh_token'),
+    user: AppUser.fromJson(asMap(json['user'], 'session.user')),
   );
 
   final String accessToken;
@@ -74,7 +74,12 @@ class AuthSession {
   /// `/auth/register` returns `true`, `/auth/login` returns `false`, and
   /// `/auth/refresh` omits the key entirely. Read it separately from the raw
   /// body; the absent case and the false case mean different things.
-  static bool createdFromJson(Map<String, dynamic> json) => json['created'] as bool? ?? false;
+  static bool createdFromJson(Map<String, dynamic> json) {
+    // `created` may be absent entirely (refresh) — that means false, the same
+    // as an explicit false; but a present non-bool is a contract violation.
+    final Object? created = json['created'];
+    return created == null ? false : asBool(created, 'session.created');
+  }
 }
 
 /// A token pair plus the `created` flag, read together off one response body.

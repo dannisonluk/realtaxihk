@@ -22,8 +22,14 @@ class AuthController extends AsyncNotifier<AppUser?> {
     final apiClient = ref.watch(apiClientProvider);
 
     // A 401 that survived the refresh attempt means the session is dead. Sign
-    // out from here rather than at the next user interaction.
-    final StreamSubscription<void> expired = apiClient.sessionExpired.listen((void _) {
+    // out from here rather than at the next user interaction. The store is
+    // cleared too: `sessionExpired` can also be emitted by a path that is not
+    // the refresh failure branch of `ApiClient` (for example a revoked token
+    // detected during a replay), and there is no other writer that would do it.
+    final StreamSubscription<void> expired = apiClient.sessionExpired.listen((
+      void _,
+    ) {
+      unawaited(ref.read(tokenStoreProvider).clear());
       if (ref.mounted) {
         state = const AsyncData<AppUser?>(null);
       }
@@ -42,7 +48,11 @@ class AuthController extends AsyncNotifier<AppUser?> {
       // changed since the cache was written.
       final AppUser user = await ref.read(authRepositoryProvider).me();
       await store.write(
-        AuthSession(accessToken: stored.accessToken, refreshToken: stored.refreshToken, user: user),
+        AuthSession(
+          accessToken: stored.accessToken,
+          refreshToken: stored.refreshToken,
+          user: user,
+        ),
       );
       return user;
     } on ApiException catch (e) {
@@ -84,7 +94,12 @@ class AuthController extends AsyncNotifier<AppUser?> {
   }) async {
     final AuthOutcome outcome = await ref
         .read(authRepositoryProvider)
-        .register(email: email, password: password, phoneE164: phoneE164, humanToken: humanToken);
+        .register(
+          email: email,
+          password: password,
+          phoneE164: phoneE164,
+          humanToken: humanToken,
+        );
     await _adopt(outcome.session);
     return outcome.created;
   }
@@ -94,7 +109,11 @@ class AuthController extends AsyncNotifier<AppUser?> {
   /// A lockout arrives as a 401, so a caller must not treat every 401 here as
   /// "wrong password". The distinction is in the message; the server chooses the
   /// status by exception type, never by the text of the refusal.
-  Future<bool> login({required String email, required String password, String? humanToken}) async {
+  Future<bool> login({
+    required String email,
+    required String password,
+    String? humanToken,
+  }) async {
     final AuthOutcome outcome = await ref
         .read(authRepositoryProvider)
         .login(email: email, password: password, humanToken: humanToken);
@@ -109,7 +128,9 @@ class AuthController extends AsyncNotifier<AppUser?> {
   /// human-verification gate: under `APP_ENV=prod` a missing [humanToken] is a
   /// 403 before any code is sent.
   Future<OtpRequestResult> requestOtp(String phoneE164, {String? humanToken}) =>
-      ref.read(authRepositoryProvider).requestOtp(phoneE164, humanToken: humanToken);
+      ref
+          .read(authRepositoryProvider)
+          .requestOtp(phoneE164, humanToken: humanToken);
 
   /// `POST /auth/otp/verify`, then persist the session.
   ///
@@ -118,7 +139,10 @@ class AuthController extends AsyncNotifier<AppUser?> {
   /// `phone_verified_at IS NOT NULL`. So `created` is effectively always false.
   /// It used to be hard-coded to `true` here, which told a returning user they
   /// had just signed up.
-  Future<bool> verifyOtp({required String phoneE164, required String code}) async {
+  Future<bool> verifyOtp({
+    required String phoneE164,
+    required String code,
+  }) async {
     final AuthOutcome outcome = await ref
         .read(authRepositoryProvider)
         .verifyOtp(phoneE164: phoneE164, code: code);
@@ -150,7 +174,11 @@ class AuthController extends AsyncNotifier<AppUser?> {
     final AuthSession? stored = await store.read();
     if (stored != null) {
       await store.write(
-        AuthSession(accessToken: stored.accessToken, refreshToken: stored.refreshToken, user: user),
+        AuthSession(
+          accessToken: stored.accessToken,
+          refreshToken: stored.refreshToken,
+          user: user,
+        ),
       );
     }
     state = AsyncData<AppUser?>(user);

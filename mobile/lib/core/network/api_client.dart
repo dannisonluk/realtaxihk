@@ -9,6 +9,7 @@ import '../config/app_config.dart';
 import '../storage/token_store.dart';
 import 'api_exception.dart';
 import 'cert_pinning.dart';
+import 'wire.dart';
 
 /// Request-level flags. `extra` survives a `dio.fetch()` replay, which is what
 /// makes the retry-once guard work.
@@ -356,15 +357,9 @@ class _AuthInterceptor extends Interceptor {
         data: <String, dynamic>{'refresh_token': refreshToken},
         options: Options(extra: <String, dynamic>{_kBareClient: true}),
       );
-      final Object? body = response.data;
-      if (body is! Map<String, dynamic>) {
-        return null;
-      }
-      final Object? access = body['access_token'];
-      final Object? rotated = body['refresh_token'];
-      if (access is! String || rotated is! String) {
-        return null;
-      }
+      final Map<String, dynamic> body = asMap(response.data, 'refresh.body');
+      final String access = asString(body['access_token'], 'refresh.access_token');
+      final String rotated = asString(body['refresh_token'], 'refresh.refresh_token');
       await tokenStore.updateTokens(accessToken: access, refreshToken: rotated);
       return access;
     } on DioException {

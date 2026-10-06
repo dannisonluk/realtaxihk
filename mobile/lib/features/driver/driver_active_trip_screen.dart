@@ -50,25 +50,30 @@ class _DriverActiveTripScreenState
   StreamSubscription<TripEvent>? _events;
   StreamSubscription<Position>? _positions;
   Timer? _pushTimer;
+  Timer? _reconnectTimer;
+  int _connectAttempts = 0;
 
   Position? _latest;
   MapPoint? _me;
   String? _socketNote;
   String? _actionNote;
+  LocationAccess? _locationRefusal;
   bool _busy = false;
   bool _closing = false;
+  bool _socketAlive = false;
 
   @override
   void initState() {
     super.initState();
     unawaited(_connect());
-    _startTracking();
+    unawaited(_startTracking());
   }
 
   @override
   void dispose() {
     _closing = true;
     _pushTimer?.cancel();
+    _reconnectTimer?.cancel();
     unawaited(_events?.cancel());
     unawaited(_positions?.cancel());
     unawaited(_channel?.close());
@@ -76,6 +81,9 @@ class _DriverActiveTripScreenState
   }
 
   Future<void> _connect() async {
+    if (_closing) {
+      return;
+    }
     try {
       final TripChannel channel = await ref
           .read(tripRepositoryProvider)
@@ -84,7 +92,13 @@ class _DriverActiveTripScreenState
         await channel.close();
         return;
       }
-      setState(() => _channel = channel);
+      _connectAttempts = 0;
+      _reconnectTimer?.cancel();
+      setState(() {
+        _channel = channel;
+        _socketAlive = true;
+        _socketNote = null;
+      });
       _events = channel.events.listen(
         (TripEvent event) {
           switch (event) {
@@ -96,6 +110,7 @@ class _DriverActiveTripScreenState
               // subsequent tick, so retrying is pointless.
               if (event.isFatal) {
                 _pushTimer?.cancel();
+                _socketAlive = false;
               }
             case TripAckEvent():
               if (mounted && _socketNote != null) {
@@ -115,28 +130,82 @@ class _DriverActiveTripScreenState
           }
         },
         onError: (Object error) {
-          if (mounted) {
-            setState(() => _socketNote = error.userMessage);
-          }
+          _onSocketDown(error.userMessage);
         },
         onDone: () {
-          if (mounted && !_closing) {
-            setState(() => _socketNote = '即時連線已中斷');
-          }
+          _onSocketDown(_closeReason(channel), retryable: _mayRetry(channel));
         },
       );
     } on ApiException catch (e) {
-      if (mounted) {
-        setState(() => _socketNote = e.message);
-      }
+      _onSocketDown(e.message);
     } on TripSocketClosed catch (e) {
-      if (mounted) {
-        setState(() => _socketNote = e.reason);
-      }
+      _onSocketDown(e.reason, retryable: e.retryable);
     }
   }
 
-  void _startTracking() {
+  bool _mayRetry(TripChannel channel) {
+    final int? code = channel.closeCode;
+    return code != AppConfig.wsUnauthenticated &&
+        code != AppConfig.wsForbidden &&
+        code != AppConfig.wsUnknownOrder;
+  }
+
+  void _scheduleReconnect() {
+    if (_closing || !mounted || _reconnectTimer?.isActive == true) {
+      return;
+    }
+    const List<int> delays = <int>[2, 5, 10, 30];
+    final int index = _connectAttempts < delays.length
+        ? _connectAttempts
+        : delays.length - 1;
+    _connectAttempts += 1;
+    _reconnectTimer = Timer(Duration(seconds: delays[index]), () {
+      if (!_closing && mounted) {
+        unawaited(_connect());
+      }
+    });
+  }
+
+  void _onSocketDown(String reason, {bool retryable = true}) {
+    if (_closing || !mounted) {
+      return;
+    }
+    setState(() {
+      _socketAlive = false;
+      _socketNote = reason;
+    });
+    if (retryable) {
+      _scheduleReconnect();
+    }
+  }
+
+  String _closeReason(TripChannel channel) => switch (channel.closeCode) {
+    AppConfig.wsUnauthenticated => '登入狀態已失效，請重新登入',
+    AppConfig.wsForbidden => '你不是此行程的參與者',
+    AppConfig.wsUnknownOrder => '找不到此行程',
+    AppConfig.wsCapacity => '連線數目已達上限，稍後重試',
+    final int? code when code == null => '連線中斷',
+    final int? code => '連線已關閉（$code）',
+  };
+
+  Future<void> _startTracking() async {
+    final LocationAccess access = await _location.ensureAccess();
+    if (!mounted || _closing) {
+      return;
+    }
+    if (access != LocationAccess.granted) {
+      setState(() {
+        _locationRefusal = access;
+        _actionNote = locationRefusalMessage(
+          access,
+          alternative: '開始或完成行程都需要你的位置。',
+        );
+      });
+      return;
+    }
+    _locationRefusal = null;
+    _pushTimer?.cancel();
+    unawaited(_positions?.cancel());
     _positions = _location
         .stream(distanceFilter: 15)
         .listen(
@@ -172,7 +241,7 @@ class _DriverActiveTripScreenState
   void _pushTick() {
     final Position? position = _latest;
     final TripChannel? channel = _channel;
-    if (position == null || channel == null || _closing) {
+    if (position == null || channel == null || _closing || !_socketAlive) {
       return;
     }
     // Guard the server's own bounds: a tick outside Hong Kong earns
@@ -347,6 +416,29 @@ class _DriverActiveTripScreenState
                       ),
                     ),
                   ),
+                if (_locationRefusal != null) ...[
+                  const SizedBox(height: AppTheme.space2),
+                  Row(
+                    children: <Widget>[
+                      if (locationNeedsSettings(_locationRefusal!))
+                        TextButton(
+                          onPressed: () {
+                            final LocationAccess access = _locationRefusal!;
+                            unawaited(
+                              _location
+                                  .openSettings(access)
+                                  .then((_) => _startTracking()),
+                            );
+                          },
+                          child: const Text('去設定'),
+                        ),
+                      TextButton(
+                        onPressed: () => unawaited(_startTracking()),
+                        child: const Text('重試'),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: AppTheme.space3),
                 ..._actions(order),
               ],

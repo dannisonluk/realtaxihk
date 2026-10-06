@@ -22,7 +22,10 @@ abstract interface class TokenStore {
   /// superseded one makes the server revoke the whole family (`SEC-17`). The
   /// replacement must therefore be durable before the request that produced it
   /// is considered done.
-  Future<void> updateTokens({required String accessToken, required String refreshToken});
+  Future<void> updateTokens({
+    required String accessToken,
+    required String refreshToken,
+  });
 
   Future<String?> accessToken();
 
@@ -33,7 +36,9 @@ abstract interface class TokenStore {
 
 class SecureTokenStore implements TokenStore {
   SecureTokenStore({FlutterSecureStorage? storage})
-    : _storage = storage ?? const FlutterSecureStorage(aOptions: _android, iOptions: _ios);
+    : _storage =
+          storage ??
+          const FlutterSecureStorage(aOptions: _android, iOptions: _ios);
 
   /// Android: AES-GCM for the data, with the key wrapped by an RSA-OAEP key
   /// held in the hardware-backed Android Keystore. This is the default in
@@ -57,30 +62,33 @@ class SecureTokenStore implements TokenStore {
     accessibility: KeychainAccessibility.first_unlock_this_device,
   );
 
-  static const String _kAccess = 'realtaxi.access_token';
-  static const String _kRefresh = 'realtaxi.refresh_token';
-  static const String _kUser = 'realtaxi.user';
+  static const String _kSession = 'realtaxi.session';
 
   final FlutterSecureStorage _storage;
 
   @override
   Future<AuthSession?> read() async {
-    final Map<String, String> all = await _storage.readAll();
-    final String? access = all[_kAccess];
-    final String? refresh = all[_kRefresh];
-    final String? userJson = all[_kUser];
-    if (access == null || refresh == null || userJson == null) {
+    final String? raw = await _storage.read(key: _kSession);
+    if (raw == null) {
       return null;
     }
     try {
-      final Object? decoded = jsonDecode(userJson);
+      final Object? decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+      final String? access = decoded['access'] as String?;
+      final String? refresh = decoded['refresh'] as String?;
+      final Object? userJson = decoded['user'];
+      if (access == null ||
+          refresh == null ||
+          userJson is! Map<String, dynamic>) {
         return null;
       }
       return AuthSession(
         accessToken: access,
         refreshToken: refresh,
-        user: AppUser.fromJson(decoded),
+        user: AppUser.fromJson(userJson),
       );
     } on FormatException {
       // A corrupted cache is not worth surfacing — sign in again.
@@ -94,22 +102,48 @@ class SecureTokenStore implements TokenStore {
 
   @override
   Future<void> write(AuthSession session) async {
-    await _storage.write(key: _kAccess, value: session.accessToken);
-    await _storage.write(key: _kRefresh, value: session.refreshToken);
-    await _storage.write(key: _kUser, value: jsonEncode(session.user.toJson()));
+    // One key per session makes the three values replace together. Writing the
+    // fields as separate keys could leave access/refresh/user mismatched if a
+    // single secure-storage write failed midway.
+    await _storage.write(
+      key: _kSession,
+      value: jsonEncode(<String, Object?>{
+        'access': session.accessToken,
+        'refresh': session.refreshToken,
+        'user': session.user.toJson(),
+      }),
+    );
   }
 
   @override
-  Future<void> updateTokens({required String accessToken, required String refreshToken}) async {
-    await _storage.write(key: _kAccess, value: accessToken);
-    await _storage.write(key: _kRefresh, value: refreshToken);
+  Future<void> updateTokens({
+    required String accessToken,
+    required String refreshToken,
+  }) async {
+    final AuthSession? session = await read();
+    if (session == null) {
+      return;
+    }
+    await write(
+      AuthSession(
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+        user: session.user,
+      ),
+    );
   }
 
   @override
-  Future<String?> accessToken() => _storage.read(key: _kAccess);
+  Future<String?> accessToken() async {
+    final AuthSession? session = await read();
+    return session?.accessToken;
+  }
 
   @override
-  Future<String?> refreshToken() => _storage.read(key: _kRefresh);
+  Future<String?> refreshToken() async {
+    final AuthSession? session = await read();
+    return session?.refreshToken;
+  }
 
   @override
   Future<void> clear() => _storage.deleteAll();

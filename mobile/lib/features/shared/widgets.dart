@@ -150,12 +150,12 @@ class ErrorView extends StatelessWidget {
     final String hint = switch (error) {
       final ApiException e when e.code == ApiException.rateLimited =>
         e.retryAfter == null
-            ? 'Please wait a moment and try again.'
-            : 'Please wait ${(e.retryAfter!.inSeconds / 60).ceil()} minutes and try again.',
+            ? '請稍候片刻再試。'
+            : '請等 ${(e.retryAfter!.inSeconds / 60).ceil()} 分鐘後再試。',
       final ApiException e when e.code == ApiException.serviceUnavailable =>
-        'The service is busy right now. Please try again shortly.',
+        '系統目前繁忙，請稍後再試。',
       final ApiException e when e.code == ApiException.network =>
-        'Check your connection. Nothing was sent to the server.',
+        '請檢查網絡連線，剛才的操作並未送出。',
       _ => '',
     };
 

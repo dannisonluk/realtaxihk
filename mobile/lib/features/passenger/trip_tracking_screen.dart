@@ -53,6 +53,9 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
   TripChannel? _channel;
   StreamSubscription<TripEvent>? _events;
   Timer? _poll;
+  Timer? _reconnectTimer;
+  int _connectAttempts = 0;
+  int _refreshSeq = 0;
 
   MapPoint? _driver;
   String? _socketNote;
@@ -64,13 +67,17 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
   void initState() {
     super.initState();
     unawaited(_connect());
-    _poll = Timer.periodic(AppConfig.locationPollInterval, (Timer _) => _refresh());
+    _poll = Timer.periodic(
+      AppConfig.locationPollInterval,
+      (Timer _) => _refresh(),
+    );
   }
 
   @override
   void dispose() {
     _closing = true;
     _poll?.cancel();
+    _reconnectTimer?.cancel();
     unawaited(_events?.cancel());
     unawaited(_channel?.close());
     super.dispose();
@@ -88,6 +95,8 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
         await channel.close();
         return;
       }
+      _connectAttempts = 0;
+      _reconnectTimer?.cancel();
       setState(() {
         _channel = channel;
         _socketAlive = true;
@@ -96,13 +105,38 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
       _events = channel.events.listen(
         _onEvent,
         onError: (Object error) => _onSocketDown(error.userMessage),
-        onDone: () => _onSocketDown(_closeReason(channel)),
+        onDone: () =>
+            _onSocketDown(_closeReason(channel), retryable: _mayRetry(channel)),
       );
     } on ApiException catch (e) {
       _onSocketDown(e.message);
     } on TripSocketClosed catch (e) {
-      _onSocketDown(e.reason);
+      _onSocketDown(e.reason, retryable: e.retryable);
     }
+  }
+
+  bool _mayRetry(TripChannel channel) {
+    final int? code = channel.closeCode;
+    return code != AppConfig.wsUnauthenticated &&
+        code != AppConfig.wsForbidden &&
+        code != AppConfig.wsUnknownOrder;
+  }
+
+  void _scheduleReconnect() {
+    if (_closing || !mounted || _reconnectTimer?.isActive == true) {
+      return;
+    }
+    const List<int> delays = <int>[2, 5, 10, 30];
+    final int index = _connectAttempts < delays.length
+        ? _connectAttempts
+        : delays.length - 1;
+    _connectAttempts += 1;
+    _reconnectTimer = Timer(Duration(seconds: delays[index]), () {
+      if (_closing || !mounted) {
+        return;
+      }
+      unawaited(_connect());
+    });
   }
 
   String _closeReason(TripChannel channel) => switch (channel.closeCode) {
@@ -115,6 +149,9 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
   };
 
   void _onEvent(TripEvent event) {
+    if (_closing || !mounted) {
+      return;
+    }
     switch (event) {
       case TripLocationEvent(:final double lat, :final double lng):
         setState(() => _driver = MapPoint(lat: lat, lng: lng, label: '司機位置'));
@@ -134,7 +171,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
     }
   }
 
-  void _onSocketDown(String reason) {
+  void _onSocketDown(String reason, {bool retryable = true}) {
     if (_closing || !mounted) {
       return;
     }
@@ -142,6 +179,9 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
       _socketAlive = false;
       _socketNote = reason;
     });
+    if (retryable) {
+      _scheduleReconnect();
+    }
     // The REST snapshot below keeps the map useful while the socket is down.
     unawaited(_refresh());
   }
@@ -153,6 +193,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
     if (_closing) {
       return;
     }
+    final int seq = ++_refreshSeq;
     ref.invalidate(orderDetailProvider(widget.orderId));
 
     if (_socketAlive) {
@@ -162,12 +203,18 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
       final TripLocationSnapshot snapshot = await ref
           .read(tripRepositoryProvider)
           .snapshot(widget.orderId);
-      if (!mounted || _closing) {
+      // A newer refresh may already have landed (or the socket reconnected);
+      // applying an older snapshot on top would turn back the map.
+      if (!mounted || _closing || seq != _refreshSeq || _socketAlive) {
         return;
       }
       setState(() {
         if (snapshot.hasFix) {
-          _driver = MapPoint(lat: snapshot.lat!, lng: snapshot.lng!, label: '司機位置');
+          _driver = MapPoint(
+            lat: snapshot.lat!,
+            lng: snapshot.lng!,
+            label: '司機位置',
+          );
         }
       });
     } on ApiException catch (e) {
@@ -179,13 +226,19 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final AsyncValue<Order> order = ref.watch(orderDetailProvider(widget.orderId));
+    final AsyncValue<Order> order = ref.watch(
+      orderDetailProvider(widget.orderId),
+    );
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('行程'),
         actions: <Widget>[
-          IconButton(onPressed: _refresh, tooltip: '重新整理', icon: const Icon(Icons.refresh)),
+          IconButton(
+            onPressed: _refresh,
+            tooltip: '重新整理',
+            icon: const Icon(Icons.refresh),
+          ),
         ],
       ),
       body: AsyncValueView<Order>(
@@ -279,21 +332,30 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: <Widget>[
                     Text(
-                      order.fare.isDestinationChange ? '車費（已改目的地，重新估算）' : '車費（已凍結）',
+                      order.fare.isDestinationChange
+                          ? '車費（已改目的地，重新估算）'
+                          : '車費（已凍結）',
                       style: theme.textTheme.titleSmall,
                     ),
-                    MoneyText(order.estimatedTotalHkd, style: theme.textTheme.headlineSmall),
+                    MoneyText(
+                      order.estimatedTotalHkd,
+                      style: theme.textTheme.headlineSmall,
+                    ),
                   ],
                 ),
                 const SizedBox(height: AppTheme.space1),
                 DetailRow(label: '的士種類', value: order.taxiType.labelZh),
                 DetailRow(label: '下單時間', value: _createdAt(order)),
                 if (order.destinationChangeCount > 0)
-                  DetailRow(label: '改目的地次數', value: '${order.destinationChangeCount} 次'),
+                  DetailRow(
+                    label: '改目的地次數',
+                    value: '${order.destinationChangeCount} 次',
+                  ),
                 if (driver != null)
                   DetailRow(
                     label: '司機位置',
-                    value: '${driver.lat.toStringAsFixed(5)}, ${driver.lng.toStringAsFixed(5)}',
+                    value:
+                        '${driver.lat.toStringAsFixed(5)}, ${driver.lng.toStringAsFixed(5)}',
                   ),
                 const SizedBox(height: AppTheme.space3),
                 ..._actions(context, order),
@@ -323,7 +385,9 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
   ///   navigation.
   List<Widget> _actions(BuildContext context, Order order) {
     if (order.status == OrderStatus.pendingArrivalConfirm) {
-      return <Widget>[_ArrivalConfirmPanel(order: order, onConfirmed: _afterAction)];
+      return <Widget>[
+        _ArrivalConfirmPanel(order: order, onConfirmed: _afterAction),
+      ];
     }
     if (order.status.canInterrupt) {
       return <Widget>[
@@ -354,9 +418,9 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
             padding: const EdgeInsets.only(top: AppTheme.space3),
             child: Text(
               '⚠️ 已確認到達，無法取消。如無法乘車，請與司機溝通或中斷行程。',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.error,
+              ),
             ),
           ),
       ];
@@ -382,7 +446,10 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
         const SizedBox(height: AppTheme.space2),
         SizedBox(
           width: double.infinity,
-          child: OutlinedButton(onPressed: () => _appeal(order), child: const Text('提出申訴')),
+          child: OutlinedButton(
+            onPressed: () => _appeal(order),
+            child: const Text('提出申訴'),
+          ),
         ),
       ];
     }
@@ -391,14 +458,17 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
         OutlinedButton.icon(
           onPressed: _busy ? null : () => _confirmCancel(order),
           icon: const Icon(Icons.close),
-          label: Text(order.status.cancelNeedsReason ? '取消行程（可能被扣違約罰款）' : '取消行程'),
+          label: Text(
+            order.status.cancelNeedsReason ? '取消行程（可能被扣違約罰款）' : '取消行程',
+          ),
         ),
       ];
     }
     return const <Widget>[];
   }
 
-  static String _createdAt(Order order) => order.createdAt == null ? '—' : _fmt(order.createdAt!);
+  static String _createdAt(Order order) =>
+      order.createdAt == null ? '—' : _fmt(order.createdAt!);
 
   static String _fmt(DateTime at) =>
       '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
@@ -441,8 +511,12 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
 
   /// P4 §4.1. Pick a new dropoff, confirm, then let the server re-price.
   Future<void> _changeDestination(Order order) async {
-    final String current = order.premiumDestination?.nameZh ?? order.destinationArea ?? '原本目的地';
-    final MapPoint? destination = await pickNewDestination(context, currentAddress: current);
+    final String current =
+        order.premiumDestination?.nameZh ?? order.destinationArea ?? '原本目的地';
+    final MapPoint? destination = await pickNewDestination(
+      context,
+      currentAddress: current,
+    );
     if (destination == null || !mounted) {
       return;
     }
@@ -473,18 +547,25 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
 
   /// P4 §4.1 step 7 — the new estimate must be shown immediately, and it must be
   /// labelled an estimate rather than a price.
-  Future<void> _showNewEstimate(Order updated, {required Money previous}) async {
+  Future<void> _showNewEstimate(
+    Order updated, {
+    required Money previous,
+  }) async {
     final Money now = updated.estimatedTotalHkd;
     // `minus` works in integer cents — never subtract `asDouble`s, which is how
     // `HK$0.30000000000001137` reaches the screen.
     final Money delta = now.minus(previous);
     final Money magnitude = Money(
-      delta.canonical.startsWith('-') ? delta.canonical.substring(1) : delta.canonical,
+      delta.canonical.startsWith('-')
+          ? delta.canonical.substring(1)
+          : delta.canonical,
     );
     final String deltaText = delta.isZero
         ? '與原本相同'
         : '（${delta.isNegative ? '−' : '+'}${magnitude.hkd}）';
-    final StringBuffer body = StringBuffer('新估價 ${now.hkd} $deltaText。實際車資仍由你與司機協商。');
+    final StringBuffer body = StringBuffer(
+      '新估價 ${now.hkd} $deltaText。實際車資仍由你與司機協商。',
+    );
     if (updated.fare.distanceIsStraightLine) {
       body.write('\n\n註：此估價以直線距離計算，實際道路距離可能更遠。');
     }
@@ -494,7 +575,10 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
         title: const Text('已更改目的地'),
         content: Text(body.toString()),
         actions: <Widget>[
-          FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('知道了')),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('知道了'),
+          ),
         ],
       ),
     );
@@ -544,7 +628,10 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
           '如屬其他情況，請以此編號聯絡客服。',
         ),
         actions: <Widget>[
-          FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('知道了')),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('知道了'),
+          ),
         ],
       ),
     );
@@ -585,7 +672,9 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
           .read(orderRepositoryProvider)
           .cancel(
             order.id,
-            reason: reasonCode == null ? 'passenger cancelled' : 'passenger defaulted',
+            reason: reasonCode == null
+                ? 'passenger cancelled'
+                : 'passenger defaulted',
             reasonCode: reasonCode,
           );
       if (mounted) {
@@ -610,7 +699,8 @@ class _ArrivalConfirmPanel extends ConsumerStatefulWidget {
   final VoidCallback onConfirmed;
 
   @override
-  ConsumerState<_ArrivalConfirmPanel> createState() => _ArrivalConfirmPanelState();
+  ConsumerState<_ArrivalConfirmPanel> createState() =>
+      _ArrivalConfirmPanelState();
 }
 
 class _ArrivalConfirmPanelState extends ConsumerState<_ArrivalConfirmPanel> {
@@ -705,13 +795,18 @@ class _ArrivalConfirmPanelState extends ConsumerState<_ArrivalConfirmPanel> {
                 padding: const EdgeInsets.only(top: AppTheme.space2),
                 child: Text(
                   _error!,
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
                 ),
               ),
             const SizedBox(height: AppTheme.space2),
             SizedBox(
               width: double.infinity,
-              child: FilledButton(onPressed: _busy ? null : _submit, child: const Text('確認我已上車')),
+              child: FilledButton(
+                onPressed: _busy ? null : _submit,
+                child: const Text('確認我已上車'),
+              ),
             ),
             const SizedBox(height: AppTheme.space1),
             Text(
