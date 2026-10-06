@@ -1,11 +1,11 @@
 # `docs/` — 文檔索引
 
-> **EN — Docs index.** Seventeen living documents plus an `archive/` of dated
+> **EN — Docs index.** Thirteen living documents plus an `archive/` of dated
 > snapshots. Start with `ARCHITECTURE.md` if you want to understand the system,
 > `DEVELOPMENT.md` if you are about to change it, and `WORK_SUMMARY.md` if you
 > need to know what is still outstanding.
 >
-> **中文摘要**：17 份現行文檔 + 一個放歷史快照的 `archive/`。要**理解系統**讀
+> **中文摘要**：13 份現行文檔 + 一個放歷史快照的 `archive/`。要**理解系統**讀
 > `ARCHITECTURE.md`；要**動手改**讀 `DEVELOPMENT.md`；要知道**還欠什麼**讀
 > `WORK_SUMMARY.md`。
 
@@ -21,8 +21,8 @@
 | **做安全審視** | [`SECURITY.md`](SECURITY.md) → [`archive/SECURITY_AUDIT.md`](archive/SECURITY_AUDIT.md) |
 | **做 QA／測試** | [`QA_TEST_ENVIRONMENT.md`](QA_TEST_ENVIRONMENT.md) |
 | **接手未完成的產品工作** | [`WORK_SUMMARY.md`](WORK_SUMMARY.md) §4 → [`FEATURE_EXPANSION_2026-10-05.md`](FEATURE_EXPANSION_2026-10-05.md) |
-| **接手未修的審計項** | [`AUDIT_FINDINGS_LINEBYLINE.md`](AUDIT_FINDINGS_LINEBYLINE.md)（**全項目 open items 的權威清單**） |
-| **想知道現在有什麼壞掉** | [`ERROR_SCAN_2026-10-05.md`](ERROR_SCAN_2026-10-05.md) |
+| **接手未修的審計項** | [`WORK_SUMMARY.md`](WORK_SUMMARY.md) §4 → [`archive/AUDIT_2026-10-06.md`](archive/AUDIT_2026-10-06.md)（最新 fresh audit） |
+| **想知道現在有什麼壞掉** | [`WORK_SUMMARY.md`](WORK_SUMMARY.md) §4C → [`archive/ERROR_SCAN_2026-10-05.md`](archive/ERROR_SCAN_2026-10-05.md) |
 
 ---
 
@@ -42,17 +42,15 @@
 | [`QA_TEST_ENVIRONMENT.md`](QA_TEST_ENVIRONMENT.md) | 測試環境交接：**四個必改的環境變數**、OTP 怎麼拿（**不會**出現在回應裡）、管理員怎麼建、三個客戶端各連哪個位址、**手機 App 首次登入的兩道牆**（§6）、12 條實際卡過的陷阱 | 清單 |
 | [`LANDMARK_COORDINATES.md`](LANDMARK_COORDINATES.md) | 19 個地標落客座標（供人手覆核）＋深圳灣口岸港方口岸區的完整幾何分析與法律依據 | 參考資料 |
 | [`REALTIME_POSITION_COST.md`](REALTIME_POSITION_COST.md) | 一個 GPS tick 的成本實測、不同並發下的開銷、擴展天花板、5 項按投報率排序的優化 | 分析 |
-| [`STRUCTURE_REVIEW.md`](STRUCTURE_REVIEW.md) | 目錄佈局的評估：已很好的部分、8 項按價值／風險排序的建議、以及比目錄更重要的那個結構盲點 | 評估 |
-| [`AUDIT_FINDINGS_LINEBYLINE.md`](AUDIT_FINDINGS_LINEBYLINE.md) | **逐行審計的 findings log（活文件）**：每個發現的編號、證據（檔案:行號）、修復狀態。要查「還有哪項未修」以這裡為權威 | 審計 |
-| [`AUDIT_REPORT_2026-10-04.md`](AUDIT_REPORT_2026-10-04.md) | 企業級全量審計報告 v4（修復輪）：分輪發現與處置（帶日期，見下方說明） | 報告 |
 | [`FEATURE_EXPANSION_2026-10-05.md`](FEATURE_EXPANSION_2026-10-05.md) | 下一波產品功能的整合設計 backlog（取代舊的分散提案） | 提案 |
-| [`ERROR_SCAN_2026-10-05.md`](ERROR_SCAN_2026-10-05.md) | **實跑式全專案錯誤掃描**：每個 gate 的真實輸出、已驗證乾淨項、以及哪些 gate 因環境未跑（帶日期） | 報告 |
 
-> **「現行」與「帶日期」的界線**：`AUDIT_FINDINGS_LINEBYLINE.md` 是**活文件**——
-> 條目狀態會隨修復進度更新，是 open items 的權威。
-> `AUDIT_REPORT_2026-10-04.md` 與 `ERROR_SCAN_2026-10-05.md` 帶日期、記的是
-> **當天量到什麼**（含當天的 HEAD），按第 3 條守則**不追現況**；要今天的狀態讀
-> `WORK_SUMMARY.md`。
+> **「現行」與「帶日期」的界線**：現行文檔描述系統**今天**的樣子；帶日期的
+> snapshot 記的是**當天量到什麼**（含當天的 HEAD），按第 3 條守則**不追現況**。
+> 2026-10-06 起，`AUDIT_FINDINGS_LINEBYLINE.md`／`AUDIT_REPORT_2026-10-04.md`／
+> `ERROR_SCAN_2026-10-05.md`／`STRUCTURE_REVIEW.md` 已移入
+> [`archive/`](archive/README.md)；最新審計係
+> [`archive/AUDIT_2026-10-06.md`](archive/AUDIT_2026-10-06.md)，open items 以
+> [`WORK_SUMMARY.md`](WORK_SUMMARY.md) §4 為權威。
 
 ## 相關文檔（不在 `docs/`）
 
@@ -79,7 +77,12 @@
 | [`archive/PRODUCTION_READINESS.md`](archive/PRODUCTION_READINESS.md) | 上線就緒審計：4 bug / 7 P0 / 10 P1 / 10 P2 逐條狀態與修復記錄 | 2026-09-29 |
 | [`archive/CODE_REVIEW_2026-10-01.md`](archive/CODE_REVIEW_2026-10-01.md) | 深度程式碼審查（6 高 / 4 中 / 6 註釋級） | 2026-10-01 |
 | [`archive/CODE_REVIEW_2026-10-12.md`](archive/CODE_REVIEW_2026-10-12.md) | 全代碼庫逐行審閱（P0 / P1 / P2 + migrations + 前端），含已撤銷的誤報 | 2026-10-12 |
+| [`archive/AUDIT_FINDINGS_LINEBYLINE.md`](archive/AUDIT_FINDINGS_LINEBYLINE.md) | 逐行審計 findings log（2026-10-06 前嘅活文件，已由 fresh audit 取代） | 2026-10-04 ~ 10-06 |
+| [`archive/AUDIT_REPORT_2026-10-04.md`](archive/AUDIT_REPORT_2026-10-04.md) | 企業級全量審計報告 v4（修復輪） | 2026-10-04 |
+| [`archive/ERROR_SCAN_2026-10-05.md`](archive/ERROR_SCAN_2026-10-05.md) | 實跑式全專案錯誤掃描 gate 輸出 | 2026-10-05 |
+| [`archive/STRUCTURE_REVIEW.md`](archive/STRUCTURE_REVIEW.md) | 目錄佈局評估 + keyset cursor bug 背景 | 2026-10-06 前 |
 | [`archive/UI_DESIGN_REVIEW_2026-10-02.md`](archive/UI_DESIGN_REVIEW_2026-10-02.md) | 管理後台 UI 設計審查（Apple HIG、對比度、無障礙） | 2026-10-02 |
+| [`archive/AUDIT_2026-10-06.md`](archive/AUDIT_2026-10-06.md) | **Fresh root-and-branch audit**：backend/mobile/admin findings + fix disposition + gates | 2026-10-06 |
 | [`archive/AGENT_HANDOFF_multi-agent-2026-10-06.md`](archive/AGENT_HANDOFF_multi-agent-2026-10-06.md) | 多 agent 並行協作期的檔案認領與分工進度（該模式已結束，規則失效） | 2026-09 ~ 10-06 |
 
 > 詳見 [`archive/README.md`](archive/README.md)。
@@ -93,11 +96,10 @@
    要查用 `git log --oneline -1`。
 3. **「現值」vs「有日期快照」是判斷標準，不是「數字舊不舊」。**
    現行文檔的測試數、路徑數要跟現況；帶日期的快照**刻意不改**。
-4. **`docs/archive/` 只進不出**：新的審計／審查報告用帶日期的檔名，直接寫進
-   `archive/`，不要混進現行文檔。**唯一的例外**是上表下方註解點名的那兩份帶日期
-   報告（`AUDIT_REPORT_2026-10-04.md`、`ERROR_SCAN_2026-10-05.md`）：它們刻意留在
-   `docs/`，因為索引要讓人找得到「當天量到什麼」。除此之外的新報告一律入
-   `archive/`。
+4. **`docs/archive/` 只進不出**：新的審計／審查報告用帶日期的檔名（如
+   `AUDIT_YYYY-MM-DD.md`）直接寫進 `archive/`，唔好混入現行文檔。舊日期的審計／
+   掃描報告亦一律歸 `archive/`（2026-10-06 已整理一次）；現行文檔只保留
+   「描述系統今天」的指引。新報告一律入 `archive/`。
 5. **改了架構就同步**：`ARCHITECTURE.md`、`DEVELOPMENT.md`、`WORK_SUMMARY.md`
    三者是最容易漂移的，改動後要一起看。
 6. **計數器只寫「實跑量到」的數字，並講明用什麼方法量。**
@@ -118,8 +120,8 @@
 | response_model 覆蓋 | 101 exported／97 reachable；119 operations 全有 `response_model`；81 個 fixture block 全過 | `scripts/verify/audit_response_models.py` |
 | Alembic | **20** migrations · 單一 head `b8d1f2a3c4e5` | `alembic heads` / `ls alembic/versions/*.py` |
 | `tests/` | 58 個 `.py`（57 個 `test_*.py` · 1,023 個 `def test_`） | `grep -rho "def test_[a-zA-Z_0-9]*" tests/ \| wc -l` |
-| 後端 pytest | **全套 1244 passed / 0 failed / 0 error**（2026-10-06 單一 process 實跑，725s） | `.venv/Scripts/python.exe -m pytest -q` |
-| `mobile/lib` | 83 個 `.dart` · 17,254 LOC · **30** 個 `*_screen.dart` | `find mobile/lib -name "*.dart"` |
+| 後端 pytest | **全套 1245 passed / 0 failed / 0 error**（2026-10-06 單一 process 實跑，719s） | `.venv/Scripts/python.exe -m pytest -q` |
+| `mobile/lib` | 83 個 `.dart` · 17,948 LOC · **30** 個 `*_screen.dart` | `find mobile/lib -name "*.dart"` |
 | Dart harness | **155 passed / 0 failed** | `dart … tool/run_tests.dart` |
 | Dart LSP check | **85 files opened / 0 diagnostics** | `python mobile/tool/dart_check.py mobile` |
 | Contract | 65 個 fixture json；harness 解到 **64** 個 · 0 failure | `dart … tool/verify_contract.dart` |
@@ -129,9 +131,9 @@
 
 > ✅ **後端測試 2026-10-06 全套一次過實跑全綠**（Docker Desktop 開住、`realtaxi-db` ＋
 > `realtaxi-redis` healthy）：`.venv/Scripts/python.exe -m pytest -q` =
-> **1244 passed / 0 failed / 0 error / 0 skipped**（12m05s）。單一 process 順序跑穩定；
+> **1245 passed / 0 failed / 0 error / 0 skipped**（11m59s）。單一 process 順序跑穩定；
 > 先前「一次過跑會中途中止」的情況已消失。
 > ⚠️ 並行跑兩隻 pytest 仍不建議（爭同一 DB/Redis 資源）。**GEO index 已納入
 > `REDIS_KEY_NAMESPACE`**（`app/services/order/geo_service.py::geo_orders_key`），
 > 所以「兩隻 run 互相污染出假 failed」嘅根因已消除。
-> 逐次掃描的歷史快照見 [`ERROR_SCAN_2026-10-05.md`](ERROR_SCAN_2026-10-05.md)。
+> 逐次掃描的歷史快照見 [`archive/ERROR_SCAN_2026-10-05.md`](archive/ERROR_SCAN_2026-10-05.md)。

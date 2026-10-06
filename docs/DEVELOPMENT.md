@@ -195,7 +195,7 @@ CI 的 `types` job 跑 `uv run mypy`，gate 整個 `app/`。設定在 `pyproject
 而 Python 的 tuple `<` 會先測相等 —— `bool(Order.created_at == ts)` 對 SQLAlchemy
 欄位回 **`False`（不拋錯）**，於是直接落到 `created_at < ts`，**`id` tie-breaker
 從未進入 SQL**。同一時間戳的訂單因此會被分頁靜默丟掉。修法是用
-`tuple_(...) < tuple_(...)`。詳見 `STRUCTURE_REVIEW.md` R9。
+`tuple_(...) < tuple_(...)`。詳見 `archive/STRUCTURE_REVIEW.md` R9。
 
 **SQLAlchemy 2.0 與 FastAPI 都自帶 typing，不需要 plugin** —— 這是反直覺但重要
 的一點：`Mapped[...]`、`Depends()`、Pydantic 模型都直接解析。所以 gate 可以一次

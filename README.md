@@ -8,8 +8,8 @@ three roles, and a web admin console.
 
 **Status: production-hardened.** Backend test count is not quoted here — it drifts
 and this line had gone stale twice; see [`docs/README.md`](docs/README.md) for the
-measurement baseline. Mobile: 153 assertions · 64 contract fixtures decoded (65 files) ·
-console: 81 vitest tests · browser UI verifier PASS.
+measurement baseline. Mobile: 155 assertions · 64 contract fixtures decoded (65 files) ·
+console: 87 vitest tests · browser UI verifier PASS.
 
 **New here? Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first** — a guided
 tour of how a trip flows from hail to settlement, where money is allowed to
@@ -502,24 +502,23 @@ uv run mypy                                        # types; no database needed
 
 # mobile (Dart, in mobile/)
 python tool/dart_check.py .                        # 0 diagnostics expected
-dart --packages=.dart_tool/package_config.json tool/run_tests.dart      # 153 passed
+dart --packages=.dart_tool/package_config.json tool/run_tests.dart      # 155 passed
 dart --packages=.dart_tool/package_config.json tool/verify_contract.dart # 64 fixtures
 
 # console (in admin-web/web/)
 npm run typecheck && npx vitest run && npm run build
 ```
 
-> `--junit-xml=` is not optional here. On this dev host `pytest` **always exits 1**
-> and never prints its summary line: pytest's own tmpdir garbage collector tries to
-> `rmtree` a `pytest-of-user/garbage-*` directory holding several hundred files, the
-> sandbox's bulk-delete guard refuses, and that refusal becomes pytest's exit code.
-> The tests themselves are clean -- the run that produced 1219 passed reported rc=1.
-> **Read the XML, never the exit code.**
+> `--junit-xml=` is not optional here. On this dev host, read the printed
+> summary or the XML, never a pipeline exit code: when pytest is wrapped in a
+> shell pipeline (e.g. `| tail`), the wrapper's exit code is the last command's,
+> not pytest's. The 2026-10-06 full run printed `1245 passed`; treat that as the
+> source of truth.
 >
-> `--junit-xml=` 不是可選項。本機 `pytest` **必定回傳 1**，而且永遠不會印出 summary
-> 行：pytest 自己的 tmpdir GC 要 `rmtree` 一個載着幾百個檔案的
-> `pytest-of-user/garbage-*`，沙盒的 bulk-delete 守衛拒絕，那個拒絕就變成 pytest
-> 的 exit code。測試本身是乾淨的。**只讀 XML，不要看 exit code。**
+> `--junit-xml=` 不是可選項。本機要**只讀 XML／summary，不要依賴 pipeline exit
+> code**：pytest 被 pipe 包住時，exit code 係最尾嗰個指令（例如 `tail`）嘅值，
+> 唔係 pytest 嘅值。2026-10-06 全套實跑印出 `1245 passed`；以 print 出嚟嘅 summary
+> 或 XML 為準。
 >
 > The same shim blocks `npm run build`: Vite empties `dist/assets` before writing, and
 > once that directory holds more than 50 files the sandbox refuses the bulk delete —
@@ -534,15 +533,15 @@ npm run typecheck && npx vitest run && npm run build
 
 | Suite | Count | Covers |
 |---|---|---|
-| `tests/`（56 files；api 37 + domain 7 + infra 11 + conftest） | **全套 1219 passed / 0 failed / 0 error**（單一 process 實跑，2026-10-06） | fare unit · per-module API · WS streaming · fleets/roster/settlement · backup retention + restore drill · console contrast · hardening regressions |
-| `mobile/tool/run_tests.dart` | **153** | Dart unit assertions |
+| `tests/`（58 個 `.py`；57 個 `test_*.py` + conftest） | **全套 1245 passed / 0 failed / 0 error**（單一 process 實跑，2026-10-06） | fare unit · per-module API · WS streaming · fleets/roster/settlement · backup retention + restore drill · console contrast · hardening regressions |
+| `mobile/tool/run_tests.dart` | **155** | Dart unit assertions |
 | `mobile/tool/verify_contract.dart` | **64 fixtures**（共 65 個 fixture json） | every wire shape, decoded by the real models |
-| `admin-web/web` (vitest) | **81** | page-level behaviour |
+| `admin-web/web` (vitest) | **87** | page-level behaviour |
 | `verify_ui.mjs` + `audit_layout.mjs` | PASS | real-browser E2E, layout, both themes |
 
 > 後端 pytest 狀態（2026-10-06）：**一次過 `pytest tests` 全套實跑全綠 =
-> 1219 passed / 0 failed / 0 error / 0 skipped**（junit `.tmp/final2.xml`；rc=1 是
-> 沙盒擋住 pytest 的 tmpdir GC，見 §7.1）。
+> 1245 passed / 0 failed / 0 error / 0 skipped**（印出 summary；見 §7.1 關於
+> pipeline exit code 嘅警告）。
 > 先前「一次過跑會中途中止、唔敢宣稱 full-suite 全綠」嘅情況**已經消失**。
 > 跑法：`docker compose up -d db redis` 之後
 > `.venv/Scripts/python.exe -m pytest tests -q --junit-xml=.tmp/full2.xml`。
@@ -593,7 +592,7 @@ The `types` job is not decoration. It found a real defect the first time it ran:
 the keyset cursor in `app/api/orders.py` compared a Python tuple against two
 columns, which Python evaluates as a single-column comparison, so orders sharing
 the anchor's `created_at` were silently dropped from the history page. See
-[`docs/STRUCTURE_REVIEW.md`](docs/STRUCTURE_REVIEW.md) R9.
+[`docs/archive/STRUCTURE_REVIEW.md`](docs/archive/STRUCTURE_REVIEW.md) R9.
 
 ---
 
@@ -738,7 +737,7 @@ what" by role.
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **Start here** — guided tour, business flow, invariants |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Conventions, backend quirks, lint gate, methodology |
 | [`docs/WORK_SUMMARY.md`](docs/WORK_SUMMARY.md) | Current state, everything outstanding |
-| [`docs/AUDIT_FINDINGS_LINEBYLINE.md`](docs/AUDIT_FINDINGS_LINEBYLINE.md) | **The authoritative open-items list** — every audit finding, its evidence, its fix state |
+| [`docs/archive/AUDIT_2026-10-06.md`](docs/archive/AUDIT_2026-10-06.md) | **Latest fresh root-and-branch audit** — backend/mobile/admin findings, disposition, gates |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Security model + hardening guide |
 | [`docs/ADMIN_AUTH.md`](docs/ADMIN_AUTH.md) | Admin auth model, authenticator choice |
 | [`docs/ADMIN_CONSOLE_DESIGN.md`](docs/ADMIN_CONSOLE_DESIGN.md) | Console design + four-level RBAC |
