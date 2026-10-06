@@ -1,7 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/cupertino.dart'
-    show CupertinoAlertDialog, CupertinoDialogAction;
+import 'package:flutter/cupertino.dart' show CupertinoAlertDialog, CupertinoDialogAction;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -36,10 +35,8 @@ class AsyncValueView<T> extends StatelessWidget {
     return value.when(
       skipLoadingOnRefresh: false,
       data: builder,
-      loading: () =>
-          loading ?? const Center(child: CircularProgressIndicator()),
-      error: (Object error, StackTrace stack) =>
-          ErrorView(error: error, onRetry: onRetry),
+      loading: () => loading ?? const Center(child: CircularProgressIndicator()),
+      error: (Object error, StackTrace stack) => ErrorView(error: error, onRetry: onRetry),
     );
   }
 }
@@ -66,11 +63,7 @@ class AsyncValueView<T> extends StatelessWidget {
 ///    stray wordmark. [semanticLabel] is that object's name, and it is also the
 ///    wordmark the fallback below draws.
 class BrandLogo extends StatelessWidget {
-  const BrandLogo({
-    required this.size,
-    this.semanticLabel = '香港Call的士',
-    super.key,
-  });
+  const BrandLogo({required this.size, this.semanticLabel = '香港Call的士', super.key});
 
   /// Width and height in logical pixels. The source is 1024px, so anything up
   /// to ~340dp is a downscale — which is the case [FilterQuality.medium] is
@@ -104,27 +97,22 @@ class BrandLogo extends StatelessWidget {
           // A missing asset means the generator was never run. Draw the mark the
           // app used before — icon plus wordmark — rather than Flutter's grey
           // error box on the first screen a user ever sees.
-          errorBuilder:
-              (BuildContext context, Object error, StackTrace? stack) =>
-                  SizedBox(
-                    width: size,
-                    height: size,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: <Widget>[
-                        Icon(
-                          Icons.local_taxi_rounded,
-                          size: size * 0.5,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        const SizedBox(height: AppTheme.space2),
-                        Text(
-                          semanticLabel,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ],
-                    ),
-                  ),
+          errorBuilder: (BuildContext context, Object error, StackTrace? stack) => SizedBox(
+            width: size,
+            height: size,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Icon(
+                  Icons.local_taxi_rounded,
+                  size: size * 0.5,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(height: AppTheme.space2),
+                Text(semanticLabel, style: Theme.of(context).textTheme.titleMedium),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -150,13 +138,9 @@ class ErrorView extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final String hint = switch (error) {
       final ApiException e when e.code == ApiException.rateLimited =>
-        e.retryAfter == null
-            ? '請稍候片刻再試。'
-            : '請等 ${(e.retryAfter!.inSeconds / 60).ceil()} 分鐘後再試。',
-      final ApiException e when e.code == ApiException.serviceUnavailable =>
-        '系統目前繁忙，請稍後再試。',
-      final ApiException e when e.code == ApiException.network =>
-        '請檢查網絡連線，剛才的操作並未送出。',
+        e.retryAfter == null ? '請稍候片刻再試。' : '請等 ${(e.retryAfter!.inSeconds / 60).ceil()} 分鐘後再試。',
+      final ApiException e when e.code == ApiException.serviceUnavailable => '系統目前繁忙，請稍後再試。',
+      final ApiException e when e.code == ApiException.network => '請檢查網絡連線，剛才的操作並未送出。',
       _ => '',
     };
 
@@ -168,26 +152,15 @@ class ErrorView extends StatelessWidget {
           children: <Widget>[
             Icon(Icons.error_outline, size: 44, color: theme.colorScheme.error),
             const SizedBox(height: AppTheme.space4),
-            Text(
-              error.userMessage,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyLarge,
-            ),
+            Text(error.userMessage, textAlign: TextAlign.center, style: theme.textTheme.bodyLarge),
             if (hint.isNotEmpty) ...<Widget>[
               const SizedBox(height: AppTheme.space2),
-              Text(
-                hint,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall,
-              ),
+              Text(hint, textAlign: TextAlign.center, style: theme.textTheme.bodySmall),
             ],
             if (onRetry != null) ...<Widget>[
               const SizedBox(height: AppTheme.space6),
               // A prominent action, per `buttons.md`: one obvious thing to do.
-              FilledButton.tonal(
-                onPressed: onRetry,
-                child: const Text('請再試'),
-              ),
+              FilledButton.tonal(onPressed: onRetry, child: const Text('請再試')),
             ],
           ],
         ),
@@ -202,13 +175,7 @@ class ErrorView extends StatelessWidget {
 /// action rather than reporting an absence. Where there is a natural next step,
 /// [action] is that step, not a "dismiss".
 class EmptyView extends StatelessWidget {
-  const EmptyView({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.action,
-    super.key,
-  });
+  const EmptyView({required this.icon, required this.title, this.subtitle, this.action, super.key});
 
   final IconData icon;
   final String title;
@@ -226,23 +193,12 @@ class EmptyView extends StatelessWidget {
           children: <Widget>[
             Icon(icon, size: 44, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: AppTheme.space4),
-            Text(
-              title,
-              style: theme.textTheme.titleMedium,
-              textAlign: TextAlign.center,
-            ),
+            Text(title, style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
             if (subtitle != null) ...<Widget>[
               const SizedBox(height: AppTheme.space2),
-              Text(
-                subtitle!,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall,
-              ),
+              Text(subtitle!, textAlign: TextAlign.center, style: theme.textTheme.bodySmall),
             ],
-            if (action != null) ...<Widget>[
-              const SizedBox(height: AppTheme.space6),
-              action!,
-            ],
+            if (action != null) ...<Widget>[const SizedBox(height: AppTheme.space6), action!],
           ],
         ),
       ),
@@ -259,12 +215,7 @@ class EmptyView extends StatelessWidget {
 /// Visual hierarchy` ("Group related items to clearly express related
 /// information or functions").
 class GroupedSection extends StatelessWidget {
-  const GroupedSection({
-    required this.title,
-    required this.children,
-    this.footnote,
-    super.key,
-  });
+  const GroupedSection({required this.title, required this.children, this.footnote, super.key});
 
   final String title;
   final List<Widget> children;
@@ -279,15 +230,10 @@ class GroupedSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.only(
-            left: AppTheme.space4,
-            bottom: AppTheme.space2,
-          ),
+          padding: const EdgeInsets.only(left: AppTheme.space4, bottom: AppTheme.space2),
           child: Text(
             title,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ),
         Card(
@@ -296,10 +242,7 @@ class GroupedSection extends StatelessWidget {
               horizontal: AppTheme.space4,
               vertical: AppTheme.space3,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: children,
-            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
           ),
         ),
         if (footnote != null)
@@ -319,13 +262,7 @@ class GroupedSection extends StatelessWidget {
 /// An amount, coloured by sign using the Hong Kong convention (red up, green
 /// down) — see [AppTheme.moneyColor].
 class MoneyText extends StatelessWidget {
-  const MoneyText(
-    this.money, {
-    this.signed = false,
-    this.style,
-    this.showSymbol = true,
-    super.key,
-  });
+  const MoneyText(this.money, {this.signed = false, this.style, this.showSymbol = true, super.key});
 
   final Money money;
 
@@ -337,9 +274,7 @@ class MoneyText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String text = signed
-        ? money.signedHkd
-        : (showSymbol ? money.hkd : money.display);
+    final String text = signed ? money.signedHkd : (showSymbol ? money.hkd : money.display);
     return Text(
       text,
       style: (style ?? Theme.of(context).textTheme.titleMedium)?.copyWith(
@@ -353,12 +288,7 @@ class MoneyText extends StatelessWidget {
 
 /// A small status pill.
 class StatusChip extends StatelessWidget {
-  const StatusChip({
-    required this.label,
-    required this.color,
-    this.semanticsLabel,
-    super.key,
-  });
+  const StatusChip({required this.label, required this.color, this.semanticsLabel, super.key});
 
   factory StatusChip.order(OrderStatus status, BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
@@ -374,8 +304,7 @@ class StatusChip extends StatelessWidget {
         OrderStatus.accepted || OrderStatus.driverArrived => scheme.primary,
         // `DESTINATION_CHANGED` is a live trip that happens to have a new
         // dropoff, so it reads the same as `IN_TRIP`.
-        OrderStatus.inTrip ||
-        OrderStatus.destinationChanged => AppTheme.statusLive,
+        OrderStatus.inTrip || OrderStatus.destinationChanged => AppTheme.statusLive,
         // Neutral rather than a colour: the trip is over and nothing is
         // outstanding. This used to be `loss`, which painted a finished trip as
         // money leaving the account and disagreed with the console, where the
@@ -443,10 +372,7 @@ class StatusChip extends StatelessWidget {
       // state twice.
       child: ExcludeSemantics(
         child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppTheme.space3,
-            vertical: 3,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: AppTheme.space3, vertical: 3),
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.14),
             borderRadius: BorderRadius.circular(999),
@@ -454,10 +380,7 @@ class StatusChip extends StatelessWidget {
           ),
           child: Text(
             label,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
+            style: theme.textTheme.labelLarge?.copyWith(color: color, fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -476,20 +399,14 @@ class StatusChip extends StatelessWidget {
 /// value column keeps all of its room, so the column gives way to legibility
 /// instead.
 class DetailRow extends StatelessWidget {
-  const DetailRow({
-    required this.label,
-    this.value,
-    this.valueWidget,
-    super.key,
-  });
+  const DetailRow({required this.label, this.value, this.valueWidget, super.key});
 
   final String label;
   final String? value;
   final Widget? valueWidget;
 
   /// The text size the user has asked for. `1.0` is the system default.
-  static double _textScale(BuildContext context) =>
-      MediaQuery.textScalerOf(context).scale(1);
+  static double _textScale(BuildContext context) => MediaQuery.textScalerOf(context).scale(1);
 
   @override
   Widget build(BuildContext context) {
@@ -512,9 +429,7 @@ class DetailRow extends StatelessWidget {
                 valueWidget ??
                 Text(
                   value ?? '—',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
                 ),
           ),
         ],
@@ -589,8 +504,7 @@ void showInfoAction(
 
 /// Whether the fix for [access] lives in the system settings, not in this app.
 bool locationNeedsSettings(LocationAccess access) =>
-    access == LocationAccess.deniedForever ||
-    access == LocationAccess.serviceDisabled;
+    access == LocationAccess.deniedForever || access == LocationAccess.serviceDisabled;
 
 /// What to tell a user whose location could not be read, for [access].
 ///
@@ -630,10 +544,7 @@ void showLocationUnavailable(
   Future<void> Function()? onRetry,
   String? alternative,
 }) {
-  final String message = locationRefusalMessage(
-    access,
-    alternative: alternative,
-  );
+  final String message = locationRefusalMessage(access, alternative: alternative);
   if (locationNeedsSettings(access)) {
     showInfoAction(
       context,
@@ -642,12 +553,7 @@ void showLocationUnavailable(
       onAction: () => unawaited(onOpenSettings()),
     );
   } else if (onRetry != null) {
-    showInfoAction(
-      context,
-      message,
-      actionLabel: '重新授權',
-      onAction: () => unawaited(onRetry()),
-    );
+    showInfoAction(context, message, actionLabel: '重新授權', onAction: () => unawaited(onRetry()));
   } else {
     showInfo(context, message);
   }

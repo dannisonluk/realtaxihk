@@ -187,8 +187,7 @@ class _OrderTile extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final DateTime? at = order.createdAt;
     final OrderCreateRequest? template = order.toOrderCreateRequest();
-    final bool canRepeat =
-        order.status == OrderStatus.completed && template != null;
+    final bool canRepeat = order.status == OrderStatus.completed && template != null;
 
     return Card(
       child: Column(
@@ -241,8 +240,7 @@ class _OrderTile extends StatelessWidget {
                 children: <Widget>[
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () =>
-                          context.push(Routes.request, extra: template),
+                      onPressed: () => context.push(Routes.request, extra: template),
                       icon: const Icon(Icons.navigation_outlined, size: 18),
                       label: const Text('再次叫車'),
                     ),
@@ -252,10 +250,7 @@ class _OrderTile extends StatelessWidget {
                     child: OutlinedButton.icon(
                       onPressed: () => context.push(
                         Routes.recurringRides,
-                        extra: RecurringRidePrefill(
-                          order: template,
-                          sourceOrderId: order.id,
-                        ),
+                        extra: RecurringRidePrefill(order: template, sourceOrderId: order.id),
                       ),
                       icon: const Icon(Icons.event_repeat, size: 18),
                       label: const Text('每週重複'),

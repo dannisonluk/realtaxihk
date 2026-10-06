@@ -101,8 +101,9 @@ class _MapPanelState extends State<MapPanel> {
         onMapCreated: (GoogleMapController controller) => _controller = controller,
         onTap: widget.onTap == null
             ? null
-            : (LatLng point) =>
-                  widget.onTap!(MapPoint(lat: point.latitude, lng: point.longitude, label: 'Pinned')),
+            : (LatLng point) => widget.onTap!(
+                MapPoint(lat: point.latitude, lng: point.longitude, label: 'Pinned'),
+              ),
         markers: <Marker>{
           for (final MapPoint point in widget.markers)
             Marker(

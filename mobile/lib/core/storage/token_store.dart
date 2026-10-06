@@ -22,10 +22,7 @@ abstract interface class TokenStore {
   /// superseded one makes the server revoke the whole family (`SEC-17`). The
   /// replacement must therefore be durable before the request that produced it
   /// is considered done.
-  Future<void> updateTokens({
-    required String accessToken,
-    required String refreshToken,
-  });
+  Future<void> updateTokens({required String accessToken, required String refreshToken});
 
   Future<String?> accessToken();
 
@@ -36,9 +33,7 @@ abstract interface class TokenStore {
 
 class SecureTokenStore implements TokenStore {
   SecureTokenStore({FlutterSecureStorage? storage})
-    : _storage =
-          storage ??
-          const FlutterSecureStorage(aOptions: _android, iOptions: _ios);
+    : _storage = storage ?? const FlutterSecureStorage(aOptions: _android, iOptions: _ios);
 
   /// Android: AES-GCM for the data, with the key wrapped by an RSA-OAEP key
   /// held in the hardware-backed Android Keystore. This is the default in
@@ -80,9 +75,7 @@ class SecureTokenStore implements TokenStore {
       final String? access = decoded['access'] as String?;
       final String? refresh = decoded['refresh'] as String?;
       final Object? userJson = decoded['user'];
-      if (access == null ||
-          refresh == null ||
-          userJson is! Map<String, dynamic>) {
+      if (access == null || refresh == null || userJson is! Map<String, dynamic>) {
         return null;
       }
       return AuthSession(
@@ -116,20 +109,13 @@ class SecureTokenStore implements TokenStore {
   }
 
   @override
-  Future<void> updateTokens({
-    required String accessToken,
-    required String refreshToken,
-  }) async {
+  Future<void> updateTokens({required String accessToken, required String refreshToken}) async {
     final AuthSession? session = await read();
     if (session == null) {
       return;
     }
     await write(
-      AuthSession(
-        accessToken: accessToken,
-        refreshToken: refreshToken,
-        user: session.user,
-      ),
+      AuthSession(accessToken: accessToken, refreshToken: refreshToken, user: session.user),
     );
   }
 

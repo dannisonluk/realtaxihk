@@ -106,8 +106,7 @@ final FutureProvider<DriverEnvironment> driverEnvironmentProvider =
 /// The driver's notification inbox, newest first.
 final FutureProvider<DriverNotificationPage> driverNotificationsProvider =
     FutureProvider<DriverNotificationPage>(
-      (Ref ref) =>
-          ref.watch(driverNotificationRepositoryProvider).list(limit: 50),
+      (Ref ref) => ref.watch(driverNotificationRepositoryProvider).list(limit: 50),
     );
 
 /// The driver's standing fixed-fare offers (一口價).

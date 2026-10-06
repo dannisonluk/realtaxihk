@@ -131,11 +131,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
     setState(() {
       _locating = false;
       if (position != null) {
-        _pickup = MapPoint(
-          lat: position.latitude,
-          lng: position.longitude,
-          label: '上車點',
-        );
+        _pickup = MapPoint(lat: position.latitude, lng: position.longitude, label: '上車點');
         _recomputeDistance();
       }
     });
@@ -183,16 +179,10 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
   void _toggleRequirement(String key) {
     setState(() {
       _requirements = switch (key) {
-        'silent_ride' => _requirements.copyWith(
-          silentRide: !_requirements.silentRide,
-        ),
-        'no_radio_music' => _requirements.copyWith(
-          noRadioMusic: !_requirements.noRadioMusic,
-        ),
+        'silent_ride' => _requirements.copyWith(silentRide: !_requirements.silentRide),
+        'no_radio_music' => _requirements.copyWith(noRadioMusic: !_requirements.noRadioMusic),
         'no_smoke' => _requirements.copyWith(noSmoke: !_requirements.noSmoke),
-        'no_perfume' => _requirements.copyWith(
-          noPerfume: !_requirements.noPerfume,
-        ),
+        'no_perfume' => _requirements.copyWith(noPerfume: !_requirements.noPerfume),
         _ => _requirements,
       };
     });
@@ -233,11 +223,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
     setState(() => _requirements = _requirements.copyWith(animal: result));
   }
 
-  bool get _ready =>
-      _pickup != null &&
-      _dropoff != null &&
-      _distanceKm > 0 &&
-      _distanceKm <= 100;
+  bool get _ready => _pickup != null && _dropoff != null && _distanceKm > 0 && _distanceKm <= 100;
 
   FareEstimateRequest _fareRequest() => FareEstimateRequest(
     taxiType: _taxiType,
@@ -255,9 +241,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
     }
     setState(() => _busy = true);
     try {
-      final FareEstimate estimate = await ref
-          .read(fareRepositoryProvider)
-          .estimate(_fareRequest());
+      final FareEstimate estimate = await ref.read(fareRepositoryProvider).estimate(_fareRequest());
       if (mounted) {
         setState(() => _estimate = estimate);
       }
@@ -296,9 +280,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
               // Omitted entirely when empty, so an order that asks for nothing
               // stores no `requirements_json` — which is what the driver's
               // nearby filters read as "never mentioned an animal".
-              requirements: _requirements.isEmpty
-                  ? null
-                  : _requirements.toJson(),
+              requirements: _requirements.isEmpty ? null : _requirements.toJson(),
               paymentPreference: _paymentPreference.toList(growable: false),
             ),
           );
@@ -370,15 +352,9 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
                 for (final PremiumDestination pin in premium.items)
                   if (pin.lat != pickup?.lat || pin.lng != pickup?.lng)
                     if (pin.lat != dropoff?.lat || pin.lng != dropoff?.lng)
-                      MapPoint(
-                        lat: pin.lat,
-                        lng: pin.lng,
-                        label: '★ ${pin.nameZh}',
-                      ),
+                      MapPoint(lat: pin.lat, lng: pin.lng, label: '★ ${pin.nameZh}'),
               ],
-              route: (pickup != null && dropoff != null)
-                  ? <MapPoint>[pickup, dropoff]
-                  : null,
+              route: (pickup != null && dropoff != null) ? <MapPoint>[pickup, dropoff] : null,
               onTap: _onMapTap,
               zoom: 13,
             ),
@@ -442,10 +418,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
                   SegmentedButton<TaxiType>(
                     segments: <ButtonSegment<TaxiType>>[
                       for (final TaxiType type in TaxiType.values)
-                        ButtonSegment<TaxiType>(
-                          value: type,
-                          label: Text(type.labelZh),
-                        ),
+                        ButtonSegment<TaxiType>(value: type, label: Text(type.labelZh)),
                     ],
                     selected: <TaxiType>{_taxiType},
                     onSelectionChanged: (Set<TaxiType> value) => setState(() {
@@ -460,11 +433,8 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
                       Expanded(
                         child: TextField(
                           controller: _distance,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          onChanged: (String _) =>
-                              setState(() => _estimate = null),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (String _) => setState(() => _estimate = null),
                           decoration: const InputDecoration(
                             labelText: '行車距離（公里）',
                             helperText: '由座標估算，可手動修正',
@@ -476,15 +446,9 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
                       Expanded(
                         child: TextField(
                           controller: _tip,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          onChanged: (String _) =>
-                              setState(() => _estimate = null),
-                          decoration: const InputDecoration(
-                            labelText: '貼士',
-                            prefixText: 'HK\$ ',
-                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (String _) => setState(() => _estimate = null),
+                          decoration: const InputDecoration(labelText: '貼士', prefixText: 'HK\$ '),
                         ),
                       ),
                     ],
@@ -561,9 +525,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
                           value: _requirements.enabledFlags.contains(entry.key),
                           onChanged: (bool _) => _toggleRequirement(entry.key),
                           title: Text(entry.value),
-                          subtitle: Text(
-                            RideRequirements.flagSubtitleZh[entry.key] ?? '',
-                          ),
+                          subtitle: Text(RideRequirements.flagSubtitleZh[entry.key] ?? ''),
                         ),
                       ListTile(
                         contentPadding: EdgeInsets.zero,
@@ -585,9 +547,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
                                 tooltip: '移除',
                                 icon: const Icon(Icons.clear),
                                 onPressed: () => setState(
-                                  () => _requirements = _requirements.copyWith(
-                                    animal: null,
-                                  ),
+                                  () => _requirements = _requirements.copyWith(animal: null),
                                 ),
                               ),
                         onTap: _editAnimal,
@@ -604,20 +564,14 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
                     footnote: '只屬偏好。司機實際接受的方式會在下單後顯示。',
                     children: <Widget>[
                       Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: AppTheme.space2,
-                        ),
+                        padding: const EdgeInsets.symmetric(vertical: AppTheme.space2),
                         child: Wrap(
                           spacing: AppTheme.space2,
                           runSpacing: AppTheme.space1,
                           children: <Widget>[
-                            for (final String method
-                                in DriverPaymentMethods.all)
+                            for (final String method in DriverPaymentMethods.all)
                               FilterChip(
-                                label: Text(
-                                  DriverPaymentMethods.labelsZh[method] ??
-                                      method,
-                                ),
+                                label: Text(DriverPaymentMethods.labelsZh[method] ?? method),
                                 selected: _paymentPreference.contains(method),
                                 onSelected: (bool _) => _togglePayment(method),
                               ),
@@ -648,9 +602,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
                               ? const SizedBox(
                                   width: 20,
                                   height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
+                                  child: CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Text('確認叫車'),
                         ),
@@ -694,37 +646,22 @@ class _FareBreakdownCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: <Widget>[
                 Text('報價', style: theme.textTheme.titleSmall),
-                MoneyText(
-                  estimate.totalFare,
-                  style: theme.textTheme.headlineSmall,
-                ),
+                MoneyText(estimate.totalFare, style: theme.textTheme.headlineSmall),
               ],
             ),
             const Divider(height: AppTheme.space6),
-            DetailRow(
-              label: '起錶',
-              valueWidget: MoneyText(estimate.meterFare, showSymbol: false),
-            ),
+            DetailRow(label: '起錶', valueWidget: MoneyText(estimate.meterFare, showSymbol: false)),
             if (!estimate.discountPercent.isZero)
               DetailRow(
                 label: '折扣率',
-                valueWidget: MoneyText(
-                  estimate.discountPercent,
-                  showSymbol: false,
-                ),
+                valueWidget: MoneyText(estimate.discountPercent, showSymbol: false),
               ),
             if (!estimate.meterDiscount.isZero)
-              DetailRow(
-                label: '折扣',
-                valueWidget: MoneyText(estimate.meterDiscount, signed: true),
-              ),
+              DetailRow(label: '折扣', valueWidget: MoneyText(estimate.meterDiscount, signed: true)),
             if (!estimate.surchargesTotal.isZero)
               DetailRow(
                 label: '附加費',
-                valueWidget: MoneyText(
-                  estimate.surchargesTotal,
-                  showSymbol: false,
-                ),
+                valueWidget: MoneyText(estimate.surchargesTotal, showSymbol: false),
               ),
             for (final FareSurcharge s in estimate.surcharges)
               DetailRow(
@@ -732,22 +669,15 @@ class _FareBreakdownCard extends StatelessWidget {
                 valueWidget: MoneyText(s.amount, showSymbol: false),
               ),
             if (!estimate.tip.isZero)
-              DetailRow(
-                label: '貼士',
-                valueWidget: MoneyText(estimate.tip, showSymbol: false),
-              ),
+              DetailRow(label: '貼士', valueWidget: MoneyText(estimate.tip, showSymbol: false)),
             const SizedBox(height: AppTheme.space2),
             Text(
               estimate.disclaimerZh,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
             Text(
               'Tariff ${estimate.tariffVersion}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -806,14 +736,10 @@ class _AnimalSheet extends StatelessWidget {
               SegmentedButton<String>(
                 segments: <ButtonSegment<String>>[
                   for (final String k in AnimalDetail.kinds)
-                    ButtonSegment<String>(
-                      value: k,
-                      label: Text(AnimalDetail.kindLabelsZh[k] ?? k),
-                    ),
+                    ButtonSegment<String>(value: k, label: Text(AnimalDetail.kindLabelsZh[k] ?? k)),
                 ],
                 selected: <String>{kind},
-                onSelectionChanged: (Set<String> value) =>
-                    onKindChanged(value.first),
+                onSelectionChanged: (Set<String> value) => onKindChanged(value.first),
               ),
               const SizedBox(height: AppTheme.space4),
               Row(
@@ -821,26 +747,16 @@ class _AnimalSheet extends StatelessWidget {
                   Expanded(
                     child: TextField(
                       controller: heightController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: '高度',
-                        suffixText: 'cm',
-                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: '高度', suffixText: 'cm'),
                     ),
                   ),
                   const SizedBox(width: AppTheme.space3),
                   Expanded(
                     child: TextField(
                       controller: weightController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: '重量',
-                        suffixText: 'kg',
-                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: '重量', suffixText: 'kg'),
                     ),
                   ),
                 ],

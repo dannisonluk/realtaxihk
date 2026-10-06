@@ -20,12 +20,10 @@ class DriverNotificationsScreen extends ConsumerStatefulWidget {
   const DriverNotificationsScreen({super.key});
 
   @override
-  ConsumerState<DriverNotificationsScreen> createState() =>
-      _DriverNotificationsScreenState();
+  ConsumerState<DriverNotificationsScreen> createState() => _DriverNotificationsScreenState();
 }
 
-class _DriverNotificationsScreenState
-    extends ConsumerState<DriverNotificationsScreen> {
+class _DriverNotificationsScreenState extends ConsumerState<DriverNotificationsScreen> {
   Future<void> _refresh() async {
     ref.invalidate(driverNotificationsProvider);
     await ref.read(driverNotificationsProvider.future);
@@ -36,9 +34,7 @@ class _DriverNotificationsScreenState
       return;
     }
     try {
-      await ref
-          .read(driverNotificationRepositoryProvider)
-          .read(notification.id);
+      await ref.read(driverNotificationRepositoryProvider).read(notification.id);
       ref.invalidate(driverNotificationsProvider);
     } on Exception {
       // A failed mark-read must not block scrolling the inbox; the next
@@ -52,18 +48,14 @@ class _DriverNotificationsScreenState
       ref.invalidate(driverNotificationsProvider);
     } on Exception {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('暫時無法更新已讀狀態')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('暫時無法更新已讀狀態')));
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final AsyncValue<DriverNotificationPage> inbox = ref.watch(
-      driverNotificationsProvider,
-    );
+    final AsyncValue<DriverNotificationPage> inbox = ref.watch(driverNotificationsProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -152,9 +144,7 @@ class _NotificationTile extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: AppTheme.space1),
                 child: Icon(
-                  notification.isPremium
-                      ? Icons.flight_takeoff
-                      : Icons.local_offer_outlined,
+                  notification.isPremium ? Icons.flight_takeoff : Icons.local_offer_outlined,
                   size: 22,
                   color: accent,
                 ),

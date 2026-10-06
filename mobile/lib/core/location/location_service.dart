@@ -40,8 +40,7 @@ class LocationService {
       permission = await Geolocator.requestPermission();
     }
     return switch (permission) {
-      LocationPermission.always ||
-      LocationPermission.whileInUse => LocationAccess.granted,
+      LocationPermission.always || LocationPermission.whileInUse => LocationAccess.granted,
       LocationPermission.deniedForever => LocationAccess.deniedForever,
       LocationPermission.denied => LocationAccess.denied,
       _ => LocationAccess.denied,
@@ -67,14 +66,9 @@ class LocationService {
     }
     try {
       final Position position = await Geolocator.getCurrentPosition(
-        locationSettings: LocationSettings(
-          accuracy: accuracy,
-          timeLimit: timeLimit,
-        ),
+        locationSettings: LocationSettings(accuracy: accuracy, timeLimit: timeLimit),
       );
-      return isInHongKong(position.latitude, position.longitude)
-          ? position
-          : null;
+      return isInHongKong(position.latitude, position.longitude) ? position : null;
     } on Exception {
       return null;
     }
@@ -90,10 +84,7 @@ class LocationService {
     int distanceFilter = 10,
   }) {
     return Geolocator.getPositionStream(
-      locationSettings: LocationSettings(
-        accuracy: accuracy,
-        distanceFilter: distanceFilter,
-      ),
+      locationSettings: LocationSettings(accuracy: accuracy, distanceFilter: distanceFilter),
     );
   }
 

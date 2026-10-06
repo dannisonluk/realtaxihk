@@ -64,17 +64,10 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
     setState(() {
       if (position == null) {
         _locationRefusal = access;
-        _locationNote = locationRefusalMessage(
-          access,
-          alternative: '附近訂單需要位置才可顯示。',
-        );
+        _locationNote = locationRefusalMessage(access, alternative: '附近訂單需要位置才可顯示。');
         return;
       }
-      _me = MapPoint(
-        lat: position.latitude,
-        lng: position.longitude,
-        label: '我的位置',
-      );
+      _me = MapPoint(lat: position.latitude, lng: position.longitude, label: '我的位置');
       _locationNote = null;
       _locationRefusal = null;
     });
@@ -117,9 +110,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
   Future<void> _grab(Order order) async {
     setState(() => _busy = true);
     try {
-      final Order grabbed = await ref
-          .read(orderRepositoryProvider)
-          .grab(order.id);
+      final Order grabbed = await ref.read(orderRepositoryProvider).grab(order.id);
       ref.invalidate(filteredNearbyOrdersProvider);
       if (mounted) {
         await context.push('${Routes.driverActiveTrip}/${grabbed.id}');
@@ -147,8 +138,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final MapPoint? me = _me;
-    final AsyncValue<DriverNotificationPage> notifications =
-        ref.watch(driverNotificationsProvider);
+    final AsyncValue<DriverNotificationPage> notifications = ref.watch(driverNotificationsProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -159,9 +149,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
             tooltip: '通知',
             icon: Badge(
               isLabelVisible: (notifications.value?.unreadCount ?? 0) > 0,
-              label: Text(
-                _badgeText(notifications.value?.unreadCount ?? 0),
-              ),
+              label: Text(_badgeText(notifications.value?.unreadCount ?? 0)),
               child: const Icon(Icons.notifications_outlined),
             ),
           ),
@@ -187,9 +175,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
                   ),
                   child: SwitchListTile(
                     value: _online,
-                    onChanged: _busy
-                        ? null
-                        : (bool value) => unawaited(_toggleOnline(value)),
+                    onChanged: _busy ? null : (bool value) => unawaited(_toggleOnline(value)),
                     title: Text(_online ? '已上線' : '已離線'),
                     subtitle: Text(
                       _online ? '正在接收附近訂單' : '上線後才會顯示附近訂單',
@@ -213,24 +199,14 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
                     ),
                     child: Row(
                       children: <Widget>[
-                        Icon(
-                          Icons.location_off,
-                          size: 16,
-                          color: theme.colorScheme.error,
-                        ),
+                        Icon(Icons.location_off, size: 16, color: theme.colorScheme.error),
                         const SizedBox(width: AppTheme.space2),
-                        Expanded(
-                          child: Text(
-                            _locationNote!,
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        ),
+                        Expanded(child: Text(_locationNote!, style: theme.textTheme.bodySmall)),
                         if (_locationRefusal != null)
                           locationNeedsSettings(_locationRefusal!)
                               ? TextButton(
-                                  onPressed: () => unawaited(
-                                    _location.openSettings(_locationRefusal!),
-                                  ),
+                                  onPressed: () =>
+                                      unawaited(_location.openSettings(_locationRefusal!)),
                                   child: const Text('去設定'),
                                 )
                               : const SizedBox.shrink(),
@@ -259,12 +235,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
   Widget _nearbyList(MapPoint me) {
     final NearbyFilter filter = ref.watch(nearbyFilterProvider);
     final AsyncValue<NearbyOrders> nearby = ref.watch(
-      filteredNearbyOrdersProvider((
-        lat: me.lat,
-        lng: me.lng,
-        radiusKm: 3,
-        filter: filter,
-      )),
+      filteredNearbyOrdersProvider((lat: me.lat, lng: me.lng, radiusKm: 3, filter: filter)),
     );
 
     return Column(
@@ -290,23 +261,19 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
               if (data.items.isEmpty) {
                 final bool filtered = !filter.isEmpty;
                 return RefreshIndicator(
-                  onRefresh: () async =>
-                      ref.invalidate(filteredNearbyOrdersProvider),
+                  onRefresh: () async => ref.invalidate(filteredNearbyOrdersProvider),
                   child: ListView(
                     children: <Widget>[
                       const SizedBox(height: 120),
                       EmptyView(
-                        icon: filtered
-                            ? Icons.filter_alt_off
-                            : Icons.search_off,
+                        icon: filtered ? Icons.filter_alt_off : Icons.search_off,
                         title: filtered ? '沒有符合條件的訂單' : '附近沒有待接訂單',
                         subtitle: filtered ? '條件太窄，試下放寬。' : '下拉重新整理。',
                       ),
                       if (filtered)
                         Center(
                           child: TextButton.icon(
-                            onPressed: () =>
-                                ref.read(nearbyFilterProvider.notifier).clear(),
+                            onPressed: () => ref.read(nearbyFilterProvider.notifier).clear(),
                             icon: const Icon(Icons.clear_all),
                             label: const Text('清除篩選'),
                           ),
@@ -316,8 +283,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
                 );
               }
               return RefreshIndicator(
-                onRefresh: () async =>
-                    ref.invalidate(filteredNearbyOrdersProvider),
+                onRefresh: () async => ref.invalidate(filteredNearbyOrdersProvider),
                 child: ListView.separated(
                   padding: const EdgeInsets.all(AppTheme.space4),
                   itemCount: data.items.length,
@@ -335,9 +301,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
                               children: <Widget>[
                                 Text(
                                   order.taxiType.labelZh,
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium,
+                                  style: Theme.of(context).textTheme.titleMedium,
                                 ),
                                 const Spacer(),
                                 MoneyText(order.estimatedTotalHkd),
@@ -378,9 +342,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
   /// `ACCEPTED` writes a real `PENALTY_DEDUCTION`. Rendering these after the grab
   /// button would make each of them cost the driver money.
   Widget _jobBadges(Order order) {
-    final RideRequirements requirements = RideRequirements.fromJson(
-      order.requirements,
-    );
+    final RideRequirements requirements = RideRequirements.fromJson(order.requirements);
     final PremiumDestination? premium = order.premiumDestination;
     if (requirements.isEmpty && premium == null) {
       return const SizedBox.shrink();
@@ -393,10 +355,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
         runSpacing: AppTheme.space1,
         children: <Widget>[
           if (premium != null)
-            Chip(
-              avatar: const Icon(Icons.flight_takeoff, size: 18),
-              label: Text(premium.nameZh),
-            ),
+            Chip(avatar: const Icon(Icons.flight_takeoff, size: 18), label: Text(premium.nameZh)),
           for (final String key in requirements.enabledFlags)
             Chip(
               avatar: Icon(_requirementIcon(key), size: 18),
@@ -438,28 +397,19 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
   /// Renders nothing when the list is empty or still loading: a spinner for
   /// optional metadata above a working job list would be noise.
   Widget _premiumPins() {
-    final AsyncValue<PremiumDestinationPage> destinations = ref.watch(
-      premiumDestinationsProvider,
-    );
+    final AsyncValue<PremiumDestinationPage> destinations = ref.watch(premiumDestinationsProvider);
     final List<PremiumDestination> items =
         destinations.value?.items ?? const <PremiumDestination>[];
     if (items.isEmpty) {
       return const SizedBox.shrink();
     }
-    final String? selected = ref
-        .watch(nearbyFilterProvider)
-        .premiumDestinationId;
+    final String? selected = ref.watch(nearbyFilterProvider).premiumDestinationId;
 
     return SizedBox(
       height: 44,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(
-          AppTheme.space4,
-          AppTheme.space3,
-          AppTheme.space4,
-          0,
-        ),
+        padding: const EdgeInsets.fromLTRB(AppTheme.space4, AppTheme.space3, AppTheme.space4, 0),
         children: <Widget>[
           for (final PremiumDestination d in items) ...<Widget>[
             FilterChip(
@@ -469,9 +419,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
               onSelected: (bool nowSelected) => ref
                   .read(nearbyFilterProvider.notifier)
                   .patch(
-                    (NearbyFilter f) => f.copyWith(
-                      premiumDestinationId: nowSelected ? d.id : null,
-                    ),
+                    (NearbyFilter f) => f.copyWith(premiumDestinationId: nowSelected ? d.id : null),
                   ),
             ),
             const SizedBox(width: AppTheme.space2),
@@ -491,12 +439,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
   Widget _filterBar(NearbyFilter filter) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(
-        AppTheme.space4,
-        AppTheme.space2,
-        AppTheme.space4,
-        0,
-      ),
+      padding: const EdgeInsets.fromLTRB(AppTheme.space4, AppTheme.space2, AppTheme.space4, 0),
       child: Row(
         children: <Widget>[
           _filterMenu(
@@ -523,27 +466,24 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
             avatar: const Icon(Icons.volume_off, size: 18),
             label: const Text('靜音'),
             selected: filter.requires.contains('silent_ride'),
-            onSelected: (bool _) => ref
-                .read(nearbyFilterProvider.notifier)
-                .toggleRequires('silent_ride'),
+            onSelected: (bool _) =>
+                ref.read(nearbyFilterProvider.notifier).toggleRequires('silent_ride'),
           ),
           const SizedBox(width: AppTheme.space2),
           FilterChip(
             avatar: const Icon(Icons.smoke_free, size: 18),
             label: const Text('無煙'),
             selected: filter.requires.contains('no_smoke'),
-            onSelected: (bool _) => ref
-                .read(nearbyFilterProvider.notifier)
-                .toggleRequires('no_smoke'),
+            onSelected: (bool _) =>
+                ref.read(nearbyFilterProvider.notifier).toggleRequires('no_smoke'),
           ),
           const SizedBox(width: AppTheme.space2),
           FilterChip(
             avatar: const Icon(Icons.pets, size: 18),
             label: const Text('可載寵物'),
             selected: filter.excludes.contains(NearbyFilter.animalKey),
-            onSelected: (bool _) => ref
-                .read(nearbyFilterProvider.notifier)
-                .toggleExcludes(NearbyFilter.animalKey),
+            onSelected: (bool _) =>
+                ref.read(nearbyFilterProvider.notifier).toggleExcludes(NearbyFilter.animalKey),
           ),
           if (!filter.isEmpty) ...<Widget>[
             const SizedBox(width: AppTheme.space2),
@@ -576,9 +516,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
       ],
       child: Chip(
         avatar: Icon(icon, size: 18),
-        label: Text(
-          current == null ? label : '$label：${options[current] ?? current}',
-        ),
+        label: Text(current == null ? label : '$label：${options[current] ?? current}'),
         deleteIcon: current == null ? null : const Icon(Icons.close, size: 16),
         onDeleted: current == null ? null : () => onPick(null),
       ),

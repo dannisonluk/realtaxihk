@@ -198,10 +198,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
         builder: (BuildContext context, GoRouterState state) {
           final Object? extra = state.extra;
           if (extra is RecurringRidePrefill) {
-            return RecurringRideScreen(
-              prefill: extra.order,
-              sourceOrderId: extra.sourceOrderId,
-            );
+            return RecurringRideScreen(prefill: extra.order, sourceOrderId: extra.sourceOrderId);
           }
           if (extra is OrderCreateRequest) {
             return RecurringRideScreen(prefill: extra);
@@ -221,8 +218,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
         // Root navigator so the badge action on the jobs screen can push it.
         path: Routes.driverNotifications,
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (BuildContext context, GoRouterState state) =>
-            const DriverNotificationsScreen(),
+        builder: (BuildContext context, GoRouterState state) => const DriverNotificationsScreen(),
       ),
       GoRoute(
         path: '${Routes.driverActiveTrip}/:orderId',

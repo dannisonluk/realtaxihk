@@ -22,9 +22,7 @@ class DriverNotificationRepository {
 
   /// `POST /drivers/me/notifications/read-all` — mark the whole inbox read.
   Future<int> readAll() async {
-    final Map<String, dynamic> json = await _api.post(
-      '/api/v1/drivers/me/notifications/read-all',
-    );
+    final Map<String, dynamic> json = await _api.post('/api/v1/drivers/me/notifications/read-all');
     return asIntOrNull(json['updated'], 'updated') ?? 0;
   }
 

@@ -10,15 +10,7 @@ import '../../models/recurring_ride.dart';
 import '../../state/data_providers.dart';
 import '../../state/providers.dart';
 
-const List<String> _dayLabels = <String>[
-  '星期一',
-  '星期二',
-  '星期三',
-  '星期四',
-  '星期五',
-  '星期六',
-  '星期日',
-];
+const List<String> _dayLabels = <String>['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
 
 String _dayLabel(int weekday) => _dayLabels[(weekday - 1) % 7];
 
@@ -30,10 +22,7 @@ String _dayLabel(int weekday) => _dayLabels[(weekday - 1) % 7];
 /// a fresh template can be created here without forcing the user to re-tap the
 /// map.
 class RecurringRidePrefill {
-  const RecurringRidePrefill({
-    required this.order,
-    required this.sourceOrderId,
-  });
+  const RecurringRidePrefill({required this.order, required this.sourceOrderId});
 
   /// Route template from a past trip, when opened from trip history.
   final OrderCreateRequest order;
@@ -52,8 +41,7 @@ class RecurringRideScreen extends ConsumerStatefulWidget {
   final String? sourceOrderId;
 
   @override
-  ConsumerState<RecurringRideScreen> createState() =>
-      _RecurringRideScreenState();
+  ConsumerState<RecurringRideScreen> createState() => _RecurringRideScreenState();
 }
 
 class _RecurringRideScreenState extends ConsumerState<RecurringRideScreen> {
@@ -66,9 +54,7 @@ class _RecurringRideScreenState extends ConsumerState<RecurringRideScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final AsyncValue<List<RecurringRide>> rides = ref.watch(
-      recurringRidesProvider,
-    );
+    final AsyncValue<List<RecurringRide>> rides = ref.watch(recurringRidesProvider);
     final ThemeData theme = Theme.of(context);
 
     return Scaffold(
@@ -167,16 +153,12 @@ class _RecurringRideScreenState extends ConsumerState<RecurringRideScreen> {
         return;
       }
       ref.invalidate(recurringRidesProvider);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('已建立每週行程')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已建立每週行程')));
     } on Exception catch (e) {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('建立失敗：$e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('建立失敗：$e')));
     } finally {
       if (mounted) {
         setState(() => _saving = false);
@@ -186,29 +168,21 @@ class _RecurringRideScreenState extends ConsumerState<RecurringRideScreen> {
 
   Future<void> _handleStatusChanged(RecurringRide ride, String status) async {
     try {
-      await ref
-          .read(recurringRideRepositoryProvider)
-          .setStatus(ride.id, status);
+      await ref.read(recurringRideRepositoryProvider).setStatus(ride.id, status);
       if (!mounted) {
         return;
       }
       ref.invalidate(recurringRidesProvider);
     } on Exception catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('更新失敗：$e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新失敗：$e')));
       }
     }
   }
 }
 
 class _DayPicker extends StatelessWidget {
-  const _DayPicker({
-    required this.labels,
-    required this.selected,
-    required this.onChanged,
-  });
+  const _DayPicker({required this.labels, required this.selected, required this.onChanged});
 
   final List<String> labels;
   final int selected;
@@ -247,9 +221,7 @@ class _RideTile extends StatelessWidget {
           color: active ? null : Theme.of(context).colorScheme.outline,
         ),
         title: Text(_dayLabel(ride.weekday)),
-        subtitle: Text(
-          '${ride.scheduledTime}   下次：${Format.dateTime(ride.nextRunAt)}',
-        ),
+        subtitle: Text('${ride.scheduledTime}   下次：${Format.dateTime(ride.nextRunAt)}'),
         trailing: TextButton(
           onPressed: () => onChanged(ride, active ? 'PAUSED' : 'ACTIVE'),
           child: Text(active ? '暫停' : '恢復'),

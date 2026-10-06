@@ -36,11 +36,7 @@ class RecurringRideRepository {
   /// `GET /recurring-rides` — the caller's own list, newest first.
   Future<List<RecurringRide>> list() async {
     final Map<String, dynamic> json = await _api.get('/api/v1/recurring-rides');
-    return asObjectList(
-      json['items'],
-      'recurring_rides.items',
-      RecurringRide.fromJson,
-    );
+    return asObjectList(json['items'], 'recurring_rides.items', RecurringRide.fromJson);
   }
 
   /// `PATCH /recurring-rides/{id}` — status lifecycle only.
