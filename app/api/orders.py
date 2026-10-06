@@ -88,6 +88,7 @@ from app.services.order.state_machine import (
     INTERRUPTIBLE_STATUSES,
     assert_order_transition,
 )
+from app.services.order.trip_event_service import publish_lifecycle
 
 router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
 
@@ -649,6 +650,11 @@ async def grab_order(
     # `refresh` re-SELECTs by primary key, which is also what makes it safe to
     # call on an object the other session's commit has already changed.
     await session.refresh(order)  # grab service committed in its own session
+    # The passenger's "waiting for a driver" screen is where a poll delay is
+    # most visible — it is the first screen after booking, and until this
+    # existed the match only arrived on the next 10 s tick. `GrabService`
+    # committed in its own session, so the event cannot outrun the row.
+    await publish_lifecycle(session, order, "GRABBED", driver_profile_id=str(profile.id))
     return order_out(order)
 
 
@@ -769,6 +775,11 @@ async def order_arrival_claim(
         actor_id=user.id,
         payload={"distance_m": float(distance)},
     )
+    # P4 §7: the passenger's confirm prompt must appear now, not on the next
+    # poll. Committed inside the helper, so the event cannot outrun the row.
+    await publish_lifecycle(
+        session, order, "ARRIVAL_CLAIMED", distance_m=float(distance)
+    )
     return order_out(order)
 
 
@@ -834,6 +845,11 @@ async def order_arrival_confirm(
             actor_kind="SYSTEM",
             payload={"dispute_id": str(dispute.id), "source": "ARRIVAL_CONFLICT"},
         )
+        # The passenger failed to confirm three times; the order went back to
+        # ACCEPTED and a dispute opened. Both parties need to see that now.
+        await publish_lifecycle(
+            session, order, "ARRIVAL_CONFLICT", dispute_id=str(dispute.id)
+        )
         return order_out(order)
 
     from_status = order.status.value
@@ -847,6 +863,8 @@ async def order_arrival_confirm(
         actor_kind=OrderParty.PASSENGER.value,
         actor_id=user.id,
     )
+    # P4 §7: the driver's screen must leave the "waiting" state immediately.
+    await publish_lifecycle(session, order, "ARRIVAL_CONFIRMED")
     return order_out(order)
 
 
@@ -902,6 +920,10 @@ async def order_start(
         actor_id=user.id,
         payload={"entry_type": LedgerEntryType.PLATFORM_TRIP_FEE.value, "amount_hkd": str(-fee)},
     )
+    # P4 §7: departure is the other half of "stop waiting" — the passenger's
+    # tracking screen has to switch from "driver is coming" to "trip in
+    # progress" when the driver actually starts, not up to ten seconds later.
+    await publish_lifecycle(session, order, "TRIP_STARTED")
     return order_out(order)
 
 
@@ -945,6 +967,10 @@ async def order_complete(
         actor_kind=OrderParty.DRIVER.value,
         actor_id=user.id,
     )
+    # P4 §7: completion ends the trip for both screens — the passenger's
+    # receipt prompt and the driver's "awaiting next job" state should not wait
+    # for the poll.
+    await publish_lifecycle(session, order, "TRIP_COMPLETED")
     return order_out(order)
 
 
@@ -1169,6 +1195,15 @@ async def order_change_destination(
             "fixed_fare_downgraded": was_fixed,
         },
     )
+    # P4 §7: the other party's estimate is stale the moment this lands, so the
+    # new total goes out with the event instead of waiting for their next poll.
+    await publish_lifecycle(
+        session,
+        order,
+        "DESTINATION_CHANGED",
+        estimated_total_hkd=money_str(new_total),
+        change_number=order.destination_change_count,
+    )
     return order_out(order)
 
 
@@ -1284,6 +1319,17 @@ async def order_interrupt(
                 else DisputeSource.AUTO_INTERRUPTED.value
             ),
         },
+    )
+    # P4 §7 / DECISION-2: the trip ends *now* for both parties. The counterparty
+    # learns it from this message rather than from a poll ten seconds later.
+    await publish_lifecycle(
+        session,
+        order,
+        "INTERRUPTED",
+        reason_code=payload.reason_code.value,
+        interrupted_by=party.value,
+        safety=safety,
+        dispute_id=str(dispute.id),
     )
     return order_out(order)
 
@@ -1423,4 +1469,14 @@ async def order_cancel(
             cooldown_mod.PASSENGER if is_passenger else cooldown_mod.DRIVER,
             user.id,
         )
+    # The other party must stop waiting: a cancelled order is not one a driver
+    # should keep bidding on, and the passenger's map should stop showing it.
+    await publish_lifecycle(
+        session,
+        order,
+        "CANCELLED",
+        cancelled_by=party.value,
+        reason_code=payload.reason_code.value if payload.reason_code else None,
+        penalty_hkd=money_str(penalty),
+    )
     return order_out(order)
