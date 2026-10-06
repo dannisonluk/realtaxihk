@@ -245,13 +245,13 @@ export function AccountsPage() {
             <table className="data">
               <thead>
                 <tr>
-                  <th>{t('accounts.colUsername')}</th>
-                  <th>{t('accounts.colName')}</th>
-                  <th>{t('accounts.colEmail')}</th>
-                  <th>{t('accounts.colRole')}</th>
-                  <th>{t('accounts.colTotp')}</th>
-                  <th>{t('accounts.colLastLogin')}</th>
-                  <th>{t('accounts.colActions')}</th>
+                  <th scope="col">{t('accounts.colUsername')}</th>
+                  <th scope="col">{t('accounts.colName')}</th>
+                  <th scope="col">{t('accounts.colEmail')}</th>
+                  <th scope="col">{t('accounts.colRole')}</th>
+                  <th scope="col">{t('accounts.colTotp')}</th>
+                  <th scope="col">{t('accounts.colLastLogin')}</th>
+                  <th scope="col">{t('accounts.colActions')}</th>
                 </tr>
               </thead>
               <tbody>

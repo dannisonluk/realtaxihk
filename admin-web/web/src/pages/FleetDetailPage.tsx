@@ -275,15 +275,15 @@ export function FleetDetailPage() {
               <table className="data">
             <thead>
               <tr>
-                <th>{t('fleetDetail.colPeriod')}</th>
-                <th className="num">{t('fleetDetail.colPerMember')}</th>
-                <th className="num">{t('fleetDetail.colDiscountCol')}</th>
-                <th className="num">{t('fleetDetail.colMembers')}</th>
-                <th className="num">{t('fleetDetail.colCharged')}</th>
-                <th className="num">{t('fleetDetail.colSkipped')}</th>
-                <th className="num">{t('fleetDetail.colTampered')}</th>
-                <th className="num">{t('fleetDetail.colNet')}</th>
-                <th>{t('fleetDetail.colRunAt')}</th>
+                <th scope="col">{t('fleetDetail.colPeriod')}</th>
+                <th scope="col" className="num">{t('fleetDetail.colPerMember')}</th>
+                <th scope="col" className="num">{t('fleetDetail.colDiscountCol')}</th>
+                <th scope="col" className="num">{t('fleetDetail.colMembers')}</th>
+                <th scope="col" className="num">{t('fleetDetail.colCharged')}</th>
+                <th scope="col" className="num">{t('fleetDetail.colSkipped')}</th>
+                <th scope="col" className="num">{t('fleetDetail.colTampered')}</th>
+                <th scope="col" className="num">{t('fleetDetail.colNet')}</th>
+                <th scope="col">{t('fleetDetail.colRunAt')}</th>
               </tr>
             </thead>
             <tbody>
@@ -336,15 +336,15 @@ export function FleetDetailPage() {
               <table className="data">
             <thead>
               <tr>
-                <th>{t('fleetDetail.colDriver')}</th>
-                <th>{t('fleetDetail.colTaxiType')}</th>
-                <th>{t('fleetDetail.colDriverStatus')}</th>
-                <th>{t('fleetDetail.colMemberRole')}</th>
-                <th>{t('fleetDetail.colMemberStatus')}</th>
-                <th>{t('fleetDetail.colJoined')}</th>
-                <th>{t('fleetDetail.colLeft')}</th>
-                <th>{t('fleetDetail.colBilling')}</th>
-                <th />
+                <th scope="col">{t('fleetDetail.colDriver')}</th>
+                <th scope="col">{t('fleetDetail.colTaxiType')}</th>
+                <th scope="col">{t('fleetDetail.colDriverStatus')}</th>
+                <th scope="col">{t('fleetDetail.colMemberRole')}</th>
+                <th scope="col">{t('fleetDetail.colMemberStatus')}</th>
+                <th scope="col">{t('fleetDetail.colJoined')}</th>
+                <th scope="col">{t('fleetDetail.colLeft')}</th>
+                <th scope="col">{t('fleetDetail.colBilling')}</th>
+                <th scope="col" />
               </tr>
             </thead>
             <tbody>
@@ -548,13 +548,13 @@ function AddMemberBody({
   const { client } = useApp();
   const { t } = useI18n();
   const labels = useLabels();
-  const { data, error, loading } = useLoad(
+  const { data, error, loading, reload } = useLoad(
     () => endpoints.drivers.list(client, { status: 'ACTIVE', limit: 200 }),
     [client],
   );
 
   if (loading) return <LoadingState label={t('fleetDetail.loadingRoster')} />;
-  if (error) return <ErrorState error={error} />;
+  if (error) return <ErrorState error={error} onRetry={reload} />;
 
   const items = data?.items ?? [];
 

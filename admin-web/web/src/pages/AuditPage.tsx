@@ -117,12 +117,12 @@ export function AuditPage() {
                 <table className="data">
                   <thead>
                     <tr>
-                      <th>{t('audit.colTime')}</th>
-                      <th>{t('audit.colEvent')}</th>
-                      <th>{t('audit.colResult')}</th>
-                      <th>{t('audit.colActor')}</th>
-                      <th>{t('audit.colDetail')}</th>
-                      <th />
+                      <th scope="col">{t('audit.colTime')}</th>
+                      <th scope="col">{t('audit.colEvent')}</th>
+                      <th scope="col">{t('audit.colResult')}</th>
+                      <th scope="col">{t('audit.colActor')}</th>
+                      <th scope="col">{t('audit.colDetail')}</th>
+                      <th scope="col" />
                     </tr>
                   </thead>
                   <tbody>
@@ -146,7 +146,7 @@ export function AuditPage() {
                     <button
                       type="button"
                       className="btn btn--sm"
-                      disabled={offset === 0}
+                      disabled={loading || offset === 0}
                       onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
                     >
                       {t('common.prevPage')}
@@ -154,7 +154,7 @@ export function AuditPage() {
                     <button
                       type="button"
                       className="btn btn--sm"
-                      disabled={!hasMore}
+                      disabled={loading || !hasMore}
                       onClick={() => setOffset(offset + PAGE_SIZE)}
                     >
                       {t('common.nextPage')}

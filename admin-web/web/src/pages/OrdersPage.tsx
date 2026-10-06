@@ -168,14 +168,14 @@ export function OrdersPage() {
                 <table className="data">
                   <thead>
                     <tr>
-                      <th>{t('orders.colCreated')}</th>
-                      <th>{t('common.status')}</th>
-                      <th>{t('orders.colPickup')}</th>
-                      <th>{t('orders.colDropoff')}</th>
-                      <th className="num">{t('orders.colFare')}</th>
-                      <th>{t('orders.colDriver')}</th>
-                      <th>{t('orders.colPassenger')}</th>
-                      <th />
+                      <th scope="col">{t('orders.colCreated')}</th>
+                      <th scope="col">{t('common.status')}</th>
+                      <th scope="col">{t('orders.colPickup')}</th>
+                      <th scope="col">{t('orders.colDropoff')}</th>
+                      <th scope="col" className="num">{t('orders.colFare')}</th>
+                      <th scope="col">{t('orders.colDriver')}</th>
+                      <th scope="col">{t('orders.colPassenger')}</th>
+                      <th scope="col" />
                     </tr>
                   </thead>
                   <tbody>
@@ -198,7 +198,7 @@ export function OrdersPage() {
                     <button
                       type="button"
                       className="btn btn--sm"
-                      disabled={offset === 0}
+                      disabled={loading || offset === 0}
                       onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
                     >
                       {t('common.prevPage')}
@@ -206,7 +206,7 @@ export function OrdersPage() {
                     <button
                       type="button"
                       className="btn btn--sm"
-                      disabled={!hasMore}
+                      disabled={loading || !hasMore}
                       onClick={() => setOffset(offset + PAGE_SIZE)}
                     >
                       {t('common.nextPage')}

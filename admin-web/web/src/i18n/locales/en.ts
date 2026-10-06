@@ -554,6 +554,7 @@ export const en = {
     fieldPhone: 'Contact phone',
     fieldPhonePlaceholder: 'Optional',
     fieldNote: 'Note',
+    fieldNotePlaceholder: 'Optional note',
   },
 
   destinations: {
@@ -837,6 +838,7 @@ export const en = {
     docMissing: 'Not uploaded',
     docDeclared: ' (declared {{size}})',
     docOpen: 'Open image (valid for {{minutes}} minutes)',
+    docUnavailable: 'The stored file has no usable download link. Ask the driver to resubmit.',
     docPending: 'The driver has not finished uploading. Ask them to resubmit.',
     submitId: 'Submission {{id}}',
     reviewer: ' · Reviewer {{id}}',

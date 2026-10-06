@@ -167,13 +167,13 @@ export function SearchPage() {
                 <table className="data">
                   <thead>
                     <tr>
-                      <th>{t('search.colKind')}</th>
-                      <th>{t('search.colHolder')}</th>
-                      <th>{t('search.colPhone')}</th>
-                      <th>{t('search.colUsername')}</th>
-                      <th>{t('search.colPlate')}</th>
-                      <th>{t('search.colStatus')}</th>
-                      <th />
+                      <th scope="col">{t('search.colKind')}</th>
+                      <th scope="col">{t('search.colHolder')}</th>
+                      <th scope="col">{t('search.colPhone')}</th>
+                      <th scope="col">{t('search.colUsername')}</th>
+                      <th scope="col">{t('search.colPlate')}</th>
+                      <th scope="col">{t('search.colStatus')}</th>
+                      <th scope="col" />
                     </tr>
                   </thead>
                   <tbody>

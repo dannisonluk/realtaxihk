@@ -214,9 +214,9 @@ export function OrderDetailPage() {
           <table className="data">
             <thead>
               <tr>
-                <th>{t('orderDetail.colStep')}</th>
-                <th>{t('orderDetail.colTime')}</th>
-                <th className="num">{t('orderDetail.colSince')}</th>
+                <th scope="col">{t('orderDetail.colStep')}</th>
+                <th scope="col">{t('orderDetail.colTime')}</th>
+                <th scope="col" className="num">{t('orderDetail.colSince')}</th>
               </tr>
             </thead>
             <tbody>
@@ -267,11 +267,11 @@ export function OrderDetailPage() {
             <table className="data">
               <thead>
                 <tr>
-                  <th>{t('common.time')}</th>
-                  <th>{t('orderDetail.colType')}</th>
-                  <th className="num">{t('common.amount')}</th>
-                  <th className="num">{t('common.balance')}</th>
-                  <th>{t('orderDetail.colNote')}</th>
+                  <th scope="col">{t('common.time')}</th>
+                  <th scope="col">{t('orderDetail.colType')}</th>
+                  <th scope="col" className="num">{t('common.amount')}</th>
+                  <th scope="col" className="num">{t('common.balance')}</th>
+                  <th scope="col">{t('orderDetail.colNote')}</th>
                 </tr>
               </thead>
               <tbody>

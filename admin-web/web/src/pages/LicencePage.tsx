@@ -48,6 +48,17 @@ const FILTERS: { value: LicenceReviewStatus | 'all'; labelKey: string }[] = [
   { value: 'all', labelKey: 'licence.filterAll' },
 ];
 
+/** Signed URLs are trusted only when the scheme is a browser-safe download. */
+function isSafeDownloadUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export function LicencePage() {
   const { t, formatLocale } = useI18n();
   const labels = useLabels();
@@ -130,13 +141,13 @@ export function LicencePage() {
               <table className="data">
                 <thead>
                   <tr>
-                    <th>{t('licence.colSubmitted')}</th>
-                    <th>{t('licence.colLicenceNo')}</th>
-                    <th>{t('licence.colExpires')}</th>
-                    <th>{t('licence.colDocs')}</th>
-                    <th>{t('licence.colDriverStatus')}</th>
-                    <th>{t('licence.colReviewStatus')}</th>
-                    <th>{t('licence.colActions')}</th>
+                    <th scope="col">{t('licence.colSubmitted')}</th>
+                    <th scope="col">{t('licence.colLicenceNo')}</th>
+                    <th scope="col">{t('licence.colExpires')}</th>
+                    <th scope="col">{t('licence.colDocs')}</th>
+                    <th scope="col">{t('licence.colDriverStatus')}</th>
+                    <th scope="col">{t('licence.colReviewStatus')}</th>
+                    <th scope="col">{t('licence.colActions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -240,13 +251,13 @@ function SubmissionDetail({
   client: ReturnType<typeof useApp>['client'];
   submissionId: string;
 }) {
-  const { data, error, loading } = useLoad(
+  const { data, error, loading, reload } = useLoad(
     () => endpoints.licence.detail(client, submissionId, { ttl: 300 }),
     [client, submissionId],
   );
 
   if (loading) return <LoadingState />;
-  if (error) return <ErrorState error={error} />;
+  if (error) return <ErrorState error={error} onRetry={reload} />;
   if (!data) return null;
 
   return <DetailBody detail={data} />;
@@ -324,7 +335,7 @@ function DetailBody({ detail }: { detail: LicenceSubmissionDetail }) {
                 <span>{t('licence.docDeclared', { size: formatBytes(doc.size_bytes) })}</span>
               ) : null}
             </div>
-            {doc.stored ? (
+            {doc.stored && isSafeDownloadUrl(doc.download_url) ? (
               // `_blank` with `noreferrer`: the signed URL is short-lived and
               // must not leak through the Referer header to whatever it loads.
               <a
@@ -336,6 +347,10 @@ function DetailBody({ detail }: { detail: LicenceSubmissionDetail }) {
               >
                 {t('licence.docOpen', { minutes: Math.round(doc.url_expires_in / 60) })}
               </a>
+            ) : doc.stored ? (
+              <div className="dim t-caption1" style={{ marginTop: 8 }}>
+                {t('licence.docUnavailable')}
+              </div>
             ) : (
               <div className="dim t-caption1" style={{ marginTop: 8 }}>
                 {t('licence.docPending')}

@@ -217,7 +217,7 @@ export function KycPage() {
       {loading ? <LoadingState /> : null}
       {error ? <ErrorState error={error} onRetry={reload} /> : null}
 
-      {data ? (
+      {!loading && !error && data ? (
         data.length === 0 ? (
           <div className="card">
             <div className="empty">{t('kyc.empty')}</div>
@@ -228,11 +228,11 @@ export function KycPage() {
               <table className="data">
                 <thead>
                   <tr>
-                    <th>{t('kyc.colPlate')}</th>
-                    <th>{t('kyc.colTaxiType')}</th>
-                    <th>{t('kyc.colLicence')}</th>
-                    <th>{t('kyc.colStatus')}</th>
-                    <th>{t('kyc.colActions')}</th>
+                    <th scope="col">{t('kyc.colPlate')}</th>
+                    <th scope="col">{t('kyc.colTaxiType')}</th>
+                    <th scope="col">{t('kyc.colLicence')}</th>
+                    <th scope="col">{t('kyc.colStatus')}</th>
+                    <th scope="col">{t('kyc.colActions')}</th>
                   </tr>
                 </thead>
                 <tbody>

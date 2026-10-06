@@ -138,13 +138,13 @@ export function RefundsPage() {
               <table className="data">
                 <thead>
                   <tr>
-                    <th>{t('refunds.colId')}</th>
-                    <th>{t('refunds.colDriver')}</th>
-                    <th>{t('refunds.colAmount')}</th>
-                    <th>{t('refunds.colStatus')}</th>
-                    <th>{t('refunds.colRequested')}</th>
-                    <th>{t('refunds.colNote')}</th>
-                    <th>{t('refunds.colActions')}</th>
+                    <th scope="col">{t('refunds.colId')}</th>
+                    <th scope="col">{t('refunds.colDriver')}</th>
+                    <th scope="col">{t('refunds.colAmount')}</th>
+                    <th scope="col">{t('refunds.colStatus')}</th>
+                    <th scope="col">{t('refunds.colRequested')}</th>
+                    <th scope="col">{t('refunds.colNote')}</th>
+                    <th scope="col">{t('refunds.colActions')}</th>
                   </tr>
                 </thead>
                 <tbody>

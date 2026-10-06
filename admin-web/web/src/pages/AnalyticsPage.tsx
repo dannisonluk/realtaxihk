@@ -243,7 +243,7 @@ export function AnalyticsPage() {
         </div>
       ) : null}
 
-      {summary.data ? (
+      {!summary.error && summary.data ? (
         <div className="grid" style={{ marginTop: 16 }}>
           <Stat
             label={t('analytics.totalRevenue')}
@@ -286,7 +286,7 @@ export function AnalyticsPage() {
             <ErrorState error={heatmap.error} onRetry={heatmap.reload} />
           ) : null}
 
-          {heatmap.data ? (
+          {!heatmap.error && heatmap.data ? (
             <>
               <div className="actions" style={{ margin: '8px 0 16px', flexWrap: 'wrap' }}>
                 <Chip tone="brand">{t('analytics.peakHour', { hour: heatmap.data.peak_hour })}</Chip>
@@ -331,7 +331,7 @@ export function AnalyticsPage() {
                 <thead>
                   <tr>
                     {COLUMNS.map((col) => (
-                      <th
+                      <th scope="col"
                         key={col.key}
                         style={{ textAlign: col.align }}
                         aria-sort={

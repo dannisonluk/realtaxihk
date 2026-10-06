@@ -183,13 +183,13 @@ function DisputeQueue() {
               <table className="data">
                 <thead>
                   <tr>
-                    <th>{t('disputes.colDue')}</th>
-                    <th>{t('disputes.colSeverity')}</th>
-                    <th>{t('disputes.colCategory')}</th>
-                    <th>{t('disputes.colSummary')}</th>
-                    <th>{t('disputes.colStatus')}</th>
-                    <th>{t('disputes.colAssignee')}</th>
-                    <th />
+                    <th scope="col">{t('disputes.colDue')}</th>
+                    <th scope="col">{t('disputes.colSeverity')}</th>
+                    <th scope="col">{t('disputes.colCategory')}</th>
+                    <th scope="col">{t('disputes.colSummary')}</th>
+                    <th scope="col">{t('disputes.colStatus')}</th>
+                    <th scope="col">{t('disputes.colAssignee')}</th>
+                    <th scope="col" />
                   </tr>
                 </thead>
                 <tbody>

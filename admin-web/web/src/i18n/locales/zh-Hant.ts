@@ -560,6 +560,7 @@ export const zhHant = {
     fieldPhone: '聯絡電話',
     fieldPhonePlaceholder: '選填',
     fieldNote: '備註',
+    fieldNotePlaceholder: '選填備註',
   },
 
   destinations: {
@@ -835,6 +836,7 @@ export const zhHant = {
     docMissing: '未上傳',
     docDeclared: ' （申報 {{size}}）',
     docOpen: '開啟圖片（{{minutes}} 分鐘內有效）',
+    docUnavailable: '已儲存的文件沒有可用的下載連結，請要求司機重新提交。',
     docPending: '司機尚未完成上傳，請要求重新提交。',
     submitId: '提交編號 {{id}}',
     reviewer: ' · 審核人 {{id}}',

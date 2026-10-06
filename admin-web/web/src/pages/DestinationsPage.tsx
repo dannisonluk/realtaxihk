@@ -171,15 +171,15 @@ export function DestinationsPage() {
               <table className="data">
                 <thead>
                   <tr>
-                    <th>{t('destinations.colCode')}</th>
-                    <th>{t('destinations.colNameZh')}</th>
-                    <th>{t('destinations.colNameEn')}</th>
-                    <th className="num">{t('destinations.colLat')}</th>
-                    <th className="num">{t('destinations.colLng')}</th>
-                    <th className="num">{t('destinations.colRadius')}</th>
-                    <th>{t('destinations.colStatus')}</th>
-                    <th>{t('destinations.colCreated')}</th>
-                    <th />
+                    <th scope="col">{t('destinations.colCode')}</th>
+                    <th scope="col">{t('destinations.colNameZh')}</th>
+                    <th scope="col">{t('destinations.colNameEn')}</th>
+                    <th scope="col" className="num">{t('destinations.colLat')}</th>
+                    <th scope="col" className="num">{t('destinations.colLng')}</th>
+                    <th scope="col" className="num">{t('destinations.colRadius')}</th>
+                    <th scope="col">{t('destinations.colStatus')}</th>
+                    <th scope="col">{t('destinations.colCreated')}</th>
+                    <th scope="col" />
                   </tr>
                 </thead>
                 <tbody>

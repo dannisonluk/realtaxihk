@@ -208,12 +208,12 @@ export function DriverDetailPage() {
               <table className="data">
             <thead>
               <tr>
-                <th>{t('driverDetail.colTime')}</th>
-                <th>{t('driverDetail.colType')}</th>
-                <th className="num">{t('driverDetail.colAmount')}</th>
-                <th className="num">{t('driverDetail.colBalance')}</th>
-                <th>{t('driverDetail.colNote')}</th>
-                <th>{t('driverDetail.colRef')}</th>
+                <th scope="col">{t('driverDetail.colTime')}</th>
+                <th scope="col">{t('driverDetail.colType')}</th>
+                <th scope="col" className="num">{t('driverDetail.colAmount')}</th>
+                <th scope="col" className="num">{t('driverDetail.colBalance')}</th>
+                <th scope="col">{t('driverDetail.colNote')}</th>
+                <th scope="col">{t('driverDetail.colRef')}</th>
               </tr>
             </thead>
             <tbody>
@@ -257,12 +257,12 @@ export function DriverDetailPage() {
               <table className="data">
             <thead>
               <tr>
-                <th>{t('driverDetail.colRequested')}</th>
-                <th className="num">{t('driverDetail.colAmount')}</th>
-                <th>{t('driverDetail.colStatus')}</th>
-                <th>{t('driverDetail.colReason')}</th>
-                <th>{t('driverDetail.colReviewNote')}</th>
-                <th>{t('driverDetail.colReviewedAt')}</th>
+                <th scope="col">{t('driverDetail.colRequested')}</th>
+                <th scope="col" className="num">{t('driverDetail.colAmount')}</th>
+                <th scope="col">{t('driverDetail.colStatus')}</th>
+                <th scope="col">{t('driverDetail.colReason')}</th>
+                <th scope="col">{t('driverDetail.colReviewNote')}</th>
+                <th scope="col">{t('driverDetail.colReviewedAt')}</th>
               </tr>
             </thead>
             <tbody>

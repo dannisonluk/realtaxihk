@@ -316,12 +316,12 @@ export function LiveMapPage() {
                 <table className="data">
                   <thead>
                     <tr>
-                      <th>{t('live.colPlate')}</th>
-                      <th>{t('common.status')}</th>
-                      <th>{t('live.colTaxi')}</th>
-                      <th>{t('live.colTrip')}</th>
-                      <th>{t('live.colUpdated')}</th>
-                      <th />
+                      <th scope="col">{t('live.colPlate')}</th>
+                      <th scope="col">{t('common.status')}</th>
+                      <th scope="col">{t('live.colTaxi')}</th>
+                      <th scope="col">{t('live.colTrip')}</th>
+                      <th scope="col">{t('live.colUpdated')}</th>
+                      <th scope="col" />
                     </tr>
                   </thead>
                   <tbody>

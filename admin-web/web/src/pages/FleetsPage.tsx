@@ -130,13 +130,13 @@ export function FleetsPage() {
               <table className="data">
               <thead>
                 <tr>
-                  <th>{t('fleets.colName')}</th>
-                  <th>{t('fleets.colLicence')}</th>
-                  <th>{t('fleets.colDiscount')}</th>
-                  <th className="num">{t('fleets.colMembers')}</th>
-                  <th>{t('fleets.colStatus')}</th>
-                  <th>{t('fleets.colCreated')}</th>
-                  <th />
+                  <th scope="col">{t('fleets.colName')}</th>
+                  <th scope="col">{t('fleets.colLicence')}</th>
+                  <th scope="col">{t('fleets.colDiscount')}</th>
+                  <th scope="col" className="num">{t('fleets.colMembers')}</th>
+                  <th scope="col">{t('fleets.colStatus')}</th>
+                  <th scope="col">{t('fleets.colCreated')}</th>
+                  <th scope="col" />
                 </tr>
               </thead>
               <tbody>
@@ -246,7 +246,7 @@ function CreateFleetBody({ onChange }: { onChange: (patch: Partial<FleetDraft>) 
         <span>{t('fleets.fieldNote')}</span>
         <textarea
           rows={2}
-          placeholder={t('fleets.fieldContactPlaceholder')}
+          placeholder={t('fleets.fieldNotePlaceholder')}
           onChange={(e) => onChange({ note: e.target.value })}
         />
       </label>

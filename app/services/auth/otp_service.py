@@ -21,7 +21,8 @@ Security properties:
 - max 5 attempts per code, then the code is dead even if correct;
 - resend cooldown prevents OTP-flooding a phone number;
 - comparison is constant-time (SEC-28);
-- PDPO: expired/consumed codes are short-lived rows (purge job later).
+- PDPO: expired/consumed codes are short-lived rows (periodic purge in
+  `app/services/infra/maintenance.py`).
 
 SEC-02: the code is NEVER returned in the response body, in any environment.
 It used to be echoed as `dev_code` whenever `ALLOW_DEV_OTP` was on, which handed
