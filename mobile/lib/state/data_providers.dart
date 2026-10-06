@@ -6,6 +6,7 @@ import '../models/admin.dart';
 import '../models/auth.dart';
 import '../models/driver.dart';
 import '../models/driver_attributes.dart';
+import '../models/driver_notification.dart';
 import '../models/enums.dart';
 import '../models/fixed_offer.dart';
 import '../models/fleet.dart';
@@ -100,6 +101,13 @@ final FutureProvider<DriverPaymentMethods> driverPaymentMethodsProvider =
 final FutureProvider<DriverEnvironment> driverEnvironmentProvider =
     FutureProvider<DriverEnvironment>(
       (Ref ref) => ref.watch(driverRepositoryProvider).environment(),
+    );
+
+/// The driver's notification inbox, newest first.
+final FutureProvider<DriverNotificationPage> driverNotificationsProvider =
+    FutureProvider<DriverNotificationPage>(
+      (Ref ref) =>
+          ref.watch(driverNotificationRepositoryProvider).list(limit: 50),
     );
 
 /// The driver's standing fixed-fare offers (一口價).

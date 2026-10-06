@@ -23,6 +23,7 @@ from app.models import (
     PaymentMethod,
     PremiumDestination,
 )
+from app.services.driver.driver_notification_service import DriverNotificationService
 from app.services.fare.fixed_fare_service import FixedFareService
 from app.services.order.fare_calculator import TaxiType, Tunnel, calculate_fare
 from app.services.order.state_machine import assert_order_transition
@@ -56,9 +57,9 @@ def _point_from_wkb(value) -> tuple[float, float] | None:
             import struct
 
             x, y = struct.unpack(f"{marker}dd", data[9:25])
-            return y, x  # PostGIS stores POINT(lng lat)
         except (struct.error, ValueError):
             return None
+        return y, x  # PostGIS stores POINT(lng lat)
     text = str(value).strip()
     if text.upper().startswith("POINT") and "(" in text and ")" in text:
         inner = text[text.index("(") + 1 : text.rindex(")")]
@@ -244,6 +245,8 @@ class OrderService:
         else:
             snapshot.update({"fare_mode": OrderFareMode.METER.value})
             order.fare_json = snapshot
+
+        await DriverNotificationService(self.session).notify_order_created(order, match)
 
         await self.session.flush()
         return order

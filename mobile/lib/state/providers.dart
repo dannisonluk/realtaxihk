@@ -7,6 +7,7 @@ import '../core/storage/token_store.dart';
 import '../data/admin_repository.dart';
 import '../data/auth_repository.dart';
 import '../data/destination_repository.dart';
+import '../data/driver_notification_repository.dart';
 import '../data/driver_repository.dart';
 import '../data/fare_repository.dart';
 import '../data/fleet_repository.dart';
@@ -57,6 +58,11 @@ final Provider<OrderRepository> orderRepositoryProvider = Provider<OrderReposito
 final Provider<DriverRepository> driverRepositoryProvider = Provider<DriverRepository>(
   (Ref ref) => DriverRepository(ref.watch(apiClientProvider)),
 );
+
+final Provider<DriverNotificationRepository> driverNotificationRepositoryProvider =
+    Provider<DriverNotificationRepository>(
+      (Ref ref) => DriverNotificationRepository(ref.watch(apiClientProvider)),
+    );
 
 final Provider<AdminRepository> adminRepositoryProvider = Provider<AdminRepository>(
   (Ref ref) => AdminRepository(ref.watch(apiClientProvider)),

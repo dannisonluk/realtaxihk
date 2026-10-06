@@ -110,6 +110,12 @@ from app.api.schemas.driver import (
     RefundRequestOut,
     RefundViewOut,
 )
+from app.api.schemas.driver_notification import (
+    DriverNotificationOut,
+    DriverNotificationPageOut,
+    DriverNotificationReadOut,
+    DriverNotificationsReadAllOut,
+)
 from app.api.schemas.driver_attributes import (
     DriverEnvironmentOut,
     DriverPaymentMethodsOut,
@@ -204,6 +210,10 @@ __all__ = [
     "DriverDetailOut",
     "DriverEnvironmentOut",
     "DriverFleetBlockOut",
+    "DriverNotificationOut",
+    "DriverNotificationPageOut",
+    "DriverNotificationReadOut",
+    "DriverNotificationsReadAllOut",
     "DriverPageOut",
     "DriverPaymentMethodsOut",
     "DriverProfileOut",

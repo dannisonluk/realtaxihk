@@ -37,6 +37,7 @@ from app.api.admin_licence import router as admin_licence_router
 from app.api.auth import router as auth_router
 from app.api.destinations import router as destinations_router
 from app.api.driver_attributes import router as driver_attributes_router
+from app.api.driver_notifications import router as driver_notifications_router
 from app.api.drivers import router as drivers_router
 from app.api.fare import router as fare_router
 from app.api.fixed_offers import router as fixed_offers_router
@@ -59,6 +60,7 @@ api_router.include_router(fare_router)
 api_router.include_router(auth_router)
 api_router.include_router(identity_router)
 api_router.include_router(drivers_router)
+api_router.include_router(driver_notifications_router)
 api_router.include_router(driver_attributes_router)
 api_router.include_router(fixed_offers_router)
 api_router.include_router(destinations_router)

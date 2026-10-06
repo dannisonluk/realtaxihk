@@ -19,6 +19,7 @@ import '../features/driver/driver_active_trip_screen.dart';
 import '../features/driver/driver_earnings_screen.dart';
 import '../features/driver/driver_environment_screen.dart';
 import '../features/driver/driver_jobs_screen.dart';
+import '../features/driver/driver_notifications_screen.dart';
 import '../features/driver/driver_onboarding_screen.dart';
 import '../features/driver/driver_screen.dart';
 import '../features/driver/fixed_offers_screen.dart';
@@ -214,6 +215,14 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
         path: Routes.driverOnboarding,
         parentNavigatorKey: _rootNavigatorKey,
         builder: (BuildContext context, GoRouterState state) => const DriverOnboardingScreen(),
+      ),
+      GoRoute(
+        // The driver's in-app notification inbox (一口價 / premium alerts).
+        // Root navigator so the badge action on the jobs screen can push it.
+        path: Routes.driverNotifications,
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (BuildContext context, GoRouterState state) =>
+            const DriverNotificationsScreen(),
       ),
       GoRoute(
         path: '${Routes.driverActiveTrip}/:orderId',

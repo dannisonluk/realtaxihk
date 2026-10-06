@@ -80,6 +80,11 @@ abstract final class Routes {
   static const String driverEarnings = '/driver/earnings';
   static const String driverActiveTrip = '/driver/active';
 
+  /// The driver's in-app notification inbox. Pushed on the root navigator from
+  /// the jobs screen, like [fixedOffers]: a surface the driver dips into
+  /// between rides, not a branch of the driver shell.
+  static const String driverNotifications = '/driver/notifications';
+
   /// The driver's priced standing routes (一口價). Pushed on the root
   /// navigator from the driver account screen, like [driverFleet]: it is a
   /// settings page the driver manages outside the driver shell.

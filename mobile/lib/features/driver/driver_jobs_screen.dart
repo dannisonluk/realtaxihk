@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/location/location_service.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/theme/app_theme.dart';
+import '../../models/driver_notification.dart';
 import '../../models/enums.dart';
 import '../../models/nearby_filter.dart';
 import '../../models/order.dart';
@@ -99,6 +100,12 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
     }
   }
 
+  void _openNotifications() {
+    context.push(Routes.driverNotifications);
+  }
+
+  String _badgeText(int count) => count > 99 ? '99+' : '$count';
+
   Future<void> _toggleOnline(bool value) async {
     setState(() => _online = value);
     if (_me == null) {
@@ -140,11 +147,24 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final MapPoint? me = _me;
+    final AsyncValue<DriverNotificationPage> notifications =
+        ref.watch(driverNotificationsProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('接單'),
         actions: <Widget>[
+          IconButton(
+            onPressed: _busy ? null : _openNotifications,
+            tooltip: '通知',
+            icon: Badge(
+              isLabelVisible: (notifications.value?.unreadCount ?? 0) > 0,
+              label: Text(
+                _badgeText(notifications.value?.unreadCount ?? 0),
+              ),
+              child: const Icon(Icons.notifications_outlined),
+            ),
+          ),
           IconButton(
             onPressed: _busy ? null : _locate,
             tooltip: '更新位置',

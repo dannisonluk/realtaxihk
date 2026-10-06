@@ -57,6 +57,7 @@ from app.models.dispute import (
     DisputeStatus,
     OrderDispute,
 )
+from app.models.driver_notification import DriverNotification, DriverNotificationKind
 from app.models.fixed_offer import FixedOfferStatus, FixedPriceOffer
 from app.models.fleet import (
     Fleet,
@@ -133,6 +134,8 @@ __all__ = [
     "DriverDeposit",
     "DriverDocument",
     "DriverLicenceSubmission",
+    "DriverNotification",
+    "DriverNotificationKind",
     "DriverPaymentMethod",
     "DriverProfile",
     "DriverStatus",
