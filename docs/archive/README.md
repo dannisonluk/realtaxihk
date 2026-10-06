@@ -47,6 +47,7 @@
 | [`AUDIT_FINDINGS_LINEBYLINE.md`](AUDIT_FINDINGS_LINEBYLINE.md) | 逐行審計 findings log（活文件時期），已被 [`AUDIT_2026-10-06.md`](AUDIT_2026-10-06.md) 取代 | 2026-10-04 ~ 10-06 | [`../WORK_SUMMARY.md`](../WORK_SUMMARY.md) §4 |
 | [`AUDIT_REPORT_2026-10-04.md`](AUDIT_REPORT_2026-10-04.md) | 企業級全量審計報告 v4 | 2026-10-04 | [`AUDIT_2026-10-06.md`](AUDIT_2026-10-06.md) |
 | [`ERROR_SCAN_2026-10-05.md`](ERROR_SCAN_2026-10-05.md) | 實跑式全專案錯誤掃描 | 2026-10-05 | [`AUDIT_2026-10-06.md`](AUDIT_2026-10-06.md) |
+| [`PRE_LAUNCH_CHECK_2026-10-06.md`](PRE_LAUNCH_CHECK_2026-10-06.md) | 上線前 Final Check（5-agent 條件 Go）；數字已過時 | 2026-10-06 | [`AUDIT_2026-10-06.md`](AUDIT_2026-10-06.md) |
 | [`STRUCTURE_REVIEW.md`](STRUCTURE_REVIEW.md) | 目錄佈局評估 + keyset cursor bug 背景 | 2026-10-06 前 | [`../DEVELOPMENT.md`](../DEVELOPMENT.md) |
 | [`AUDIT_2026-10-06.md`](AUDIT_2026-10-06.md) | **Fresh root-and-branch audit**：backend/mobile/admin findings、fix disposition、gate outputs | 2026-10-06 | [`../WORK_SUMMARY.md`](../WORK_SUMMARY.md) |
 
@@ -60,7 +61,8 @@
 `SECURITY_AUDIT.md` · `PRODUCTION_READINESS.md` · `CODE_REVIEW_2026-10-01.md` ·
 `CODE_REVIEW_2026-10-12.md` · `UI_DESIGN_REVIEW_2026-10-02.md` ·
 `AUDIT_FINDINGS_LINEBYLINE.md` · `AUDIT_REPORT_2026-10-04.md` ·
-`ERROR_SCAN_2026-10-05.md` · `STRUCTURE_REVIEW.md`
+`ERROR_SCAN_2026-10-05.md` · `STRUCTURE_REVIEW.md` ·
+`PRE_LAUNCH_CHECK_2026-10-06.md`
 
 另外兩份現行文檔已於 2026-10 合併／更名：
 

@@ -81,6 +81,7 @@
 | [`archive/AUDIT_REPORT_2026-10-04.md`](archive/AUDIT_REPORT_2026-10-04.md) | 企業級全量審計報告 v4（修復輪） | 2026-10-04 |
 | [`archive/ERROR_SCAN_2026-10-05.md`](archive/ERROR_SCAN_2026-10-05.md) | 實跑式全專案錯誤掃描 gate 輸出 | 2026-10-05 |
 | [`archive/STRUCTURE_REVIEW.md`](archive/STRUCTURE_REVIEW.md) | 目錄佈局評估 + keyset cursor bug 背景 | 2026-10-06 前 |
+| [`archive/PRE_LAUNCH_CHECK_2026-10-06.md`](archive/PRE_LAUNCH_CHECK_2026-10-06.md) | 上線前 Final Check（5-agent 條件 Go；數字已過時，以 fresh audit 為準） | 2026-10-06 |
 | [`archive/UI_DESIGN_REVIEW_2026-10-02.md`](archive/UI_DESIGN_REVIEW_2026-10-02.md) | 管理後台 UI 設計審查（Apple HIG、對比度、無障礙） | 2026-10-02 |
 | [`archive/AUDIT_2026-10-06.md`](archive/AUDIT_2026-10-06.md) | **Fresh root-and-branch audit**：backend/mobile/admin findings + fix disposition + gates | 2026-10-06 |
 | [`archive/AGENT_HANDOFF_multi-agent-2026-10-06.md`](archive/AGENT_HANDOFF_multi-agent-2026-10-06.md) | 多 agent 並行協作期的檔案認領與分工進度（該模式已結束，規則失效） | 2026-09 ~ 10-06 |
