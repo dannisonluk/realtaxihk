@@ -50,6 +50,7 @@ from app.api.recurring import router as recurring_router
 from app.api.service_area_route import router as service_area_router
 from app.api.tracking import router as tracking_router
 from app.api.trips import router as trips_router
+from app.api.web import router as web_router
 from app.api.ws import router as ws_router
 
 api_router = APIRouter()
@@ -87,3 +88,8 @@ api_router.include_router(tracking_router)
 api_router.include_router(trips_router)
 api_router.include_router(service_area_router)
 api_router.include_router(ws_router)
+
+# The two email-link pages. Deliberately **not** under `/api`: they are the URLs
+# that go into an email, and the API's CSP (`default-src 'none'`) would blank
+# them. They carry their own, narrower policy — see `app/api/web.py`.
+api_router.include_router(web_router)

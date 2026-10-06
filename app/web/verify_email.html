@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-HK">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>驗證電郵 · hkfastdc</title>
+    <!--
+      Served by `app/api/web.py` at `GET /verify-email`, same origin as the API.
+
+      The token arrives in this page's own query string, so it *is* in whatever
+      logs the initial GET — the deployment note on `app/api/web.py` requires
+      the proxy in front to keep query strings out of its access log. What the
+      POST buys is everything after that: the token is never sent again on
+      submit, never lands in a `Referer`, and a mail scanner that prefetches the
+      URL cannot spend the single-use token on the user's behalf, because this
+      page only reads it and posts it back itself.
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f5f6f8;
+        --card: #ffffff;
+        --fg: #14181f;
+        --muted: #5b6472;
+        --line: #d6dae1;
+        --accent: #12507a;
+        --danger: #b3261e;
+        --ok: #1b6b3a;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #12161c;
+          --card: #1b2129;
+          --fg: #eef1f5;
+          --muted: #a3adba;
+          --line: #333c47;
+          --accent: #6fb3e0;
+          --danger: #ff8a80;
+          --ok: #7bd39b;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        background: var(--bg);
+        color: var(--fg);
+        font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
+          "PingFang HK", "Microsoft JhengHei", sans-serif;
+      }
+      .card {
+        width: 100%;
+        max-width: 420px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 24px;
+        text-align: center;
+      }
+      h1 { margin: 0 0 8px; font-size: 22px; }
+      p { margin: 0 0 16px; color: var(--muted); }
+      .msg { margin: 8px 0 0; font-weight: 600; }
+      .msg[data-kind="error"] { color: var(--danger); }
+      .msg[data-kind="ok"] { color: var(--ok); }
+      button {
+        min-height: 48px;
+        margin-top: 20px;
+        padding: 0 20px;
+        font-size: 16px;
+        font-weight: 600;
+        color: #fff;
+        background: var(--accent);
+        border: 0;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.6; cursor: progress; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1 id="title">正在驗證…</h1>
+      <p id="lede">請稍候，正在確認這個電郵地址。</p>
+      <!-- `role="alert"` is already assertive, so an explicit
+           `aria-live="polite"` here would only contradict it. This element
+           carries both the failures and the "check your inbox" confirmation. -->
+      <p id="msg" class="msg" role="alert" aria-atomic="true" data-kind=""></p>
+      <button id="retry" type="button" hidden>再試一次</button>
+    </main>
+
+    <script>
+      (function () {
+        "use strict";
+        var title = document.getElementById("title");
+        var lede = document.getElementById("lede");
+        var msg = document.getElementById("msg");
+        var retry = document.getElementById("retry");
+
+        var token = new URLSearchParams(window.location.search).get("token") || "";
+
+        function say(text, kind) {
+          msg.textContent = text;
+          msg.setAttribute("data-kind", kind || "");
+        }
+
+        if (!token) {
+          title.textContent = "連結不完整";
+          lede.textContent = "這個驗證連結缺少 token。請在 App 內重新發送驗證電郵。";
+          say("", "");
+          return;
+        }
+
+        async function confirm() {
+          retry.hidden = true;
+          retry.disabled = true;
+          title.textContent = "正在驗證…";
+          lede.textContent = "請稍候，正在確認這個電郵地址。";
+          say("", "");
+          try {
+            var res = await fetch("/api/v1/identity/email/confirm", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ token: token }),
+            });
+            if (res.ok) {
+              var ok = {};
+              try {
+                ok = await res.json();
+              } catch (ignored) {
+                /* body is not required for the success message */
+              }
+              title.textContent = "電郵已驗證";
+              lede.textContent = ok.email
+                ? "已確認 " + ok.email + "。可以返回 App 繼續。"
+                : "電郵地址已確認，可以返回 App 繼續。";
+              say("完成。", "ok");
+              return;
+            }
+            var body = {};
+            try {
+              body = await res.json();
+            } catch (ignored) {
+              /* fall through to the generic sentence */
+            }
+            title.textContent = "驗證未完成";
+            // The token is single-use and time-limited, so the common failure is
+            // a link that was already opened or has expired. Both need the same
+            // next step, so the page does not pretend to tell them apart.
+            lede.textContent =
+              "這個連結可能已使用過或已過期。請在 App 內重新發送驗證電郵。";
+            say(body.message || "", "error");
+            retry.hidden = false;
+            retry.disabled = false;
+          } catch (networkError) {
+            title.textContent = "網絡問題";
+            lede.textContent = "未能連接伺服器，請檢查連線後再試。";
+            say("", "error");
+            retry.hidden = false;
+            retry.disabled = false;
+          }
+        }
+
+        retry.addEventListener("click", confirm);
+        confirm();
+      })();
+    </script>
+  </body>
+</html>
