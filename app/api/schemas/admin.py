@@ -645,11 +645,18 @@ class AdminDisputeDetailOut(AdminDisputeRowOut):
     endpoint is admin-only. A party-facing view would be a different endpoint
     with a different filter — not this one with a query flag, which is a filter
     somebody eventually forgets.
+
+    The arrival-evidence fields are optional on the wire: they belong to the
+    order, not to the dispute, and a case opened without an order (or from a
+    build before P4 recorded the evidence) should still render.
     """
 
     messages: list[DisputeMessageOut]
     resolution_note: str | None
     resolved_by: str | None
+    arrival_claimed_at: str | None = None
+    arrival_gps_distance_m: str | None = None
+    arrival_pin_attempts: int | None = None
 
 
 class DisputeResolveOut(BaseModel):

@@ -512,6 +512,21 @@ function DisputeDetailView({ disputeId }: { disputeId: string }) {
               <span className="dim">{t('disputes.unassigned')}</span>
             )}
           </DetailRow>
+          {data.arrival_claimed_at ? (
+            <>
+              <DetailRow label={t('disputes.arrivalClaimed')}>
+                {formatTime(data.arrival_claimed_at, formatLocale)}
+              </DetailRow>
+              <DetailRow label={t('disputes.arrivalDistance')}>
+                {data.arrival_gps_distance_m == null
+                  ? '—'
+                  : `${Number(data.arrival_gps_distance_m).toFixed(1)} m`}
+              </DetailRow>
+              <DetailRow label={t('disputes.arrivalAttempts')}>
+                {String(data.arrival_pin_attempts ?? 0)}
+              </DetailRow>
+            </>
+          ) : null}
           {data.resolution ? (
             <>
               <DetailRow label={t('disputes.fieldResolution')}>

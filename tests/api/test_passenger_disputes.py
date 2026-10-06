@@ -183,6 +183,19 @@ class TestPassengerDisputeOpening:
         assert second.status_code == 409
         assert second.json()["details"]["reason"] == "DISPUTE_ALREADY_OPEN"
 
+    def test_admin_detail_exposes_arrival_evidence(self, client):
+        oid, passenger_token, _driver_row = _complete_order(client, 161, 162)
+        dispute = _open(client, oid, passenger_token)
+        detail = client.get(
+            f"/api/v1/admin/disputes/{dispute['id']}",
+            headers=client.admin_headers(),
+        )
+        assert detail.status_code == 200, detail.text
+        body = detail.json()
+        assert body["arrival_claimed_at"] is not None
+        assert body["arrival_gps_distance_m"] is not None
+        assert body["arrival_pin_attempts"] is not None
+
     def test_a_blank_summary_is_rejected(self, client):
         oid, passenger_token, _driver_row = _complete_order(client, 151, 152)
         r = client.post(

@@ -287,11 +287,23 @@ async def dispute_detail(
     """
     async with session_factory() as session:
         full = await DisputeService(session).get(dispute_id, with_messages=True)
+        order = await session.get(Order, full.order_id) if full.order_id else None
     return {
         **_dispute_out(full),
         "messages": [_dispute_message_out(m) for m in full.messages],
         "resolution_note": full.resolution_note,
         "resolved_by": str(full.resolved_by) if full.resolved_by else None,
+        "arrival_claimed_at": (
+            order.arrival_claimed_at.isoformat()
+            if order and order.arrival_claimed_at
+            else None
+        ),
+        "arrival_gps_distance_m": (
+            str(order.arrival_gps_distance_m)
+            if order and order.arrival_gps_distance_m is not None
+            else None
+        ),
+        "arrival_pin_attempts": order.arrival_pin_attempts if order else None,
     }
 
 

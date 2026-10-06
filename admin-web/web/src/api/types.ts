@@ -964,6 +964,9 @@ export interface DisputeDetail extends DisputeRow {
   messages: DisputeMessage[];
   resolution_note: string | null;
   resolved_by: string | null;
+  arrival_claimed_at: string | null;
+  arrival_gps_distance_m: string | null;
+  arrival_pin_attempts: number | null;
 }
 
 /**
