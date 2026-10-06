@@ -188,14 +188,13 @@ class IdentityService:
 
         settings = get_settings()
         raw = secrets.token_urlsafe(_TOKEN_BYTES)
-        self.session.add(
-            EmailVerificationToken(
-                user_id=user.id,
-                email=address,
-                token_hash=_hash_token(raw),
-                expires_at=_now() + timedelta(hours=settings.email_verify_ttl_hours),
-            )
+        token = EmailVerificationToken(
+            user_id=user.id,
+            email=address,
+            token_hash=_hash_token(raw),
+            expires_at=_now() + timedelta(hours=settings.email_verify_ttl_hours),
         )
+        self.session.add(token)
 
         # The pending address lives on the token row, not on `users.email`: the
         # account column is only written after the link proves ownership. Writing
@@ -203,8 +202,18 @@ class IdentityService:
         # address through the unique index before proving it can read that mail.
         await self.session.flush()
 
+        # Harden the transaction before sending the link: the request-scoped
+        # dependency commits only after the handler returns, so without this the
+        # email can carry a token that never became durable. On send failure,
+        # discard the just-created row so a retry issues a fresh token.
         link = f"{settings.public_base_url.rstrip('/')}/verify-email?token={raw}"
-        await get_email_provider().send_verification_email(address, link)
+        await self.session.commit()
+        try:
+            await get_email_provider().send_verification_email(address, link)
+        except Exception:
+            await self.session.delete(token)
+            await self.session.commit()
+            raise
 
         return {
             "sent": True,

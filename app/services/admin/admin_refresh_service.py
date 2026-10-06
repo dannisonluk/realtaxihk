@@ -62,25 +62,24 @@ from app.models import AdminRefreshToken
 logger = logging.getLogger("realtaxihk.admin_auth.refresh")
 
 # The two cookies. Names are namespaced so a future user-facing cookie cannot
-# collide, and prefixed `__Host-` where the platform allows it: that prefix is
-# browser-enforced to mean "Secure, path=/, no Domain attribute", which removes
-# a whole family of cookie-tossing attacks by construction.
-#
-# `__Host-` requires `Secure`, which requires HTTPS, which is not available on
-# `http://127.0.0.1`. Dev therefore uses the unprefixed names, and the prefix is
-# applied only when the deployment is actually secure. This is a property of the
-# cookie name, chosen at write time, not a runtime check in the request path.
+# collide. `__Host-` is deliberately not used, even in production: that prefix
+# is browser-enforced to mean "Secure, path=/, no Domain attribute", which
+# cannot coexist with the narrow `/api/v1/admin/auth` path chosen below. The
+# cookie still carries Secure, HttpOnly and SameSite=Strict in production; the
+# prefix is a bonus that would require widening the scope.
 REFRESH_COOKIE = "realtaxi_admin_refresh"
 CSRF_COOKIE = "realtaxi_admin_csrf"
-SECURE_PREFIX = "__Host-"
 
 
 def refresh_cookie_name(*, secure: bool) -> str:
-    return f"{SECURE_PREFIX}{REFRESH_COOKIE}" if secure else REFRESH_COOKIE
+    # The `secure` argument remains for compatibility with readers/writers
+    # written against the old env-dependent prefix, but the name itself is
+    # stable. The path below is the security property that replaces the prefix.
+    return REFRESH_COOKIE
 
 
 def csrf_cookie_name(*, secure: bool) -> str:
-    return f"{SECURE_PREFIX}{CSRF_COOKIE}" if secure else CSRF_COOKIE
+    return CSRF_COOKIE
 
 
 def _hash(raw: str) -> str:
@@ -94,12 +93,11 @@ def _now() -> datetime:
 def cookies_are_secure() -> bool:
     """Whether the browser will send these cookies back.
 
-    `Secure` cookies are only stored over HTTPS, and `__Host-` mandates it. On a
-    plain-http origin (local dev, the UI verifier) setting `Secure` produces a
-    cookie the browser silently discards — which would look exactly like a
-    broken refresh path, not like a misconfiguration. So the flag follows the
-    environment: prod is https-only (enforced at startup in `config.py`), dev is
-    not.
+    `Secure` cookies are only stored over HTTPS. On a plain-http origin (local
+    dev, the UI verifier) setting `Secure` produces a cookie the browser
+    silently discards — which would look exactly like a broken refresh path,
+    not like a misconfiguration. So the flag follows the environment: prod is
+    https-only (enforced at startup in `config.py`), dev is not.
 
     `app_env` is whitelisted by the config validator, so this is not reading an
     attacker-influenced value.

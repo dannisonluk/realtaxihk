@@ -152,8 +152,18 @@ class OtpService:
         )
         self.session.add(otp)
         await self.session.flush()
-
-        await get_whatsapp_provider().send_otp(phone_e164, code)
+        # The WhatsApp call is an outbound side-effect. If we sent it before the
+        # DB transaction had hardened, a lost connection at commit time would
+        # deliver an OTP that had no row behind it. Commit first so the
+        # external send is ordered after persistence; if delivery itself fails,
+        # remove the row so the cooldown does not lock the user out of retrying.
+        await self.session.commit()
+        try:
+            await get_whatsapp_provider().send_otp(phone_e164, code)
+        except Exception:
+            await self.session.delete(otp)
+            await self.session.commit()
+            raise
 
         # SEC-02: no `dev_code` echo. The code leaves this function exactly once,
         # through the notification provider. See the module docstring.

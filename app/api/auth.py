@@ -137,7 +137,12 @@ async def _revoke_access_tokens(request: Request, user_id) -> None:
     The client is the app's shared per-loop one and is closed at shutdown —
     closing it here would disconnect every other request sharing it.
     """
-    await revoke_user_tokens(request.app.state.redis_factory(), user_id)
+    # SEC-18: revocation is best-effort by design. A Redis blip means a token
+    # can stay valid for its 15-minute life instead of turning every request
+    # into a 503; the access-token TTL is the backstop (token_revocation.py).
+    failed = not await revoke_user_tokens(request.app.state.redis_factory(), user_id)
+    if failed:
+        logger.warning("access-token revocation failed for %s", user_id)
 
 
 async def _issue_session(session: AsyncSession, user: User, *, created: bool | None = None) -> dict:

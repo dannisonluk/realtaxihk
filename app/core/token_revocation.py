@@ -33,12 +33,18 @@ def _epoch_key(user_id: str) -> str:
     return f"auth:epoch:{user_id}"
 
 
-async def revoke_user_tokens(redis, user_id) -> None:
-    """Invalidate every access token already issued to `user_id`."""
+async def revoke_user_tokens(redis, user_id) -> bool:
+    """Invalidate every access token already issued to `user_id`.
+
+    Returns `False` (after logging) when Redis cannot record the epoch, so the
+    caller can decide whether the failure deserves its own alert.
+    """
     try:
         await redis.set(_epoch_key(str(user_id)), f"{time.time():.6f}", ex=_EPOCH_TTL_S)
+        return True
     except Exception:
         logger.exception("could not record token revocation epoch for %s", user_id)
+        return False
 
 
 async def is_token_revoked(redis, user_id, issued_at) -> bool:

@@ -175,32 +175,40 @@ class PasswordService:
             return {"sent": True, "expires_in": settings.password_reset_ttl_minutes * 60}
 
         raw = secrets.token_urlsafe(_TOKEN_BYTES)
-        self.session.add(
-            PasswordResetToken(
-                user_id=user.id,
-                token_hash=_hash_token(raw),
-                expires_at=_now() + timedelta(minutes=settings.password_reset_ttl_minutes),
-                requested_ip=ip,
-            )
+        token = PasswordResetToken(
+            user_id=user.id,
+            token_hash=_hash_token(raw),
+            expires_at=_now() + timedelta(minutes=settings.password_reset_ttl_minutes),
+            requested_ip=ip,
         )
+        self.session.add(token)
         await self.session.flush()
-
+        # Harden the transaction before sending the reset link: the request-scoped
+        # dependency commits only after the handler returns, so without this the
+        # email can carry a token that never became durable. On send failure,
+        # discard the just-created row so a retry issues a fresh token.
         link = f"{settings.public_base_url.rstrip('/')}/reset-password?token={raw}"
-        await get_email_provider().send_email(
-            user.email,
-            "重設密碼 / Reset your password",
-            (
-                "有人在 hkfastdc 要求重設這個電郵地址的密碼。\n"
-                "請開啟以下連結設定新密碼：\n\n"
-                f"{link}\n\n"
-                f"連結將於 {settings.password_reset_ttl_minutes} 分鐘後失效。"
-                "如果這不是你本人要求的，可以忽略這封電郵 —— 密碼不會改變。\n\n"
-                "Someone asked to reset the password for this address on hkfastdc.\n"
-                "Open the link above to choose a new one. It expires in "
-                f"{settings.password_reset_ttl_minutes} minutes. If this was not you, "
-                "ignore this message — nothing has changed."
-            ),
-        )
+        await self.session.commit()
+        try:
+            await get_email_provider().send_email(
+                user.email,
+                "重設密碼 / Reset your password",
+                (
+                    "有人在 hkfastdc 要求重設這個電郵地址的密碼。\n"
+                    "請開啟以下連結設定新密碼：\n\n"
+                    f"{link}\n\n"
+                    f"連結將於 {settings.password_reset_ttl_minutes} 分鐘後失效。"
+                    "如果這不是你本人要求的，可以忽略這封電郵 —— 密碼不會改變。\n\n"
+                    "Someone asked to reset the password for this address on hkfastdc.\n"
+                    "Open the link above to choose a new one. It expires in "
+                    f"{settings.password_reset_ttl_minutes} minutes. If this was not you, "
+                    "ignore this message — nothing has changed."
+                ),
+            )
+        except Exception:
+            await self.session.delete(token)
+            await self.session.commit()
+            raise
         logger.info("password reset link issued user_id=%s", user.id)
         return {"sent": True, "expires_in": settings.password_reset_ttl_minutes * 60}
 
