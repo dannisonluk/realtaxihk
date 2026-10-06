@@ -85,6 +85,4 @@ async def publish_lifecycle(
     try:
         await get_redis().publish(channel_for(str(order.id)), json.dumps(message))
     except Exception:
-        logger.exception(
-            "trip lifecycle publish failed order_id=%s event=%s", order.id, event
-        )
+        logger.exception("trip lifecycle publish failed order_id=%s event=%s", order.id, event)

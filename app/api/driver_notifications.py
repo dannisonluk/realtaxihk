@@ -32,9 +32,7 @@ router = APIRouter(
 )
 
 
-async def _require_driver(
-    session: AsyncSession, user: Principal
-) -> DriverProfile:
+async def _require_driver(session: AsyncSession, user: Principal) -> DriverProfile:
     profile = await DriverProfile.for_user(session, user.id)
     if profile is None:
         raise HTTPException(status_code=404, detail="driver profile not found")

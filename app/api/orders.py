@@ -794,9 +794,7 @@ async def order_arrival_claim(
     )
     # P4 §7: the passenger's confirm prompt must appear now, not on the next
     # poll. Committed inside the helper, so the event cannot outrun the row.
-    await publish_lifecycle(
-        session, order, "ARRIVAL_CLAIMED", distance_m=float(distance)
-    )
+    await publish_lifecycle(session, order, "ARRIVAL_CLAIMED", distance_m=float(distance))
     return order_out(order)
 
 
@@ -864,9 +862,7 @@ async def order_arrival_confirm(
         )
         # The passenger failed to confirm three times; the order went back to
         # ACCEPTED and a dispute opened. Both parties need to see that now.
-        await publish_lifecycle(
-            session, order, "ARRIVAL_CONFLICT", dispute_id=str(dispute.id)
-        )
+        await publish_lifecycle(session, order, "ARRIVAL_CONFLICT", dispute_id=str(dispute.id))
         return order_out(order)
 
     from_status = order.status.value

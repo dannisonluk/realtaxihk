@@ -294,9 +294,7 @@ async def dispute_detail(
         "resolution_note": full.resolution_note,
         "resolved_by": str(full.resolved_by) if full.resolved_by else None,
         "arrival_claimed_at": (
-            order.arrival_claimed_at.isoformat()
-            if order and order.arrival_claimed_at
-            else None
+            order.arrival_claimed_at.isoformat() if order and order.arrival_claimed_at else None
         ),
         "arrival_gps_distance_m": (
             str(order.arrival_gps_distance_m)

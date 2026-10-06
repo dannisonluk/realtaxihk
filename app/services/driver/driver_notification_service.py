@@ -42,14 +42,18 @@ class DriverNotificationService:
 
         if order.premium_destination_id is not None:
             profile_ids = (
-                await self._session.execute(
-                    select(DriverProfile.id).where(
-                        DriverProfile.status == DriverStatus.ACTIVE,
-                        DriverProfile.is_online.is_(True),
-                        DriverProfile.taxi_type == order.taxi_type,
+                (
+                    await self._session.execute(
+                        select(DriverProfile.id).where(
+                            DriverProfile.status == DriverStatus.ACTIVE,
+                            DriverProfile.is_online.is_(True),
+                            DriverProfile.taxi_type == order.taxi_type,
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             for profile_id in profile_ids:
                 self._session.add(self._premium(order, profile_id))
             if profile_ids:
@@ -86,8 +90,5 @@ class DriverNotificationService:
             headline_zh=f"新訂單：{name_zh}",
             headline_en=f"New premium order: {name_en}",
             body_zh=f"{order.pickup_address} → {order.dropoff_address} · 約 HK${price}",
-            body_en=(
-                f"{order.pickup_address} → {order.dropoff_address} · "
-                f"Est. HK${price}"
-            ),
+            body_en=(f"{order.pickup_address} → {order.dropoff_address} · Est. HK${price}"),
         )
