@@ -266,6 +266,23 @@ class OrderRepository {
     return Order.fromJson(json);
   }
 
+  /// `POST /orders/{id}/disputes` — file a passenger dispute after a trip.
+  ///
+  /// Only the passenger may call this for their own order, and only once the
+  /// trip is terminal. The server derives the SLA from the category rather than
+  /// trusting the filer to pick urgency; a 409 `DISPUTE_ALREADY_OPEN` is the
+  /// honest answer for a retry.
+  Future<Map<String, dynamic>> openDispute(
+    String orderId, {
+    required String category,
+    required String summary,
+  }) async {
+    return _api.post(
+      '/api/v1/orders/$orderId/disputes',
+      data: <String, dynamic>{'category': category, 'summary': summary},
+    );
+  }
+
   /// `POST /orders/{id}/receipt` — issue the receipt, idempotently.
   ///
   /// Server-side this freezes the document on first call and returns the stored

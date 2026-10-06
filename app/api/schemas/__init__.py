@@ -110,15 +110,15 @@ from app.api.schemas.driver import (
     RefundRequestOut,
     RefundViewOut,
 )
+from app.api.schemas.driver_attributes import (
+    DriverEnvironmentOut,
+    DriverPaymentMethodsOut,
+)
 from app.api.schemas.driver_notification import (
     DriverNotificationOut,
     DriverNotificationPageOut,
     DriverNotificationReadOut,
     DriverNotificationsReadAllOut,
-)
-from app.api.schemas.driver_attributes import (
-    DriverEnvironmentOut,
-    DriverPaymentMethodsOut,
 )
 from app.api.schemas.fare import (
     FareEstimateOut,
@@ -161,8 +161,10 @@ from app.api.schemas.licence import (
 from app.api.schemas.order import (
     LedgerEntryOut,
     LedgerPageOut,
+    OrderDisputeIn,
     OrderOut,
     OrderPageOut,
+    PassengerDisputeOut,
     TripLocationOut,
 )
 from app.api.schemas.premium import (
@@ -251,10 +253,12 @@ __all__ = [
     "OkLogoutOut",
     "OkOut",
     "OkRevokedOut",
+    "OrderDisputeIn",
     "OrderOut",
     "OrderPageOut",
     "OtpRequestOut",
     "PageEnvelope",
+    "PassengerDisputeOut",
     "PasswordForgotOut",
     "PhoneBindOut",
     "PhoneReverifyOut",

@@ -38,7 +38,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.schemas import OrderOut, OrderPageOut
+from app.api.schemas import OrderDisputeIn, OrderOut, OrderPageOut, PassengerDisputeOut
 from app.core import cooldown as cooldown_mod
 from app.core.config import get_settings
 from app.core.db import get_session, get_session_factory
@@ -51,13 +51,17 @@ from app.models import (
     INTERRUPTION_REASONS_BY_PARTY,
     SAFETY_INTERRUPTION_REASONS,
     DisputeCategory,
+    DisputePartyKind,
+    DisputeSeverity,
     DisputeSource,
+    DisputeStatus,
     DriverDeposit,
     DriverProfile,
     DriverStatus,
     InterruptionReason,
     LedgerEntryType,
     Order,
+    OrderDispute,
     OrderEventType,
     OrderFareMode,
     OrderParty,
@@ -105,6 +109,18 @@ _MAX_TUNNELS = 8
 # leaving a filtered query able to find its rows.
 _GEO_CANDIDATES = 50
 _GEO_CANDIDATES_FILTERED = 200
+
+# A party report is after-the-fact: the trip must already be terminal. In-trip
+# complaints go through `/interrupt`, which opens a case in the same transaction.
+_PARTY_DISPUTE_ORDER_STATUSES = frozenset(
+    {OrderStatus.COMPLETED, OrderStatus.INTERRUPTED, OrderStatus.CANCELLED}
+)
+_PARTY_OPEN_DISPUTE_STATUSES = (
+    DisputeStatus.OPEN.value,
+    DisputeStatus.INVESTIGATING.value,
+    DisputeStatus.AWAITING_PARTY.value,
+    DisputeStatus.ESCALATED.value,
+)
 
 
 def _redis(request: Request):
@@ -972,6 +988,110 @@ async def order_complete(
     # for the poll.
     await publish_lifecycle(session, order, "TRIP_COMPLETED")
     return order_out(order)
+
+
+@router.post("/{order_id}/disputes", status_code=201, response_model=PassengerDisputeOut)
+async def order_open_dispute(
+    order_id: str,
+    payload: OrderDisputeIn,
+    user: Principal = Depends(require_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """File a passenger dispute against a finished trip (P4 §4.4).
+
+    `PARTY_REPORT` is the source the admin queue distinguishes from
+    `AUTO_INTERRUPTED`; it is the passenger's own account, so it starts at a
+    normal SLA unless the category is safety-related. The case is opened on the
+    request session so the order timeline and the dispute commit together, and
+    `publish_lifecycle` makes the timeline event visible to both parties once
+    the write is durable.
+    """
+    order = await _get_order(session, order_id, for_update=True)
+    if order.passenger_id != user.id:
+        raise HTTPException(status_code=403, detail="not a passenger of this order")
+
+    if order.status not in _PARTY_DISPUTE_ORDER_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "reason": "WRONG_STATUS",
+                "status": order.status.value,
+            },
+        )
+
+    existing = await session.scalar(
+        select(OrderDispute).where(
+            OrderDispute.order_id == order.id,
+            OrderDispute.raised_by_kind == DisputePartyKind.PASSENGER.value,
+            OrderDispute.raised_by_id == user.id,
+            OrderDispute.status.in_(_PARTY_OPEN_DISPUTE_STATUSES),
+        )
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "reason": "DISPUTE_ALREADY_OPEN",
+                "dispute_id": str(existing.id),
+            },
+        )
+
+    severity = (
+        DisputeSeverity.HIGH
+        if payload.category == DisputeCategory.SAFETY
+        else DisputeSeverity.NORMAL
+    )
+    dispute = await DisputeService(session).open_case(
+        category=payload.category,
+        summary=payload.summary,
+        source=DisputeSource.PARTY_REPORT,
+        order_id=order.id,
+        raised_by_kind=DisputePartyKind.PASSENGER.value,
+        raised_by_id=user.id,
+        against_kind=(
+            DisputePartyKind.DRIVER.value
+            if order.driver_id is not None
+            else DisputePartyKind.PLATFORM.value
+        ),
+        against_id=order.driver_id,
+        severity=severity,
+    )
+    await record_order_event(
+        session,
+        order_id=order.id,
+        event=OrderEventType.DISPUTE_OPENED,
+        actor_kind=DisputePartyKind.PASSENGER.value,
+        actor_id=user.id,
+        payload={
+            "dispute_id": str(dispute.id),
+            "source": DisputeSource.PARTY_REPORT.value,
+            "category": payload.category.value,
+            "severity": dispute.severity,
+        },
+    )
+    # P4 §7: the counterparty and the app's own order screen learn about the
+    # dispute immediately, not on the next poll.
+    await publish_lifecycle(
+        session,
+        order,
+        "DISPUTE_OPENED",
+        dispute_id=str(dispute.id),
+        source=DisputeSource.PARTY_REPORT.value,
+    )
+    return {
+        "id": str(dispute.id),
+        "order_id": str(order.id),
+        "source": dispute.source,
+        "category": dispute.category,
+        "severity": dispute.severity,
+        "status": dispute.status,
+        "summary": dispute.summary,
+        "raised_by_kind": dispute.raised_by_kind,
+        "against_kind": dispute.against_kind,
+        "safety_flag": dispute.safety_flag,
+        "sla_due_at": dispute.sla_due_at.isoformat(),
+        "created_at": dispute.created_at.isoformat(),
+    }
 
 
 async def _straight_line_km(session: AsyncSession, order: Order, lat: float, lng: float) -> Decimal:

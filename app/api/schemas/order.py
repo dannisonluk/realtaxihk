@@ -19,12 +19,52 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from app.api.schemas.fare import FareSnapshotOut
+from app.models import DisputeCategory
+
+
+class OrderDisputeIn(BaseModel):
+    """A passenger report against a completed, interrupted, or cancelled trip.
+
+    `severity` is deliberately absent. The SLA is the queue's workload signal,
+    and letting the filing party choose it would let one passenger's version of
+    urgency pre-empt a machine-opened safety case. The server maps category to
+    a severity; the `SAFETY` category also sets the safety flag.
+    """
+
+    category: DisputeCategory
+    summary: str = Field(min_length=1, max_length=2000)
+
+
+class PassengerDisputeOut(BaseModel):
+    """The created case, with enough for the app to confirm it reached the queue.
+
+    `id`, `order_id`, `category`, `severity`, `status`, `summary`, `raised_by_kind`
+    and `safety_flag` mirror the admin row fields the queue reads, but not the
+    whole thread: a party-facing creation response should not carry admin-only
+    internal notes.
+    """
+
+    id: str
+    order_id: str
+    source: str
+    category: str
+    severity: str
+    status: str
+    summary: str
+    raised_by_kind: str
+    against_kind: str | None
+    safety_flag: bool
+    sla_due_at: str
+    created_at: str
+
 
 __all__ = [
     "LedgerEntryOut",
     "LedgerPageOut",
+    "OrderDisputeIn",
     "OrderOut",
     "OrderPageOut",
+    "PassengerDisputeOut",
     "TripLocationOut",
 ]
 

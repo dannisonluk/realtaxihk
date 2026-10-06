@@ -67,10 +67,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
   void initState() {
     super.initState();
     unawaited(_connect());
-    _poll = Timer.periodic(
-      AppConfig.locationPollInterval,
-      (Timer _) => _refresh(),
-    );
+    _poll = Timer.periodic(AppConfig.locationPollInterval, (Timer _) => _refresh());
   }
 
   @override
@@ -105,8 +102,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
       _events = channel.events.listen(
         _onEvent,
         onError: (Object error) => _onSocketDown(error.userMessage),
-        onDone: () =>
-            _onSocketDown(_closeReason(channel), retryable: _mayRetry(channel)),
+        onDone: () => _onSocketDown(_closeReason(channel), retryable: _mayRetry(channel)),
       );
     } on ApiException catch (e) {
       _onSocketDown(e.message);
@@ -127,9 +123,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
       return;
     }
     const List<int> delays = <int>[2, 5, 10, 30];
-    final int index = _connectAttempts < delays.length
-        ? _connectAttempts
-        : delays.length - 1;
+    final int index = _connectAttempts < delays.length ? _connectAttempts : delays.length - 1;
     _connectAttempts += 1;
     _reconnectTimer = Timer(Duration(seconds: delays[index]), () {
       if (_closing || !mounted) {
@@ -210,11 +204,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
       }
       setState(() {
         if (snapshot.hasFix) {
-          _driver = MapPoint(
-            lat: snapshot.lat!,
-            lng: snapshot.lng!,
-            label: '司機位置',
-          );
+          _driver = MapPoint(lat: snapshot.lat!, lng: snapshot.lng!, label: '司機位置');
         }
       });
     } on ApiException catch (e) {
@@ -226,19 +216,13 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final AsyncValue<Order> order = ref.watch(
-      orderDetailProvider(widget.orderId),
-    );
+    final AsyncValue<Order> order = ref.watch(orderDetailProvider(widget.orderId));
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('行程'),
         actions: <Widget>[
-          IconButton(
-            onPressed: _refresh,
-            tooltip: '重新整理',
-            icon: const Icon(Icons.refresh),
-          ),
+          IconButton(onPressed: _refresh, tooltip: '重新整理', icon: const Icon(Icons.refresh)),
         ],
       ),
       body: AsyncValueView<Order>(
@@ -332,30 +316,21 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: <Widget>[
                     Text(
-                      order.fare.isDestinationChange
-                          ? '車費（已改目的地，重新估算）'
-                          : '車費（已凍結）',
+                      order.fare.isDestinationChange ? '車費（已改目的地，重新估算）' : '車費（已凍結）',
                       style: theme.textTheme.titleSmall,
                     ),
-                    MoneyText(
-                      order.estimatedTotalHkd,
-                      style: theme.textTheme.headlineSmall,
-                    ),
+                    MoneyText(order.estimatedTotalHkd, style: theme.textTheme.headlineSmall),
                   ],
                 ),
                 const SizedBox(height: AppTheme.space1),
                 DetailRow(label: '的士種類', value: order.taxiType.labelZh),
                 DetailRow(label: '下單時間', value: _createdAt(order)),
                 if (order.destinationChangeCount > 0)
-                  DetailRow(
-                    label: '改目的地次數',
-                    value: '${order.destinationChangeCount} 次',
-                  ),
+                  DetailRow(label: '改目的地次數', value: '${order.destinationChangeCount} 次'),
                 if (driver != null)
                   DetailRow(
                     label: '司機位置',
-                    value:
-                        '${driver.lat.toStringAsFixed(5)}, ${driver.lng.toStringAsFixed(5)}',
+                    value: '${driver.lat.toStringAsFixed(5)}, ${driver.lng.toStringAsFixed(5)}',
                   ),
                 const SizedBox(height: AppTheme.space3),
                 ..._actions(context, order),
@@ -385,9 +360,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
   ///   navigation.
   List<Widget> _actions(BuildContext context, Order order) {
     if (order.status == OrderStatus.pendingArrivalConfirm) {
-      return <Widget>[
-        _ArrivalConfirmPanel(order: order, onConfirmed: _afterAction),
-      ];
+      return <Widget>[_ArrivalConfirmPanel(order: order, onConfirmed: _afterAction)];
     }
     if (order.status.canInterrupt) {
       return <Widget>[
@@ -418,9 +391,9 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
             padding: const EdgeInsets.only(top: AppTheme.space3),
             child: Text(
               '⚠️ 已確認到達，無法取消。如無法乘車，請與司機溝通或中斷行程。',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.error,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error),
             ),
           ),
       ];
@@ -446,10 +419,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
         const SizedBox(height: AppTheme.space2),
         SizedBox(
           width: double.infinity,
-          child: OutlinedButton(
-            onPressed: () => _appeal(order),
-            child: const Text('提出申訴'),
-          ),
+          child: OutlinedButton(onPressed: () => _appeal(order), child: const Text('提出申訴')),
         ),
       ];
     }
@@ -458,17 +428,14 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
         OutlinedButton.icon(
           onPressed: _busy ? null : () => _confirmCancel(order),
           icon: const Icon(Icons.close),
-          label: Text(
-            order.status.cancelNeedsReason ? '取消行程（可能被扣違約罰款）' : '取消行程',
-          ),
+          label: Text(order.status.cancelNeedsReason ? '取消行程（可能被扣違約罰款）' : '取消行程'),
         ),
       ];
     }
     return const <Widget>[];
   }
 
-  static String _createdAt(Order order) =>
-      order.createdAt == null ? '—' : _fmt(order.createdAt!);
+  static String _createdAt(Order order) => order.createdAt == null ? '—' : _fmt(order.createdAt!);
 
   static String _fmt(DateTime at) =>
       '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
@@ -511,12 +478,8 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
 
   /// P4 §4.1. Pick a new dropoff, confirm, then let the server re-price.
   Future<void> _changeDestination(Order order) async {
-    final String current =
-        order.premiumDestination?.nameZh ?? order.destinationArea ?? '原本目的地';
-    final MapPoint? destination = await pickNewDestination(
-      context,
-      currentAddress: current,
-    );
+    final String current = order.premiumDestination?.nameZh ?? order.destinationArea ?? '原本目的地';
+    final MapPoint? destination = await pickNewDestination(context, currentAddress: current);
     if (destination == null || !mounted) {
       return;
     }
@@ -547,25 +510,18 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
 
   /// P4 §4.1 step 7 — the new estimate must be shown immediately, and it must be
   /// labelled an estimate rather than a price.
-  Future<void> _showNewEstimate(
-    Order updated, {
-    required Money previous,
-  }) async {
+  Future<void> _showNewEstimate(Order updated, {required Money previous}) async {
     final Money now = updated.estimatedTotalHkd;
     // `minus` works in integer cents — never subtract `asDouble`s, which is how
     // `HK$0.30000000000001137` reaches the screen.
     final Money delta = now.minus(previous);
     final Money magnitude = Money(
-      delta.canonical.startsWith('-')
-          ? delta.canonical.substring(1)
-          : delta.canonical,
+      delta.canonical.startsWith('-') ? delta.canonical.substring(1) : delta.canonical,
     );
     final String deltaText = delta.isZero
         ? '與原本相同'
         : '（${delta.isNegative ? '−' : '+'}${magnitude.hkd}）';
-    final StringBuffer body = StringBuffer(
-      '新估價 ${now.hkd} $deltaText。實際車資仍由你與司機協商。',
-    );
+    final StringBuffer body = StringBuffer('新估價 ${now.hkd} $deltaText。實際車資仍由你與司機協商。');
     if (updated.fare.distanceIsStraightLine) {
       body.write('\n\n註：此估價以直線距離計算，實際道路距離可能更遠。');
     }
@@ -575,10 +531,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
         title: const Text('已更改目的地'),
         content: Text(body.toString()),
         actions: <Widget>[
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('知道了'),
-          ),
+          FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('知道了')),
         ],
       ),
     );
@@ -613,28 +566,64 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
     });
   }
 
-  /// There is no passenger-facing dispute endpoint yet, so this explains what
-  /// actually happens rather than pretending to file something. The interrupt
-  /// path already opened a case in the same transaction; anything else has to go
-  /// through support. (Tracked as a gap in `docs/WORK_SUMMARY.md`.)
+  /// File a passenger dispute against a finished trip. The server owns the
+  /// rules (who may file, which statuses are eligible, one open case per
+  /// passenger per order); the dialog only collects the category and summary.
   Future<void> _appeal(Order order) async {
-    await showDialog<void>(
+    String category = 'FARE';
+    final TextEditingController summary = TextEditingController();
+    final bool? sent = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
         title: const Text('提出申訴'),
-        content: Text(
-          '行程編號：${order.id}\n\n'
-          '中斷行程時，平台已自動開立爭議個案，客服會依序處理並與你聯絡。'
-          '如屬其他情況，請以此編號聯絡客服。',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              '行程編號：${order.id}\n\n'
+              '請選擇申訴類別並簡述問題，平台會開立個案並由客服處理。',
+            ),
+            const SizedBox(height: AppTheme.space4),
+            DropdownButtonFormField<String>(
+              initialValue: category,
+              decoration: const InputDecoration(labelText: '申訴類別'),
+              items: const <DropdownMenuItem<String>>[
+                DropdownMenuItem(value: 'FARE', child: Text('車費')),
+                DropdownMenuItem(value: 'CONDUCT', child: Text('司機態度')),
+                DropdownMenuItem(value: 'SAFETY', child: Text('安全')),
+                DropdownMenuItem(value: 'LOST_ITEM', child: Text('遺留物品')),
+                DropdownMenuItem(value: 'APP_ISSUE', child: Text('應用程式問題')),
+                DropdownMenuItem(value: 'OTHER', child: Text('其他')),
+              ],
+              onChanged: (String? value) => category = value ?? category,
+            ),
+            const SizedBox(height: AppTheme.space4),
+            TextField(
+              controller: summary,
+              minLines: 3,
+              maxLines: 6,
+              maxLength: 2000,
+              decoration: const InputDecoration(labelText: '詳情', hintText: '請簡述發生咗咩事'),
+            ),
+          ],
         ),
         actions: <Widget>[
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('知道了'),
-          ),
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('返回')),
+          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('送出')),
         ],
       ),
     );
+    if (sent != true || !mounted) {
+      return;
+    }
+    await _run(() async {
+      await ref
+          .read(orderRepositoryProvider)
+          .openDispute(order.id, category: category, summary: summary.text);
+      if (mounted) {
+        showInfo(context, '申訴已送出，客服會盡快處理。');
+      }
+    });
   }
 
   Future<void> _confirmCancel(Order order) async {
@@ -672,9 +661,7 @@ class _TripTrackingScreenState extends ConsumerState<TripTrackingScreen> {
           .read(orderRepositoryProvider)
           .cancel(
             order.id,
-            reason: reasonCode == null
-                ? 'passenger cancelled'
-                : 'passenger defaulted',
+            reason: reasonCode == null ? 'passenger cancelled' : 'passenger defaulted',
             reasonCode: reasonCode,
           );
       if (mounted) {
@@ -699,8 +686,7 @@ class _ArrivalConfirmPanel extends ConsumerStatefulWidget {
   final VoidCallback onConfirmed;
 
   @override
-  ConsumerState<_ArrivalConfirmPanel> createState() =>
-      _ArrivalConfirmPanelState();
+  ConsumerState<_ArrivalConfirmPanel> createState() => _ArrivalConfirmPanelState();
 }
 
 class _ArrivalConfirmPanelState extends ConsumerState<_ArrivalConfirmPanel> {
@@ -795,18 +781,13 @@ class _ArrivalConfirmPanelState extends ConsumerState<_ArrivalConfirmPanel> {
                 padding: const EdgeInsets.only(top: AppTheme.space2),
                 child: Text(
                   _error!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.error,
-                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
                 ),
               ),
             const SizedBox(height: AppTheme.space2),
             SizedBox(
               width: double.infinity,
-              child: FilledButton(
-                onPressed: _busy ? null : _submit,
-                child: const Text('確認我已上車'),
-              ),
+              child: FilledButton(onPressed: _busy ? null : _submit, child: const Text('確認我已上車')),
             ),
             const SizedBox(height: AppTheme.space1),
             Text(
