@@ -159,6 +159,11 @@ async def _issue_session(session: AsyncSession, user: User, *, created: bool | N
     """
     token = create_access_token({"sub": str(user.id), "role": user.role.value})
     refresh = await RefreshService(session).issue(user.id)
+    # `issue()` only flushes the row; the request-scoped dependency commits
+    # after the handler returns. Commit here so the refresh token handed to the
+    # client always has a durable row behind it — a final commit failure after
+    # the response is built would otherwise issue a token that can never rotate.
+    await session.commit()
     body: dict = {
         "access_token": token,
         "token_type": "bearer",
@@ -433,6 +438,13 @@ async def logout(
     revoked = await RefreshService(session).revoke_all_for_user(user.id)
     # SEC-18: also invalidate the access token the caller is holding (and any
     # other one already issued to this user), not just the refresh tokens.
+    #
+    # Order matters: the refresh-row update is still only flushed until the
+    # request-scoped dependency commits. Write the DB first, then the Redis
+    # epoch. Otherwise a failed final commit leaves refresh rows live while the
+    # epoch is already set, and a stolen refresh token can mint a new access
+    # token whose `iat` is newer than the epoch.
+    await session.commit()
     await _revoke_access_tokens(request, user.id)
     return {"ok": True, "revoked": revoked}
 

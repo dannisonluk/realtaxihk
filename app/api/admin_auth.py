@@ -342,6 +342,10 @@ async def refresh_admin_session(
             headers=_cleared_session_headers(),
         )
 
+    # `rotate()` only flushes the revoked row and the new pair; commit so the
+    # cookies written below always have durable rows behind them (and the old
+    # token is really dead before its replacement is in the browser).
+    await session.commit()
     set_session_cookies(
         response, refresh_token=outcome.new_refresh, csrf_token=outcome.new_csrf or ""
     )
@@ -393,6 +397,11 @@ async def logout(
                 # means every device, and a session that only revoked its own
                 # cookie would leave the operator's other tabs signed in.
                 await svc.revoke_all_for_admin(row.admin_id)
+                # Commit before the access-epoch write below: the row updates
+                # are otherwise only flushed until the request-scoped commit,
+                # and a failed final commit would revive refresh tokens after
+                # the epoch already killed access tokens.
+                await session.commit()
                 revoked = True
 
     clear_session_cookies(response)
@@ -444,6 +453,10 @@ async def _issue_session(
     `app/core/admin_cookies.py` for why that is the whole point.
     """
     refresh, csrf = await AdminRefreshService(session).issue(account.id)
+    # `issue()` only flushes the row; the request-scoped dependency commits
+    # after the handler returns. Commit here so the refresh cookie handed to
+    # the browser always has a durable row behind it.
+    await session.commit()
     set_session_cookies(response, refresh_token=refresh, csrf_token=csrf)
     return {
         "access_token": issue_admin_access_token(account),

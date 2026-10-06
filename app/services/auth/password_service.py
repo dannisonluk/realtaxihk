@@ -274,5 +274,11 @@ class PasswordService:
         the epoch would let the stolen refresh token mint a fresh one.
         """
         revoked = await RefreshService(self.session).revoke_all_for_user(user_id)
+        # Commit the refresh-row revocation before writing the Redis epoch:
+        # `revoke_all_for_user` only flushes, and if the request-scoped commit
+        # later failed, the epoch would kill access tokens while the refresh
+        # rows stayed live, letting a stolen refresh token mint a fresh access
+        # token with an `iat` newer than the epoch.
+        await self.session.commit()
         await revoke_user_tokens(self.redis, user_id)
         return revoked
