@@ -292,10 +292,10 @@ cd mobile/android && ./gradlew :app:assembleDebug
 
 ### 6.2 第一道牆：真機連不到你的 API
 
-`scripts/dev/serve_and_probe.py` 把 uvicorn 寫死在 **`127.0.0.1`**（第 24 行與第 34
-行都是硬編碼），所以 `APP_HOST=0.0.0.0` **不會生效** —— 那個設定沒有任何 dev 啟動
-腳本讀它。結果是 APK 裝在真機上時，`10.0.2.2`（那是模擬器專用的別名）與區網 IP 都
-連不到。
+`scripts/dev/serve_and_probe.py` 預設綁 `127.0.0.1`。要畀真機經 Wi-Fi 連，直接用
+`--host 0.0.0.0`：`scripts/dev/serve_and_probe.py --host 0.0.0.0`，然後 APK 用
+`--dart-define=API_BASE_URL=http://<區網 IP>:8000`。`APP_HOST` 對呢個腳本無效，個
+flag 先係唯一接口。
 
 | 做法 | 步驟 | 適用 |
 |---|---|---|
@@ -490,9 +490,8 @@ REVIEWER_PASSWORD='...'      # 不放在 argv：那會進 shell history 與 proc
    用 `create_admin.py` 建的 `users` 列**打不開** `/api/v1/admin/*`。
 10. **管理員 TOTP 在第一次登入時才註冊。** 腳本不會產生秘密；想跳過互動流程用
     `enrol_admin_totp.py`。
-11. **`serve_and_probe.py` 把 API 綁在 `127.0.0.1`，`APP_HOST` 對它無效。** 真機
-    要麼 `adb reverse tcp:8000 tcp:8000`，要麼自己起 `uvicorn --host 0.0.0.0`。
-    見第 6.2 節。
+11. **`serve_and_probe.py` 預設綁 `127.0.0.1`，`APP_HOST` 對它無效。** 真機要
+    `serve_and_probe.py --host 0.0.0.0`（或 `adb reverse`）。見第 6.2 節。
 12. **登入成功 ≠ 可以叫車。** 新帳號只是「聲稱」了電話；建立訂單／接單／上線會回
     403 `PHONE_NOT_VERIFIED`，要先去 `/identity/phone/*` 驗證號碼。`account_status`
     **不是閘**，它只是資料齊全度的旗標。見第 6 節。

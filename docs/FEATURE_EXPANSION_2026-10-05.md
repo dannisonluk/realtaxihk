@@ -206,6 +206,9 @@ GET    /api/v1/orders/nearby?fare_mode=FIXED&premium_destination=HKG_T1
 
 - WebSocket/push badge when a premium-destination order or fixed-fare order
   appears, so subscribed drivers can react quickly.
+- **已實作（2026-10-07，in-app scope）**：durable Postgres inbox +
+  `GET/PATCH /drivers/me/notifications` + mobile badge/list；external push
+  (WhatsApp / FCM) 明確留喺 range 外。
 
 ## Explicitly Removed
 

@@ -160,13 +160,10 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
 | 缺口 | 影響 | 為什麼現在是這樣 |
 |---|---|---|
 | **P4 §3.6 預約服務（pre-booking）未實作** | 只有即時單。`SCHEDULED` 訂單（提前 2 小時至 3 天）、`landmarks` 表（地標＝終點）、司機預約偏好（`GET/PUT /drivers/me/booking-preferences`）與廣播前置視窗全部沒有 —— 程式碼中零引用 | 設計文件 §3.6 與 §4.0.3–4.0.5 已完成，但這是獨立的一個功能面（新表、新端點、新前端頁），與 in-trip 生命週期沒有耦合，所以先做生命週期那半。要做就照 §3.6 逐節落地；`IN_TRIP_REDESIGN.md` 的狀態標頭已如實標明這一點 |
-| **乘客端沒有「提出申訴」端點** | 行程中斷時平台會在**同一個 transaction** 自動開一張 dispute，所以中斷那條路是有個案的；但 `DRIVER_ARRIVED` 鎖死取消權之後、或純粹想申訴時，App 的［提出申訴］只能顯示行程編號與客服指引，**打不出任何東西** | 後端只有 `/api/v1/admin/disputes`（管理端）。當事人開案需要一支新端點（`POST /orders/{id}/disputes` 之類），加上「誰可以對誰開案」的規則。現時 App 的按鈕已如實說明會發生什麼，不會假裝送出了 |
 | **乘客違約罰款「有記錄、未收錢」** | 乘客在 `ACCEPTED` 之後取消，會寫 `PENALTY_CHARGED` 事件（`settled: false`）並設 15 分鐘冷靜期，但**錢沒有實際扣到** | `ledger_entries.driver_profile_id` 是 NOT NULL，而乘客沒有錢包 —— 收乘客的錢要先有乘客錢包／預授權。在沒有支付渠道之前，記錄 + 冷靜期是能做到的全部；admin 事後裁決仍可依事件記錄處理 |
 | **DECISION-3 的「補款後手動放行」未實作** | 負餘額會令 `grab` 回 423 `DEPOSIT_INSUFFICIENT`（已實作），但「補款後要等 admin 放行」那一步（`acceptance_unlocked_at`）未做 —— 現在是補款即自動恢復接單 | DECISION-3 有兩半，先做了會擋人的那一半。另一半做不做取決於風控政策（自動恢復對司機友善，手動放行對平台安全） |
-| **admin 爭議詳情未顯示「到達驗證記錄」** | 設計 §6.3 把 `arrival_claimed_at`、當時 GPS 距離、核對嘗試次數列為裁決的關鍵欄位，但 `/api/v1/admin/disputes/{id}` 的回應沒有帶這三個欄位 | 資料已經在 `orders` 上（`arrival_gps_distance_m` 等），只是沒有 expose。admin console 的爭議頁已存在，加這一段是純擴充，不牽涉狀態機 |
 | **忘記密碼的連結是網頁 URL，App 沒有 deep link** | 電郵連結指向 `{PUBLIC_BASE_URL}/reset-password?token=…`。App 內的「忘記密碼」能寄出信件，但**開連結會開瀏覽器**，不會回到 App | 要讓連結回到 App 需要 Android App Links（`intent-filter` + `assetlinks.json`），而那要求已部署的 HTTPS 網域與簽署指紋。網頁那條路本身是完整的，不是半成品 |
 | **本機跑不完 APK build：`webview_flutter` 只算「已解析、未證明」** | Gradle 的 `:app:compileFlutterBuildDebug` 會叫 `flutter assemble`，而它要 spawn kernel compiler 與 native-assets hook，兩者都撞 `ERROR_PIPE_BUSY`（231）。所以 `res/`、`assets:`、plugin 集合在本機**沒有任何閘** | 231 是資源耗盡而非政策拒絕 —— 同一條命令在 2026-10-03 與 2026-10-04 00:44 成功過。CI 的 `flutter build apk --debug` 是唯一的閘，但**還沒在這些 commit 上跑過**。另注意 `dart pub get` **不會**重寫 `.flutter-plugins-dependencies`（只有 `flutter pub get` 會），那是 Gradle 決定要編哪些 plugin 子專案的依據 |
-| **`serve_and_probe.py` 把 uvicorn 寫死在 `127.0.0.1`** | 真機連不到 API，而 `APP_HOST=0.0.0.0` 對它**無效**（沒有任何 dev 啟動腳本讀那個設定）。現時要手動 `adb reverse tcp:8000 tcp:8000` | 不是 bug（本機開發預設綁 loopback 是對的），是 dev 工具缺口。要修就是讓該腳本接受 `--host` |
 | **沒有「一鍵造一個能叫車的帳號」的 ops 腳本** | 每次要新開一個能叫車的測試帳號，都要依序打 3 個端點（`/auth/register` → `/identity/phone/request` → `/identity/phone/confirm`，見 `QA_TEST_ENVIRONMENT.md` §6.4） | 刻意**先不做**：這 3 步走的正是正式流程，等於順手驗證了後端。**注意「審查者帳號」已有 ops 腳本**（`scripts/ops/create_reviewer_account.py`，有到期日、不能動錢，見 §6.6），但它解決的是「給外部審查者一個能登入的帳號」，**不是**這條。若日後要頻繁重跑，再加 `scripts/ops/` 腳本，但必須走 service 層而不是 `UPDATE users` |
 ### D. 已結案（保留以免重複處理）
 
@@ -218,6 +215,19 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
   `recurring_rides.status` / `.frequency` 漏了 `SAEnum(length=)`，model 推導出的寬度
   （9 / 6）與 migration 建的 `VARCHAR(16)` 不符 → 每次都報 `modify_type`。已補
   `length=16`。這是專案自己的 `SAEnum` 規則，只是這兩處漏了。
+- **乘客可自行開 dispute**（2026-10-07）。`POST /orders/{id}/disputes`，只限
+  乘客本人、訂單 terminal、同一位乘客同一張單同時只准一個 open case；
+  severity 由 server 按 category 決定，唔接受 party 自選 SLA。App 的
+  「提出申訴」由「只顯示編號」變成真表格。測試：
+  `tests/api/test_passenger_disputes.py` 6 條。
+- **admin dispute 詳情顯示到達驗證證據**（2026-10-07）。`AdminDisputeDetailOut`
+  加 `arrival_claimed_at` / `arrival_gps_distance_m` / `arrival_pin_attempts`，
+  admin console 在關聯訂單存在時顯示。
+- **`serve_and_probe.py` 接受 `--host`**（2026-10-07）。真機測試可直接
+  `serve_and_probe.py --host 0.0.0.0`，唔再強制自己起 uvicorn。
+- **premium / fixed-fare driver inbox**（2026-10-07）。司機 App 新增通知列表
+  同 badge；後端用 Postgres durable row 做 source of truth，external push
+  (WhatsApp/FCM) 保持範圍外。
 
 ---
 
