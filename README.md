@@ -59,7 +59,7 @@ carries the passenger.
 | 2 | **Mobile** | `mobile/` | 82 Dart files · 17,042 LOC | Flutter 3.44 · Riverpod · go_router · Dio · flutter_secure_storage |
 | 3 | **Admin console** | `admin-web/` | 49 TS/TSX files · 16,965 LOC | React 18 + Vite + TypeScript (current) · hand-written ES modules (legacy) |
 
-Plus the glue that keeps them honest: `scripts/` (22 tools), `tests/` (55 files),
+Plus the glue that keeps them honest: `scripts/` (22 tools), `tests/` (56 files),
 `docs/` (17 living documents + `docs/archive/` for dated snapshots),
 `alembic/` (20 migrations), `deploy/`.
 
@@ -513,7 +513,7 @@ npm run typecheck && npx vitest run && npm run build
 > and never prints its summary line: pytest's own tmpdir garbage collector tries to
 > `rmtree` a `pytest-of-user/garbage-*` directory holding several hundred files, the
 > sandbox's bulk-delete guard refuses, and that refusal becomes pytest's exit code.
-> The tests themselves are clean -- the run that produced 1213 passed reported rc=1.
+> The tests themselves are clean -- the run that produced 1219 passed reported rc=1.
 > **Read the XML, never the exit code.**
 >
 > `--junit-xml=` 不是可選項。本機 `pytest` **必定回傳 1**，而且永遠不會印出 summary
@@ -534,14 +534,14 @@ npm run typecheck && npx vitest run && npm run build
 
 | Suite | Count | Covers |
 |---|---|---|
-| `tests/`（55 files；api 37 + domain 7 + infra 10 + conftest） | **全套 1213 passed / 0 failed / 0 error**（單一 process 實跑，2026-10-06） | fare unit · per-module API · WS streaming · fleets/roster/settlement · backup retention + restore drill · console contrast · hardening regressions |
+| `tests/`（56 files；api 37 + domain 7 + infra 11 + conftest） | **全套 1219 passed / 0 failed / 0 error**（單一 process 實跑，2026-10-06） | fare unit · per-module API · WS streaming · fleets/roster/settlement · backup retention + restore drill · console contrast · hardening regressions |
 | `mobile/tool/run_tests.dart` | **153** | Dart unit assertions |
 | `mobile/tool/verify_contract.dart` | **64 fixtures**（共 65 個 fixture json） | every wire shape, decoded by the real models |
 | `admin-web/web` (vitest) | **81** | page-level behaviour |
 | `verify_ui.mjs` + `audit_layout.mjs` | PASS | real-browser E2E, layout, both themes |
 
 > 後端 pytest 狀態（2026-10-06）：**一次過 `pytest tests` 全套實跑全綠 =
-> 1213 passed / 0 failed / 0 error / 0 skipped**（junit `.tmp/final.xml`；rc=1 是
+> 1219 passed / 0 failed / 0 error / 0 skipped**（junit `.tmp/final2.xml`；rc=1 是
 > 沙盒擋住 pytest 的 tmpdir GC，見 §7.1）。
 > 先前「一次過跑會中途中止、唔敢宣稱 full-suite 全綠」嘅情況**已經消失**。
 > 跑法：`docker compose up -d db redis` 之後

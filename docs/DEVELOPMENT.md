@@ -252,6 +252,27 @@ CI 的 `types` job 跑 `uv run mypy`，gate 整個 `app/`。設定在 `pyproject
 > 只會令檢查器與程式碼各說各話。`tests/infra/test_money_input_annotations.py`
 > 用 AST 守住這條規則，不需要型別檢查器也能在 CI 跑。
 
+### App 的 enum 鏡像由測試守住，不是靠自覺
+
+`mobile/lib/models/enums.dart` 的每個 enum 對應一個同名的後端 enum，每個成員的
+`wire` token 必須等於伺服器的值。`fromWire` 對未知 token 是**拋錯**而非回退預設
+（回退會讓司機看到錯的畫面），所以「伺服器加了成員、App 忘了加」不是外觀問題 ——
+那個畫面會直接死掉。
+
+**沒有別的東西看得到它。** `response_model=` 不行：這些欄位在 response schema 上
+一律宣告成 `str`（`OrderOut.status`、`LedgerEntryOut.entry_type`……），FastAPI 只當
+它是字串，任何值都收。`verify_contract.dart` 也不行：它證明的只是「fixture 剛好
+出現過的值解得開」，沒有 fixture 走到的成員對它是隱形的。
+
+`tests/infra/test_wire_enum_mirror.py` 直接比對兩邊的成員集合，並要求**每個後端
+enum 都被分類**：要麼鏡像了，要麼在 `NOT_MIRRORED` 裡寫明理由。所以新增一個後端
+enum 會直接令測試變紅，直到有人做出決定。沒有第二條規則的話，這個檢查會安靜地
+放過它唯一存在的理由。
+
+> 它一寫好就抓到一個真的：`FleetMemberStatus.LEFT` 在伺服器與 CHECK constraint 都
+> 存在，App 卻解不開。目前沒有任何程式寫入 `LEFT`，但那是資料庫允許的列 —— 一旦
+> 出現，車隊名冊畫面就會拋錯。
+
 ---
 
 ## 5. 環境限制（本機特有）

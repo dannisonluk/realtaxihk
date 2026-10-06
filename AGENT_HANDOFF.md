@@ -134,6 +134,31 @@
 
 ## Last updated
 
+- 2026-10-06（Ezra：**分批 commit + 補上 enum 鏡像守門者**）
+  - **工作區清零。** 之前積落 122 個檔案、+4406/−808 全部未 commit（橫跨 P4、密碼流程、
+    console、docs，以及 sibling 的 fixed-fare／profile-setup slice）。已按主題切成 6 個
+    commit：`8268c5f` audit hardening → `13992d8` P4 + 密碼後端 → `ec1757d` mobile app →
+    `4b0d374` console → `5be0c1e` fixtures/tooling → `92d1dca` docs。`new/` 按規矩不動。
+    後端 P4 與密碼流程合成一個 commit，因為它們共用同一支 migration revision
+    （`b8d1f2a3c4e5`）與同一份 `models/__init__.py` / `schemas/__init__.py` 匯出清單 ——
+    分開落會做出一個「import 不到自己」的 commit。mobile 同理：`app_router.dart` 同時
+    import 本輪畫面與 sibling 的畫面，切開會留下一個編不過的 router。
+  - **新增 `tests/infra/test_wire_enum_mirror.py`（6 條）**，收掉「App 的 enum 鏡像沒有
+    直接守門者」這個已知缺口。它比對 `enums.dart` 與後端同名 enum 的成員集合，並要求
+    **每個後端 enum 都被分類**（鏡像，或在 `NOT_MIRRORED` 裡附理由）—— 所以新增一個後端
+    enum 會直接紅到有人做出決定。附負向對照，餵一組刻意壞掉的資料證明它真的會報。
+  - **它一寫好就抓到一個真的 bug**：`FleetMemberStatus.LEFT` —— 後端 enum 與 DB 的 CHECK
+    constraint 都有 `LEFT`，而 `enums.dart` 只有 `active` / `removed`，所以一列合法的
+    `LEFT` 會令車隊名冊畫面在 `fromWire` 拋錯。目前沒有任何程式寫入 `LEFT`（是個死成員），
+    但修法是補齊鏡像而不是刪掉後端成員：那是資料庫允許的狀態。已加 `left('LEFT')`（`自行離隊`）。
+  - **重跑全套**：`pytest tests` **1219 passed / 0 failed / 0 error / 0 skipped**
+    （659.25s，`.tmp/final2.xml`；rc=1 是沙盒擋 pytest 的 tmpdir GC，不是失敗）。
+    mobile 153 assertions / 64 fixtures / 84 檔 0 diagnostics 全部照過。
+  - **`docs/README.md` 守則 4 的自相矛盾已修**：原文寫「新的審計／審查報告一律直接寫進
+    `archive/`」，但同一份索引刻意把 `AUDIT_REPORT_2026-10-04.md` 與
+    `ERROR_SCAN_2026-10-05.md` 留在 `docs/` 作現行參考。改為在守則裡點名這個例外，
+    而不是讓它跟下面的表打架。
+
 - 2026-10-06（Ezra：**P4 收尾 —— 補回 §6.1 後端校驗、修好 fixtures 生命週期、dev DB 首次升到 head**）
   - **補回一個「文件寫了但沒實作」的 P4 缺口**：`docs/IN_TRIP_REDESIGN.md` §6.1 明寫
     「前端過濾是禮貌，後端校驗是授權」，但 `POST /orders/{id}/interrupt` **從未校驗**

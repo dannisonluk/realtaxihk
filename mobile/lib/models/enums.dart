@@ -356,8 +356,14 @@ enum FleetMemberRole {
 
 /// Roster state. A driver taken off the roster is `REMOVED`, not deleted — the
 /// row survives so the week in which they left stays reconstructible.
+///
+/// `LEFT` is a driver who left of their own accord, `REMOVED` one a manager took
+/// off. Nothing writes `LEFT` yet, but the column's CHECK constraint accepts it,
+/// so the mirror still has to decode it: an unmapped token throws, and the roster
+/// screen would die on a row that is perfectly legal in the database.
 enum FleetMemberStatus {
   active('ACTIVE'),
+  left('LEFT'),
   removed('REMOVED');
 
   const FleetMemberStatus(this.wire);
@@ -369,6 +375,7 @@ enum FleetMemberStatus {
 
   String get labelZh => switch (this) {
     FleetMemberStatus.active => '在隊',
+    FleetMemberStatus.left => '自行離隊',
     FleetMemberStatus.removed => '已離隊',
   };
 }

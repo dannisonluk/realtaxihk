@@ -116,8 +116,8 @@
 | API surface | **106 paths / 119 operations** | `create_app().openapi()['paths']` |
 | response_model 覆蓋 | 97/101 schema reachable；119 operations 全有 `response_model` | `scripts/verify/audit_response_models.py` |
 | Alembic | **20** migrations · 單一 head `b8d1f2a3c4e5` | `alembic heads` / `ls alembic/versions/*.py` |
-| `tests/` | 55 個 `.py`（54 個 `test_*.py` · 992 個 `def test_`） | `find tests -name "test_*.py" \| wc -l` |
-| 後端 pytest | **全套 1213 passed / 0 failed / 0 error**（2026-10-06 單一 process 實跑） | `python -m pytest -q --junit-xml=…` |
+| `tests/` | 56 個 `.py`（55 個 `test_*.py` · 998 個 `def test_`） | `find tests -name "test_*.py" \| wc -l` |
+| 後端 pytest | **全套 1219 passed / 0 failed / 0 error**（2026-10-06 單一 process 實跑） | `python -m pytest -q --junit-xml=…` |
 | `mobile/lib` | 82 個 `.dart` · 17,042 LOC · **29** 個 `*_screen.dart` | `find mobile/lib -name "*.dart"` |
 | Dart harness | **153 passed / 0 failed** | `dart … tool/run_tests.dart` |
 | Dart LSP check | **84 files opened / 0 diagnostics** | `python mobile/tool/dart_check.py mobile` |
@@ -127,8 +127,8 @@
 | `scripts/` | 22 個 `.py` | `find scripts -name "*.py"` |
 
 > ✅ **後端測試 2026-10-06 全套一次過實跑全綠**（Docker Desktop 開住、`realtaxi-db` ＋
-> `realtaxi-redis` healthy）：`.venv/Scripts/python.exe -m pytest tests -q --junit-xml=.tmp/final.xml`
-> = **1213 passed / 0 failed / 0 error / 0 skipped**。先前「一次過跑會中途中止、唔敢
+> `realtaxi-redis` healthy）：`.venv/Scripts/python.exe -m pytest tests -q --junit-xml=.tmp/final2.xml`
+> = **1219 passed / 0 failed / 0 error / 0 skipped**。先前「一次過跑會中途中止、唔敢
 > 宣稱 full-suite 全綠」嘅情況已經消失；單一 process 順序跑穩定。
 > ⚠️ 並行跑兩隻 pytest 仍不建議（爭同一 DB/Redis 資源）。**GEO index 已納入
 > `REDIS_KEY_NAMESPACE`**（`app/services/order/geo_service.py::geo_orders_key`），
