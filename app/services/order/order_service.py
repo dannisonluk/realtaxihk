@@ -13,12 +13,15 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import BusinessRuleError
 from app.core.money import MoneyInput, meter_str, money_str
 from app.core.region import destination_area, match_premium_destination
 from app.models import (
     DestinationStatus,
+    Landmark,
     Order,
     OrderFareMode,
+    OrderKind,
     OrderStatus,
     PaymentMethod,
     PremiumDestination,
@@ -26,6 +29,7 @@ from app.models import (
 from app.services.driver.driver_notification_service import DriverNotificationService
 from app.services.fare.fixed_fare_service import FixedFareService
 from app.services.order.fare_calculator import TaxiType, Tunnel, calculate_fare
+from app.services.order.prebooking_service import PrebookingService
 from app.services.order.state_machine import assert_order_transition
 
 
@@ -186,6 +190,8 @@ class OrderService:
             passenger_id=passenger_user_id,
             status=OrderStatus.BROADCASTING,
             fare_mode=OrderFareMode.METER,
+            order_kind=OrderKind(payload.order_kind),
+            scheduled_pickup_at=payload.scheduled_pickup_at,
             pickup_location=_point_wkt(payload.pickup_lat, payload.pickup_lng),
             pickup_address=payload.pickup_address,
             dropoff_location=_point_wkt(payload.dropoff_lat, payload.dropoff_lng),
@@ -218,6 +224,29 @@ class OrderService:
         self.session.add(order)
         await self.session.flush()
 
+        if order.order_kind == OrderKind.SCHEDULED:
+            landmark = None
+            if payload.dropoff_landmark_id:
+                try:
+                    landmark = await self.session.get(
+                        Landmark, uuid.UUID(payload.dropoff_landmark_id)
+                    )
+                except ValueError as exc:
+                    raise BusinessRuleError(
+                        "invalid dropoff_landmark_id", {"reason": "INVALID_LANDMARK"}
+                    ) from exc
+                if landmark is None or not landmark.is_active:
+                    raise BusinessRuleError(
+                        "dropoff landmark not found", {"reason": "LANDMARK_NOT_FOUND"}
+                    )
+            await PrebookingService(self.session).prepare_scheduled(
+                order,
+                payload.scheduled_pickup_at,
+                landmark,
+                original_dropoff_lat=payload.dropoff_lat,
+                original_dropoff_lng=payload.dropoff_lng,
+                original_dropoff_address=payload.dropoff_address,
+            )
         # Fixed-fare matching (一口價). If a standing offer covers this route
         # and is competitive, the order freezes the passenger price
         # (`offer + platform fee`) and binds the order to that offer.
@@ -295,6 +324,17 @@ def order_out(order: Order) -> dict:
     return {
         "id": str(order.id),
         "status": order.status.value,
+        "order_kind": order.order_kind.value if order.order_kind else "ON_DEMAND",
+        "scheduled_pickup_at": (
+            order.scheduled_pickup_at.isoformat() if order.scheduled_pickup_at else None
+        ),
+        "prebook_visible_from": (
+            order.prebook_visible_from.isoformat() if order.prebook_visible_from else None
+        ),
+        "prebook_state": order.prebook_state.value if order.prebook_state else None,
+        "dropoff_landmark_id": (
+            str(order.dropoff_landmark_id) if order.dropoff_landmark_id else None
+        ),
         "taxi_type": order.taxi_type,
         "fare": order.fare_json,
         "estimated_total_hkd": money_str(Decimal(order.estimated_total_hkd)),

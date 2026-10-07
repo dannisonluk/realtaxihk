@@ -33,6 +33,7 @@ from app.models import (
     Order,
     OrderFareMode,
     OrderStatus,
+    PrebookState,
 )
 from app.services.order.geo_service import geo_orders_key
 from app.services.order.state_machine import assert_order_transition
@@ -128,6 +129,7 @@ class GrabService:
                         status=OrderStatus.ACCEPTED,
                         driver_id=profile.id,
                         accepted_at=datetime.now(UTC),
+                        prebook_state=PrebookState.MATCHED,
                         driver_payment_methods_json=(
                             {"methods": [str(m) for m in methods]} if methods else None
                         ),

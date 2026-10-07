@@ -78,6 +78,11 @@ class OrderOut(BaseModel):
 
     id: str
     status: str
+    order_kind: str = "ON_DEMAND"
+    scheduled_pickup_at: str | None = None
+    prebook_visible_from: str | None = None
+    prebook_state: str | None = None
+    dropoff_landmark_id: str | None = None
     taxi_type: str
     fare: FareSnapshotOut
     estimated_total_hkd: str  # money_str, 2 dp (stored column)

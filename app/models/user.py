@@ -44,12 +44,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models._base import Base
+from app.models.prebooking import OrderKind, PrebookState
 
 if TYPE_CHECKING:
     # Checker-only, for the same reason as the mirror image in
     # `app/models/licence.py`.
     from app.models.fixed_offer import FixedPriceOffer
     from app.models.licence import DriverLicenceSubmission
+    from app.models.prebooking import DriverBookingPreference
 
 __all__ = [
     "INTERRUPTION_REASONS_BY_PARTY",
@@ -64,10 +66,12 @@ __all__ = [
     "LedgerEntry",
     "LedgerEntryType",
     "Order",
+    "OrderKind",
     "OrderParty",
     "OrderStatus",
     "OtpCode",
     "PasswordResetToken",
+    "PrebookState",
     "RefreshToken",
     "RefundRequest",
     "RefundStatus",
@@ -431,6 +435,11 @@ class DriverProfile(Base):
     fixed_offers: Mapped[list[FixedPriceOffer]] = relationship(
         back_populates="driver_profile", cascade="all, delete-orphan"
     )
+    booking_preference: Mapped[DriverBookingPreference | None] = relationship(
+        "DriverBookingPreference",
+        back_populates="driver_profile",
+        cascade="all, delete-orphan",
+    )
 
     @staticmethod
     async def for_user(session: AsyncSession, user_id: uuid.UUID) -> DriverProfile | None:
@@ -482,6 +491,16 @@ class DriverDeposit(Base):
 class Order(Base):
     __tablename__ = "orders"
 
+    __table_args__ = (
+        Index("ix_orders_scheduled_pickup_at", "scheduled_pickup_at"),
+        Index("ix_orders_prebook_state", "prebook_state"),
+        Index(
+            "ix_orders_prebook_due",
+            "prebook_visible_from",
+            "prebook_state",
+        ),
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
     passenger_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
@@ -511,6 +530,39 @@ class Order(Base):
         default=OrderFareMode.METER,
         index=True,
     )
+    order_kind: Mapped[OrderKind] = mapped_column(
+        SAEnum(
+            OrderKind,
+            name="ck_orders_order_kind",
+            native_enum=False,
+            create_constraint=True,
+            length=16,
+        ),
+        default=OrderKind.ON_DEMAND,
+        server_default=OrderKind.ON_DEMAND.value,
+    )
+    scheduled_pickup_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    prebook_visible_from: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    prebook_state: Mapped[PrebookState | None] = mapped_column(
+        SAEnum(
+            PrebookState,
+            name="ck_orders_prebook_state",
+            native_enum=False,
+            create_constraint=True,
+            length=16,
+        ),
+        nullable=True,
+    )
+    dropoff_landmark_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("landmarks.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
     # Requested route.
     #
     # `Mapped[object]` on the two geography columns is **forced, not lazy**:
@@ -533,6 +585,7 @@ class Order(Base):
         Geography(geometry_type="POINT", srid=4326, spatial_index=False)
     )
     dropoff_address: Mapped[str] = mapped_column(Text)
+    dropoff_landmark = relationship("Landmark")
     distance_km: Mapped[Decimal] = mapped_column(Numeric(7, 3))
     taxi_type: Mapped[str] = mapped_column(String(10))
     # Fare estimate snapshot (Cap. 374D disclaimer fields included in fare_json)

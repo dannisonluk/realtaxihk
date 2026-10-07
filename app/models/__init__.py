@@ -74,6 +74,13 @@ from app.models.licence import (
     LicenceReviewStatus,
 )
 from app.models.order_event import OrderEvent, OrderEventType
+from app.models.prebooking import (
+    DriverBookingPreference,
+    Landmark,
+    LandmarkCategory,
+    OrderKind,
+    PrebookState,
+)
 from app.models.premium import (
     DestinationStatus,
     DriverPaymentMethod,
@@ -131,6 +138,7 @@ __all__ = [
     "DisputeSource",
     "DisputeStatus",
     "DocumentKind",
+    "DriverBookingPreference",
     "DriverDeposit",
     "DriverDocument",
     "DriverLicenceSubmission",
@@ -150,6 +158,8 @@ __all__ = [
     "FleetStatus",
     "Gender",
     "InterruptionReason",
+    "Landmark",
+    "LandmarkCategory",
     "LedgerEntry",
     "LedgerEntryType",
     "LicenceReviewStatus",
@@ -158,11 +168,13 @@ __all__ = [
     "OrderEvent",
     "OrderEventType",
     "OrderFareMode",
+    "OrderKind",
     "OrderParty",
     "OrderStatus",
     "OtpCode",
     "PasswordResetToken",
     "PaymentMethod",
+    "PrebookState",
     "PremiumDestination",
     "RecurringFrequency",
     "RecurringRide",

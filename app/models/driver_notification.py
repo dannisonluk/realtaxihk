@@ -28,6 +28,7 @@ __all__ = ["DriverNotification", "DriverNotificationKind"]
 class DriverNotificationKind(str, enum.Enum):
     PREMIUM = "PREMIUM"
     FIXED_FARE = "FIXED_FARE"
+    SCHEDULED = "SCHEDULED"
 
 
 class DriverNotification(Base):

@@ -135,6 +135,7 @@ class Settings(BaseSettings):
     # ride is minted within a sensible window, but every mint is DB-driven and
     # idempotent per template, so this is a scheduling detail, not a safety net.
     recurring_mint_interval_s: int = 60
+    prebook_scan_interval_s: int = 60
     refund_min_hkd: int = 1  # balance below this is not worth a refund request
 
     # --- OTP / rate limiting (P1-2, SEC-07/08) ---

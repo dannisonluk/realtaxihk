@@ -29,9 +29,10 @@ P-4 monthly phone re-verification, applied as a **soft** block:
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
@@ -65,6 +66,7 @@ from app.models import (
     OrderDispute,
     OrderEventType,
     OrderFareMode,
+    OrderKind,
     OrderParty,
     OrderStatus,
     PaymentMethod,
@@ -219,6 +221,49 @@ class OrderCreateIn(BaseModel):
     tunnels: list[str] = Field(default_factory=list, max_length=_MAX_TUNNELS)
     crosses_harbour: bool = False
     pickup_at_cross_harbour_stand: bool = False
+    # Pre-booking: scheduled orders are valid only with a landmark in the
+    # 2h..3d window; the order service enforces the temporal and landmark rules.
+    order_kind: str = "ON_DEMAND"
+    scheduled_pickup_at: datetime | None = None
+    dropoff_landmark_id: str | None = None
+
+    @field_validator("order_kind")
+    @classmethod
+    def validate_order_kind(cls, v: str) -> str:
+        try:
+            OrderKind(v)
+        except ValueError as exc:
+            raise ValueError("unknown order_kind") from exc
+        return v
+
+    @field_validator("scheduled_pickup_at", mode="before")
+    @classmethod
+    def validate_scheduled_pickup(cls, v):
+        if v is None:
+            return v
+        parsed = v if isinstance(v, datetime) else datetime.fromisoformat(str(v))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        now = datetime.now(UTC)
+        min_dt = now + timedelta(hours=2)
+        max_dt = now + timedelta(days=3)
+        if parsed < min_dt:
+            raise ValueError("scheduled_pickup_at must be at least 2 hours ahead")
+        if parsed > max_dt:
+            raise ValueError("scheduled_pickup_at must be within 3 days")
+        return parsed
+
+    @field_validator("dropoff_landmark_id")
+    @classmethod
+    def validate_dropoff_landmark_id(cls, v):
+        if v is None:
+            return v
+        try:
+            UUID(v)
+        except ValueError as exc:
+            raise ValueError("invalid dropoff_landmark_id") from exc
+        return v
+
     # Phase 1: what the passenger needs the assigned driver to see/agree to.
     requirements: RideRequirementsIn | None = None
     payment_preference: list[str] = Field(default_factory=list, max_length=6)
@@ -406,9 +451,10 @@ async def create_order(
         raise
     except ValueError as exc:
         raise BusinessRuleError(str(exc)) from exc
-    await GeoService(request.app.state.redis_factory()).index_order(
-        str(order.id), payload.pickup_lat, payload.pickup_lng
-    )
+    if order.order_kind == OrderKind.ON_DEMAND:
+        await GeoService(request.app.state.redis_factory()).index_order(
+            str(order.id), payload.pickup_lat, payload.pickup_lng
+        )
     return order_out(order)
 
 
