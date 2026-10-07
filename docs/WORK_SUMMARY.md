@@ -48,8 +48,8 @@
     console `tsc --noEmit` **exit 0（乾淨）** · console vitest **88 passed（12 檔）** ·
     Dart harness **160 passed / 0 failed** · `dart_check.py` **95 files / 0 diagnostics** ·
     contract **64 fixtures decoded, 0 failure**（共 65 個 fixture json）·
-    `audit_response_models.py` **OK（81 fixture blocks / 128 operations 全有 `response_model`）** ·
-    API **114 paths / 128 operations** · `alembic heads` **單一 head `e6f7c3d9e5a9`**（22 個 migration）。
+    `audit_response_models.py` **OK（81 fixture blocks / 129 operations 全有 `response_model`）** ·
+    API **115 paths / 129 operations** · `alembic heads` **單一 head `e6f7c3d9e5a9`**（22 個 migration）。
   - ✅ **現時無未修項。** 先前列為「未提交 WIP、未經同意去改」嘅 mobile
     `fixed_offers_screen.dart` `$` escape 問題，**已隨 WIP 收斂修好**：`dart_check.py`
     對 `mobile/lib` 現報 **0 diagnostics**。逐條歷史見
@@ -74,9 +74,9 @@
 
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **114 paths / 128 operations，全部有 `response_model`** · 141 檔 / 28,805 LOC · pytest 全套 **1279 / 0**（2026-10-07 單一 process 實跑） |
+| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **115 paths / 129 operations，全部有 `response_model`** · 141 檔 / 28,805 LOC · pytest 全套 **1279 / 0**（2026-10-07 單一 process 實跑） |
 | Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**34 個畫面**，三角色）；品牌資產由 `tool/gen_branding_assets.py` 由 `branding/source/` 的原圖產生 | ✅ 160 tests · fixture contract OK · APK debug 已成功 build（2026-10-07，~183 MB） |
-| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/legacy/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **88 vitest passed（12 檔）** · `tsc --noEmit` **exit 0** |
+| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/legacy/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **89 vitest passed（12 檔）** · `tsc --noEmit` **exit 0** |
 
 一個 repo、三件完整交付物。定位：**Cap. 374D 合規的士資訊中介**（非的士營運商）。
 
@@ -320,7 +320,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 ## 8. 一頁看完
 
 ```
-✅ 後端 114 paths / 128 ops / ruff+mypy 0 / 22 migrations 單一 head — 代碼層生產就緒
+✅ 後端 115 paths / 129 ops / ruff+mypy 0 / 22 migrations 單一 head — 代碼層生產就緒
    ✅ pytest 全套 1279/0/0（2026-10-07 單一 process 實跑）· 見 §0
 ✅ 登入改為 email + 密碼；電話只解鎖 call車（`PHONE_NOT_VERIFIED`）；鎖定回 401
 ✅ auth 三面 rate limit + Cloudflare Turnstile（prod 缺密鑰拒啟動）+ 受限審查者帳號

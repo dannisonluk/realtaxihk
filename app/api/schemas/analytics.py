@@ -8,6 +8,8 @@ row-level views.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -47,3 +49,16 @@ class AdminAnalyticsOperationsOut(BaseModel):
     latency: AdminAnalyticsLatencyOut
     acceptance_rate: str
     cancellation_rate: str
+
+
+class AdminAnalyticsSupplyOut(BaseModel):
+    """Real-time supply snapshot derived from driver profiles and open orders."""
+
+    sampled_at: datetime
+    active_drivers: int
+    online_drivers: int
+    online_with_gps: int
+    active_orders: int
+    engaged_drivers: int
+    available_drivers: int
+    supply_demand_ratio: str

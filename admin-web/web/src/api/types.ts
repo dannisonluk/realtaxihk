@@ -566,6 +566,18 @@ export interface AnalyticsOperations {
   cancellation_rate: string;
 }
 
+/** Real-time supply snapshot, not a date-bucketed report. */
+export interface AnalyticsSupply {
+  sampled_at: string;
+  active_drivers: number;
+  online_drivers: number;
+  online_with_gps: number;
+  active_orders: number;
+  engaged_drivers: number;
+  available_drivers: number;
+  supply_demand_ratio: string;
+}
+
 // ---------------------------------------------------------------------------
 // RBAC
 // ---------------------------------------------------------------------------

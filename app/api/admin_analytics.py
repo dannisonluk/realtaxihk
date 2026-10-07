@@ -27,7 +27,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.schemas import AdminAnalyticsOperationsOut
+from app.api.schemas import AdminAnalyticsOperationsOut, AdminAnalyticsSupplyOut
 from app.core.db import get_session
 from app.core.deps import Principal, require_admin
 from app.services.admin.analytics_service import (
@@ -156,3 +156,18 @@ async def analytics_operations(
         day_to=resolved_to,
         taxi_type=taxi_type,
     )
+
+
+@router.get("/supply", response_model=AdminAnalyticsSupplyOut)
+async def analytics_supply(
+    taxi_type: Annotated[str | None, Query(pattern=r"^(URBAN|NT|LANTAU)$")] = None,
+    admin: Principal = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> AdminAnalyticsSupplyOut:
+    """Real-time driver supply and live demand.
+
+    Unlike revenue or funnel analytics, this is a point-in-time snapshot:
+    counts come from the current `driver_profiles` and the current non-terminal
+    order set, so there are no date range parameters to drift from reality.
+    """
+    return await AnalyticsService(session).supply(taxi_type=taxi_type)  # type: ignore[return-value]

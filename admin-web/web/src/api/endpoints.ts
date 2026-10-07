@@ -28,6 +28,7 @@ import type {
   AnalyticsOperations,
   AnalyticsSortBy,
   AnalyticsSummary,
+  AnalyticsSupply,
   AuditRow,
   AuthTokens,
   DisputeDetail,
@@ -774,6 +775,11 @@ export const endpoints = {
         from: filters.from,
         to: filters.to,
         taxi_type: filters.taxiType ?? undefined,
+      }),
+
+    supply: (client: ApiClient, taxiType?: string | null) =>
+      client.get<AnalyticsSupply>('/api/v1/admin/analytics/supply', {
+        taxi_type: taxiType ?? undefined,
       }),
   },
 };

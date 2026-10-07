@@ -30,6 +30,7 @@ import type {
   AnalyticsOperations,
   AnalyticsSortBy,
   AnalyticsSummary,
+  AnalyticsSupply,
   SortDir,
 } from '../api/types';
 import { endpoints } from '../api/endpoints';
@@ -136,6 +137,11 @@ export function AnalyticsPage() {
   const operations = useLoad<AnalyticsOperations>(
     () => endpoints.analytics.operations(client, { from, to, taxiType }),
     [from, to, taxiType],
+  );
+
+  const supply = useLoad<AnalyticsSupply>(
+    () => endpoints.analytics.supply(client, taxiType),
+    [taxiType],
   );
 
   /**
@@ -246,6 +252,17 @@ export function AnalyticsPage() {
       {summary.error ? (
         <div style={{ marginTop: 16 }}>
           <ErrorState error={summary.error} onRetry={summary.reload} />
+        </div>
+      ) : null}
+
+      {supply.error ? (
+        <div style={{ marginTop: 16 }}>
+          <ErrorState error={supply.error} onRetry={supply.reload} />
+        </div>
+      ) : null}
+      {!supply.error && supply.data ? (
+        <div style={{ marginTop: 16 }}>
+          <SupplyPanel data={supply.data} />
         </div>
       ) : null}
 
@@ -463,6 +480,40 @@ function OperationsPanel({ data }: { data: AnalyticsOperations }) {
             {t('analytics.opsCancellationCount', { label: item.label, count: item.value })}
           </Chip>
         ))}
+      </div>
+    </Card>
+  );
+}
+
+function SupplyPanel({ data }: { data: AnalyticsSupply }) {
+  const { t } = useI18n();
+
+  return (
+    <Card>
+      <div className="page-head__text" style={{ marginBottom: 4 }}>
+        <h2 className="t-title3" style={{ margin: 0 }}>
+          {t('analytics.supplyTitle')}
+        </h2>
+        <p className="page-head__sub">{t('analytics.supplyNote')}</p>
+      </div>
+
+      <div className="grid">
+        <Stat label={t('analytics.supplyActiveDrivers')} value={data.active_drivers} />
+        <Stat
+          label={t('analytics.supplyOnlineDrivers')}
+          value={data.online_drivers}
+          hint={t('analytics.supplyOnlineGps', { count: data.online_with_gps })}
+        />
+        <Stat label={t('analytics.supplyActiveOrders')} value={data.active_orders} />
+        <Stat label={t('analytics.supplyAvailableDrivers')} value={data.available_drivers} />
+      </div>
+
+      <div className="actions" style={{ marginTop: 12, flexWrap: 'wrap' }}>
+        <Chip tone="brand">{t('analytics.supplyEngagedDrivers', { count: data.engaged_drivers })}</Chip>
+        <Chip tone={Number(data.supply_demand_ratio) < 1 ? 'danger' : 'brand'}>
+          {t('analytics.supplyRatio', { ratio: data.supply_demand_ratio })}
+        </Chip>
+        <Chip tone="neutral">{t('analytics.supplySampledAt', { time: data.sampled_at })}</Chip>
       </div>
     </Card>
   );

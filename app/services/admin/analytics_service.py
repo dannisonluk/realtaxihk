@@ -49,15 +49,22 @@ hide that the fleet was idle. Both are cheap once the rows are grouped.
 from __future__ import annotations
 
 import enum
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any, Literal
 
-from sqlalchemy import Date, Select, cast, func, or_, select
+from sqlalchemy import ColumnElement, Date, Select, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.money import money_str, ratio_str
-from app.models import Order, OrderEvent, OrderEventType, OrderStatus
+from app.models import (
+    DriverProfile,
+    DriverStatus,
+    Order,
+    OrderEvent,
+    OrderEventType,
+    OrderStatus,
+)
 
 # Hong Kong is UTC+8 with no daylight saving, but the name is used rather than a
 # fixed offset so the database applies its own tz database — if the rules ever
@@ -458,6 +465,54 @@ class AnalyticsService:
             },
             "acceptance_rate": _percent_2dp(accepted, created),
             "cancellation_rate": _percent_2dp(cancelled_total, created),
+        }
+
+    async def supply(self, *, taxi_type: str | None = None) -> dict[str, Any]:
+        """Real-time supply snapshot from ACTIVE driver profiles and open orders."""
+        driver_filters: list[ColumnElement[bool]] = [DriverProfile.status == DriverStatus.ACTIVE]
+        order_filters: list[ColumnElement[bool]] = [~Order.status.in_(_TERMINAL_ORDER_STATUSES)]
+        if taxi_type:
+            driver_filters.append(DriverProfile.taxi_type == taxi_type)
+            order_filters.append(Order.taxi_type == taxi_type)
+
+        driver_row = (
+            await self.session.execute(
+                select(
+                    func.count().label("active_drivers"),
+                    func.count().filter(DriverProfile.is_online.is_(True)).label("online_drivers"),
+                    func.count()
+                    .filter(
+                        DriverProfile.is_online.is_(True),
+                        DriverProfile.current_location.is_not(None),
+                    )
+                    .label("online_with_gps"),
+                ).where(*driver_filters)
+            )
+        ).one()
+
+        order_row = (
+            await self.session.execute(
+                select(
+                    func.count().label("active_orders"),
+                    func.count(func.distinct(Order.driver_id))
+                    .filter(Order.driver_id.is_not(None))
+                    .label("engaged_drivers"),
+                ).where(*order_filters)
+            )
+        ).one()
+
+        online_drivers = int(driver_row.online_drivers)
+        engaged_drivers = int(order_row.engaged_drivers)
+        active_orders = int(order_row.active_orders)
+        return {
+            "sampled_at": datetime.now(UTC),
+            "active_drivers": int(driver_row.active_drivers),
+            "online_drivers": online_drivers,
+            "online_with_gps": int(driver_row.online_with_gps),
+            "active_orders": active_orders,
+            "engaged_drivers": engaged_drivers,
+            "available_drivers": max(0, online_drivers - engaged_drivers),
+            "supply_demand_ratio": _ratio_2dp(online_drivers, active_orders),
         }
 
 

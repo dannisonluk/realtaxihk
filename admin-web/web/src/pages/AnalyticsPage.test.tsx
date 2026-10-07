@@ -141,6 +141,17 @@ const OPERATIONS = {
   cancellation_rate: '20.00',
 };
 
+const SUPPLY = {
+  sampled_at: '2026-10-07T12:34:56+08:00',
+  active_drivers: 4,
+  online_drivers: 3,
+  online_with_gps: 2,
+  active_orders: 5,
+  engaged_drivers: 2,
+  available_drivers: 1,
+  supply_demand_ratio: '0.60',
+};
+
 /** Record every request the page makes, so the filters can be asserted. */
 function stubTransport() {
   const calls: string[] = [];
@@ -149,9 +160,11 @@ function stubTransport() {
     calls.push(url);
     const body = url.includes('/heatmap')
       ? HEATMAP
-      : url.includes('/operations')
-        ? OPERATIONS
-        : SUMMARY;
+      : url.includes('/supply')
+        ? SUPPLY
+        : url.includes('/operations')
+          ? OPERATIONS
+          : SUMMARY;
     return Promise.resolve(
       new Response(JSON.stringify(body), {
         status: 200,
@@ -172,10 +185,14 @@ async function renderAndSettle(root: Root) {
       </StrictMode>,
     );
   });
-  // Three turns: one for the summary request, one for operations, one for the
-  // heat map. The page loads them sequentially, matching `useLoad`.
+  // Four turns: one for the summary request, one for supply, one for
+  // operations, one for the heat map. The page loads them sequentially,
+  // matching `useLoad`.
   await act(async () => {
     await new Promise((r) => setTimeout(r, 0));
+  });
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 20));
   });
   await act(async () => {
     await new Promise((r) => setTimeout(r, 20));
@@ -201,15 +218,27 @@ describe('the analytics page', () => {
     vi.unstubAllGlobals();
   });
 
-  it('asks for the summary, operations and hourly heat map', async () => {
+  it('asks for the summary, supply, operations and hourly heat map', async () => {
     const calls = stubTransport();
     await renderAndSettle(root);
 
-    expect(calls.some((u) => u.includes('/api/v1/admin/analytics') && !u.includes('heatmap') && !u.includes('operations'))).toBe(
+    expect(calls.some((u) => u.includes('/api/v1/admin/analytics') && !u.includes('heatmap') && !u.includes('operations') && !u.includes('supply'))).toBe(
       true,
     );
     expect(calls.some((u) => u.includes('/api/v1/admin/analytics/heatmap'))).toBe(true);
     expect(calls.some((u) => u.includes('/api/v1/admin/analytics/operations'))).toBe(true);
+    expect(calls.some((u) => u.includes('/api/v1/admin/analytics/supply'))).toBe(true);
+  });
+
+  it('renders the live supply snapshot', async () => {
+    stubTransport();
+    await renderAndSettle(root);
+
+    expect(container.textContent).toContain(text('analytics.supplyTitle'));
+    expect(container.textContent).toContain('4');
+    expect(container.textContent).toContain('3');
+    expect(container.textContent).toContain('5');
+    expect(container.textContent).toContain('0.60');
   });
 
   it('renders the operations funnel and cancellation attribution', async () => {

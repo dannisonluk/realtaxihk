@@ -108,6 +108,7 @@ from app.api.schemas.analytics import (
     AdminAnalyticsOperationsFunnelOut,
     AdminAnalyticsOperationsOut,
     AdminAnalyticsOperationsRangeOut,
+    AdminAnalyticsSupplyOut,
 )
 from app.api.schemas.driver import (
     DepositOut,
@@ -198,6 +199,7 @@ __all__ = [
     "AdminAnalyticsOperationsFunnelOut",
     "AdminAnalyticsOperationsOut",
     "AdminAnalyticsOperationsRangeOut",
+    "AdminAnalyticsSupplyOut",
     "AdminDepositDetailOut",
     "AdminDepositOut",
     "AdminDisputeDetailOut",

@@ -96,6 +96,7 @@ def _insert_created_order(
     completed_at: datetime | None = None,
     cancellation_reason: str | None = None,
     fare: str = "100.00",
+    driver_id: uuid.UUID | None = None,
 ) -> uuid.UUID:
     """Insert an order created at an exact instant for operations analytics.
 
@@ -123,13 +124,13 @@ def _insert_created_order(
     client.exec_sql(
         """
         INSERT INTO orders (
-            id, passenger_id, status, pickup_location, pickup_address,
+            id, passenger_id, driver_id, status, pickup_location, pickup_address,
             dropoff_location, dropoff_address, distance_km, taxi_type,
             fare_json, tariff_version, estimated_total_hkd, discount_percent,
             broadcast_radius_km, fare_mode, accepted_at, driver_arrived_at,
             completed_at, cancellation_reason, created_at, updated_at
         ) VALUES (
-            :oid, :pid, :status,
+            :oid, :pid, :did, :status,
             ST_GeogFromText('POINT(114.158 22.284)'), 'Central',
             ST_GeogFromText('POINT(114.219 22.315)'), 'North Point',
             5.000, :taxi, '{}'::jsonb, 'test-v1', :fare, 0, 3.0, 'METER',
@@ -139,6 +140,7 @@ def _insert_created_order(
         {
             "oid": str(order_id),
             "pid": str(passenger_id),
+            "did": str(driver_id) if driver_id else None,
             "status": status,
             "taxi": taxi_type,
             "fare": fare,
@@ -150,6 +152,64 @@ def _insert_created_order(
         },
     )
     return order_id
+
+
+def _insert_driver_profile(
+    client,
+    *,
+    status: str = "ACTIVE",
+    taxi_type: str = "URBAN",
+    is_online: bool = False,
+    has_gps: bool = False,
+) -> uuid.UUID:
+    """A raw `driver_profiles` row with a matching user account."""
+    profile_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    client.exec_sql(
+        "INSERT INTO users (id, phone_e164, display_name, role, is_active, "
+        "account_status, created_at, updated_at) "
+        "VALUES (CAST(:i AS uuid), :p, :n, 'DRIVER', true, 'ACTIVE', now(), now())",
+        {
+            "i": str(user_id),
+            "p": f"+8529{user_id.int % 10**7:07d}",
+            "n": f"d{user_id.int % 10**8:08d}",
+        },
+    )
+    if has_gps:
+        client.exec_sql(
+            "INSERT INTO driver_profiles (id, user_id, status, taxi_type, "
+            "taxi_driver_plate_no, vehicle_reg_mark, hk_id_last4, is_online, "
+            "current_location, created_at, updated_at) "
+            "VALUES (CAST(:i AS uuid), CAST(:u AS uuid), :s, :taxi, :plate, :reg, "
+            "'1234', :online, ST_GeogFromText('POINT(114.18 22.30)'), now(), now())",
+            {
+                "i": str(profile_id),
+                "u": str(user_id),
+                "s": status,
+                "taxi": taxi_type,
+                "plate": f"D{profile_id.int % 10**5:05d}",
+                "reg": f"AA{profile_id.int % 10**4:04d}",
+                "online": is_online,
+            },
+        )
+    else:
+        client.exec_sql(
+            "INSERT INTO driver_profiles (id, user_id, status, taxi_type, "
+            "taxi_driver_plate_no, vehicle_reg_mark, hk_id_last4, is_online, "
+            "created_at, updated_at) "
+            "VALUES (CAST(:i AS uuid), CAST(:u AS uuid), :s, :taxi, :plate, :reg, "
+            "'1234', :online, now(), now())",
+            {
+                "i": str(profile_id),
+                "u": str(user_id),
+                "s": status,
+                "taxi": taxi_type,
+                "plate": f"D{profile_id.int % 10**5:05d}",
+                "reg": f"AA{profile_id.int % 10**4:04d}",
+                "online": is_online,
+            },
+        )
+    return profile_id
 
 
 def _insert_cancel_event(
@@ -866,3 +926,98 @@ class TestOperationsAnalytics:
             "unattributed": 1,
         }
         assert body["funnel"]["cancelled"] == 5
+
+
+class TestSupplyAnalytics:
+    """Real-time supply snapshot for operators deciding whether demand has coverage."""
+
+    def _get(self, client, admin, **params):
+        response = client.get("/api/v1/admin/analytics/supply", headers=admin, params=params)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def test_requires_an_admin(self, client):
+        assert client.get("/api/v1/admin/analytics/supply").status_code == 401
+
+        token = client.activate("+85290000011")
+        response = client.get(
+            "/api/v1/admin/analytics/supply",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 403
+
+    def test_counts_active_drivers_online_drivers_and_open_orders(self, client, admin):
+        d1 = _insert_driver_profile(client, is_online=True, has_gps=True)
+        _insert_driver_profile(client, is_online=True)
+        _insert_driver_profile(client, is_online=False)
+        _insert_driver_profile(client, status="SUSPENDED", is_online=True)
+
+        _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 8, 1, 9),
+            status="ACCEPTED",
+            driver_id=d1,
+        )
+        d2 = _insert_driver_profile(client, is_online=True)
+        _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 8, 1, 10),
+            status="IN_TRIP",
+            driver_id=d2,
+        )
+        _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 8, 1, 11),
+            status="BROADCASTING",
+        )
+        _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 8, 1, 12),
+            status="COMPLETED",
+            driver_id=d1,
+        )
+        # A second open order for the same driver must not inflate `engaged_drivers`.
+        _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 8, 1, 13),
+            status="DRIVER_ARRIVED",
+            driver_id=d2,
+        )
+
+        body = self._get(client, admin)
+        assert body["active_drivers"] == 4
+        assert body["online_drivers"] == 3
+        assert body["online_with_gps"] == 1
+        assert body["active_orders"] == 4
+        assert body["engaged_drivers"] == 2
+        # online 3 - 2 distinct drivers holding open orders
+        assert body["available_drivers"] == 1
+        assert body["supply_demand_ratio"] == "0.75"
+        assert body["sampled_at"]  # ISO timestamp is non-empty
+
+    def test_taxi_type_filter_partitions_supply(self, client, admin):
+        _insert_driver_profile(client, is_online=True)
+        _insert_driver_profile(client, is_online=True, taxi_type="NT")
+        _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 8, 2, 9),
+            status="BROADCASTING",
+            taxi_type="NT",
+        )
+
+        all_types = self._get(client, admin)
+        assert all_types["active_drivers"] == 2
+        assert all_types["active_orders"] == 1
+
+        nt = self._get(client, admin, taxi_type="NT")
+        assert nt["active_drivers"] == 1
+        assert nt["online_drivers"] == 1
+        assert nt["active_orders"] == 1
+        assert nt["supply_demand_ratio"] == "1.00"
+
+        bad = client.get(
+            "/api/v1/admin/analytics/supply",
+            headers=admin,
+            params={"taxi_type": "HELICOPTER"},
+        )
+        assert bad.status_code == 422
