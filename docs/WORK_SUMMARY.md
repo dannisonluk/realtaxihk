@@ -45,7 +45,7 @@
   > 計數器的量法統一記在 [`README.md`](README.md) 的「量測基準」表 —— 改架構後先重跑量法再改這裡。
   - **實跑得到**：`ruff check .` **All checks passed!**（全樹）· `ruff format --check .`
     **238 files already formatted** · `mypy app` **141 files / 0 errors** · `compileall app` rc=0 ·
-    console `tsc --noEmit` **exit 0（乾淨）** · console vitest **93 passed（14 檔）** ·
+    console `tsc --noEmit` **exit 0（乾淨）** · console vitest **94 passed（14 檔）** ·
     Dart harness **161 passed / 0 failed** · `dart_check.py` **95 files / 0 diagnostics** ·
     contract **64 fixtures decoded, 0 failure**（共 65 個 fixture json）·
     `audit_response_models.py` **OK（81 fixture blocks / 129 operations 全有 `response_model`）** ·
@@ -234,10 +234,15 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
   同 badge；後端用 Postgres durable row 做 source of truth，external push
   (WhatsApp/FCM) 保持範圍外。
 - **fresh audit 收尾輪**（2026-10-07）。admin F1–F7 全部核實已修（tsc 0、
-  vitest 93、build 0）；backend F2–F4 / F6–F7 收齊（`mark_explicit_commit`
+  vitest 94、build 0）；backend F2–F4 / F6–F7 收齊（`mark_explicit_commit`
   消除 redundant commit，`4a8b055`）；mobile F2 補 `FormatException` 子型態
   （`eb44777`）＋ regression test（`72756a4`，harness 160→161）。全套
   pytest 1283 / 0、Dart 95/0、contract 64/64 已複核。
+- **admin TOTP setup-QR re-issue**（2026-10-07）。NEW-28 收檔：登入頁
+  credentials 步驟加「遺失設定 QR？重新取得」（bilingual），call
+  `POST /api/v1/admin/auth/totp/enrol` 重新攞 material 並 render QR；
+  型別 `AdminEnrolmentReissue`、endpoint wrapper 加註；`LoginPage.test.tsx`
+  新增 1 條 pin payload/render。admin vitest 93→94，build/tsc 全綠。
 
 ---
 

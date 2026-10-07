@@ -127,7 +127,7 @@
 | Dart LSP check | **95 files opened / 0 diagnostics** | `python mobile/tool/dart_check.py mobile` |
 | Contract | 65 個 fixture json；harness 解到 **64** 個 · 0 failure | `dart … tool/verify_contract.dart` |
 | `admin-web/web/src` | 52 個 `.ts/.tsx`（含 14 個 test 檔；非 test 38 個 · 18,067 LOC）· 18 個頁面 | `find admin-web/web/src -name "*.ts*" \| wc -l` |
-| 後台 vitest | **93 passed（14 檔）** | `npx vitest run --no-file-parallelism --pool=forks` |
+| 後台 vitest | **94 passed（14 檔）** | `npx vitest run --no-file-parallelism --pool=forks` |
 | `scripts/` | 24 個 `.py` · 6,521 LOC | `find scripts -name "*.py"` |
 
 > ✅ **後端測試 2026-10-07 全套一次過實跑全綠**（Docker Desktop 開住、`realtaxi-db` ＋

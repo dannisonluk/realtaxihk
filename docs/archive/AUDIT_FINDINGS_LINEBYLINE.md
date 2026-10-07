@@ -1051,6 +1051,11 @@ the secret-rendering UI), or the route should be deleted and the doc claim remov
 whose first-login response was lost has no in-app way back in, which is the exact scenario the
 endpoint was built for.
 
+**Resolved 2026-10-07 (admin-web)**: the credentials step now offers
+「Setup QR lost? Re-issue it / 遺失設定 QR？重新取得」— a secondary button that calls
+`POST /api/v1/admin/auth/totp/enrol` with the username/password, renders the enrolment QR,
+and is pinned by `LoginPage.test.tsx` (`re-issues enrolment material…`).
+
 ---
 
 ## Refuted in this pass (recorded so they are not re-raised)
