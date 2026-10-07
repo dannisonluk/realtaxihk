@@ -154,6 +154,39 @@ class FareSnapshot {
   bool get distanceIsStraightLine => distanceSource == 'straight_line';
 }
 
+/// The landmark snapshot attached to a scheduled order response.
+class DropoffLandmark {
+  const DropoffLandmark({
+    required this.code,
+    required this.nameEn,
+    required this.nameZh,
+    required this.category,
+  });
+
+  factory DropoffLandmark.fromJson(Map<String, dynamic> json) => DropoffLandmark(
+    code: asString(json['code'], 'dropoff_landmark.code'),
+    nameEn: asString(json['name_en'], 'dropoff_landmark.name_en'),
+    nameZh: asString(json['name_zh'], 'dropoff_landmark.name_zh'),
+    category: LandmarkCategory.fromWire(asString(json['category'], 'dropoff_landmark.category')),
+  );
+
+  final String code;
+  final String nameEn;
+  final String nameZh;
+  final LandmarkCategory category;
+
+  String get labelZh => nameZh.isEmpty ? nameEn : nameZh;
+
+  String get labelEn => nameEn.isEmpty ? nameZh : nameEn;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'code': code,
+    'name_en': nameEn,
+    'name_zh': nameZh,
+    'category': category.wire,
+  };
+}
+
 /// `order_out()` in `app/services/order_service.py` — the shape returned by
 /// every order endpoint: create, list, detail, grab, arrival-claim,
 /// arrival-confirm, start, complete, change-destination, interrupt, cancel, and
@@ -167,6 +200,12 @@ class Order {
     required this.estimatedTotalHkd,
     required this.completedAt,
     required this.createdAt,
+    this.orderKind,
+    this.scheduledPickupAt,
+    this.prebookVisibleFrom,
+    this.prebookState,
+    this.dropoffLandmarkId,
+    this.dropoffLandmark,
     this.requirements,
     this.paymentPreference = const <String>[],
     this.driverPaymentMethods = const <String>[],
@@ -201,6 +240,18 @@ class Order {
     estimatedTotalHkd: Money.parse(json['estimated_total_hkd']),
     completedAt: asDateOrNull(json['completed_at'], 'order.completed_at'),
     createdAt: asDateOrNull(json['created_at'], 'order.created_at'),
+    orderKind: json['order_kind'] == null
+        ? null
+        : OrderKind.fromWire(asString(json['order_kind'], 'order.order_kind')),
+    scheduledPickupAt: asDateOrNull(json['scheduled_pickup_at'], 'order.scheduled_pickup_at'),
+    prebookVisibleFrom: asDateOrNull(json['prebook_visible_from'], 'order.prebook_visible_from'),
+    prebookState: json['prebook_state'] == null
+        ? null
+        : PrebookState.fromWire(asString(json['prebook_state'], 'order.prebook_state')),
+    dropoffLandmarkId: asStringOrNull(json['dropoff_landmark_id'], 'order.dropoff_landmark_id'),
+    dropoffLandmark: json['dropoff_landmark'] == null
+        ? null
+        : DropoffLandmark.fromJson(asMap(json['dropoff_landmark'], 'order.dropoff_landmark')),
     requirements: json['requirements'] == null
         ? null
         : asMap(json['requirements'], 'order.requirements'),
@@ -248,7 +299,14 @@ class Order {
   final DateTime? completedAt;
   final DateTime? createdAt;
 
-  /// The passenger's frozen ride requirements (silence, no radio/music, no
+  final OrderKind? orderKind;
+  final DateTime? scheduledPickupAt;
+  final DateTime? prebookVisibleFrom;
+  final PrebookState? prebookState;
+  final String? dropoffLandmarkId;
+  final DropoffLandmark? dropoffLandmark;
+
+  /// The passenger's frozen ride requirements (silent ride, no radio/music, no
   /// smoke, no perfume, animal details). Optional — older orders have none.
   final Map<String, dynamic>? requirements;
 
@@ -301,6 +359,9 @@ class Order {
       tip: fare.tip.asDouble,
       tunnels: fare.tunnels,
       crossesHarbour: fare.crossesHarbour,
+      orderKind: orderKind,
+      scheduledPickupAt: scheduledPickupAt,
+      dropoffLandmarkId: dropoffLandmarkId,
     );
   }
 
@@ -398,6 +459,9 @@ class OrderCreateRequest {
     this.pickupAtCrossHarbourStand = false,
     this.requirements,
     this.paymentPreference = const <String>[],
+    this.orderKind,
+    this.scheduledPickupAt,
+    this.dropoffLandmarkId,
   });
 
   final double pickupLat;
@@ -422,6 +486,12 @@ class OrderCreateRequest {
   /// Optional requested payment methods; informational, not a guarantee.
   final List<String> paymentPreference;
 
+  /// Pre-booking fields. `ON_DEMAND` and a null scheduled time are omitted,
+  /// keeping older requests byte-compatible with the backend.
+  final OrderKind? orderKind;
+  final DateTime? scheduledPickupAt;
+  final String? dropoffLandmarkId;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
     'pickup_lat': pickupLat,
     'pickup_lng': pickupLng,
@@ -440,5 +510,8 @@ class OrderCreateRequest {
     'pickup_at_cross_harbour_stand': pickupAtCrossHarbourStand,
     'requirements': requirements,
     'payment_preference': paymentPreference,
+    'order_kind': ?orderKind?.wire,
+    'scheduled_pickup_at': ?scheduledPickupAt?.toUtc().toIso8601String(),
+    'dropoff_landmark_id': ?dropoffLandmarkId,
   };
 }

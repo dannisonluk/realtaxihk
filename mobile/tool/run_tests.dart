@@ -34,9 +34,11 @@ import 'package:hkfastdc_mobile/core/security/username_policy.dart';
 import 'package:hkfastdc_mobile/models/auth.dart';
 import 'package:hkfastdc_mobile/models/admin.dart';
 import 'package:hkfastdc_mobile/models/driver.dart';
+import 'package:hkfastdc_mobile/models/driver_booking_preferences.dart';
 import 'package:hkfastdc_mobile/models/enums.dart';
 import 'package:hkfastdc_mobile/models/fleet.dart';
 import 'package:hkfastdc_mobile/models/identity.dart';
+import 'package:hkfastdc_mobile/models/landmark.dart';
 import 'package:hkfastdc_mobile/models/ledger.dart';
 import 'package:hkfastdc_mobile/models/nearby_filter.dart';
 import 'package:hkfastdc_mobile/models/order.dart';
@@ -135,6 +137,7 @@ void main() {
   _tripEventTests();
   _paginationTests();
   _modelTests();
+  _prebookingTests();
   _fleetTests();
   _routingTests();
   _credentialTests();
@@ -945,6 +948,108 @@ void _modelTests() {
       expectTrue(AuthSession.createdFromJson(<String, dynamic>{'created': true}));
       // `/auth/refresh` omits it entirely.
       expectFalse(AuthSession.createdFromJson(<String, dynamic>{}));
+    });
+  });
+}
+
+void _prebookingTests() {
+  group('pre-booking', () {
+    test('new enums mirror the backend wire tokens', () {
+      for (final OrderKind kind in OrderKind.values) {
+        expect(OrderKind.fromWire(kind.wire), kind);
+      }
+      for (final PrebookState state in PrebookState.values) {
+        expect(PrebookState.fromWire(state.wire), state);
+      }
+      for (final LandmarkCategory category in LandmarkCategory.values) {
+        expect(LandmarkCategory.fromWire(category.wire), category);
+      }
+      expect(OrderKind.scheduled.labelZh, '預約 Call');
+      expect(PrebookState.matched.labelZh, '已配對');
+      expect(LandmarkCategory.airport.labelZh, '機場');
+    });
+
+    test('landmarks round-trip through JSON', () {
+      final Landmark landmark = Landmark.fromJson(<String, dynamic>{
+        'id': 'lm-1',
+        'code': 'HKIA',
+        'name_en': 'Hong Kong International Airport',
+        'name_zh': '香港國際機場',
+        'category': 'AIRPORT',
+        'lat': 22.308,
+        'lng': 113.918,
+        'radius_m': 800,
+        'sort_order': 1,
+        'is_active': true,
+      });
+      expect(landmark.labelZh, '香港國際機場');
+      expect(landmark.labelEn, 'Hong Kong International Airport');
+      final Map<String, dynamic> json = landmark.toJson();
+      expect(json['category'], 'AIRPORT');
+      expect(json['radius_m'], 800);
+      expectTrue(json['is_active'] as bool);
+    });
+
+    test('driver booking preferences round-trip through JSON', () {
+      final DriverBookingPreferences preferences = DriverBookingPreferences.fromJson(
+        <String, dynamic>{
+          'categories': <Object?>['AIRPORT', 'VENUE'],
+          'preferred_origin_area': '中西區',
+          'available_from': '06:00',
+          'available_until': '10:00',
+          'updated_at': '2026-10-06T13:04:19.004241+00:00',
+        },
+      );
+      expectList(preferences.categories, <LandmarkCategory>[
+        LandmarkCategory.airport,
+        LandmarkCategory.venue,
+      ]);
+      expect(preferences.preferredOriginArea, '中西區');
+      expect(preferences.displayFrom, '06:00');
+      expect(preferences.displayUntil, '10:00');
+      expectTrue(preferences.updatedAt != null);
+      final Map<String, dynamic> json = preferences.toJson();
+      expectList(json['categories'] as List<dynamic>, <String>['AIRPORT', 'VENUE']);
+      expect(json['available_from'], '06:00');
+      expectFalse(json.containsKey('updated_at'), reason: 'PUT body omits server fields');
+    });
+
+    test('a scheduled order keeps pre-booking fields in the create request', () {
+      final DateTime pickupAt = DateTime.utc(2026, 10, 10, 8, 30);
+      final Order order = Order.fromJson(<String, dynamic>{
+        ..._orderJson('prebook-order'),
+        'pickup_lat': 22.3193,
+        'pickup_lng': 114.1694,
+        'pickup_address': 'Central',
+        'dropoff_lat': 22.2783,
+        'dropoff_lng': 114.1747,
+        'dropoff_address': 'Causeway Bay',
+        'distance_km': '6.4',
+        'order_kind': 'SCHEDULED',
+        'scheduled_pickup_at': pickupAt.toIso8601String(),
+        'prebook_visible_from': '2026-10-08T00:00:00+00:00',
+        'prebook_state': 'BROADCASTING',
+        'dropoff_landmark_id': 'lm-1',
+        'dropoff_landmark': <String, dynamic>{
+          'code': 'HKIA',
+          'name_en': 'Hong Kong International Airport',
+          'name_zh': '香港國際機場',
+          'category': 'AIRPORT',
+        },
+      });
+      expect(order.orderKind, OrderKind.scheduled);
+      expect(order.prebookState, PrebookState.broadcasting);
+      expect(order.dropoffLandmarkId, 'lm-1');
+      expect(order.dropoffLandmark?.labelZh, '香港國際機場');
+      final OrderCreateRequest? request = order.toOrderCreateRequest();
+      expectTrue(request != null, reason: 'book again');
+      expect(request!.orderKind, OrderKind.scheduled);
+      expect(request.scheduledPickupAt?.toUtc(), pickupAt);
+      expect(request.dropoffLandmarkId, 'lm-1');
+      final Map<String, dynamic> json = request.toJson();
+      expect(json['order_kind'], 'SCHEDULED');
+      expect(json['scheduled_pickup_at'], pickupAt.toUtc().toIso8601String());
+      expect(json['dropoff_landmark_id'], 'lm-1');
     });
   });
 }

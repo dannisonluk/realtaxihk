@@ -1,5 +1,7 @@
 import '../core/network/api_client.dart';
+import '../models/driver_booking_preferences.dart';
 import '../models/enums.dart';
+import '../models/landmark.dart';
 import '../models/nearby_filter.dart';
 import '../models/order.dart';
 import '../models/receipt.dart';
@@ -31,6 +33,32 @@ class OrderRepository {
   Future<Order> create(OrderCreateRequest request) async {
     final Map<String, dynamic> json = await _api.post('/api/v1/orders', data: request.toJson());
     return Order.fromJson(json);
+  }
+
+  /// `GET /api/v1/landmarks` — named dropoff landmarks, optionally by category.
+  Future<List<Landmark>> fetchLandmarks({String? category}) async {
+    final Map<String, dynamic> json = await _api.get(
+      '/api/v1/landmarks',
+      query: <String, dynamic>{'category': ?category},
+    );
+    return LandmarkPage.fromJson(json).items;
+  }
+
+  /// `GET /api/v1/drivers/me/booking-preferences`.
+  Future<DriverBookingPreferences> getDriverBookingPreferences() async {
+    final Map<String, dynamic> json = await _api.get('/api/v1/drivers/me/booking-preferences');
+    return DriverBookingPreferences.fromJson(json);
+  }
+
+  /// `PUT /api/v1/drivers/me/booking-preferences` — full replacement.
+  Future<DriverBookingPreferences> updateDriverBookingPreferences(
+    DriverBookingPreferences preferences,
+  ) async {
+    final Map<String, dynamic> json = await _api.put(
+      '/api/v1/drivers/me/booking-preferences',
+      data: preferences.toJson(),
+    );
+    return DriverBookingPreferences.fromJson(json);
   }
 
   /// `GET /orders?role=…` — history, newest first.

@@ -97,6 +97,10 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
     context.push(Routes.driverNotifications);
   }
 
+  void _openBookingPreferences() {
+    context.push(Routes.driverBookingPreferences);
+  }
+
   String _badgeText(int count) => count > 99 ? '99+' : '$count';
 
   Future<void> _toggleOnline(bool value) async {
@@ -144,6 +148,11 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
       appBar: AppBar(
         title: const Text('接單'),
         actions: <Widget>[
+          IconButton(
+            onPressed: _busy ? null : _openBookingPreferences,
+            tooltip: '預約接單設定',
+            icon: const Icon(Icons.event_available_outlined),
+          ),
           IconButton(
             onPressed: _busy ? null : _openNotifications,
             tooltip: '通知',

@@ -9,6 +9,7 @@ import '../../models/driver_attributes.dart';
 import '../../models/enums.dart';
 import '../../models/fare.dart';
 import '../../models/identity.dart';
+import '../../models/landmark.dart';
 import '../../models/order.dart';
 import '../../models/ride_requirements.dart';
 import '../../router/app_router.dart';
@@ -69,6 +70,13 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
   /// the driver's own declared methods are what the order is matched against.
   final Set<String> _paymentPreference = <String>{};
 
+  OrderKind _orderKind = OrderKind.onDemand;
+  DateTime? _scheduledPickupAt;
+  Landmark? _selectedLandmark;
+
+  /// Landmark id from a history order before the landmark list loads.
+  String? _prefillLandmarkId;
+
   /// Draft for the animal detail sheet. Kept off [_requirements] until the
   /// passenger confirms, so opening and closing the sheet changes nothing.
   String _animalKind = AnimalDetail.kinds.first;
@@ -102,6 +110,9 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
       _paymentPreference
         ..clear()
         ..addAll(prefill.paymentPreference);
+      _orderKind = prefill.orderKind ?? OrderKind.onDemand;
+      _scheduledPickupAt = prefill.scheduledPickupAt;
+      _prefillLandmarkId = prefill.dropoffLandmarkId;
       return;
     }
     _locate();
@@ -196,6 +207,59 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
     });
   }
 
+  Future<void> _pickScheduledTime() async {
+    final DateTime now = DateTime.now();
+    final DateTime earliest = now.add(const Duration(hours: 2));
+    final DateTime latest = now.add(const Duration(days: 3));
+    final DateTime existing = _scheduledPickupAt ?? earliest;
+    final DateTime initialDate = existing.isBefore(earliest)
+        ? earliest
+        : (existing.isAfter(latest) ? latest : existing);
+    final DateTime? date = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: earliest,
+      lastDate: latest,
+      helpText: '選擇預約日期',
+    );
+    if (date == null || !mounted) {
+      return;
+    }
+    final TimeOfDay? time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(existing.isBefore(earliest) ? earliest : existing),
+      helpText: '選擇預約時間',
+    );
+    if (time == null || !mounted) {
+      return;
+    }
+    DateTime scheduled = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    if (scheduled.isBefore(earliest)) {
+      scheduled = earliest;
+    }
+    if (scheduled.isAfter(latest)) {
+      scheduled = latest;
+    }
+    setState(() {
+      _scheduledPickupAt = scheduled;
+      _estimate = null;
+    });
+  }
+
+  String _scheduledLabel() {
+    final DateTime? value = _scheduledPickupAt;
+    if (value == null) {
+      return '未設定';
+    }
+    final String date = MaterialLocalizations.of(context).formatMediumDate(value);
+    final String time = MaterialLocalizations.of(
+      context,
+    ).formatTimeOfDay(TimeOfDay.fromDateTime(value), alwaysUse24HourFormat: false);
+    return '$date $time';
+  }
+
+  String? get _landmarkId => _selectedLandmark?.id ?? _prefillLandmarkId;
+
   /// Collect the animal description a driver needs *before* accepting.
   ///
   /// Refuses the submission rather than trusting the server to: the bounds are
@@ -223,7 +287,12 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
     setState(() => _requirements = _requirements.copyWith(animal: result));
   }
 
-  bool get _ready => _pickup != null && _dropoff != null && _distanceKm > 0 && _distanceKm <= 100;
+  bool get _ready =>
+      _pickup != null &&
+      _dropoff != null &&
+      _distanceKm > 0 &&
+      _distanceKm <= 100 &&
+      (_orderKind != OrderKind.scheduled || _scheduledPickupAt != null);
 
   FareEstimateRequest _fareRequest() => FareEstimateRequest(
     taxiType: _taxiType,
@@ -236,7 +305,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
 
   Future<void> _quote() async {
     if (!_ready) {
-      showInfo(context, '請先設定上車點、落車點及距離');
+      showInfo(context, '請先設定上車點、落車點及距離${_orderKind == OrderKind.scheduled ? '、預約時間' : ''}');
       return;
     }
     setState(() => _busy = true);
@@ -282,6 +351,9 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
               // nearby filters read as "never mentioned an animal".
               requirements: _requirements.isEmpty ? null : _requirements.toJson(),
               paymentPreference: _paymentPreference.toList(growable: false),
+              orderKind: _orderKind,
+              scheduledPickupAt: _orderKind == OrderKind.scheduled ? _scheduledPickupAt : null,
+              dropoffLandmarkId: _landmarkId,
             ),
           );
       if (!mounted) {
@@ -322,6 +394,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
     // "no prompt" rather than "no username" — a card that appears and then
     // vanishes on every cold start reads as a bug.
     final Profile? profile = ref.watch(profileProvider).value;
+    final List<Landmark> landmarks = ref.watch(landmarksProvider(null)).value ?? const <Landmark>[];
 
     return Scaffold(
       appBar: AppBar(
@@ -387,6 +460,74 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
                     ),
                     const SizedBox(height: AppTheme.space4),
                   ],
+                  SegmentedButton<OrderKind>(
+                    segments: const <ButtonSegment<OrderKind>>[
+                      ButtonSegment<OrderKind>(
+                        value: OrderKind.onDemand,
+                        label: Text('現在 Call'),
+                        icon: Icon(Icons.bolt),
+                      ),
+                      ButtonSegment<OrderKind>(
+                        value: OrderKind.scheduled,
+                        label: Text('預約 Call'),
+                        icon: Icon(Icons.event_available_outlined),
+                      ),
+                    ],
+                    selected: <OrderKind>{_orderKind},
+                    onSelectionChanged: (Set<OrderKind> value) => setState(() {
+                      _orderKind = value.first;
+                      _estimate = null;
+                    }),
+                  ),
+                  if (_orderKind == OrderKind.scheduled) ...<Widget>[
+                    const SizedBox(height: AppTheme.space2),
+                    Text(
+                      '預約時間需早於叫車最少 2 小時，最多可預約 3 日內。',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: AppTheme.space2),
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.calendar_month_outlined),
+                        title: const Text('預約上車時間'),
+                        subtitle: Text(_scheduledLabel()),
+                        trailing: const Icon(Icons.schedule),
+                        onTap: _pickScheduledTime,
+                      ),
+                    ),
+                  ],
+                  if (landmarks.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: AppTheme.space4),
+                    Text('目的地地標（選填）', style: theme.textTheme.titleSmall),
+                    const SizedBox(height: AppTheme.space2),
+                    SizedBox(
+                      height: 40,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: landmarks.length,
+                        separatorBuilder: (BuildContext context, int index) =>
+                            const SizedBox(width: AppTheme.space2),
+                        itemBuilder: (BuildContext context, int index) {
+                          final Landmark landmark = landmarks[index];
+                          return FilterChip(
+                            label: Text(landmark.labelZh),
+                            selected:
+                                _selectedLandmark?.id == landmark.id ||
+                                (_prefillLandmarkId == landmark.id && _selectedLandmark == null),
+                            onSelected: (bool selected) => setState(() {
+                              _selectedLandmark = selected ? landmark : null;
+                              if (selected) {
+                                _prefillLandmarkId = null;
+                              }
+                            }),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: AppTheme.space4),
                   SegmentedButton<_Target>(
                     segments: const <ButtonSegment<_Target>>[
                       ButtonSegment<_Target>(
@@ -604,7 +745,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
                                   height: 20,
                                   child: CircularProgressIndicator(strokeWidth: 2),
                                 )
-                              : const Text('確認叫車'),
+                              : Text(_orderKind == OrderKind.scheduled ? '確認預約' : '確認叫車'),
                         ),
                       ),
                     ],

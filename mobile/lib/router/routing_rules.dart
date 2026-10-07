@@ -108,6 +108,13 @@ abstract final class Routes {
   /// branch of the driver shell.
   static const String driverEnvironment = '/driver/environment';
 
+  /// The driver's standing pre-booking preferences (預約接單).
+  ///
+  /// Pushed on the root navigator from the driver jobs screen, like
+  /// [driverNotifications]: a settings surface between rides, not a branch of
+  /// the driver shell.
+  static const String driverBookingPreferences = '/driver/booking-preferences';
+
   static const String adminKyc = '/admin/kyc';
   static const String adminRefunds = '/admin/refunds';
   static const String adminSettlement = '/admin/settlement';

@@ -84,7 +84,8 @@ enum DriverStatus {
 /// (`app/models/driver_notification.py::DriverNotificationKind`).
 enum DriverNotificationKind {
   premium('PREMIUM'),
-  fixedFare('FIXED_FARE');
+  fixedFare('FIXED_FARE'),
+  scheduled('SCHEDULED');
 
   const DriverNotificationKind(this.wire);
 
@@ -433,6 +434,60 @@ enum Tunnel {
   final String labelEn;
 
   static Tunnel fromWire(String value) => _decode(values, (Tunnel v) => v.wire, value, 'Tunnel');
+}
+
+/// How an order was created (`OrderKind` server-side).
+enum OrderKind {
+  onDemand('ON_DEMAND', '現在 Call', 'On-demand'),
+  scheduled('SCHEDULED', '預約 Call', 'Scheduled');
+
+  const OrderKind(this.wire, this.labelZh, this.labelEn);
+
+  final String wire;
+  final String labelZh;
+  final String labelEn;
+
+  static OrderKind fromWire(String value) =>
+      _decode(values, (OrderKind v) => v.wire, value, 'OrderKind');
+}
+
+/// The driver-matching lifecycle of a scheduled order.
+enum PrebookState {
+  pending('PENDING', '待配對', 'Pending'),
+  broadcasting('BROADCASTING', '廣播中', 'Broadcasting'),
+  matched('MATCHED', '已配對', 'Matched'),
+  expired('EXPIRED', '已過期', 'Expired');
+
+  const PrebookState(this.wire, this.labelZh, this.labelEn);
+
+  final String wire;
+  final String labelZh;
+  final String labelEn;
+
+  static PrebookState fromWire(String value) =>
+      _decode(values, (PrebookState v) => v.wire, value, 'PrebookState');
+}
+
+/// A landmark bucket from `GET /api/v1/landmarks`.
+enum LandmarkCategory {
+  airport('AIRPORT', '機場', 'Airport'),
+  venue('VENUE', '場地', 'Venue'),
+  hospital('HOSPITAL', '醫院', 'Hospital'),
+  border('BORDER', '口岸', 'Border'),
+  waterfront('WATERFRONT', '海濱', 'Waterfront'),
+  themePark('THEME_PARK', '主題公園', 'Theme Park'),
+  office('OFFICE', '辦公室', 'Office'),
+  mall('MALL', '商場', 'Mall'),
+  other('OTHER', '其他', 'Other');
+
+  const LandmarkCategory(this.wire, this.labelZh, this.labelEn);
+
+  final String wire;
+  final String labelZh;
+  final String labelEn;
+
+  static LandmarkCategory fromWire(String value) =>
+      _decode(values, (LandmarkCategory v) => v.wire, value, 'LandmarkCategory');
 }
 
 T _decode<T>(List<T> values, String Function(T value) wireOf, String wire, String name) {

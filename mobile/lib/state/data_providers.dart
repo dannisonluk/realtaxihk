@@ -6,11 +6,13 @@ import '../models/admin.dart';
 import '../models/auth.dart';
 import '../models/driver.dart';
 import '../models/driver_attributes.dart';
+import '../models/driver_booking_preferences.dart';
 import '../models/driver_notification.dart';
 import '../models/enums.dart';
 import '../models/fixed_offer.dart';
 import '../models/fleet.dart';
 import '../models/identity.dart';
+import '../models/landmark.dart';
 import '../models/ledger.dart';
 import '../models/order.dart';
 import '../models/recurring_ride.dart';
@@ -103,6 +105,12 @@ final FutureProvider<DriverEnvironment> driverEnvironmentProvider =
       (Ref ref) => ref.watch(driverRepositoryProvider).environment(),
     );
 
+/// The driver's standing pre-booking preferences.
+final FutureProvider<DriverBookingPreferences> driverBookingPreferencesProvider =
+    FutureProvider<DriverBookingPreferences>(
+      (Ref ref) => ref.watch(orderRepositoryProvider).getDriverBookingPreferences(),
+    );
+
 /// The driver's notification inbox, newest first.
 final FutureProvider<DriverNotificationPage> driverNotificationsProvider =
     FutureProvider<DriverNotificationPage>(
@@ -125,6 +133,12 @@ final FutureProvider<PremiumDestinationPage> premiumDestinationsProvider =
     FutureProvider<PremiumDestinationPage>(
       (Ref ref) => ref.watch(destinationRepositoryProvider).list(),
     );
+
+/// Named dropoff landmarks, optionally filtered by category.
+final landmarksProvider = FutureProvider.family<List<Landmark>, String?>(
+  (Ref ref, String? category) =>
+      ref.watch(orderRepositoryProvider).fetchLandmarks(category: category),
+);
 
 /// One order, by id.
 ///

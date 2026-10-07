@@ -17,6 +17,7 @@ import '../features/auth/phone_login_screen.dart';
 import '../features/auth/phone_unlock_screen.dart';
 import '../features/auth/register_screen.dart';
 import '../features/driver/driver_active_trip_screen.dart';
+import '../features/driver/driver_booking_preferences_screen.dart';
 import '../features/driver/driver_earnings_screen.dart';
 import '../features/driver/driver_environment_screen.dart';
 import '../features/driver/driver_jobs_screen.dart';
@@ -65,9 +66,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
   ref.onDispose(listenable.dispose);
 
   final String initialLocation =
-      passwordResetDeepLinkRoute(
-        WidgetsBinding.instance.platformDispatcher.defaultRouteName,
-      ) ??
+      passwordResetDeepLinkRoute(WidgetsBinding.instance.platformDispatcher.defaultRouteName) ??
       Routes.splash;
 
   return GoRouter(
@@ -126,7 +125,6 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (BuildContext context, GoRouterState state) => const PhoneUnlockScreen(),
       ),
-
       GoRoute(
         // Password reset from an email App Link. Root navigator and **outside**
         // `/login` for the same reason as the phone unlock: the reset must work
@@ -252,7 +250,15 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
         builder: (BuildContext context, GoRouterState state) => const FleetScreen(),
       ),
       GoRoute(
-        // Like [Routes.driverFleet]: a settings form outside the shell, reached
+        // Like [Routes.driverEnvironment]: a settings form outside the shell,
+        // reached from the driver jobs screen.
+        path: Routes.driverBookingPreferences,
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (BuildContext context, GoRouterState state) =>
+            const DriverBookingPreferencesScreen(),
+      ),
+      GoRoute(
+        // Like [Routes.driverFleet]: a pricing form outside the shell, reached
         // from the driver account screen.
         path: Routes.driverEnvironment,
         parentNavigatorKey: _rootNavigatorKey,
