@@ -21,7 +21,10 @@ import pathlib
 import re
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from _root import REPO_ROOT as ROOT  # noqa: E402
+
 ENDPOINTS = ROOT / "admin-web" / "web" / "src" / "api" / "endpoints.ts"
 
 PARAM_RENAMES = {
