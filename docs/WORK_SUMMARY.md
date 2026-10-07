@@ -30,7 +30,7 @@
 - **現時狀態**（2026-10-07 重新量測）：
   > ✅ **後端 `pytest` 全套一次過實跑全綠**（Docker Desktop 開住、`realtaxi-db` ＋
   > `realtaxi-redis` 兩隻 container 都 healthy）：
-  > `pytest tests -q --junit-xml=.tmp/final4.xml` = **1279 passed / 0 failed / 0 error /
+  > `pytest tests -q --junit-xml=.tmp/final4.xml` = **1283 passed / 0 failed / 0 error /
   > 0 skipped**（2026-10-07）。先前「一次過跑會中途中止、唔敢宣稱 full-suite 全綠」
   > 嘅情況**已經消失** —— 現在單一 process 順序跑就穩定全綠。
   > ```
@@ -45,7 +45,7 @@
   > 計數器的量法統一記在 [`README.md`](README.md) 的「量測基準」表 —— 改架構後先重跑量法再改這裡。
   - **實跑得到**：`ruff check .` **All checks passed!**（全樹）· `ruff format --check .`
     **238 files already formatted** · `mypy app` **141 files / 0 errors** · `compileall app` rc=0 ·
-    console `tsc --noEmit` **exit 0（乾淨）** · console vitest **88 passed（12 檔）** ·
+    console `tsc --noEmit` **exit 0（乾淨）** · console vitest **93 passed（14 檔）** ·
     Dart harness **160 passed / 0 failed** · `dart_check.py` **95 files / 0 diagnostics** ·
     contract **64 fixtures decoded, 0 failure**（共 65 個 fixture json）·
     `audit_response_models.py` **OK（81 fixture blocks / 129 operations 全有 `response_model`）** ·
