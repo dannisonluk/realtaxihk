@@ -58,20 +58,27 @@ def _register_driver(client: TestClient, token: str, phone: str) -> str:
 
 
 class TestB1AuthMeDeletedUser:
-    def test_me_404_not_500(self, client):
+    def test_me_403_not_500(self, client):
         """B1: /auth/me with a valid JWT for a missing user -> guarded, no NameError.
 
-        A 404, not a 403: the token is well-formed and its signature is good, so
-        the honest answer is "that account does not exist" rather than "you may
-        not do this". `require_live_principal` raises it, so the check still
-        happens before the handler body — the property under test is that
-        nothing reaches an unguarded `session.get(...).phone_e164`.
+        The missing-principal policy is 403, matching `require_active_user` and
+        `require_admin`: a valid signed token naming a deleted row is not an
+        existence oracle, and the client cannot fix it by re-authenticating.
         """
         from app.core.security import create_access_token
 
         ghost = create_access_token({"sub": str(uuid.uuid4()), "role": "PASSENGER"})
         r = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {ghost}"})
-        assert r.status_code == 404
+        assert r.status_code == 403
+        assert r.json()["code"] != "INTERNAL_ERROR"
+
+    def test_me_missing_admin_is_403_too(self, client):
+        """The admin half of the same dependency is consistent with the user half."""
+        from app.core.security import create_access_token
+
+        ghost = create_access_token({"sub": str(uuid.uuid4()), "role": "ADMIN"})
+        r = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {ghost}"})
+        assert r.status_code == 403
         assert r.json()["code"] != "INTERNAL_ERROR"
 
 

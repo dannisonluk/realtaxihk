@@ -166,14 +166,14 @@ async def require_live_principal(
     if user.is_admin:
         admin = await session.get(AdminAccount, user.id)
         if admin is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="admin not found")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account not found")
         if not admin.is_active:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account disabled")
         return user
 
     row = await session.get(User, user.id)
     if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account not found")
     if not row.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account disabled")
     if reviewer_expired(row):
