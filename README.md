@@ -8,7 +8,7 @@ three roles, and a web admin console.
 
 **Status: production-hardened.** Backend test count is not quoted here — it drifts
 and this line had gone stale twice; see [`docs/README.md`](docs/README.md) for the
-measurement baseline. Mobile: 161 assertions · 64 contract fixtures decoded (65 files) ·
+measurement baseline. Mobile: 161 assertions · 64 contract fixtures decoded (64 files) ·
 console: 96 vitest tests · browser UI verifier PASS.
 
 **New here? Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first** — a guided
@@ -335,7 +335,7 @@ lib/
 
 `lib/models/` mirrors the backend schema — but nothing enforces that at build
 time. So the wire format is **captured from a running API** into
-`test/fixtures/` (63 fixtures) and every one is decoded with the real Dart models:
+`test/fixtures/` (64 fixtures) and every one is decoded with the real Dart models:
 
 ```bash
 .venv/Scripts/python scripts/dev/gen_mobile_fixtures.py     # capture
@@ -469,7 +469,7 @@ enforces that they agree**. This section is the mitigation.
 
 | Boundary | Mechanism | Failure it catches |
 |---|---|---|
-| API → mobile | 63 fixtures captured from a **running** API, decoded by real Dart models | A renamed/removed field, before an APK is built |
+| API → mobile | 64 fixtures captured from a **running** API, decoded by real Dart models | A renamed/removed field, before an APK is built |
 | API → console | TypeScript types in `api/`, `npm run typecheck` | A changed response shape at compile time |
 | Response shape → itself | `audit_response_models.py` vs captured fixtures (81 blocks) | A `response_model` that silently drops a field |
 | DB schema → models | `test_migration_schema_parity.py` — the **only** test that runs migrations | Model/migration drift |
