@@ -109,6 +109,10 @@ class LoginIn(BaseModel):
     human_token: str | None = Field(default=None, max_length=_HUMAN_TOKEN_MAX)
 
 
+class RefreshIn(BaseModel):
+    refresh_token: str = Field(min_length=16, max_length=256)
+
+
 class OtpRequestIn(BaseModel):
     phone_e164: str = Field(pattern=HK_PHONE_PATTERN)
     human_token: str | None = Field(default=None, max_length=_HUMAN_TOKEN_MAX)
@@ -117,10 +121,6 @@ class OtpRequestIn(BaseModel):
 class OtpVerifyIn(BaseModel):
     phone_e164: str = Field(pattern=HK_PHONE_PATTERN)
     code: str = Field(pattern=r"^\d{6}$")
-
-
-class RefreshIn(BaseModel):
-    refresh_token: str = Field(min_length=16, max_length=256)
 
 
 def _user_out(user) -> dict:
