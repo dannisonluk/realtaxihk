@@ -1,6 +1,6 @@
 # Fresh Audit — React Admin Console (`admin-web/web/src`)
 
-> Resolution Log 2026-10-07: F1–F7 are fixed (F8 remains a documented network-level optimisation). Admin gates: `tsc` clean, vitest 94 passed / 14 files, `npm run build` passes. NEW-28 TOTP setup-QR re-issue UI added and pinned by `LoginPage.test.tsx`.
+> Resolution Log 2026-10-07: F1–F7 are fixed (F8 remains a documented network-level optimisation). Admin gates: `tsc` clean, vitest 96 passed / 14 files, `npm run build` passes. NEW-28 TOTP setup-QR re-issue UI added and pinned by `LoginPage.test.tsx`.
 
 Date: 2026-10-06. Auditor: independent deep-dive subagent. Basis: actual TS/TSX source, tests, `package.json`, `tsconfig.json`, `vite.config.ts`, plus real `npm run typecheck` (passes) and `npx vitest run --no-file-parallelism --pool=forks` (12 files / 87 tests pass) run in this session. No prior audit file, deliverable, or handoff note was consulted.
 

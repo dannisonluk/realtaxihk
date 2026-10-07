@@ -2,7 +2,8 @@
 
 Scope: the buckets that the first pass did not cover line-by-line.
 Method: read every file, verify each claim against the other two deliverables before writing it down.
-Status: IN PROGRESS.
+Status: CLOSED as an audit snapshot (2026-10-07) — later resolution notes are
+appended to the relevant entries. N-1's owner decision is recorded at §N-1 below.
 
 ## Fixed in this pass — 2026-10-05
 

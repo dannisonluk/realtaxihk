@@ -9,7 +9,7 @@ three roles, and a web admin console.
 **Status: production-hardened.** Backend test count is not quoted here — it drifts
 and this line had gone stale twice; see [`docs/README.md`](docs/README.md) for the
 measurement baseline. Mobile: 161 assertions · 64 contract fixtures decoded (65 files) ·
-console: 94 vitest tests · browser UI verifier PASS.
+console: 96 vitest tests · browser UI verifier PASS.
 
 **New here? Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first** — a guided
 tour of how a trip flows from hail to settlement, where money is allowed to

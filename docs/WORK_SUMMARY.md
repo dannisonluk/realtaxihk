@@ -45,7 +45,7 @@
   > 計數器的量法統一記在 [`README.md`](README.md) 的「量測基準」表 —— 改架構後先重跑量法再改這裡。
   - **實跑得到**：`ruff check .` **All checks passed!**（全樹）· `ruff format --check .`
     **238 files already formatted** · `mypy app` **141 files / 0 errors** · `compileall app` rc=0 ·
-    console `tsc --noEmit` **exit 0（乾淨）** · console vitest **94 passed（14 檔）** ·
+    console `tsc --noEmit` **exit 0（乾淨）** · console vitest **96 passed（14 檔）** ·
     Dart harness **161 passed / 0 failed** · `dart_check.py` **95 files / 0 diagnostics** ·
     contract **64 fixtures decoded, 0 failure**（共 65 個 fixture json）·
     `audit_response_models.py` **OK（81 fixture blocks / 129 operations 全有 `response_model`）** ·
@@ -76,7 +76,7 @@
 |---|---|---|---|
 | 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **115 paths / 129 operations，全部有 `response_model`** · 141 檔 / 28,933 LOC · pytest 全套 **1283 / 0**（2026-10-07 單一 process 實跑） |
 | Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**34 個畫面**，三角色）；品牌資產由 `tool/gen_branding_assets.py` 由 `branding/source/` 的原圖產生 | ✅ 161 tests · fixture contract OK · APK debug 已成功 build（2026-10-07，~183 MB） |
-| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/legacy/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **94 vitest passed（14 檔）** · `tsc --noEmit` **exit 0** |
+| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/legacy/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **96 vitest passed（14 檔）** · `tsc --noEmit` **exit 0** |
 
 一個 repo、三件完整交付物。定位：**Cap. 374D 合規的士資訊中介**（非的士營運商）。
 
@@ -157,7 +157,7 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
 
 | 缺口 | 影響 | 為什麼現在是這樣 |
 |---|---|---|
-| **乘客違約罰款「有記錄、未收錢」** | 乘客在 `ACCEPTED` 之後取消，會寫 `PENALTY_CHARGED` 事件（`settled: false`）並設 15 分鐘冷靜期，但**錢沒有實際扣到** | `ledger_entries.driver_profile_id` 是 NOT NULL，而乘客沒有錢包 —— 收乘客的錢要先有乘客錢包／預授權。在沒有支付渠道之前，記錄 + 冷靜期是能做到的全部；admin 事後裁決仍可依事件記錄處理 |
+| **乘客違約罰款：已記錄、未收錢；admin 現可查找欠款** | 乘客在 `ACCEPTED` / `PENDING_ARRIVAL_CONFIRM` 之後取消，會寫 `PENALTY_CHARGED` event（`settled: false`）並設 15 分鐘冷靜期；**無乘客錢包，錢沒有實際扣到** | `ledger_entries.driver_profile_id` 是 NOT NULL，而乘客沒有錢包 —— 收乘客的錢要先有乘客錢包／預授權。在沒有支付渠道之前，記錄＋冷靜期＋admin「未收罰款」卡是能做到的全部；admin 事後裁決仍可依事件記錄處理 |
 | **App 收得到 `reset-password` deep link，但 Android App Links 尚未驗證（部署側）** | 已加 Android `intent-filter`（`/reset-password`、`/magic`）、Flutter cold-start parser 與 token 預填畫面。**仍未做：把含真實簽署指紋的 `assetlinks.json` 放到 `https://hkfastdc.com/.well-known/assetlinks.json` 並等 Android 驗證** | 指紋只存在於 deployment 的 APK signing 產物，所以 repo 刻意不印／不提交。可用 `scripts/ops/render_assetlinks.py` 在部署時產生 |
 | **本機 APK build 已驗證（2026-10-07）** | `flutter build apk --debug` 成功，產出 `mobile/build/app/outputs/flutter-apk/app-debug.apk`；因此 `res/`、`assets:` 與 Flutter plugin 集合已由本機實跑證明，唔再只靠 CI 或舊成功紀錄 | Release signing／Google Maps API key 仍然係部署決定，唔影響 debug build；`webview_flutter` 已隨 plugin 集合同時進入 APK |
 | **「一鍵造能叫車的測試帳號」已收斂，剩下的是跑在 QA env** | `scripts/ops/create_booking_account.py` 已用 service layer 走 `/auth/register` → `/identity/phone/request` → `/identity/phone/confirm` 對應的 auth services，**不是 SQL UPDATE**；預設 `+85291230001`（乘客）＋`+85291230002`（司機），已驗證的號碼會跳過。仍需在 `ALLOW_DEV_OTP=true` 的實際 QA env 跑一次證明可用 | 刻意走正式流程而非直接改 DB；driver onboarding（牌照／按金）仍由 App + `/drivers/register` + admin KYC 完成，腳本不偽造司機檔案 |
@@ -343,7 +343,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 ✅ P4 首次對住「已 migrate 的 dev DB」跑過（原停在 `c1f2e3d4a5b6`，2026-10-06 升到
    `b8d1f2a3c4e5`）；契約 fixture 61 → 64，三個新狀態首次有解碼覆蓋
 ✅ `alembic check` drift 回到 baseline 9 項（修好 `recurring_rides` 漏 `length=` 那兩項）
-✅ admin-web React / 94 vitest / tsc exit 0 / UI verifier PASS
+✅ admin-web React / 96 vitest / tsc exit 0 / UI verifier PASS
 ✅ 後台治理：四級 RBAC（rank 比較、live row 為權威）+ 審計覆蓋金錢／狀態改動
 ✅ 後台新增：帳戶管理 / 訂單監控 / 結算預覽+confirm token+CSV / 爭議 / 主體搜尋 / 頭像上傳
 ✅ 後台實時地圖 `#/live`：Leaflet + OpenStreetMap（免金鑰、不計費）、15 秒輪詢；路由 code-split
