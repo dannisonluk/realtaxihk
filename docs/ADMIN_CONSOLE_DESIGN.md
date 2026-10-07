@@ -28,7 +28,7 @@
 | 退款 | `/refunds` | `GET /admin/refunds`, `POST /admin/refunds/{id}/decision` |
 | 每週結算 | `/settlement` | `POST /admin/settlement/weekly/run` |
 | 車隊 | `/fleets`, `/fleets/:id` | `GET/POST /admin/fleets*` |
-| 表現分析 | `/analytics` | `GET /admin/analytics`, `GET /admin/analytics/heatmap` |
+| 表現分析 | `/analytics` | `GET /admin/analytics`, `GET /admin/analytics/heatmap`, `GET /admin/analytics/operations` |
 | 司機詳情 | `/drivers/:id` | `GET /admin/drivers/{id}` |
 
 **缺口與現狀**：三個「地基缺」現已**全部修復**（更正 2026-10-02）；下表保留當時落差。
@@ -199,21 +199,18 @@ order_disputes
 
 **現況**：`GET /admin/analytics`（`day`/`week`/`month` 分桶收入，可過濾
 `taxi_type`、可排序；上限 1096 日（三年），超出 422）；`GET /admin/analytics/heatmap`
-（一日 24 小時收入分佈）。兩者**全由 `orders` 派生**、無新表；邊界是**香港時間日界**
-（`_hk_day_bounds`）。**缺口**：無營運指標（接單率、取消率、平均等待時間、司機上線率）；
-無供應側；無地理分佈。
+（一日 24 小時收入分佈）；`GET /admin/analytics/operations`（營運漏斗：建立／已接單
+／完成／取消／中斷／進行中，取消歸因乘客／司機／超時／未能歸類，平均接單與到達耗時）。
+三者**全由 `orders` 派生**、無新表；邊界是**香港時間日界**
+（`_hk_day_bounds`）。**剩餘缺口**：無供應側（司機上線率／供需比）；無地理分佈。
 
-### 設計方案
+### 尚未實作（餘下）
 
-1. `GET /admin/analytics/operations`：從 `orders` 計——接單率 =
-   `accepted_at is not null` / `created`；取消率（乘客 / 司機 / 超時未接）；平均
-   接單耗時 = `avg(accepted_at - created_at)`；平均到達耗時 =
-   `avg(driver_arrived_at - accepted_at)`。SQL 聚合，零新表。
-2. `GET /admin/analytics/supply`：由 `driver_profiles.is_online` + `current_location`
+1. `GET /admin/analytics/supply`：由 `driver_profiles.is_online` + `current_location`
    派生在線／有單司機數、供需比。
-3. 地理分佈：`orders.pickup_location`（`geography(POINT,4326)`）可 `ST_SnapToGrid`
+2. 地理分佈：`orders.pickup_location`（`geography(POINT,4326)`）可 `ST_SnapToGrid`
    分格。**地圖須用合規圖源，不可拼湊邊界。**
-4. 儀表板自訂：**不建議**（固定版面優於自拉 widget）。
+3. 儀表板自訂：**不建議**（固定版面優於自拉 widget）。
 
 ---
 

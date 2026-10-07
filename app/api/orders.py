@@ -1625,6 +1625,23 @@ async def order_cancel(
         payload.reason_code.value if payload.reason_code else None
     )
     await OrderService(session).transition(order, OrderStatus.CANCELLED)
+    # Free cancellations previously left no timeline evidence, so operational
+    # analytics could only attribute defaulting cancellations. Every cancel now
+    # records who ended it; `PENALTY_CHARGED` remains the financial detail.
+    await record_order_event(
+        session,
+        order_id=order.id,
+        event=OrderEventType.STATE_CHANGED,
+        from_status=from_status,
+        to_status=OrderStatus.CANCELLED.value,
+        actor_kind=party.value,
+        actor_id=user.id,
+        payload={
+            "reason_code": payload.reason_code.value if payload.reason_code else None,
+            "cancellation_reason": order.cancellation_reason,
+            "penalty_hkd": money_str(penalty) if penalty else None,
+        },
+    )
 
     if defaulting:
         # Armed *after* the transition succeeds, so a cancel that fails on

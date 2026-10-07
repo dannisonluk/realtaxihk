@@ -110,13 +110,48 @@ const HEATMAP = {
   scale_max_hkd: '200.00',
 };
 
+/** Operations analytics: a different shape from earnings, so the page’s loader must not mix them up. */
+const OPERATIONS = {
+  range: {
+    from: '2026-09-01',
+    to: '2026-09-02',
+    taxi_type: null,
+    timezone: 'Asia/Hong_Kong',
+    days: 2,
+  },
+  funnel: {
+    created: 5,
+    accepted: 3,
+    completed: 1,
+    interrupted: 1,
+    cancelled: 1,
+    active: 2,
+  },
+  cancellations: {
+    passenger: 1,
+    driver: 1,
+    timeout: 1,
+    unattributed: 1,
+  },
+  latency: {
+    acceptance_avg_s: '90.00',
+    arrival_avg_s: '600.00',
+  },
+  acceptance_rate: '60.00',
+  cancellation_rate: '20.00',
+};
+
 /** Record every request the page makes, so the filters can be asserted. */
 function stubTransport() {
   const calls: string[] = [];
   vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input.toString();
     calls.push(url);
-    const body = url.includes('/heatmap') ? HEATMAP : SUMMARY;
+    const body = url.includes('/heatmap')
+      ? HEATMAP
+      : url.includes('/operations')
+        ? OPERATIONS
+        : SUMMARY;
     return Promise.resolve(
       new Response(JSON.stringify(body), {
         status: 200,
@@ -137,10 +172,13 @@ async function renderAndSettle(root: Root) {
       </StrictMode>,
     );
   });
-  // Two turns: one for the summary request, one for the heat map. The page
-  // loads them sequentially, matching the console's `useLoad` contract.
+  // Three turns: one for the summary request, one for operations, one for the
+  // heat map. The page loads them sequentially, matching `useLoad`.
   await act(async () => {
     await new Promise((r) => setTimeout(r, 0));
+  });
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 20));
   });
   await act(async () => {
     await new Promise((r) => setTimeout(r, 20));
@@ -163,14 +201,28 @@ describe('the analytics page', () => {
     vi.unstubAllGlobals();
   });
 
-  it('asks for both the summary and the heat map', async () => {
+  it('asks for the summary, operations and hourly heat map', async () => {
     const calls = stubTransport();
     await renderAndSettle(root);
 
-    expect(calls.some((u) => u.includes('/api/v1/admin/analytics') && !u.includes('heatmap'))).toBe(
+    expect(calls.some((u) => u.includes('/api/v1/admin/analytics') && !u.includes('heatmap') && !u.includes('operations'))).toBe(
       true,
     );
     expect(calls.some((u) => u.includes('/api/v1/admin/analytics/heatmap'))).toBe(true);
+    expect(calls.some((u) => u.includes('/api/v1/admin/analytics/operations'))).toBe(true);
+  });
+
+  it('renders the operations funnel and cancellation attribution', async () => {
+    stubTransport();
+    await renderAndSettle(root);
+
+    expect(container.textContent).toContain(text('analytics.operationsTitle'));
+    expect(container.textContent).toContain('5');
+    expect(container.textContent).toContain('60.00');
+    expect(container.textContent).toContain('90.00');
+    expect(container.textContent).toContain('600.00');
+    expect(container.textContent).toContain(text('analytics.cancelPassenger'));
+    expect(container.textContent).toContain(text('analytics.cancelUnattributed'));
   });
 
   /**

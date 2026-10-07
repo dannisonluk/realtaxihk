@@ -27,6 +27,7 @@ import { useState } from 'react';
 import type {
   AnalyticsGranularity,
   AnalyticsHeatmap,
+  AnalyticsOperations,
   AnalyticsSortBy,
   AnalyticsSummary,
   SortDir,
@@ -129,6 +130,11 @@ export function AnalyticsPage() {
   // The heat map ignores granularity and sort: it is always 24 hourly slots.
   const heatmap = useLoad<AnalyticsHeatmap>(
     () => endpoints.analytics.heatmap(client, { from, to, taxiType }),
+    [from, to, taxiType],
+  );
+
+  const operations = useLoad<AnalyticsOperations>(
+    () => endpoints.analytics.operations(client, { from, to, taxiType }),
     [from, to, taxiType],
   );
 
@@ -269,6 +275,17 @@ export function AnalyticsPage() {
         </div>
       ) : null}
 
+      {operations.error ? (
+        <div style={{ marginTop: 16 }}>
+          <ErrorState error={operations.error} onRetry={operations.reload} />
+        </div>
+      ) : null}
+      {!operations.error && operations.data ? (
+        <div style={{ marginTop: 16 }}>
+          <OperationsPanel data={operations.data} />
+        </div>
+      ) : null}
+
       {/* ---- The day chart ---- */}
       <div style={{ marginTop: 16 }}>
         <Card>
@@ -395,6 +412,62 @@ export function AnalyticsPage() {
  * and the plot is padded on the left for the y-axis labels rather than being
  * absolutely positioned, so the labels can never overlap the bars.
  */
+function OperationsPanel({ data }: { data: AnalyticsOperations }) {
+  const { t } = useI18n();
+  const cancellations = [
+    { label: t('analytics.cancelPassenger'), value: data.cancellations.passenger, tone: 'brand' as const },
+    { label: t('analytics.cancelDriver'), value: data.cancellations.driver, tone: 'brand' as const },
+    { label: t('analytics.cancelTimeout'), value: data.cancellations.timeout, tone: 'danger' as const },
+    { label: t('analytics.cancelUnattributed'), value: data.cancellations.unattributed, tone: 'neutral' as const },
+  ];
+
+  return (
+    <Card>
+      <div className="page-head__text" style={{ marginBottom: 4 }}>
+        <h2 className="t-title3" style={{ margin: 0 }}>
+          {t('analytics.operationsTitle')}
+        </h2>
+        <p className="page-head__sub">{t('analytics.operationsNote')}</p>
+      </div>
+
+      <div className="grid">
+        <Stat label={t('analytics.opsCreated')} value={data.funnel.created} />
+        <Stat
+          label={t('analytics.opsAccepted')}
+          value={data.funnel.accepted}
+          hint={t('analytics.opsAcceptanceRate', { rate: data.acceptance_rate })}
+        />
+        <Stat label={t('analytics.opsCompleted')} value={data.funnel.completed} />
+        <Stat
+          label={t('analytics.opsCancelled')}
+          value={data.funnel.cancelled}
+          hint={t('analytics.opsCancellationRate', { rate: data.cancellation_rate })}
+        />
+        <Stat label={t('analytics.opsInterrupted')} value={data.funnel.interrupted} />
+        <Stat label={t('analytics.opsActive')} value={data.funnel.active} />
+        <Stat
+          label={t('analytics.opsAcceptanceAvg')}
+          value={data.latency.acceptance_avg_s ?? '—'}
+          hint={t('analytics.opsSeconds')}
+        />
+        <Stat
+          label={t('analytics.opsArrivalAvg')}
+          value={data.latency.arrival_avg_s ?? '—'}
+          hint={t('analytics.opsSeconds')}
+        />
+      </div>
+
+      <div className="actions" style={{ marginTop: 12, flexWrap: 'wrap' }}>
+        {cancellations.map((item) => (
+          <Chip key={item.label} tone={item.tone}>
+            {t('analytics.opsCancellationCount', { label: item.label, count: item.value })}
+          </Chip>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function HourBarChart({
   hours,
   scaleMax,

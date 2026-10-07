@@ -53,16 +53,22 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any, Literal
 
-from sqlalchemy import Date, Select, cast, func, select
+from sqlalchemy import Date, Select, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.money import money_str, ratio_str
-from app.models import Order, OrderStatus
+from app.models import Order, OrderEvent, OrderEventType, OrderStatus
 
 # Hong Kong is UTC+8 with no daylight saving, but the name is used rather than a
 # fixed offset so the database applies its own tz database — if the rules ever
 # changed, the SQL would follow and a hard-coded +8 would not.
 HK_TZ = "Asia/Hong_Kong"
+
+_TERMINAL_ORDER_STATUSES = (
+    OrderStatus.COMPLETED,
+    OrderStatus.INTERRUPTED,
+    OrderStatus.CANCELLED,
+)
 
 
 class Granularity(str, enum.Enum):
@@ -141,6 +147,20 @@ def _ratio_2dp(numerator: int, denominator: int) -> str:
     if not denominator:
         return "0.00"
     return ratio_str(Decimal(numerator) / denominator)
+
+
+def _seconds_str(value: Any) -> str | None:
+    """2-dp seconds for latency metrics, or null when there is no sample."""
+    if value is None:
+        return None
+    return f"{Decimal(str(value)).quantize(Decimal('0.01')):.2f}"
+
+
+def _percent_2dp(numerator: int, denominator: int) -> str:
+    """A plain 2-dp percentage, for operational ratios such as acceptance."""
+    if not denominator:
+        return "0.00"
+    return ratio_str(Decimal(numerator * 100) / denominator)
 
 
 class AnalyticsService:
@@ -314,6 +334,130 @@ class AnalyticsService:
             # The scale for the chart's y-axis. Zero when there is nothing to
             # draw, which the client must handle rather than dividing by it.
             "scale_max_hkd": peak["avg_per_day_hkd"],
+        }
+
+    async def operations(
+        self,
+        *,
+        day_from: date,
+        day_to: date,
+        taxi_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Operational funnel and cancellation attribution for a full range.
+
+        Unlike the revenue summary, which starts from *completed* trips, this
+        view starts from *created* trips: an operator wants to see every order
+        that entered the system and what happened to it, including the ones
+        that never found a driver. Terminal counts therefore reflect current
+        status rather than a separate timestamp bucket.
+        """
+        start, end = _hk_day_bounds(day_from, day_to)
+        days_in_range = (day_to - day_from).days + 1
+        base_filters = [
+            Order.created_at >= start,
+            Order.created_at < end,
+        ]
+        if taxi_type:
+            base_filters.append(Order.taxi_type == taxi_type)
+
+        cancelled = Order.status == OrderStatus.CANCELLED
+        cancel_actor = (
+            select(func.max(OrderEvent.actor_kind))
+            .where(
+                OrderEvent.order_id == Order.id,
+                OrderEvent.event.in_(
+                    [
+                        OrderEventType.STATE_CHANGED.value,
+                        OrderEventType.PENALTY_CHARGED.value,
+                    ]
+                ),
+                OrderEvent.to_status == OrderStatus.CANCELLED.value,
+            )
+            .scalar_subquery()
+        )
+        actor_kind = func.lower(func.coalesce(cancel_actor, ""))
+        timeout_cancel = or_(
+            actor_kind == "system",
+            func.lower(func.coalesce(Order.cancellation_reason, "")) == "broadcast expired",
+        )
+
+        row = (
+            await self.session.execute(
+                select(
+                    func.count().label("created"),
+                    func.count().filter(Order.accepted_at.is_not(None)).label("accepted"),
+                    func.count().filter(Order.status == OrderStatus.COMPLETED).label("completed"),
+                    func.count()
+                    .filter(Order.status == OrderStatus.INTERRUPTED)
+                    .label("interrupted"),
+                    func.count().filter(cancelled).label("cancelled"),
+                    func.count()
+                    .filter(~Order.status.in_(_TERMINAL_ORDER_STATUSES))
+                    .label("active"),
+                    func.count()
+                    .filter(cancelled, actor_kind == "passenger")
+                    .label("cancelled_passenger"),
+                    func.count()
+                    .filter(cancelled, actor_kind == "driver")
+                    .label("cancelled_driver"),
+                    func.count().filter(cancelled, timeout_cancel).label("cancelled_timeout"),
+                    func.avg(func.extract("epoch", Order.accepted_at - Order.created_at))
+                    .filter(Order.accepted_at.is_not(None))
+                    .label("acceptance_avg"),
+                    func.avg(
+                        func.extract(
+                            "epoch",
+                            Order.driver_arrived_at - Order.accepted_at,
+                        )
+                    )
+                    .filter(
+                        Order.driver_arrived_at.is_not(None),
+                        Order.accepted_at.is_not(None),
+                    )
+                    .label("arrival_avg"),
+                ).where(*base_filters)
+            )
+        ).one()
+
+        created = int(row.created)
+        accepted = int(row.accepted)
+        cancelled_total = int(row.cancelled)
+        passenger = int(row.cancelled_passenger)
+        driver = int(row.cancelled_driver)
+        timeout = int(row.cancelled_timeout)
+        unattributed = max(
+            0,
+            cancelled_total - passenger - driver - timeout,
+        )
+
+        return {
+            "range": {
+                "from": day_from.isoformat(),
+                "to": day_to.isoformat(),
+                "taxi_type": taxi_type,
+                "timezone": HK_TZ,
+                "days": days_in_range,
+            },
+            "funnel": {
+                "created": created,
+                "accepted": accepted,
+                "completed": int(row.completed),
+                "interrupted": int(row.interrupted),
+                "cancelled": cancelled_total,
+                "active": int(row.active),
+            },
+            "cancellations": {
+                "passenger": passenger,
+                "driver": driver,
+                "timeout": timeout,
+                "unattributed": unattributed,
+            },
+            "latency": {
+                "acceptance_avg_s": _seconds_str(row.acceptance_avg),
+                "arrival_avg_s": _seconds_str(row.arrival_avg),
+            },
+            "acceptance_rate": _percent_2dp(accepted, created),
+            "cancellation_rate": _percent_2dp(cancelled_total, created),
         }
 
 

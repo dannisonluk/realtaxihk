@@ -25,6 +25,7 @@ import type {
   AdminSession,
   AnalyticsGranularity,
   AnalyticsHeatmap,
+  AnalyticsOperations,
   AnalyticsSortBy,
   AnalyticsSummary,
   AuditRow,
@@ -760,6 +761,16 @@ export const endpoints = {
       filters: { from?: string; to?: string; taxiType?: string | null } = {},
     ) =>
       client.get<AnalyticsHeatmap>('/api/v1/admin/analytics/heatmap', {
+        from: filters.from,
+        to: filters.to,
+        taxi_type: filters.taxiType ?? undefined,
+      }),
+
+    operations: (
+      client: ApiClient,
+      filters: { from?: string; to?: string; taxiType?: string | null } = {},
+    ) =>
+      client.get<AnalyticsOperations>('/api/v1/admin/analytics/operations', {
         from: filters.from,
         to: filters.to,
         taxi_type: filters.taxiType ?? undefined,

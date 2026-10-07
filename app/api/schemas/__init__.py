@@ -102,6 +102,13 @@ from app.api.schemas.admin_licence import (
     LicenceReviewDetailOut,
     ReviewDocumentOut,
 )
+from app.api.schemas.analytics import (
+    AdminAnalyticsCancellationsOut,
+    AdminAnalyticsLatencyOut,
+    AdminAnalyticsOperationsFunnelOut,
+    AdminAnalyticsOperationsOut,
+    AdminAnalyticsOperationsRangeOut,
+)
 from app.api.schemas.driver import (
     DepositOut,
     DriverProfileOut,
@@ -186,6 +193,11 @@ __all__ = [
     "AdminAccountOut",
     "AdminAccountPageOut",
     "AdminActiveChangeOut",
+    "AdminAnalyticsCancellationsOut",
+    "AdminAnalyticsLatencyOut",
+    "AdminAnalyticsOperationsFunnelOut",
+    "AdminAnalyticsOperationsOut",
+    "AdminAnalyticsOperationsRangeOut",
     "AdminDepositDetailOut",
     "AdminDepositOut",
     "AdminDisputeDetailOut",

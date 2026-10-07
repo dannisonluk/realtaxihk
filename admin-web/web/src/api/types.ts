@@ -527,6 +527,45 @@ export interface AnalyticsHeatmap {
   scale_max_hkd: string;
 }
 
+/** Operations analytics: orders created in the range, not completed trips. */
+export interface AnalyticsOperationsRange {
+  from: string;
+  to: string;
+  taxi_type: string | null;
+  timezone: string;
+  days: number;
+}
+
+export interface AnalyticsOperationsFunnel {
+  created: number;
+  accepted: number;
+  completed: number;
+  interrupted: number;
+  cancelled: number;
+  active: number;
+}
+
+export interface AnalyticsCancellations {
+  passenger: number;
+  driver: number;
+  timeout: number;
+  unattributed: number;
+}
+
+export interface AnalyticsLatency {
+  acceptance_avg_s: string | null;
+  arrival_avg_s: string | null;
+}
+
+export interface AnalyticsOperations {
+  range: AnalyticsOperationsRange;
+  funnel: AnalyticsOperationsFunnel;
+  cancellations: AnalyticsCancellations;
+  latency: AnalyticsLatency;
+  acceptance_rate: string;
+  cancellation_rate: string;
+}
+
 // ---------------------------------------------------------------------------
 // RBAC
 // ---------------------------------------------------------------------------

@@ -85,6 +85,105 @@ def _insert_completed_order(
     return order_id
 
 
+def _insert_created_order(
+    client,
+    *,
+    created_at: datetime,
+    status: str,
+    taxi_type: str = "URBAN",
+    accepted_at: datetime | None = None,
+    driver_arrived_at: datetime | None = None,
+    completed_at: datetime | None = None,
+    cancellation_reason: str | None = None,
+    fare: str = "100.00",
+) -> uuid.UUID:
+    """Insert an order created at an exact instant for operations analytics.
+
+    The revenue tests need exact *completion* instants; the ops funnel needs
+    exact *creation* instants plus optional stage timestamps and cancellation
+    metadata. One helper keeps all four in the same test vocabulary.
+    """
+    passenger_id = uuid.uuid4()
+    order_id = uuid.uuid4()
+    client.exec_sql(
+        """
+        INSERT INTO users (
+            id, phone_e164, display_name, role, is_active, account_status,
+            created_at, updated_at
+        ) VALUES (
+            :pid, :phone, :dname, 'PASSENGER', true, 'ACTIVE', now(), now()
+        )
+        """,
+        {
+            "pid": str(passenger_id),
+            "phone": f"+8529{passenger_id.int % 10**7:07d}",
+            "dname": f"ops{passenger_id.int % 10**8:08d}",
+        },
+    )
+    client.exec_sql(
+        """
+        INSERT INTO orders (
+            id, passenger_id, status, pickup_location, pickup_address,
+            dropoff_location, dropoff_address, distance_km, taxi_type,
+            fare_json, tariff_version, estimated_total_hkd, discount_percent,
+            broadcast_radius_km, fare_mode, accepted_at, driver_arrived_at,
+            completed_at, cancellation_reason, created_at, updated_at
+        ) VALUES (
+            :oid, :pid, :status,
+            ST_GeogFromText('POINT(114.158 22.284)'), 'Central',
+            ST_GeogFromText('POINT(114.219 22.315)'), 'North Point',
+            5.000, :taxi, '{}'::jsonb, 'test-v1', :fare, 0, 3.0, 'METER',
+            :accepted, :arrived, :completed, :reason, :created, now()
+        )
+        """,
+        {
+            "oid": str(order_id),
+            "pid": str(passenger_id),
+            "status": status,
+            "taxi": taxi_type,
+            "fare": fare,
+            "accepted": accepted_at,
+            "arrived": driver_arrived_at,
+            "completed": completed_at,
+            "reason": cancellation_reason,
+            "created": created_at,
+        },
+    )
+    return order_id
+
+
+def _insert_cancel_event(
+    client,
+    order_id: uuid.UUID,
+    *,
+    actor_kind: str,
+    event: str = "STATE_CHANGED",
+    from_status: str = "BROADCASTING",
+    actor_id: str | None = None,
+    created_at: datetime | None = None,
+) -> None:
+    """Insert a cancellation timeline event for attribution tests."""
+    client.exec_sql(
+        """
+        INSERT INTO order_events (
+            order_id, event, from_status, to_status, actor_kind, actor_id,
+            payload, created_at
+        ) VALUES (
+            :oid, :event, :from_status, 'CANCELLED', :actor_kind, :actor_id,
+            NULL, COALESCE(:created, now())
+        )
+        """,
+        {
+            "oid": str(order_id),
+            "event": event,
+            "from_status": from_status,
+            "actor_kind": actor_kind,
+            "actor_id": actor_id,
+            "created": created_at,
+        },
+    )
+
+
 def _as_hkt(year: int, month: int, day: int, hour: int, minute: int = 0) -> datetime:
     """An instant expressed as Hong Kong local time, returned UTC-aware.
 
@@ -563,3 +662,207 @@ class TestMoneyFormatting:
             params={"from": "2026-06-06", "to": "2026-06-06"},
         ).json()
         assert body["totals"]["earnings_hkd"] == money_str("0.03")
+
+
+class TestOperationsAnalytics:
+    """Order funnel and cancellation attribution for created, not just completed, trips."""
+
+    def _get(self, client, admin, start, end, **params):
+        response = client.get(
+            "/api/v1/admin/analytics/operations",
+            headers=admin,
+            params={"from": start, "to": end, **params},
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def test_operations_requires_an_admin(self, client):
+        assert client.get("/api/v1/admin/analytics/operations").status_code == 401
+
+        token = client.activate("+85290000030")
+        r = client.get(
+            "/api/v1/admin/analytics/operations",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert r.status_code == 403
+
+    def test_empty_range_reports_zeroes(self, client, admin):
+        body = self._get(client, admin, start="2026-02-01", end="2026-02-07")
+        assert body["funnel"] == {
+            "created": 0,
+            "accepted": 0,
+            "completed": 0,
+            "interrupted": 0,
+            "cancelled": 0,
+            "active": 0,
+        }
+        assert body["cancellations"] == {
+            "passenger": 0,
+            "driver": 0,
+            "timeout": 0,
+            "unattributed": 0,
+        }
+        assert body["acceptance_rate"] == "0.00"
+        assert body["cancellation_rate"] == "0.00"
+        assert body["latency"] == {"acceptance_avg_s": None, "arrival_avg_s": None}
+        assert body["range"] == {
+            "from": "2026-02-01",
+            "to": "2026-02-07",
+            "taxi_type": None,
+            "timezone": "Asia/Hong_Kong",
+            "days": 7,
+        }
+
+    def test_created_orders_are_counted_by_current_status(self, client, admin):
+        completed_created = _as_hkt(2026, 3, 1, 8)
+        accepted = completed_created + timedelta(minutes=2)
+        arrived = accepted + timedelta(minutes=10)
+        _insert_created_order(
+            client,
+            created_at=completed_created,
+            status="COMPLETED",
+            accepted_at=accepted,
+            driver_arrived_at=arrived,
+            completed_at=arrived,
+        )
+        interrupted_created = _as_hkt(2026, 3, 1, 9)
+        _insert_created_order(
+            client,
+            created_at=interrupted_created,
+            status="INTERRUPTED",
+            accepted_at=interrupted_created + timedelta(seconds=60),
+        )
+        _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 3, 1, 10),
+            status="BROADCASTING",
+        )
+        _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 3, 2, 8),
+            status="CANCELLED",
+            cancellation_reason="broadcast expired",
+        )
+        # Outside the range, even though it is COMPLETED.
+        _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 2, 28, 23),
+            status="COMPLETED",
+            accepted_at=_as_hkt(2026, 2, 28, 23, 1),
+            completed_at=_as_hkt(2026, 2, 28, 23, 2),
+        )
+
+        body = self._get(client, admin, start="2026-03-01", end="2026-03-02")
+        assert body["funnel"] == {
+            "created": 4,
+            "accepted": 2,
+            "completed": 1,
+            "interrupted": 1,
+            "cancelled": 1,
+            "active": 1,
+        }
+        assert body["acceptance_rate"] == "50.00"
+        assert body["cancellation_rate"] == "25.00"
+        # (120 seconds + 60 seconds) / 2 accepted samples.
+        assert body["latency"]["acceptance_avg_s"] == "90.00"
+        assert body["latency"]["arrival_avg_s"] == "600.00"
+
+    def test_operations_uses_creation_time_not_completion_time(self, client, admin):
+        created = _as_hkt(2026, 4, 10, 0, 30)
+        _insert_created_order(
+            client,
+            created_at=created,
+            status="COMPLETED",
+            accepted_at=created + timedelta(seconds=30),
+            completed_at=_as_hkt(2026, 5, 1, 0),
+        )
+
+        ops = self._get(client, admin, start="2026-04-10", end="2026-04-10")
+        assert ops["funnel"]["created"] == 1
+        assert ops["funnel"]["completed"] == 1
+
+        revenue = client.get(
+            "/api/v1/admin/analytics",
+            headers=admin,
+            params={"from": "2026-04-10", "to": "2026-04-10"},
+        ).json()
+        assert revenue["totals"]["orders"] == 0
+
+    def test_early_hong_kong_morning_is_not_pushed_back_a_day(self, client, admin):
+        _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 5, 10, 0, 30),
+            status="BROADCASTING",
+        )
+
+        body = self._get(client, admin, start="2026-05-10", end="2026-05-10")
+        assert body["funnel"]["created"] == 1
+
+    def test_taxi_type_filter_partitions_operations(self, client, admin):
+        _insert_created_order(client, created_at=_as_hkt(2026, 6, 1, 8), status="BROADCASTING")
+        _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 6, 1, 9),
+            status="BROADCASTING",
+            taxi_type="NT",
+        )
+
+        window = {"start": "2026-06-01", "end": "2026-06-01"}
+        assert self._get(client, admin, **window)["funnel"]["created"] == 2
+        assert self._get(client, admin, **window, taxi_type="URBAN")["funnel"]["created"] == 1
+        assert self._get(client, admin, **window, taxi_type="NT")["funnel"]["created"] == 1
+
+        bad = client.get(
+            "/api/v1/admin/analytics/operations",
+            headers=admin,
+            params={"from": window["start"], "to": window["end"], "taxi_type": "HELICOPTER"},
+        )
+        assert bad.status_code == 422
+
+    def test_cancellation_is_attributed_from_events_and_legacy_rows_stay_separate(
+        self, client, admin
+    ):
+        passenger = _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 7, 1, 8),
+            status="CANCELLED",
+        )
+        _insert_cancel_event(client, passenger, actor_kind="PASSENGER")
+
+        driver = _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 7, 1, 9),
+            status="CANCELLED",
+        )
+        _insert_cancel_event(client, driver, actor_kind="DRIVER")
+
+        # A broadcast expiry is a timeout even when no event row exists yet.
+        _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 7, 1, 10),
+            status="CANCELLED",
+            cancellation_reason="broadcast expired",
+        )
+        # A SYSTEM event is also a timeout; the two paths must not overwrite the
+        # passenger/driver counts.
+        system = _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 7, 1, 11),
+            status="CANCELLED",
+        )
+        _insert_cancel_event(client, system, actor_kind="SYSTEM")
+        # Pre-attribution rows fall through to `unattributed`, never negative.
+        _insert_created_order(
+            client,
+            created_at=_as_hkt(2026, 7, 1, 12),
+            status="CANCELLED",
+        )
+
+        body = self._get(client, admin, start="2026-07-01", end="2026-07-01")
+        assert body["cancellations"] == {
+            "passenger": 1,
+            "driver": 1,
+            "timeout": 2,
+            "unattributed": 1,
+        }
+        assert body["funnel"]["cancelled"] == 5

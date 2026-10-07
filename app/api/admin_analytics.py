@@ -5,15 +5,17 @@ route. There is no write path here and no new table: everything is derived from
 `orders`, so there is nothing to keep in sync and nothing that can drift from
 the orders it describes.
 
-Two endpoints, because they answer two different questions and have different
+Three endpoints, because they answer different questions and have different
 shapes:
 
   * `GET /api/v1/admin/analytics`          — earnings per time bucket (the table)
   * `GET /api/v1/admin/analytics/heatmap`  — earnings per hour of the day (the chart)
+  * `GET /api/v1/admin/analytics/operations` — order funnel, cancellation cause
+    and driver response latency
 
 The date range defaults to the last 30 days including today, which is the
-window an operator almost always wants and which makes the endpoint useful
-without parameters. Both bounds are inclusive calendar dates **in Hong Kong
+window an operator almost always wants and which makes the endpoints useful
+without parameters. Bounds are inclusive calendar dates **in Hong Kong
 time** — see `analytics_service` for why that is not a detail.
 """
 
@@ -25,6 +27,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.schemas import AdminAnalyticsOperationsOut
 from app.core.db import get_session
 from app.core.deps import Principal, require_admin
 from app.services.admin.analytics_service import (
@@ -126,6 +129,29 @@ async def analytics_heatmap(
     """
     resolved_from, resolved_to = _resolve_range(date_from, date_to)
     return await AnalyticsService(session).hour_profile(
+        day_from=resolved_from,
+        day_to=resolved_to,
+        taxi_type=taxi_type,
+    )
+
+
+@router.get("/operations", response_model=AdminAnalyticsOperationsOut)
+async def analytics_operations(
+    date_from: Annotated[date | None, Query(alias="from")] = None,
+    date_to: Annotated[date | None, Query(alias="to")] = None,
+    taxi_type: Annotated[str | None, Query(pattern=r"^(URBAN|NT|LANTAU)$")] = None,
+    admin: Principal = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> AdminAnalyticsOperationsOut:
+    """Operational funnel for orders created in the range.
+
+    The funnel starts from `created_at`, so orders that never found a driver
+    are visible instead of disappearing from revenue analytics. Cancellation is
+    attributed from lifecycle events where possible, and `unattributed` covers
+    legacy rows that predate event attribution.
+    """
+    resolved_from, resolved_to = _resolve_range(date_from, date_to)
+    return await AnalyticsService(session).operations(  # type: ignore[return-value]
         day_from=resolved_from,
         day_to=resolved_to,
         taxi_type=taxi_type,

@@ -662,6 +662,20 @@ class TestDefaulting:
         assert r.status_code == 200, r.text
         assert r.json()["status"] == "CANCELLED"
 
+        cancel_event = asyncio.run(
+            _fetch(
+                client,
+                "SELECT actor_kind, from_status, to_status, payload FROM order_events "
+                "WHERE order_id = CAST(:i AS uuid) "
+                "AND event = 'STATE_CHANGED' AND to_status = 'CANCELLED'",
+                {"i": oid},
+            )
+        )
+        assert len(cancel_event) == 1, "a cancellation STATE_CHANGED event must be recorded"
+        assert cancel_event[0]["actor_kind"] == "PASSENGER"
+        assert cancel_event[0]["to_status"] == "CANCELLED"
+        assert cancel_event[0]["payload"]["cancellation_reason"] == "oops"
+
         # No cool-down: the next order goes through.
         assert client.post("/api/v1/orders", headers=_h(passenger), json=_ORDER).status_code == 201
 
