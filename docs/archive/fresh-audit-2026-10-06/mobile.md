@@ -1,5 +1,7 @@
 # Fresh Mobile Audit — hkfastdc_mobile (realtaxihk/mobile)
 
+> Resolution Log 2026-10-07: F2 fixed (commit `eb44777`, regression test in `72756a4`); F4, F7–F9 and F13 are already resolved in current source; F5/F11 widget tests and F6/F8/F9 i18n remain intentionally out of the pure-Dart harness. F1/F3 refresh-race remains tracked in `docs/archive/AUDIT_2026-10-06.md`.
+
 Audit based on actual `mobile/lib`, `mobile/test/fixtures`, `mobile/tool`, `pubspec.yaml`, and `mobile/android` source. No prior audit artifacts, deliverables, AGENT/HANDOFF notes, or docs claims were used as evidence. Findings below are source-verifiable from the files read in this audit.
 
 ## A. Executive Summary (5 lines)
