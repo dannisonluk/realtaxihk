@@ -56,40 +56,16 @@ the same reason. It is a normal Android project; nothing about it is special.
 
 ## Building an APK
 
-`flutter build apk` **cannot run on this machine** — the `flutter` CLI's first
-act is a version-freshness `git log`, which is a subprocess, so it dies on the
-pipe bug before Gradle is ever reached:
+`flutter build apk --debug` succeeded on this machine on 2026-10-07 and produced
+`build/app/outputs/flutter-apk/app-debug.apk` (about 183 MB, universal
+arm64-v8a / armeabi-v7a / x86_64). The older `ERROR_PIPE_BUSY` symptom was
+resource exhaustion, not a policy refusal; when it returns, retry once before
+blaming the toolchain and use `command flutter` rather than the shell alias.
 
-```
-ProcessPackageException: ProcessException: 所有的管道例項都在使用中。
-  Command: ...\git.EXE -c log.showSignature=false log HEAD -n 1 --pretty=format:%ad --date=iso
-      at _DefaultProcessUtils.runSync (package:flutter_tools/src/base/process.dart:484)
-```
-
-Calling Gradle directly gets one layer further — the Flutter Gradle plugin passes
-`--no-version-check`, so the CLI's own version check is skipped — but it does not
-get all the way. `:app:compileFlutterBuildDebug` shells out to `flutter assemble`,
-and *that* has to spawn two more processes: the kernel compiler
-(`frontend_server_aot.dart.snapshot`) and the native-assets build hook
-(`cmd.exe /c dart compile kernel … objective_c/hook/build.dart`). Both hit the
-same wall:
-
-```
-CreateFile failed 231 (所有的管道例項都在使用中。)
-Target kernel_snapshot_program failed: ProcessException: 所有的管道例項都在使用中。
-```
-
-So **neither route builds the APK here**, and nothing available locally can see
-`res/`, the `assets:` block, or the Flutter plugin set.
-
-It has worked before, and that is the part worth remembering. The same command
-produced a ~182 MB universal `app-debug.apk` (arm64-v8a / armeabi-v7a / x86_64),
-package `com.hkfastdc.mobile`, `minSdk 24 / targetSdk 36`, with the geolocator and
-network permissions merged in and `com.google.android.geo.API_KEY` resolved to
-empty — on 2026-10-03, and again on 2026-10-04 00:44. `ERROR_PIPE_BUSY` is
-resource exhaustion, not a policy refusal: the same command succeeds or fails
-depending on how many pipe instances the host has free at that moment. **Treat it
-as flaky, not as permanently broken, and retry before concluding anything.**
+The debug build proves the Flutter plugin set, `webview_flutter`,
+`geolocator_android`, `google_maps_flutter` and the merged Android manifest on
+this codebase. It does not prove release signing or a real Google Maps key;
+those remain deployment-time decisions.
 
 ```bash
 cd mobile/android
@@ -104,12 +80,9 @@ non-zero exit value 1` plus a `flutter_02.log`; with it set, the same build name
 the two processes that actually failed. That is the difference between a crash
 report and a diagnostic.
 
-**CI is where this actually gets checked.** The `mobile` job runs `flutter pub get`
-— which is what writes the plugin list — and then `flutter build apk --debug`, so
-on a Linux runner that step is the thing that proves `webview_flutter` resolves and
-that `res/` and the `assets:` block are intact. Locally you get four green Dart
-gates and no build at all; until CI has run on a commit, anything plugin- or
-resource-shaped in it is resolved but unproven.
+**CI still adds value for portability.** A Linux CI `flutter build apk --debug`
+remains the check that the same plugin/resource set assembles on the reference
+runner; the local 2026-10-07 success is evidence, not a replacement for it.
 
 Two things to settle before a release build means anything:
 

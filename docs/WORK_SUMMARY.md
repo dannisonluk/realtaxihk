@@ -159,11 +159,9 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
 
 | 缺口 | 影響 | 為什麼現在是這樣 |
 |---|---|---|
-| **P4 §3.6 預約服務（pre-booking）未實作** | 只有即時單。`SCHEDULED` 訂單（提前 2 小時至 3 天）、`landmarks` 表（地標＝終點）、司機預約偏好（`GET/PUT /drivers/me/booking-preferences`）與廣播前置視窗全部沒有 —— 程式碼中零引用 | 設計文件 §3.6 與 §4.0.3–4.0.5 已完成，但這是獨立的一個功能面（新表、新端點、新前端頁），與 in-trip 生命週期沒有耦合，所以先做生命週期那半。要做就照 §3.6 逐節落地；`IN_TRIP_REDESIGN.md` 的狀態標頭已如實標明這一點 |
 | **乘客違約罰款「有記錄、未收錢」** | 乘客在 `ACCEPTED` 之後取消，會寫 `PENALTY_CHARGED` 事件（`settled: false`）並設 15 分鐘冷靜期，但**錢沒有實際扣到** | `ledger_entries.driver_profile_id` 是 NOT NULL，而乘客沒有錢包 —— 收乘客的錢要先有乘客錢包／預授權。在沒有支付渠道之前，記錄 + 冷靜期是能做到的全部；admin 事後裁決仍可依事件記錄處理 |
-| **DECISION-3 的「補款後手動放行」未實作** | 負餘額會令 `grab` 回 423 `DEPOSIT_INSUFFICIENT`（已實作），但「補款後要等 admin 放行」那一步（`acceptance_unlocked_at`）未做 —— 現在是補款即自動恢復接單 | DECISION-3 有兩半，先做了會擋人的那一半。另一半做不做取決於風控政策（自動恢復對司機友善，手動放行對平台安全） |
 | **App 收得到 `reset-password` deep link，但 Android App Links 尚未驗證（部署側）** | 已加 Android `intent-filter`（`/reset-password`、`/magic`）、Flutter cold-start parser 與 token 預填畫面。**仍未做：把含真實簽署指紋的 `assetlinks.json` 放到 `https://hkfastdc.com/.well-known/assetlinks.json` 並等 Android 驗證** | 指紋只存在於 deployment 的 APK signing 產物，所以 repo 刻意不印／不提交。可用 `scripts/ops/render_assetlinks.py` 在部署時產生 |
-| **本機跑不完 APK build：`webview_flutter` 只算「已解析、未證明」** | Gradle 的 `:app:compileFlutterBuildDebug` 會叫 `flutter assemble`，而它要 spawn kernel compiler 與 native-assets hook，兩者都撞 `ERROR_PIPE_BUSY`（231）。所以 `res/`、`assets:`、plugin 集合在本機**沒有任何閘** | 231 是資源耗盡而非政策拒絕 —— 同一條命令在 2026-10-03 與 2026-10-04 00:44 成功過。CI 的 `flutter build apk --debug` 是唯一的閘，但**還沒在這些 commit 上跑過**。另注意 `dart pub get` **不會**重寫 `.flutter-plugins-dependencies`（只有 `flutter pub get` 會），那是 Gradle 決定要編哪些 plugin 子專案的依據 |
+| **本機 APK build 已驗證（2026-10-07）** | `flutter build apk --debug` 成功，產出 `mobile/build/app/outputs/flutter-apk/app-debug.apk`；因此 `res/`、`assets:` 與 Flutter plugin 集合已由本機實跑證明，唔再只靠 CI 或舊成功紀錄 | Release signing／Google Maps API key 仍然係部署決定，唔影響 debug build；`webview_flutter` 已隨 plugin 集合同時進入 APK |
 | **「一鍵造能叫車的測試帳號」已收斂，剩下的是跑在 QA env** | `scripts/ops/create_booking_account.py` 已用 service layer 走 `/auth/register` → `/identity/phone/request` → `/identity/phone/confirm` 對應的 auth services，**不是 SQL UPDATE**；預設 `+85291230001`（乘客）＋`+85291230002`（司機），已驗證的號碼會跳過。仍需在 `ALLOW_DEV_OTP=true` 的實際 QA env 跑一次證明可用 | 刻意走正式流程而非直接改 DB；driver onboarding（牌照／按金）仍由 App + `/drivers/register` + admin KYC 完成，腳本不偽造司機檔案 |
 ### D. 已結案（保留以免重複處理）
 

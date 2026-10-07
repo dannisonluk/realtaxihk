@@ -1,9 +1,9 @@
 # In-Trip 業務邏輯重新設計 / In-Trip Redesign
 
-> **EN — Summary.** The in-trip redesign (P4). **Implemented 2026-10-06, with one
-> exception: §3.6 and §4.0.3–4.0.5 — pre-booking (`SCHEDULED` orders, the
-> `landmarks` table, driver booking preferences) — are still a proposal and have
-> no code.** What landed widens the order state machine beyond the old
+> **EN — Summary.** The in-trip redesign (P4). **Implemented 2026-10-06; the
+> pre-booking half (§3.6, §4.0.3–4.0.5 — `SCHEDULED` orders, the `landmarks`
+> table, driver booking preferences, the 30-minute release broadcaster) landed
+> 2026-10-07.** What landed widens the order state machine beyond the old
 > `IN_TRIP → COMPLETED` dead end, adding `DESTINATION_CHANGED` (non-terminal) and
 > `INTERRUPTED` (terminal), plus the two-step arrival proof, mid-trip destination
 > change, interrupt, the per-trip platform fee and the default penalties.
@@ -13,9 +13,9 @@
 > `CANCELLED` is unreachable once arrival is proven. `INTERRUPTED` is terminal
 > while `DESTINATION_CHANGED` is not, so both are re-checked on every change.
 
-> **中文摘要**：**P4 in-trip 重新設計 —— 2026-10-06 已實作，但有一項例外：§3.6 與
-> §4.0.3–4.0.5（預約服務：`SCHEDULED` 訂單、`landmarks` 表、司機預約偏好）仍未實作，
-> 程式碼中完全不存在，仍屬提案。** 已落地的部分把訂單狀態機由 `IN_TRIP → COMPLETED`
+> **中文摘要**：**P4 in-trip 重新設計 —— 2026-10-06 已實作；§3.6 與
+> §4.0.3–4.0.5（預約服務：`SCHEDULED` 訂單、`landmarks` 表、司機預約偏好）亦已於
+> 2026-10-07 落地。** 落地部分把訂單狀態機由 `IN_TRIP → COMPLETED`
 > 的死巷擴闊，加入 `DESTINATION_CHANGED`（非終態）與 `INTERRUPTED`（終態），以及兩步
 > 到達驗證、行程中改目的地、中斷、平台行程費與違約罰款。
 > **改動 `ORDER_TRANSITIONS` 前務必先讀** —— 狀態機有兩條由測試守住的不變式。涵蓋資料庫
