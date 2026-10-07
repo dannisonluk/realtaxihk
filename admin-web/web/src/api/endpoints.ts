@@ -34,6 +34,7 @@ import type {
   DisputeResolveResult,
   DisputeRow,
   DisputeStats,
+  DepositUnlockResult,
   DriverProfileDetail,
   DriverStatus,
   FleetDetail,
@@ -192,21 +193,33 @@ export const endpoints = {
      * platform correcting its own books.
      */
     adjustDeposit: (client: ApiClient, driverId: string, { amountHkd, reason, reference }: {
-      amountHkd: string;
-      reason: string;
-      reference?: string;
-    }) =>
-      client.post<AdjustResult>(
-        `/api/v1/admin/drivers/${encodeURIComponent(driverId)}/deposit/adjust`,
-        {
-          body: {
-            amount_hkd: String(amountHkd),
-            reason,
-            ...(reference ? { reference } : {}),
-          },
-        },
-      ),
-  },
+          amountHkd: string;
+          reason: string;
+          reference?: string;
+        }) =>
+          client.post<AdjustResult>(
+            `/api/v1/admin/drivers/${encodeURIComponent(driverId)}/deposit/adjust`,
+            {
+              body: {
+                amount_hkd: String(amountHkd),
+                reason,
+                ...(reference ? { reference } : {}),
+              },
+            },
+          ),
+        /**
+         * Explicit manual release for a driver whose arrears have been topped up.
+         *
+         * A top-up alone must not put an arrears driver back on the road; this
+         * endpoint is the operator's second, deliberate action. It refuses while
+         * the balance is still negative.
+         */
+        unlockDeposit: (client: ApiClient, driverId: string) =>
+          client.post<DepositUnlockResult>(
+            `/api/v1/admin/drivers/${encodeURIComponent(driverId)}/deposit/unlock`,
+            {},
+          ),
+      },
 
   /**
    * P-3: taxi driver licence review.

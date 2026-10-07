@@ -30,6 +30,7 @@ __all__ = [
     "AuditRowOut",
     "DepositAdjustOut",
     "DepositGrantOut",
+    "DepositUnlockOut",
     "DisputeMessageOut",
     "DisputeResolveOut",
     "DisputeStatsOut",
@@ -70,6 +71,8 @@ class AdminDepositDetailOut(AdminDepositOut):
 
     has_account: bool
     shortfall_hkd: str
+    acceptance_unlocked_at: str | None = None
+    acceptance_locked: bool = False
 
 
 class AdminLedgerRowOut(BaseModel):
@@ -228,6 +231,20 @@ class DepositAdjustOut(DepositGrantOut):
     """
 
     amount_hkd: str
+
+
+class DepositUnlockOut(BaseModel):
+    """`POST /admin/drivers/{id}/deposit/unlock` — the explicit release.
+
+    `acceptance_unlocked_at` is the operator's deliberate second action; it is
+    the only value that makes a non-arrears driver grabbable again after a
+    default.
+    """
+
+    id: str
+    balance_hkd: str
+    is_fulfilled: bool
+    acceptance_unlocked_at: str
 
 
 class AdminAccountOut(BaseModel):

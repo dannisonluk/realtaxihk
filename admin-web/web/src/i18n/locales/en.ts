@@ -1118,6 +1118,15 @@ export const en = {
     depositAccount: 'Deposit account',
     depositAccountYes: 'Created',
     depositAccountNo: 'Not created (never deposited)',
+    depositAcceptance: 'Acceptance release',
+    depositAcceptanceLocked: 'Locked - pending operator release',
+    depositAcceptanceReady: 'Ready',
+    depositUnlock: 'Release acceptance',
+    depositUnlockTitle: 'Release acceptance?',
+    depositUnlockConfirm: 'Release',
+    depositUnlockBody:
+      'Balance is sufficient. This is the explicit operator action that lets this driver accept trips again.',
+    depositUnlocked: 'Acceptance released. Balance {{balance}}',
     dialogPlate: 'Plate {{plate}}',
     dialogApproveNote:
       'After approval the status becomes “deposit required”; the driver starts taking trips once the deposit is met.',

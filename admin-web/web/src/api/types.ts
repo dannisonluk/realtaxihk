@@ -171,6 +171,13 @@ export interface DepositDetail {
   is_fulfilled: boolean;
   has_account: boolean;
   shortfall_hkd: string;
+  /** Set only after an operator manually releases a locked arrears driver. */
+  acceptance_unlocked_at: string | null;
+  /**
+   * `true` only for a driver with an unpaid balance on the road: top-up alone
+   * does not clear it. The operator must explicitly unlock acceptance.
+   */
+  acceptance_locked: boolean;
 }
 
 export interface LedgerEntry {
@@ -324,6 +331,14 @@ export interface AdjustResult {
   balance_hkd: string;
   is_fulfilled: boolean;
   reference: string | null;
+}
+
+/** `POST /admin/drivers/:id/deposit/unlock` — explicit manual release after arrears were topped up. */
+export interface DepositUnlockResult {
+  id: string;
+  balance_hkd: string;
+  is_fulfilled: boolean;
+  acceptance_unlocked_at: string;
 }
 
 /**

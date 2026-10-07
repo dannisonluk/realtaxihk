@@ -692,12 +692,15 @@ async def grab_order(
         .scalars()
         .first()
     )
-    if deposit is not None and (deposit.balance_hkd + deposit.held_hkd) < 0:
+    if deposit is not None and (
+        (deposit.balance_hkd + deposit.held_hkd) < 0 or deposit.acceptance_unlocked_at is None
+    ):
         raise HTTPException(
             status_code=423,
             detail={
                 "reason": "DEPOSIT_INSUFFICIENT",
                 "balance_hkd": money_str(deposit.balance_hkd),
+                "acceptance_locked": deposit.acceptance_unlocked_at is None,
             },
         )
 

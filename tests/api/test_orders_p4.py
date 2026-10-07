@@ -800,7 +800,8 @@ class TestDepositGate:
         oid = _create_order(client, passenger)["id"]
 
         client.exec_sql(
-            "UPDATE driver_deposits SET balance_hkd = -1 WHERE driver_profile_id = "
+            "UPDATE driver_deposits SET balance_hkd = -1, "
+            "acceptance_unlocked_at = NULL WHERE driver_profile_id = "
             "CAST(:d AS uuid)",
             {"d": driver["driver_id"]},
         )
@@ -813,6 +814,42 @@ class TestDepositGate:
             client.get("/api/v1/drivers/me", headers=_h(driver["token"])).json()["status"]
             == "ACTIVE"
         )
+
+    def test_topup_alone_does_not_restore_grab_and_admin_unlock_does(self, client):
+        """DECISION-3's second half: clearing arrears is not auto-unlock."""
+        passenger = client.activate("+85291600503")
+        driver = _mk_active_driver(client, "+85291600504")
+        oid = _create_order(client, passenger)["id"]
+
+        client.exec_sql(
+            "UPDATE driver_deposits SET balance_hkd = -1, "
+            "acceptance_unlocked_at = NULL WHERE driver_profile_id = "
+            "CAST(:d AS uuid)",
+            {"d": driver["driver_id"]},
+        )
+        r = client.post(f"/api/v1/orders/{oid}/grab", headers=_h(driver["token"]))
+        assert r.status_code == 423, r.text
+
+        # A grant clears the money but must NOT clear the lock.
+        r = client.post(
+            f"/api/v1/admin/drivers/{driver['driver_id']}/deposit/grant",
+            headers=client.admin_headers(),
+            json={"amount_hkd": "1.00"},
+        )
+        assert r.status_code == 200, r.text
+        r = client.post(f"/api/v1/orders/{oid}/grab", headers=_h(driver["token"]))
+        assert r.status_code == 423, r.text
+        assert r.json()["details"]["acceptance_locked"] is True
+
+        # The explicit operator action is what returns the driver to the road.
+        r = client.post(
+            f"/api/v1/admin/drivers/{driver['driver_id']}/deposit/unlock",
+            headers=client.admin_headers(),
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["acceptance_unlocked_at"]
+        r = client.post(f"/api/v1/orders/{oid}/grab", headers=_h(driver["token"]))
+        assert r.status_code == 200, r.text
 
     def test_arrears_do_not_block_finishing_a_trip_already_under_way(self, client):
         """The gate is on *new* business only.

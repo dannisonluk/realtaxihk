@@ -36,6 +36,7 @@ export function DriverDetailPage() {
   const labels = useLabels();
   const reviewDialog = useFormDialog();
   const grantDialog = useFormDialog();
+  const unlockDialog = useFormDialog();
 
   const { data, error, loading, reload } = useLoad(
     () => endpoints.drivers.detail(client, driverId),
@@ -94,6 +95,19 @@ export function DriverDetailPage() {
             ? t('driverDetail.depositedMet', { balance: result.balance_hkd })
             : t('driverDetail.deposited', { balance: result.balance_hkd }),
         );
+        void reloadAll();
+      },
+    });
+  }
+
+  function unlock(driver: DriverProfileDetail) {
+    unlockDialog.open({
+      title: t('driverDetail.depositUnlockTitle'),
+      confirmLabel: t('driverDetail.depositUnlockConfirm'),
+      body: <p className="dim" style={{ margin: 0 }}>{t('driverDetail.depositUnlockBody')}</p>,
+      onSubmit: async () => {
+        const result = await endpoints.drivers.unlockDeposit(client, driver.id);
+        notify(t('driverDetail.depositUnlocked', { balance: result.balance_hkd }));
         void reloadAll();
       },
     });
@@ -170,7 +184,7 @@ export function DriverDetailPage() {
 
       {/* ----------------------------------------------------------- deposit */}
       <h2>{t('driverDetail.depositTitle')}</h2>
-      <DepositSection driver={driver} />
+      <DepositSection driver={driver} onUnlock={unlock} />
 
       {/* ------------------------------------------------------------- fleet */}
       <h2>{t('driverDetail.fleetTitle')}</h2>
@@ -292,6 +306,7 @@ export function DriverDetailPage() {
 
       {reviewDialog.element}
       {grantDialog.element}
+      {unlockDialog.element}
     </div>
   );
 }
@@ -387,13 +402,20 @@ function DriverActions({
   return <>{buttons}</>;
 }
 
-function DepositSection({ driver }: { driver: DriverProfileDetail }) {
+function DepositSection({
+  driver,
+  onUnlock,
+}: {
+  driver: DriverProfileDetail;
+  onUnlock: (driver: DriverProfileDetail) => void;
+}) {
   const { t } = useI18n();
   const deposit = driver.deposit;
   const required = Number(deposit?.required_hkd ?? 0);
   const balance = Number(deposit?.balance_hkd ?? 0);
   const progress = required > 0 ? Math.min(100, Math.max(0, Math.round((balance / required) * 100))) : 0;
   const fulfilled = deposit?.is_fulfilled ?? false;
+  const locked = deposit?.acceptance_locked ?? false;
 
   return (
     <Card className="card--pad">
@@ -418,6 +440,23 @@ function DepositSection({ driver }: { driver: DriverProfileDetail }) {
         </DetailRow>
         <DetailRow label={t('driverDetail.depositAccount')}>
           {deposit?.has_account ? t('driverDetail.depositAccountYes') : <span className="dim">{t('driverDetail.depositAccountNo')}</span>}
+        </DetailRow>
+        <DetailRow label={t('driverDetail.depositAcceptance')}>
+          {locked ? (
+            <span className="danger">{t('driverDetail.depositAcceptanceLocked')}</span>
+          ) : (
+            <Chip tone="ok">{t('driverDetail.depositAcceptanceReady')}</Chip>
+          )}
+          {locked && fulfilled ? (
+            <button
+              type="button"
+              className="btn btn--primary"
+              style={{ marginLeft: 12 }}
+              onClick={() => onUnlock(driver)}
+            >
+              {t('driverDetail.depositUnlock')}
+            </button>
+          ) : null}
         </DetailRow>
       </Rows>
       <div className="meter" style={{ marginTop: 14 }}>

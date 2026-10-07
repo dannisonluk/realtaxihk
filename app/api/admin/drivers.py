@@ -19,6 +19,7 @@ from app.api.admin._shared import _ledger_out, _refund_out
 from app.api.schemas import (
     DepositAdjustOut,
     DepositGrantOut,
+    DepositUnlockOut,
     DriverDetailOut,
     DriverPageOut,
     DriverReviewOut,
@@ -41,6 +42,7 @@ from app.models import (
 from app.services.admin.audit_service import (
     EV_DEPOSIT_ADJUST,
     EV_DEPOSIT_GRANT,
+    EV_DEPOSIT_UNLOCK,
     EV_KYC_DECISION,
     record_audit,
 )
@@ -198,6 +200,12 @@ def _deposit_detail_out(dep: DriverDeposit | None) -> dict:
         "is_fulfilled": dep.is_fulfilled if dep is not None else False,
         "has_account": dep is not None,
         "shortfall_hkd": money_str(max(required - balance, Decimal(0))),
+        "acceptance_unlocked_at": (
+            dep.acceptance_unlocked_at.isoformat()
+            if dep is not None and dep.acceptance_unlocked_at is not None
+            else None
+        ),
+        "acceptance_locked": dep is not None and dep.acceptance_unlocked_at is None,
     }
 
 
@@ -476,4 +484,71 @@ async def adjust_deposit(
         "balance_hkd": money_str(Decimal(entry.balance_after_hkd)),
         "is_fulfilled": deposit.is_fulfilled,
         "reference": entry.reference,
+    }
+
+
+@router.post("/drivers/{driver_id}/deposit/unlock", response_model=DepositUnlockOut)
+async def unlock_deposit(
+    driver_id: str,
+    request: Request,
+    admin: Principal = Depends(_require_finance),
+    session: AsyncSession = Depends(get_session),
+):
+    """Manually release a driver whose arrears have been topped up.
+
+    DECISION-3 has two halves: a negative balance blocks grab (already
+    enforced), and the second half is that clearing the balance must not be
+    enough on its own. `LedgerService.append` sets `acceptance_unlocked_at =
+    NULL` when the balance enters arrears; a later grant/adjustment restores
+    the balance but leaves the flag NULL. This endpoint is the operator's
+    explicit second action.
+
+    Refuses while the balance is still negative: unlocking alone would not
+    make the driver grabbable, and recording a release that does nothing is
+    worse than no record.
+    """
+    dp = await session.get(DriverProfile, driver_id)
+    if dp is None:
+        raise HTTPException(status_code=404, detail="driver not found")
+    deposit = (
+        (
+            await session.execute(
+                select(DriverDeposit).where(DriverDeposit.driver_profile_id == dp.id)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if deposit is None:
+        raise HTTPException(
+            status_code=409,
+            detail={"reason": "DEPOSIT_NOT_LOCKED"},
+        )
+    if (deposit.balance_hkd + deposit.held_hkd) < 0:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "reason": "ARREARS_OUTSTANDING",
+                "balance_hkd": money_str(deposit.balance_hkd),
+            },
+        )
+
+    deposit.acceptance_unlocked_at = datetime.now(UTC)
+    await record_audit(
+        session,
+        event=EV_DEPOSIT_UNLOCK,
+        actor_id=admin.id,
+        detail=f"unlock acceptance for driver {dp.id}",
+        request=request,
+        payload={
+            "driver_profile_id": str(dp.id),
+            "balance_hkd": money_str(deposit.balance_hkd),
+        },
+    )
+    await session.flush()
+    return {
+        "id": str(dp.id),
+        "balance_hkd": money_str(deposit.balance_hkd),
+        "is_fulfilled": deposit.is_fulfilled,
+        "acceptance_unlocked_at": deposit.acceptance_unlocked_at.isoformat(),
     }

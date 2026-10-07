@@ -214,6 +214,12 @@ class LedgerService:
         balance_after = deposit.balance_hkd + amount
         # Negative balances are allowed (arrears): a penalty may exceed the
         # remaining deposit; the driver owes the platform until topped up.
+        #
+        # DECISION-3: entering arrears locks acceptance. The lock is not cleared
+        # automatically by a later top-up; it is the admin's explicit
+        # `acceptance_unlocked_at` action that returns the driver to the road.
+        if balance_after < 0:
+            deposit.acceptance_unlocked_at = None
 
         deposit.balance_hkd = balance_after
         deposit.is_fulfilled = balance_after >= deposit.required_hkd

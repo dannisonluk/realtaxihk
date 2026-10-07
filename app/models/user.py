@@ -480,6 +480,15 @@ class DriverDeposit(Base):
     held_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)  # locked pending refund
     required_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=500)
     is_fulfilled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # DECISION-3: NULL means the driver is deliberately locked out of accepting
+    # trips; a non-NULL timestamp is the operator's explicit release after a
+    # negative balance has been topped up. New rows default to now, so an ACTIVE
+    # driver who has never defaulted is not accidentally locked.
+    acceptance_unlocked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        server_default=func.now(),
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
