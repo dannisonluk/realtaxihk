@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../models/auth.dart';
+import '../network/api_exception.dart';
 
 /// Where the session lives between launches.
 ///
@@ -83,6 +84,11 @@ class SecureTokenStore implements TokenStore {
         refreshToken: refresh,
         user: AppUser.fromJson(userJson),
       );
+    } on MalformedResponseException {
+      // The cached user no longer matches the decoders. A corrupted cache is
+      // not worth surfacing — sign in again.
+      await clear();
+      return null;
     } on FormatException {
       // A corrupted cache is not worth surfacing — sign in again.
       await clear();
