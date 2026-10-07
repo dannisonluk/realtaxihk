@@ -30,7 +30,7 @@
 - **現時狀態**（2026-10-07 重新量測）：
   > ✅ **後端 `pytest` 全套一次過實跑全綠**（Docker Desktop 開住、`realtaxi-db` ＋
   > `realtaxi-redis` 兩隻 container 都 healthy）：
-  > `pytest tests -q --junit-xml=.tmp/final4.xml` = **1285 passed / 0 failed / 0 error /
+  > `pytest tests -q --junit-xml=.tmp/final4.xml` = **1292 passed / 0 failed / 0 error /
   > 0 skipped**（2026-10-07）。先前「一次過跑會中途中止、唔敢宣稱 full-suite 全綠」
   > 嘅情況**已經消失** —— 現在單一 process 順序跑就穩定全綠。
   > ```
@@ -74,7 +74,7 @@
 
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **115 paths / 129 operations，全部有 `response_model`** · 141 檔 / 28,933 LOC · pytest 全套 **1285 / 0**（2026-10-07 單一 process 實跑） |
+| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **115 paths / 129 operations，全部有 `response_model`** · 141 檔 / 28,933 LOC · pytest 全套 **1292 / 0**（2026-10-08 單一 process 實跑） |
 | Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**34 個畫面**，三角色）；品牌資產由 `tool/gen_branding_assets.py` 由 `branding/source/` 的原圖產生 | ✅ 161 tests · fixture contract OK · APK debug 已成功 build（2026-10-07，~183 MB） |
 | Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/legacy/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **96 vitest passed（14 檔）** · `tsc --noEmit` **exit 0** |
 
@@ -101,7 +101,7 @@ uv run mypy                                            # types; no DB needed（�
 # tests/ 或 scripts/ 時，需要臨時 pyrightconfig.json：
 #   {"venvPath":".","venv":".venv","pythonVersion":"3.12"}   ← 用完即刪，不要入 repo
 npx --yes pyright@1.1.408 app/ scripts/ tests/         # 現為 0 errors
-uv run python -m pytest -q --junit-xml=.tmp/final4.xml            # 全套 2026-10-07 實跑：1285 passed / 0 failed（需 Docker，見 §0）
+uv run python -m pytest -q --junit-xml=.tmp/final4.xml            # 全套 2026-10-08 實跑：1292 passed / 0 failed（需 Docker，見 §0）
 uv run python scripts/verify/audit_response_models.py  # 81 塊 fixture vs response_model，0 遺失
 cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run --no-file-parallelism --pool=forks
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
@@ -344,7 +344,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 
 ```
 ✅ 後端 115 paths / 129 ops / ruff+mypy 0 / 25 migrations 單一 head — 代碼層生產就緒
-   ✅ pytest 全套 1285/0/0（2026-10-07 單一 process 實跑）· 見 §0
+   ✅ pytest 全套 1292/0/0（2026-10-08 單一 process 實跑）· 見 §0
 ✅ 登入改為 email + 密碼；電話只解鎖 call車（`PHONE_NOT_VERIFIED`）；鎖定回 401
 ✅ auth 三面 rate limit + Cloudflare Turnstile（prod 缺密鑰拒啟動）+ 受限審查者帳號
 ✅ App 已接新登入流程：三個入口分開、電話只解鎖 call車、四條 Turnstile 門都帶 token
