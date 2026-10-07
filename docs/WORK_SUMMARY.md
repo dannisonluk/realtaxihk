@@ -325,7 +325,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 ## 8. 一頁看完
 
 ```
-✅ 後端 115 paths / 129 ops / ruff+mypy 0 / 22 migrations 單一 head — 代碼層生產就緒
+✅ 後端 115 paths / 129 ops / ruff+mypy 0 / 24 migrations 單一 head — 代碼層生產就緒
    ✅ pytest 全套 1283/0/0（2026-10-07 單一 process 實跑）· 見 §0
 ✅ 登入改為 email + 密碼；電話只解鎖 call車（`PHONE_NOT_VERIFIED`）；鎖定回 401
 ✅ auth 三面 rate limit + Cloudflare Turnstile（prod 缺密鑰拒啟動）+ 受限審查者帳號

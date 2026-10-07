@@ -61,7 +61,7 @@ carries the passenger.
 
 Plus the glue that keeps them honest: `scripts/` (24 tools), `tests/` (61 files),
 `docs/` (14 living documents + `docs/archive/` for dated snapshots),
-`alembic/` (22 migrations), `deploy/`.
+`alembic/` (24 migrations), `deploy/`.
 
 ### 1.3 How they fit together
 
