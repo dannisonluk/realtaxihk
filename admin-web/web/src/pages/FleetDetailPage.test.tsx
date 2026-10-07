@@ -181,8 +181,9 @@ describe('the fleet settlement lever', () => {
 
     // The confirm step is an in-app modal whose button carries the danger tone
     // (the roster is empty, so this button can only be the modal's), and the
-    // native dialog was not used.
-    expect(container.querySelector('.btn--danger')).toBeTruthy();
+    // native dialog was not used. The modal renders through a portal, so it is
+    // a sibling of the page container, not a child of it.
+    expect(document.querySelector('.btn--danger')).toBeTruthy();
     expect(confirmSpy).not.toHaveBeenCalled();
   });
 
@@ -204,7 +205,7 @@ describe('the fleet settlement lever', () => {
     // Opening the modal must not have run anything yet.
     expect(runs).toBe(0);
 
-    const confirmButton = container.querySelector('.btn--danger');
+    const confirmButton = document.querySelector('.btn--danger');
     expect(confirmButton).toBeTruthy();
 
     await act(async () => {
@@ -233,17 +234,17 @@ describe('the fleet settlement lever', () => {
 
     // Focus moved into the dialog, or a screen reader keeps announcing the page
     // behind it.
-    const modal = container.querySelector('.modal');
+    const modal = document.querySelector('.modal');
     expect(modal).toBeTruthy();
     expect(modal?.contains(document.activeElement)).toBe(true);
 
-    const cancel = findButton(container, text('common.cancel'));
+    const cancel = findButton(document.body, text('common.cancel'));
     await act(async () => {
       cancel?.click();
       await new Promise((r) => setTimeout(r, 10));
     });
 
-    expect(container.querySelector('.modal')).toBeNull();
+    expect(document.querySelector('.modal')).toBeNull();
     // Without the restore this would be `<body>`, and the next Tab would start
     // from the top of the page instead of from the lever.
     expect(document.activeElement).toBe(lever);
@@ -263,16 +264,16 @@ describe('the fleet settlement lever', () => {
       findButton(container, text('fleetDetail.runNow'))?.click();
       await new Promise((r) => setTimeout(r, 10));
     });
-    expect(container.querySelector('.modal')).toBeTruthy();
+    expect(document.querySelector('.modal')).toBeTruthy();
 
     await act(async () => {
-      container
+      document
         .querySelector('.modal')
         ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await new Promise((r) => setTimeout(r, 10));
     });
 
-    expect(container.querySelector('.modal')).toBeNull();
+    expect(document.querySelector('.modal')).toBeNull();
     expect(runs).toBe(0);
   });
 
@@ -295,13 +296,13 @@ describe('the fleet settlement lever', () => {
     // inside the dialog and ends on the backdrop must not (that is a drag, not a
     // dismissal), which is why the handler compares target and currentTarget.
     await act(async () => {
-      container
+      document
         .querySelector('.modal-backdrop')
         ?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
       await new Promise((r) => setTimeout(r, 10));
     });
 
-    expect(container.querySelector('.modal')).toBeNull();
+    expect(document.querySelector('.modal')).toBeNull();
     expect(runs).toBe(0);
   });
 
@@ -318,7 +319,7 @@ describe('the fleet settlement lever', () => {
     });
 
     await act(async () => {
-      (container.querySelector('.btn--danger') as HTMLButtonElement).click();
+      (document.querySelector('.btn--danger') as HTMLButtonElement).click();
       await new Promise((r) => setTimeout(r, 20));
     });
     // The failure path settles `setRunning(false)` in a `finally` after the
@@ -331,7 +332,7 @@ describe('the fleet settlement lever', () => {
     // The modal closes even on failure — deliberately: the roster and history
     // above the lever are still valid, and the operator should be able to read
     // them while deciding what to do. The server's own sentence is what shows.
-    expect(container.querySelector('.modal')).toBeNull();
+    expect(document.querySelector('.modal')).toBeNull();
     expect(container.querySelector('.message--error')?.textContent).toContain(
       'this week is already settled',
     );

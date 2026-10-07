@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n';
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
@@ -165,14 +166,30 @@ export function Modal({
       ).filter((el) => el.offsetParent !== null || el === document.activeElement);
     const first = focusable()[0];
     (first ?? box).focus();
+    const appRoot = document.getElementById('root');
+    const previousInert = appRoot?.getAttribute('inert') ?? null;
+    const previousAriaHidden = appRoot?.getAttribute('aria-hidden') ?? null;
+    appRoot?.setAttribute('inert', '');
+    appRoot?.setAttribute('aria-hidden', 'true');
+
     return () => {
       // `isConnected` because the opener is often a row's button, and acting on
       // a row usually re-renders the list away from under it.
       if (opener?.isConnected) opener.focus();
+      if (previousInert === null) {
+        appRoot?.removeAttribute('inert');
+      } else {
+        appRoot?.setAttribute('inert', previousInert);
+      }
+      if (previousAriaHidden === null) {
+        appRoot?.removeAttribute('aria-hidden');
+      } else {
+        appRoot?.setAttribute('aria-hidden', previousAriaHidden);
+      }
     };
   }, []);
 
-  return (
+  return createPortal(
     <div
       className="modal-backdrop"
       onMouseDown={(event) => {
@@ -217,7 +234,8 @@ export function Modal({
         <div className="modal__body">{children}</div>
         <div className="modal__actions">{footer}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
