@@ -119,7 +119,7 @@
 | 後端 `app/` | 141 個 `.py` · 28,933 LOC | `find app -name "*.py" \| wc -l` |
 | API surface | **115 paths / 129 operations** | `create_app().openapi()['paths']` |
 | response_model 覆蓋 | 119 exported／114 reachable；129 operations 全有 `response_model`；81 個 fixture block 全過 | `scripts/verify/audit_response_models.py` |
-| Alembic | **22** migrations · 單一 head `e6f7c3d9e5a9` | `alembic heads` / `ls alembic/versions/*.py` |
+| Alembic | **24** migrations · 單一 head `e6f7c3d9e5a9` | `alembic heads` / `ls alembic/versions/*.py` |
 | `tests/` | 60 個 `.py`（所有檔皆含 `def test_` · 1,060 個 `def test_`） | `grep -rho "def test_[a-zA-Z_0-9]*" tests/ \| wc -l` |
 | 後端 pytest | **全套 1285 passed / 0 failed / 0 error**（2026-10-07 單一 process 實跑，12m45s） | `uv run python -m pytest -q` |
 | `mobile/lib` | 93 個 `.dart` · 19,481 LOC · **34** 個 `*_screen.dart` | `find mobile/lib -name "*.dart"` |
