@@ -37,6 +37,7 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[]): Loadable<T>
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
   const [nonce, setNonce] = useState(0);
+  const busyRef = useRef(false);
 
   // Keep the latest loader without making it a dependency: callers pass an
   // inline arrow, so including it would re-run on every render.
@@ -45,6 +46,7 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[]): Loadable<T>
 
   useEffect(() => {
     let cancelled = false;
+    busyRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -57,6 +59,7 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[]): Loadable<T>
         if (cancelled) return;
         setError(normaliseError(cause));
       } finally {
+        if (!cancelled) busyRef.current = false;
         if (!cancelled) setLoading(false);
       }
     })();
@@ -67,7 +70,10 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[]): Loadable<T>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, nonce]);
 
-  const reload = useCallback(() => setNonce((n) => n + 1), []);
+  const reload = useCallback(() => {
+    if (busyRef.current) return;
+    setNonce((n) => n + 1);
+  }, []);
 
   return { data, error, loading, reload };
 }
