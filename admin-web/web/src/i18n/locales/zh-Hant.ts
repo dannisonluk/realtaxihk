@@ -361,6 +361,8 @@ export const zhHant = {
     recoveryCodesNote: '每組只能使用一次，遺失後無法再查看。此畫面關閉後將不再顯示。',
     recoverySaved: '我已保存上述備用碼。',
     enrolCode: '輸入驗證器顯示的 6 位驗證碼',
+    reissueSetup: '遺失設定 QR？重新取得',
+    reissuing: '重新取得中…',
     enrolSubmit: '啟用雙重驗證並登入',
     enrolling: '啟用中…',
     noApp: '沒有驗證器應用程式？',

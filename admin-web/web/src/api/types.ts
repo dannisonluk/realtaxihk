@@ -86,6 +86,11 @@ export interface AdminLoginResult {
   enrolment?: AdminEnrolment;
 }
 
+/** `POST /api/v1/admin/auth/totp/enrol` - same shape, but material is mandatory. */
+export type AdminEnrolmentReissue = Omit<AdminLoginResult, 'enrolment'> & {
+  enrolment: AdminEnrolment;
+};
+
 export interface AdminEnrolment {
   /** Base32, for manual entry when the QR cannot be scanned. */
   secret: string;

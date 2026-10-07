@@ -26,7 +26,7 @@ import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { endpoints } from '../api/endpoints';
 import { session } from '../api/session';
-import type { AdminEnrolment, AdminLoginResult } from '../api/types';
+import type { AdminEnrolment, AdminEnrolmentReissue, AdminLoginResult } from '../api/types';
 import { useApp } from '../app/AppContext';
 import { Message } from '../components/primitives';
 import { useI18n } from '../i18n';
@@ -99,6 +99,30 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
     }
   }
 
+  async function reissueEnrolment() {
+    setError(null);
+    if (username.trim().length === 0 || password.length === 0) {
+      setError(t('login.errCredentials'));
+      return;
+    }
+    setBusy(true);
+    try {
+      const body: AdminEnrolmentReissue = await endpoints.auth.adminReissueEnrolment(
+        client,
+        username.trim(),
+        password,
+      );
+      setChallenge(body.challenge_token);
+      setEnrolment(body.enrolment);
+      // Same rule as `/login`: the password must not outlive its one job.
+      setPassword('');
+      setStep('enrol');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t('login.errSignIn'));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function submitTotp() {
     setError(null);
     const value = code.trim();
@@ -231,6 +255,14 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
               onClick={() => void submitCredentials()}
             >
               {busy ? t('login.signingIn') : t('login.next')}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={() => void reissueEnrolment()}
+            >
+              {busy ? t('login.reissuing') : t('login.reissueSetup')}
             </button>
           </div>
         ) : null}

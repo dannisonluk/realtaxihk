@@ -235,6 +235,35 @@ describe('the admin sign-in screen', () => {
     expect(calls.some((c) => c.url.includes('/totp/verify'))).toBe(false);
   });
 
+  it('re-issues enrolment material when the first-login response was lost', async () => {
+    const calls = stubTransport(ENROLMENT);
+    await render(root);
+
+    const user = container.querySelector('#login-username') as HTMLInputElement;
+    const pass = container.querySelector('#login-password') as HTMLInputElement;
+    const reissue = [...container.querySelectorAll('button')].find((b) =>
+      (b.textContent ?? '').includes(text('login.reissueSetup')),
+    );
+    await act(async () => {
+      setNativeValue(user, 'ops-admin');
+      setNativeValue(pass, 'correct horse battery staple');
+    });
+    await act(async () => {
+      reissue?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    const enrol = calls.find((c) => c.url.includes('/api/v1/admin/auth/totp/enrol'));
+    expect(enrol).toBeTruthy();
+    expect(enrol?.body).toEqual({
+      username: 'ops-admin',
+      password: 'correct horse battery staple',
+    });
+    expect(container.querySelector('[data-testid="totp-qr"]')).toBeTruthy();
+    expect(container.querySelector('#login-code')).toBeNull();
+  });
   it('shows the code step, not the enrolment step, for an enrolled admin', async () => {
     stubTransport(TOTP_ONLY);
     await render(root);

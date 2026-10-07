@@ -355,6 +355,8 @@ export const en = {
       'Each can be used once and cannot be viewed again after leaving this screen.',
     recoverySaved: 'I have saved these recovery codes.',
     enrolCode: 'Enter the 6-digit code from your authenticator',
+    reissueSetup: 'Setup QR lost? Re-issue it',
+    reissuing: 'Re-issuing setup…',
     enrolSubmit: 'Enable two-factor and sign in',
     enrolling: 'Enabling…',
     noApp: 'No authenticator app?',

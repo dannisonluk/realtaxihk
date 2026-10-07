@@ -15,6 +15,7 @@ import type {
   AdminAccountPage,
   AdminActiveChange,
   AdminDriverRow,
+  AdminEnrolmentReissue,
   AdminIdentity,
   AdminLiveDrivers,
   AdminLoginResult,
@@ -72,6 +73,16 @@ export const endpoints = {
      */
     adminLogin: (client: ApiClient, username: string, password: string) =>
       client.post<AdminLoginResult>('/api/v1/admin/auth/login', {
+        body: { username, password },
+        authenticated: false,
+      }),
+    /**
+     * Re-issue the first-login TOTP material when the `/login` response was
+     * lost. The password is required again; an account that has already
+     * completed setup gets a 409 instead.
+     */
+    adminReissueEnrolment: (client: ApiClient, username: string, password: string) =>
+      client.post<AdminEnrolmentReissue>('/api/v1/admin/auth/totp/enrol', {
         body: { username, password },
         authenticated: false,
       }),
