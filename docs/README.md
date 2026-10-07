@@ -1,11 +1,11 @@
 # `docs/` — 文檔索引
 
-> **EN — Docs index.** Thirteen living documents plus an `archive/` of dated
+> **EN — Docs index.** Fourteen living documents plus an `archive/` of dated
 > snapshots. Start with `ARCHITECTURE.md` if you want to understand the system,
 > `DEVELOPMENT.md` if you are about to change it, and `WORK_SUMMARY.md` if you
 > need to know what is still outstanding.
 >
-> **中文摘要**：13 份現行文檔 + 一個放歷史快照的 `archive/`。要**理解系統**讀
+> **中文摘要**：14 份現行文檔 + 一個放歷史快照的 `archive/`。要**理解系統**讀
 > `ARCHITECTURE.md`；要**動手改**讀 `DEVELOPMENT.md`；要知道**還欠什麼**讀
 > `WORK_SUMMARY.md`。
 
@@ -120,19 +120,19 @@
 | API surface | **115 paths / 129 operations** | `create_app().openapi()['paths']` |
 | response_model 覆蓋 | 119 exported／114 reachable；129 operations 全有 `response_model`；81 個 fixture block 全過 | `scripts/verify/audit_response_models.py` |
 | Alembic | **22** migrations · 單一 head `e6f7c3d9e5a9` | `alembic heads` / `ls alembic/versions/*.py` |
-| `tests/` | 60 個 `.py`（所有檔皆含 `def test_` · 1,056 個 `def test_`） | `grep -rho "def test_[a-zA-Z_0-9]*" tests/ \| wc -l` |
-| 後端 pytest | **全套 1279 passed / 0 failed / 0 error**（2026-10-07 單一 process 實跑，996s） | `uv run python -m pytest -q` |
-| `mobile/lib` | 93 個 `.dart` · 19,476 LOC · **34** 個 `*_screen.dart` | `find mobile/lib -name "*.dart"` |
-| Dart harness | **160 passed / 0 failed** | `dart … tool/run_tests.dart` |
+| `tests/` | 60 個 `.py`（所有檔皆含 `def test_` · 1,060 個 `def test_`） | `grep -rho "def test_[a-zA-Z_0-9]*" tests/ \| wc -l` |
+| 後端 pytest | **全套 1283 passed / 0 failed / 0 error**（2026-10-07 單一 process 實跑，12m45s） | `uv run python -m pytest -q` |
+| `mobile/lib` | 93 個 `.dart` · 19,481 LOC · **34** 個 `*_screen.dart` | `find mobile/lib -name "*.dart"` |
+| Dart harness | **161 passed / 0 failed** | `dart … tool/run_tests.dart` |
 | Dart LSP check | **95 files opened / 0 diagnostics** | `python mobile/tool/dart_check.py mobile` |
 | Contract | 65 個 fixture json；harness 解到 **64** 個 · 0 failure | `dart … tool/verify_contract.dart` |
-| `admin-web/web/src` | 50 個 `.ts/.tsx`（含 12 個 test 檔；非 test 38 個 · 17,709 LOC）· 18 個頁面 | `find admin-web/web/src -name "*.ts*" \| wc -l` |
-| 後台 vitest | **88 passed（12 檔）** | `npx vitest run --no-file-parallelism --pool=forks` |
-| `scripts/` | 24 個 `.py` · 6,520 LOC | `find scripts -name "*.py"` |
+| `admin-web/web/src` | 52 個 `.ts/.tsx`（含 14 個 test 檔；非 test 38 個 · 18,067 LOC）· 18 個頁面 | `find admin-web/web/src -name "*.ts*" \| wc -l` |
+| 後台 vitest | **93 passed（14 檔）** | `npx vitest run --no-file-parallelism --pool=forks` |
+| `scripts/` | 24 個 `.py` · 6,521 LOC | `find scripts -name "*.py"` |
 
 > ✅ **後端測試 2026-10-07 全套一次過實跑全綠**（Docker Desktop 開住、`realtaxi-db` ＋
 > `realtaxi-redis` healthy）：`uv run python -m pytest -q` =
-> **1279 passed / 0 failed / 0 error / 0 skipped**（16m36s）。單一 process 順序跑穩定；
+> **1283 passed / 0 failed / 0 error / 0 skipped**（12m45s）。單一 process 順序跑穩定；
 > 先前「一次過跑會中途中止」的情況已消失。
 > ⚠️ 並行跑兩隻 pytest 仍不建議（爭同一 DB/Redis 資源）。**GEO index 已納入
 > `REDIS_KEY_NAMESPACE`**（`app/services/order/geo_service.py::geo_orders_key`），

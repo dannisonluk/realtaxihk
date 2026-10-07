@@ -46,7 +46,7 @@
   - **實跑得到**：`ruff check .` **All checks passed!**（全樹）· `ruff format --check .`
     **238 files already formatted** · `mypy app` **141 files / 0 errors** · `compileall app` rc=0 ·
     console `tsc --noEmit` **exit 0（乾淨）** · console vitest **93 passed（14 檔）** ·
-    Dart harness **160 passed / 0 failed** · `dart_check.py` **95 files / 0 diagnostics** ·
+    Dart harness **161 passed / 0 failed** · `dart_check.py` **95 files / 0 diagnostics** ·
     contract **64 fixtures decoded, 0 failure**（共 65 個 fixture json）·
     `audit_response_models.py` **OK（81 fixture blocks / 129 operations 全有 `response_model`）** ·
     API **115 paths / 129 operations** · `alembic heads` **單一 head `e6f7c3d9e5a9`**（22 個 migration）。
@@ -74,8 +74,8 @@
 
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **115 paths / 129 operations，全部有 `response_model`** · 141 檔 / 28,805 LOC · pytest 全套 **1279 / 0**（2026-10-07 單一 process 實跑） |
-| Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**34 個畫面**，三角色）；品牌資產由 `tool/gen_branding_assets.py` 由 `branding/source/` 的原圖產生 | ✅ 160 tests · fixture contract OK · APK debug 已成功 build（2026-10-07，~183 MB） |
+| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **115 paths / 129 operations，全部有 `response_model`** · 141 檔 / 28,933 LOC · pytest 全套 **1283 / 0**（2026-10-07 單一 process 實跑） |
+| Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**34 個畫面**，三角色）；品牌資產由 `tool/gen_branding_assets.py` 由 `branding/source/` 的原圖產生 | ✅ 161 tests · fixture contract OK · APK debug 已成功 build（2026-10-07，~183 MB） |
 | Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/legacy/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **93 vitest passed（14 檔）** · `tsc --noEmit` **exit 0** |
 
 一個 repo、三件完整交付物。定位：**Cap. 374D 合規的士資訊中介**（非的士營運商）。
@@ -101,7 +101,7 @@ uv run mypy                                            # types; no DB needed（�
 # tests/ 或 scripts/ 時，需要臨時 pyrightconfig.json：
 #   {"venvPath":".","venv":".venv","pythonVersion":"3.12"}   ← 用完即刪，不要入 repo
 npx --yes pyright@1.1.408 app/ scripts/ tests/         # 現為 0 errors
-uv run python -m pytest -q --junit-xml=.tmp/final4.xml            # 全套 2026-10-07 實跑：1279 passed / 0 failed（需 Docker，見 §0）
+uv run python -m pytest -q --junit-xml=.tmp/final4.xml            # 全套 2026-10-07 實跑：1283 passed / 0 failed（需 Docker，見 §0）
 uv run python scripts/verify/audit_response_models.py  # 81 塊 fixture vs response_model，0 遺失
 cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run --no-file-parallelism --pool=forks
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
@@ -321,7 +321,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 
 ```
 ✅ 後端 115 paths / 129 ops / ruff+mypy 0 / 22 migrations 單一 head — 代碼層生產就緒
-   ✅ pytest 全套 1279/0/0（2026-10-07 單一 process 實跑）· 見 §0
+   ✅ pytest 全套 1283/0/0（2026-10-07 單一 process 實跑）· 見 §0
 ✅ 登入改為 email + 密碼；電話只解鎖 call車（`PHONE_NOT_VERIFIED`）；鎖定回 401
 ✅ auth 三面 rate limit + Cloudflare Turnstile（prod 缺密鑰拒啟動）+ 受限審查者帳號
 ✅ App 已接新登入流程：三個入口分開、電話只解鎖 call車、四條 Turnstile 門都帶 token

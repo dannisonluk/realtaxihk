@@ -291,7 +291,7 @@ epsilon 內縮。
    CSRF double-submit；`/admin/auth/refresh` 與 `/admin/auth/logout` 已通）。
    詳見上文 SEV-1 條目與 `tests/api/test_admin_session_cookie.py`。
 2. ✅ **修 SEV-2 —— 已完成**（型別化 exception；locked 維持 401，見上文說明）。
-3. ✅ **`ruff format` 全樹套用 —— 已完成**（109 files already formatted；CI 已加
+3. ✅ **`ruff format` 全樹套用 —— 已完成**（238 files already formatted；CI 已加
    `ruff format --check` gate 防復發）。
 
 ### 短期
