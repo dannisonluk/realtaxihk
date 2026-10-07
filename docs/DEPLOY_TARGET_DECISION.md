@@ -24,8 +24,8 @@
 > **決定記錄（2026-10-02）**：採用**選項 A**（單台 VPS + 現有
 > `docker-compose.yml`）。反向代理由本文建議的 Caddy 改為 **nginx** —— 兩者都能
 > 勝任，選擇 nginx 是基於普遍性與可調性，代價是憑證續期要自己接 certbot。
-> 產物見 `deploy/nginx/hkfastdc.conf` 與 `deploy/README.md`。
-> 尚未完成的是 `docker-compose.prod.yml`（需先確認 VPS 與主機名）。
+> 產物見 `deploy/nginx/hkfastdc.conf` 與 `deploy/README.md`；正式 overlay
+> `docker-compose.prod.yml` 已存在，見 [`docs/PRODUCTION_RUNBOOK.md`](PRODUCTION_RUNBOOK.md)。
 
 > **為什麼這份文件存在**：`docs/WORK_SUMMARY.md` §5b 指出，「未定部署目標」
 > 表面看是 7 項等 credentials，實際 5 項都是它的下游 —— 備份去邊儲、TLS 在哪
