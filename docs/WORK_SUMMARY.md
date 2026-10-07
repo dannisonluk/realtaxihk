@@ -157,7 +157,7 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
 
 | 缺口 | 影響 | 為什麼現在是這樣 |
 |---|---|---|
-| **乘客違約罰款：已記錄、未收錢；admin 現可查找欠款** | 乘客在 `ACCEPTED` / `PENDING_ARRIVAL_CONFIRM` 之後取消，會寫 `PENALTY_CHARGED` event（`settled: false`）並設 15 分鐘冷靜期；**無乘客錢包，錢沒有實際扣到** | `ledger_entries.driver_profile_id` 是 NOT NULL，而乘客沒有錢包 —— 收乘客的錢要先有乘客錢包／預授權。在沒有支付渠道之前，記錄＋冷靜期＋admin「未收罰款」卡是能做到的全部；admin 事後裁決仍可依事件記錄處理 |
+| **乘客違約罰款：已記錄、未收錢；admin 現可查找欠款** | 乘客在 `ACCEPTED` / `PENDING_ARRIVAL_CONFIRM` 之後取消，會寫 `PENALTY_CHARGED` event（`settled: false`）並設 15 分鐘冷靜期；**無乘客錢包，錢沒有實際扣到** | `ledger_entries.driver_profile_id` 是 NOT NULL，而乘客沒有錢包 —— 收乘客的錢要先有乘客錢包／預授權。在沒有支付渠道之前，記錄＋冷靜期＋admin「未收罰款」卡是能做到的全部；admin 事後裁決仍可依事件記錄處理。**2026-10-07：admin order detail 已顯示 `unsettled_penalty`**（basis／charged_at／reason），operator 可直接查欠款 |
 | **App 收得到 `reset-password` deep link，但 Android App Links 尚未驗證（部署側）** | 已加 Android `intent-filter`（`/reset-password`、`/magic`）、Flutter cold-start parser 與 token 預填畫面。**仍未做：把含真實簽署指紋的 `assetlinks.json` 放到 `https://hkfastdc.com/.well-known/assetlinks.json` 並等 Android 驗證** | 指紋只存在於 deployment 的 APK signing 產物，所以 repo 刻意不印／不提交。可用 `scripts/ops/render_assetlinks.py` 在部署時產生 |
 | **本機 APK build 已驗證（2026-10-07）** | `flutter build apk --debug` 成功，產出 `mobile/build/app/outputs/flutter-apk/app-debug.apk`；因此 `res/`、`assets:` 與 Flutter plugin 集合已由本機實跑證明，唔再只靠 CI 或舊成功紀錄 | Release signing／Google Maps API key 仍然係部署決定，唔影響 debug build；`webview_flutter` 已隨 plugin 集合同時進入 APK |
 | **「一鍵造能叫車的測試帳號」已收斂，剩下的是跑在 QA env** | `scripts/ops/create_booking_account.py` 已用 service layer 走 `/auth/register` → `/identity/phone/request` → `/identity/phone/confirm` 對應的 auth services，**不是 SQL UPDATE**；預設 `+85291230001`（乘客）＋`+85291230002`（司機），已驗證的號碼會跳過。仍需在 `ALLOW_DEV_OTP=true` 的實際 QA env 跑一次證明可用 | 刻意走正式流程而非直接改 DB；driver onboarding（牌照／按金）仍由 App + `/drivers/register` + admin KYC 完成，腳本不偽造司機檔案 |
@@ -242,7 +242,14 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
   credentials 步驟加「遺失設定 QR？重新取得」（bilingual），call
   `POST /api/v1/admin/auth/totp/enrol` 重新攞 material 並 render QR；
   型別 `AdminEnrolmentReissue`、endpoint wrapper 加註；`LoginPage.test.tsx`
-  新增 1 條 pin payload/render。admin vitest 93→94，build/tsc 全綠。
+  新增 1 條 pin payload/render。admin vitest 94→96，build/tsc 全綠。
+- **乘客違約罰款 expose 畀 admin**（2026-10-07）。`PENALTY_CHARGED`
+  `settled:false` 嘅欠款而家會喺 admin order detail 顯示
+  （`unsettled_penalty`：basis、charged_at、reason），operator 可以睇到
+  欠款再人工處理；無乘客錢包，錢依然唔會 fake 扣走。後端
+  `_unsettled_penalty` ＋ `AdminUnsettledPenaltyOut`、admin-web
+  OrderDetailPage 卡＋2 條 vitest、backend regression test。後端
+  pytest 1283→1285，admin vitest 94→96。
 
 ---
 
