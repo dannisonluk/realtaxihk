@@ -1031,6 +1031,11 @@ console's world: either generate `types.ts` from the fixtures, or add a `types.t
 each fixture with the declared interface (the console already runs `vitest`, so no new tooling is
 needed — only fixtures it currently has no copy of).
 
+> Resolved 2026-10-07 (console contract): `scripts/verify/audit_admin_endpoints.py` now proves every
+> admin-web console endpoint call resolves against the live backend OpenAPI document (50 calls);
+> `types.ts` now names the actual schema mirror and contract guards instead of the old
+> `app/api/admin.py` path. Endpoint/field mirrors stay hand-written but are mechanically checked.
+
 ---
 
 ### NEW-28 — LOW — the documented TOTP recovery endpoint has no caller in any deliverable
