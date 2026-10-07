@@ -515,6 +515,17 @@ void _errorEnvelopeTests() {
       expectTrue(error.toString().contains('NOT_FOUND'));
       expectTrue(error.toString().contains('404'));
     });
+
+    test('MalformedResponseException is catchable as FormatException', () {
+      const MalformedResponseException malformed = MalformedResponseException('bad payload');
+      final Object untyped = malformed;
+      expectTrue(untyped is FormatException);
+      try {
+        throw malformed;
+      } on FormatException catch (caught) {
+        expect(caught.message, 'bad payload');
+      }
+    });
   });
 }
 
