@@ -502,7 +502,7 @@ uv run mypy                                        # types; no database needed
 
 # mobile (Dart, in mobile/)
 python tool/dart_check.py .                        # 0 diagnostics expected
-dart --packages=.dart_tool/package_config.json tool/run_tests.dart      # 155 passed
+dart --packages=.dart_tool/package_config.json tool/run_tests.dart      # 161 passed
 dart --packages=.dart_tool/package_config.json tool/verify_contract.dart # 64 fixtures
 
 # console (in admin-web/web/)
@@ -535,7 +535,7 @@ npm run typecheck && npx vitest run && npm run build
 |---|---|---|
 || `tests/`（61 個 `.py`；60 個 `test_*.py` + conftest） | **全套 1285 passed / 0 failed / 0 error**（單一 process 實跑，2026-10-07） | fare unit · per-module API · WS streaming · fleets/roster/settlement · backup retention + restore drill · console contrast · hardening regressions |
 | `mobile/tool/run_tests.dart` | **161** | Dart unit assertions |
-| `mobile/tool/verify_contract.dart` | **64 fixtures**（共 65 個 fixture json） | every wire shape, decoded by the real models |
+| `mobile/tool/verify_contract.dart` | **64 fixtures**（manifest 64 個取名項） | every wire shape, decoded by the real models |
 | `admin-web/web` (vitest) | **96** | page-level behaviour |
 | `verify_ui.mjs` + `audit_layout.mjs` | PASS | real-browser E2E, layout, both themes |
 

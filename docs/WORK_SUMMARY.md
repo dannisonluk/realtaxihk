@@ -47,7 +47,7 @@
     **238 files already formatted** · `mypy app` **141 files / 0 errors** · `compileall app` rc=0 ·
     console `tsc --noEmit` **exit 0（乾淨）** · console vitest **96 passed（14 檔）** ·
     Dart harness **161 passed / 0 failed** · `dart_check.py` **95 files / 0 diagnostics** ·
-    contract **64 fixtures decoded, 0 failure**（共 65 個 fixture json）·
+    contract **64 fixtures decoded, 0 failure**（共 64 個 fixture json）·
     `audit_response_models.py` **OK（81 fixture blocks / 129 operations 全有 `response_model`）** ·
     API **115 paths / 129 operations** · `alembic heads` **單一 head `a7b3c1d2e4f6`**（25 個 migration）。
   - ✅ **現時無未修項。** 先前列為「未提交 WIP、未經同意去改」嘅 mobile
