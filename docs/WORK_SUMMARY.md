@@ -135,7 +135,7 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
 | **P1-1 WS token 走 `?token=`** | `app/api/ws.py` 仍是 query param。設計上**刻意如此**（瀏覽器 WS 無 header 通道），已有 `StripTokenQueryFilter` 兜底。反代已定為 nginx（`deploy/nginx/hkfastdc.conf`），其 `log_format` 用 `$uri` 而非 `$request_uri`，查詢字串（連 token）不會落地 —— **殘餘洩漏已封**。**主機名已定（2026-10-04）：`hkfastdc.com`，單一 origin。** console 掛 `/console/`（靜態檔），API 保持 `location /`，所以既有路由一行沒改。原本三種拼法已全部統一，`api.` 與 `console.` 前綴移除。nginx 檔內**憑證路徑仍寫死主機名（共五處）**，改漏一處的後果是 nginx **啟動失敗並 restart-loop**，不是警告。 |
 | **P1-4 備份 — off-host destination 未選擇** | script 已完成並實跑 PASS（`scripts/ops/db_backup.py`，27 tests，還原演練 49 tables / 17,627 rows 全對）。只剩**選擇 destination**。 |
 | **WhatsApp / FCM / Google Maps 未接** | config 欄位存在、env 空。需要三家 provider 的憑證。 |
-| **P2-2 遺留：部分退款** | 現時只做全額退還。 |
+| ~~**P2-2 遺留：部分退款**~~ **✅ 已實作（2026-10-08）** | 司機可自選退還金額（`POST /drivers/me/refund/request` 帶 `amount_hkd`）；部分退款批核後司機**恢復 ACTIVE**（全額退款維持終止語義）。`refund_requests.is_partial` 標記，migration `a7b3c1d2e4f6`。App 收入頁加金額欄，admin console 批核提示按 partial/full 分流。 |
 | **P2-2 遺留：實際打款渠道** | 只寫 ledger，轉帳仍線下人手。需要真實支付渠道。 |
 | **P2-3 `distance_km` 由 client 自報** | 乘客可亂報。374D 下估價僅供參考、風險可控，但廣播排序會被 gaming。需 `GOOGLE_MAPS_API_KEY`。 |
 
@@ -163,6 +163,12 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
 | **「一鍵造能叫車的測試帳號」已收斂，剩下的是跑在 QA env** | `scripts/ops/create_booking_account.py` 已用 service layer 走 `/auth/register` → `/identity/phone/request` → `/identity/phone/confirm` 對應的 auth services，**不是 SQL UPDATE**；預設 `+85291230001`（乘客）＋`+85291230002`（司機），已驗證的號碼會跳過。仍需在 `ALLOW_DEV_OTP=true` 的實際 QA env 跑一次證明可用 | 刻意走正式流程而非直接改 DB；driver onboarding（牌照／按金）仍由 App + `/drivers/register` + admin KYC 完成，腳本不偽造司機檔案 |
 ### D. 已結案（保留以免重複處理）
 
+- **部分退款已實作**（2026-10-08，P2-2）。`POST /drivers/me/refund/request` 接受
+  optional `amount_hkd`：留空＝全額（原語義，批核終止司機）；填寫少於餘額的金額＝
+  部分退款（批核只付出該金額，剩餘解凍，司機恢復 ACTIVE）。部分退款照樣先 SUSPEND
+  （資金在途不得接新單）。`refund_requests.is_partial` 於申請時寫死，批核時不靠餘額
+  推斷（期間有 admin grant／費用進出會令推斷不可靠）。全額＝離開平台，部分＝留在平台。
+  測試：`TestPartialRefund`（8 條）；App 收入頁金額欄＋admin console 分流提示。
 - **Sentry 已接好**（`app/main.py`，`sentry_dsn` 有值就 init）。已補 `release`
   （綁 `_API_VERSION`）與 `max_request_body_size="never"`（PDPO：不送 request body）。
 - **文件語言已統一**：`docs/` 與三份 README 全部為**書面語（繁體）**。
