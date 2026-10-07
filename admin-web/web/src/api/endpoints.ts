@@ -413,15 +413,16 @@ export const endpoints = {
    * disagree the first time that rule changed.
    */
   live: {
-    drivers: (client: ApiClient, { includeOffline = false, limit = 500 }: {
-      includeOffline?: boolean;
-      limit?: number;
-    } = {}) =>
-      client.get<AdminLiveDrivers>('/api/v1/admin/live/drivers', {
-        include_offline: includeOffline,
-        limit,
-      }),
-  },
+      drivers: (client: ApiClient, { includeOffline = false, limit = 500, signal }: {
+        includeOffline?: boolean;
+        limit?: number;
+        signal?: AbortSignal;
+      } = {}) =>
+        client.get<AdminLiveDrivers>('/api/v1/admin/live/drivers', {
+          include_offline: includeOffline,
+          limit,
+        }, signal),
+    },
 
   /**
    * The audit trail. Readable by **every** role, including SUPPORT.

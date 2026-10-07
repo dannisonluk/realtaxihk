@@ -151,6 +151,7 @@ interface SendOptions {
   retried?: boolean;
   authenticated?: boolean;
   attempt?: number;
+  signal?: AbortSignal;
 }
 
 export class ApiClient {
@@ -170,8 +171,8 @@ export class ApiClient {
     this.onSessionExpired = onSessionExpired ?? (() => {});
   }
 
-  get<T>(path: string, query?: Query): Promise<T> {
-    return this.send<T>('GET', path, { query });
+  get<T>(path: string, query?: Query, signal?: AbortSignal): Promise<T> {
+    return this.send<T>('GET', path, { query, signal });
   }
 
   post<T>(path: string, options: Omit<SendOptions, 'retried' | 'attempt'> = {}): Promise<T> {
@@ -253,7 +254,7 @@ export class ApiClient {
   private async send<T>(
     method: string,
     path: string,
-    { body, query, retried = false, authenticated = true, attempt = 0 }: SendOptions = {},
+    { body, query, retried = false, authenticated = true, attempt = 0, signal }: SendOptions = {},
   ): Promise<T> {
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -278,10 +279,15 @@ export class ApiClient {
         method,
         headers,
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        ...(signal === undefined ? {} : { signal }),
         credentials: 'include',
         mode: 'cors',
       });
     } catch (cause) {
+      // An explicit abort is not a transport failure. The caller asked for
+      // this request to stop, so retrying it would make cleanup fight a
+      // replacement request instead of cancelling the one in flight.
+      if (signal?.aborted) throw cause;
       // A transport failure on a GET is retried before it is reported.
       //
       // Why: a dropped connection is not evidence of anything, and `boot()`
@@ -292,7 +298,7 @@ export class ApiClient {
       // server may have had its effect, and re-issuing it could double up.
       if (method === 'GET' && attempt < RETRY_ON_TRANSPORT) {
         await delay(RETRY_BACKOFF_MS * (attempt + 1));
-        return this.send<T>(method, path, { body, query, retried, authenticated, attempt: attempt + 1 });
+        return this.send<T>(method, path, { body, query, retried, authenticated, attempt: attempt + 1, signal });
       }
       throw new ApiError({
         code: CODE.network,
@@ -317,7 +323,7 @@ export class ApiClient {
     // excluded: that is a contract error, and repeating it changes nothing.
     if (method === 'GET' && attempt < RETRY_ON_TRANSPORT && [502, 503, 504].includes(response.status)) {
       await delay(RETRY_BACKOFF_MS * (attempt + 1));
-      return this.send<T>(method, path, { body, query, retried, authenticated, attempt: attempt + 1 });
+      return this.send<T>(method, path, { body, query, retried, authenticated, attempt: attempt + 1, signal });
     }
 
     if (response.ok) {
@@ -327,7 +333,7 @@ export class ApiClient {
     if (response.status === 401 && authenticated && !retried) {
       const refreshed = await this.refreshOnce();
       if (refreshed) {
-        return this.send<T>(method, path, { body, query, retried: true, authenticated });
+        return this.send<T>(method, path, { body, query, retried: true, authenticated, signal });
       }
       this.onSessionExpired();
     }

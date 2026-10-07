@@ -128,6 +128,7 @@ function useLiveSnapshot(includeOffline: boolean, enabled: boolean): LiveSnapsho
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | null = null;
+    const controller = new AbortController();
     /**
      * A slow poll must not stack up behind itself: without this, a request that
      * takes longer than the interval produces an unbounded queue of identical
@@ -152,6 +153,7 @@ function useLiveSnapshot(includeOffline: boolean, enabled: boolean): LiveSnapsho
       try {
         const snapshot = await endpoints.live.drivers(client, {
           includeOffline: includeOfflineRef.current,
+          signal: controller.signal,
         });
         if (cancelled) return;
         setData(snapshot);
@@ -195,6 +197,7 @@ function useLiveSnapshot(includeOffline: boolean, enabled: boolean): LiveSnapsho
 
     return () => {
       cancelled = true;
+      controller.abort();
       disarm();
       document.removeEventListener('visibilitychange', onVisibility);
     };

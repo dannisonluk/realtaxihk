@@ -156,7 +156,7 @@ function stubTransport(payload: unknown) {
   return calls;
 }
 
-async function renderAndSettle(root: Root) {
+async function renderRoot(root: Root) {
   await act(async () => {
     root.render(
       <StrictMode>
@@ -175,6 +175,10 @@ async function renderAndSettle(root: Root) {
       </StrictMode>,
     );
   });
+}
+
+async function renderAndSettle(root: Root) {
+  await renderRoot(root);
   // One turn for the snapshot request, one for the state it sets.
   await act(async () => {
     await new Promise((r) => setTimeout(r, 0));
@@ -320,5 +324,23 @@ describe('the live map page', () => {
 
     expect(container.querySelectorAll('tbody tr')).toHaveLength(0);
     expect(container.textContent).toContain(text('live.emptyOnlineOnly'));
+  });
+
+  it('aborts the in-flight poll when the page unmounts', async () => {
+    const signals: AbortSignal[] = [];
+    vi.stubGlobal('fetch', (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.signal) signals.push(init.signal);
+      // Keep the request in flight so the test sees whether cleanup cancels it.
+      return new Promise(() => {});
+    });
+
+    await renderRoot(root);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(signals.length).toBeGreaterThan(0);
+    act(() => root.unmount());
+    expect(signals.every((s) => s.aborted)).toBe(true);
   });
 });
