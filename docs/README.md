@@ -36,13 +36,13 @@
 | [`SECURITY.md`](SECURITY.md) | 安全模型、已驗證的控制、SEV 分級發現、加固路線圖 | 報告 |
 | [`ADMIN_AUTH.md`](ADMIN_AUTH.md) | 管理員認證模型、三步登入狀態機、authenticator 選型、已知缺口 | 設計 |
 | [`ADMIN_CONSOLE_DESIGN.md`](ADMIN_CONSOLE_DESIGN.md) | 後台九大模組的設計（帳戶、訂單、結算、爭議、RBAC、分析、稽核、風控、工單）＋落地順序＋明確不建議做的事 | 設計 |
-| [`IN_TRIP_REDESIGN.md`](IN_TRIP_REDESIGN.md) | 未實作的 in-trip + 預約重設計：新狀態機、到達雙重驗證、違約扣款、schema、API、前端流程、$5 平台費（7 個 DECISION 已拍板） | 提案 |
+| [`IN_TRIP_REDESIGN.md`](IN_TRIP_REDESIGN.md) | in-trip + 預約重設計：新狀態機、到達雙重驗證、違約扣款、schema、API、前端流程、$5 平台費（7 個 DECISION 已拍板）。**已實作**，未接外部付款／推送 | 設計 |
 | [`DEPLOYMENT_REQUIREMENTS.md`](DEPLOYMENT_REQUIREMENTS.md) | 部署的硬約束、執行環境、**完整環境變數清單**、步驟、上線前 gap list | 清單 |
 | [`DEPLOY_TARGET_DECISION.md`](DEPLOY_TARGET_DECISION.md) | 部署選型 A/B/C 的取捨與成本，以及選定後的執行順序 | 決策 |
 | [`QA_TEST_ENVIRONMENT.md`](QA_TEST_ENVIRONMENT.md) | 測試環境交接：**四個必改的環境變數**、OTP 怎麼拿（**不會**出現在回應裡）、管理員怎麼建、三個客戶端各連哪個位址、**手機 App 首次登入的兩道牆**（§6）、12 條實際卡過的陷阱 | 清單 |
 | [`LANDMARK_COORDINATES.md`](LANDMARK_COORDINATES.md) | 19 個地標落客座標（供人手覆核）＋深圳灣口岸港方口岸區的完整幾何分析與法律依據 | 參考資料 |
 | [`REALTIME_POSITION_COST.md`](REALTIME_POSITION_COST.md) | 一個 GPS tick 的成本實測、不同並發下的開銷、擴展天花板、5 項按投報率排序的優化 | 分析 |
-| [`FEATURE_EXPANSION_2026-10-05.md`](FEATURE_EXPANSION_2026-10-05.md) | 下一波產品功能的整合設計 backlog（取代舊的分散提案） | 提案 |
+| [`FEATURE_EXPANSION_2026-10-05.md`](FEATURE_EXPANSION_2026-10-05.md) | 下一波產品功能的整合設計 backlog（取代舊的分散提案）；主要功能已落地，仍作需求源頭 | 設計+索引 |
 
 > **「現行」與「帶日期」的界線**：現行文檔描述系統**今天**的樣子；帶日期的
 > snapshot 記的是**當天量到什麼**（含當天的 HEAD），按第 3 條守則**不追現況**。

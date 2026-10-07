@@ -698,7 +698,7 @@ CI 是 ubuntu，沙盒是 Windows。`Path("C:/x").is_absolute()` 兩邊答案相
 | 要動手改代碼的規範、怪癖、lint gate | [`DEVELOPMENT.md`](DEVELOPMENT.md) |
 | 文檔全貌 | [`README.md`](README.md)（本目錄索引） |
 | 管理後台設計 | [`ADMIN_CONSOLE_DESIGN.md`](ADMIN_CONSOLE_DESIGN.md) |
-| 未實作的 in-trip 重設計 | [`IN_TRIP_REDESIGN.md`](IN_TRIP_REDESIGN.md) |
+| in-trip + 預約重設計（2026-10-06/07 已實作，外部通知／付款除外） | [`IN_TRIP_REDESIGN.md`](IN_TRIP_REDESIGN.md) |
 | 地理圍欄座標與法律依據 | [`LANDMARK_COORDINATES.md`](LANDMARK_COORDINATES.md) |
 | 部署需求與目標決策 | [`DEPLOYMENT_REQUIREMENTS.md`](DEPLOYMENT_REQUIREMENTS.md) · [`DEPLOY_TARGET_DECISION.md`](DEPLOY_TARGET_DECISION.md) |
 | 審計與修復記錄（歷史快照） | [`archive/PRODUCTION_READINESS.md`](archive/PRODUCTION_READINESS.md) |

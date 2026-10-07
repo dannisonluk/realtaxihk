@@ -283,7 +283,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 | **`docs/DEVELOPMENT.md`** | 分層規範、後端行為怪癖、lint gate、方法論教訓 | 跟規範更新 |
 | **`docs/SECURITY.md`** | 安全模型 + 已驗證控制 + SEV 分級發現 + 加固路線圖 | 跟修復更新 |
 | `docs/ADMIN_CONSOLE_DESIGN.md` | 後台九大模組設計 + 四級 RBAC | ✅ 大部分已實作 |
-| `docs/IN_TRIP_REDESIGN.md` | in-trip + 預約重設計：狀態機、schema、API、$5 平台費 | 設計提案，7 個 DECISION 全部已拍板 |
+| `docs/IN_TRIP_REDESIGN.md` | in-trip + 預約重設計：狀態機、schema、API、$5 平台費 | ✅ 已實作（外部通知／付款除外） |
 | `docs/DEPLOYMENT_REQUIREMENTS.md` · `docs/DEPLOY_TARGET_DECISION.md` | 部署需求清單 / 選型取捨 | 選定後少變 |
 | **`docs/QA_TEST_ENVIRONMENT.md`** | **測試環境交接**：四個必改的環境變數、OTP 怎麼拿（**不會**出現在回應裡）、管理員怎麼建、三個客戶端各連哪個位址、**手機 App 首次登入的兩道牆**（§6）、12 條實際卡過的陷阱 | 跟設定更新 |
 | `docs/LANDMARK_COORDINATES.md` | 地標落客座標 + 深圳灣口岸幾何分析 | 覆核清單 |
