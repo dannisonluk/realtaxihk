@@ -55,7 +55,7 @@ from app.api.schemas import (
 )
 from app.core.client_ip import client_ip
 from app.core.config import get_settings
-from app.core.db import get_session
+from app.core.db import get_session, mark_explicit_commit
 from app.core.deps import (
     Principal,
     assert_human,
@@ -164,6 +164,7 @@ async def _issue_session(session: AsyncSession, user: User, *, created: bool | N
     # client always has a durable row behind it — a final commit failure after
     # the response is built would otherwise issue a token that can never rotate.
     await session.commit()
+    mark_explicit_commit(session)
     body: dict = {
         "access_token": token,
         "token_type": "bearer",
@@ -199,15 +200,19 @@ async def _run(coro, session: AsyncSession):
         return await coro
     except AccountLocked as exc:
         await session.commit()
+        mark_explicit_commit(session)
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except AccountThrottled as exc:
         await session.commit()
+        mark_explicit_commit(session)
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except AccountAuthError as exc:
         await session.commit()
+        mark_explicit_commit(session)
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except BusinessRuleError:
         await session.commit()
+        mark_explicit_commit(session)
         raise
     except ValueError as exc:
         # `PasswordPolicyError` is a `ValueError` but not a `BusinessRuleError`,
@@ -215,6 +220,7 @@ async def _run(coro, session: AsyncSession):
         # handler as a 500 — the least useful possible answer to "your password
         # is too short".
         await session.commit()
+        mark_explicit_commit(session)
         raise BusinessRuleError(str(exc)) from exc
 
 
@@ -403,6 +409,7 @@ async def refresh_tokens(
         # `get_session` rolls back on exception — without this the family
         # revocation would be discarded and the attacker's token would survive.
         await session.commit()
+        mark_explicit_commit(session)
         logger.critical(
             "refresh token replay detected for user %s — revoking all sessions", outcome.user_id
         )
@@ -445,6 +452,7 @@ async def logout(
     # epoch is already set, and a stolen refresh token can mint a new access
     # token whose `iat` is newer than the epoch.
     await session.commit()
+    mark_explicit_commit(session)
     await _revoke_access_tokens(request, user.id)
     return {"ok": True, "revoked": revoked}
 

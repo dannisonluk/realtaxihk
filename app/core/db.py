@@ -60,13 +60,25 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
+def mark_explicit_commit(session: AsyncSession) -> None:
+    """Mark that the request already committed its DB work.
+
+    `get_session` commits on success as a convenience for services that rely
+    on the dependency to end the transaction. Services that intentionally
+    commit before a side effect or a response call this immediately afterward,
+    so the dependency does not issue a redundant second commit.
+    """
+    session.info["explicit_commit"] = True
+
+
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency: one transaction-scoped session per request."""
     factory = get_session_factory()
     async with factory() as session:
         try:
             yield session
-            await session.commit()
+            if not session.info.get("explicit_commit"):
+                await session.commit()
         except Exception:
             await session.rollback()
             raise

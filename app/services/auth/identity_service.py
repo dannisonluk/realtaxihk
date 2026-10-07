@@ -49,6 +49,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.db import mark_explicit_commit
 from app.core.exceptions import BusinessRuleError
 from app.models import AccountStatus, EmailVerificationToken, Gender, User
 from app.services.infra.notify import get_email_provider
@@ -208,11 +209,13 @@ class IdentityService:
         # discard the just-created row so a retry issues a fresh token.
         link = f"{settings.public_base_url.rstrip('/')}/verify-email?token={raw}"
         await self.session.commit()
+        mark_explicit_commit(self.session)
         try:
             await get_email_provider().send_verification_email(address, link)
         except Exception:
             await self.session.delete(token)
             await self.session.commit()
+            mark_explicit_commit(self.session)
             raise
 
         return {

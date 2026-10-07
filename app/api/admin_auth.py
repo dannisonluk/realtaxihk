@@ -51,7 +51,7 @@ from app.core.admin_cookies import (
     set_session_cookies,
 )
 from app.core.client_ip import client_ip
-from app.core.db import get_session
+from app.core.db import get_session, mark_explicit_commit
 from app.core.deps import require_live_admin_refresh_session
 from app.core.exceptions import BusinessRuleError
 from app.core.token_revocation import revoke_user_tokens
@@ -143,15 +143,19 @@ async def _run(coro, session: AsyncSession):
         # Not 429: see the docstring. The account-level lock must not be
         # distinguishable from a credential rejection at the API edge.
         await session.commit()
+        mark_explicit_commit(session)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     except AdminAuthThrottled as exc:
         await session.commit()
+        mark_explicit_commit(session)
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     except AdminAuthError as exc:
         await session.commit()
+        mark_explicit_commit(session)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     except BusinessRuleError as exc:
         await session.commit()
+        mark_explicit_commit(session)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -317,6 +321,7 @@ async def refresh_admin_session(
         # and `get_session` rolls back on exception, which would discard the
         # revocation and leave the attacker's token alive.
         await session.commit()
+        mark_explicit_commit(session)
         await revoke_user_tokens(request.app.state.auth_redis, outcome.admin_id)
         logger.critical(
             "admin refresh token replay detected for admin %s — all sessions revoked",
@@ -345,6 +350,7 @@ async def refresh_admin_session(
     # cookies written below always have durable rows behind them (and the old
     # token is really dead before its replacement is in the browser).
     await session.commit()
+    mark_explicit_commit(session)
     set_session_cookies(
         response, refresh_token=outcome.new_refresh, csrf_token=outcome.new_csrf or ""
     )
@@ -401,6 +407,7 @@ async def logout(
                 # and a failed final commit would revive refresh tokens after
                 # the epoch already killed access tokens.
                 await session.commit()
+                mark_explicit_commit(session)
                 revoked = True
 
     clear_session_cookies(response)
@@ -456,6 +463,7 @@ async def _issue_session(
     # after the handler returns. Commit here so the refresh cookie handed to
     # the browser always has a durable row behind it.
     await session.commit()
+    mark_explicit_commit(session)
     set_session_cookies(response, refresh_token=refresh, csrf_token=csrf)
     return {
         "access_token": issue_admin_access_token(account),

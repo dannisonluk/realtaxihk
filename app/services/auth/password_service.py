@@ -54,6 +54,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.db import mark_explicit_commit
 from app.core.exceptions import BusinessRuleError
 from app.core.passwords import hash_password, verify_password
 from app.core.token_revocation import revoke_user_tokens
@@ -189,6 +190,7 @@ class PasswordService:
         # discard the just-created row so a retry issues a fresh token.
         link = f"{settings.public_base_url.rstrip('/')}/reset-password?token={raw}"
         await self.session.commit()
+        mark_explicit_commit(self.session)
         try:
             await get_email_provider().send_email(
                 user.email,
@@ -208,6 +210,7 @@ class PasswordService:
         except Exception:
             await self.session.delete(token)
             await self.session.commit()
+            mark_explicit_commit(self.session)
             raise
         logger.info("password reset link issued user_id=%s", user.id)
         return {"sent": True, "expires_in": settings.password_reset_ttl_minutes * 60}
@@ -280,5 +283,6 @@ class PasswordService:
         # rows stayed live, letting a stolen refresh token mint a fresh access
         # token with an `iat` newer than the epoch.
         await self.session.commit()
+        mark_explicit_commit(self.session)
         await revoke_user_tokens(self.redis, user_id)
         return revoked

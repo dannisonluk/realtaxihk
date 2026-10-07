@@ -49,6 +49,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.db import mark_explicit_commit
 from app.core.exceptions import BusinessRuleError
 from app.core.phone import is_hk_phone
 from app.models import OtpCode, User
@@ -160,11 +161,13 @@ class OtpService:
         # external send is ordered after persistence; if delivery itself fails,
         # remove the row so the cooldown does not lock the user out of retrying.
         await self.session.commit()
+        mark_explicit_commit(self.session)
         try:
             await get_whatsapp_provider().send_otp(phone_e164, code)
         except Exception:
             await self.session.delete(otp)
             await self.session.commit()
+            mark_explicit_commit(self.session)
             raise
 
         # SEC-02: no `dev_code` echo. The code leaves this function exactly once,
