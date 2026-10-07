@@ -153,11 +153,10 @@ class ApiException implements Exception {
 
 /// Thrown when a response body is not the shape the client expects. Kept
 /// separate from [ApiException] so a server contract change is loud rather than
-/// silently producing nulls.
-class MalformedResponseException implements Exception {
-  const MalformedResponseException(this.message);
-
-  final String message;
+/// silently producing nulls. Being a [FormatException] also lets storage/parse
+/// paths catch malformed payloads through the standard Dart parse-error type.
+class MalformedResponseException extends FormatException {
+  const MalformedResponseException(super.message);
 
   @override
   String toString() => 'MalformedResponseException: $message';
