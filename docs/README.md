@@ -116,23 +116,23 @@
 
 | 計數器 | 現值 | 怎樣量 |
 |---|---|---|
-| 後端 `app/` | 130 個 `.py` · 27,000 LOC | `find app -name "*.py" \| wc -l` |
-| API surface | **106 paths / 119 operations** | `create_app().openapi()['paths']` |
-| response_model 覆蓋 | 101 exported／97 reachable；119 operations 全有 `response_model`；81 個 fixture block 全過 | `scripts/verify/audit_response_models.py` |
-| Alembic | **20** migrations · 單一 head `b8d1f2a3c4e5` | `alembic heads` / `ls alembic/versions/*.py` |
-| `tests/` | 58 個 `.py`（57 個 `test_*.py` · 1,023 個 `def test_`） | `grep -rho "def test_[a-zA-Z_0-9]*" tests/ \| wc -l` |
-| 後端 pytest | **全套 1245 passed / 0 failed / 0 error**（2026-10-06 單一 process 實跑，719s） | `.venv/Scripts/python.exe -m pytest -q` |
-| `mobile/lib` | 83 個 `.dart` · 17,948 LOC · **30** 個 `*_screen.dart` | `find mobile/lib -name "*.dart"` |
-| Dart harness | **155 passed / 0 failed** | `dart … tool/run_tests.dart` |
-| Dart LSP check | **85 files opened / 0 diagnostics** | `python mobile/tool/dart_check.py mobile` |
+| 後端 `app/` | 141 個 `.py` · 28,805 LOC | `find app -name "*.py" \| wc -l` |
+| API surface | **114 paths / 128 operations** | `create_app().openapi()['paths']` |
+| response_model 覆蓋 | 118 exported／113 reachable；128 operations 全有 `response_model`；81 個 fixture block 全過 | `scripts/verify/audit_response_models.py` |
+| Alembic | **22** migrations · 單一 head `e6f7c3d9e5a9` | `alembic heads` / `ls alembic/versions/*.py` |
+| `tests/` | 60 個 `.py`（所有檔皆含 `def test_` · 1,056 個 `def test_`） | `grep -rho "def test_[a-zA-Z_0-9]*" tests/ \| wc -l` |
+| 後端 pytest | **全套 1279 passed / 0 failed / 0 error**（2026-10-07 單一 process 實跑，996s） | `uv run python -m pytest -q` |
+| `mobile/lib` | 93 個 `.dart` · 19,476 LOC · **34** 個 `*_screen.dart` | `find mobile/lib -name "*.dart"` |
+| Dart harness | **160 passed / 0 failed** | `dart … tool/run_tests.dart` |
+| Dart LSP check | **95 files opened / 0 diagnostics** | `python mobile/tool/dart_check.py mobile` |
 | Contract | 65 個 fixture json；harness 解到 **64** 個 · 0 failure | `dart … tool/verify_contract.dart` |
-| `admin-web/web/src` | 50 個 `.ts/.tsx`（含 12 個 test 檔；非 test 38 個 · 14,281 LOC）· 17,326 LOC · 18 個頁面 | `find admin-web/web/src -name "*.ts*" \| wc -l` |
-| 後台 vitest | **87 passed（12 檔）** | `npx vitest run --no-file-parallelism --pool=forks` |
-| `scripts/` | 22 個 `.py` | `find scripts -name "*.py"` |
+| `admin-web/web/src` | 50 個 `.ts/.tsx`（含 12 個 test 檔；非 test 38 個 · 17,709 LOC）· 18 個頁面 | `find admin-web/web/src -name "*.ts*" \| wc -l` |
+| 後台 vitest | **88 passed（12 檔）** | `npx vitest run --no-file-parallelism --pool=forks` |
+| `scripts/` | 24 個 `.py` · 6,520 LOC | `find scripts -name "*.py"` |
 
-> ✅ **後端測試 2026-10-06 全套一次過實跑全綠**（Docker Desktop 開住、`realtaxi-db` ＋
-> `realtaxi-redis` healthy）：`.venv/Scripts/python.exe -m pytest -q` =
-> **1245 passed / 0 failed / 0 error / 0 skipped**（11m59s）。單一 process 順序跑穩定；
+> ✅ **後端測試 2026-10-07 全套一次過實跑全綠**（Docker Desktop 開住、`realtaxi-db` ＋
+> `realtaxi-redis` healthy）：`uv run python -m pytest -q` =
+> **1279 passed / 0 failed / 0 error / 0 skipped**（16m36s）。單一 process 順序跑穩定；
 > 先前「一次過跑會中途中止」的情況已消失。
 > ⚠️ 並行跑兩隻 pytest 仍不建議（爭同一 DB/Redis 資源）。**GEO index 已納入
 > `REDIS_KEY_NAMESPACE`**（`app/services/order/geo_service.py::geo_orders_key`），
