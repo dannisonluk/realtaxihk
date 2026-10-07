@@ -940,6 +940,10 @@ The asymmetry is the tell: both clients sign the *delta* and not the *level*, so
 correctly while the balance does not. The fix is one prop at each of the five sites (or a
 `Balance` wrapper beside `SignedMoney`).
 
+> Resolution 2026-10-07: fixed in commit `ae87a05` — the mobile balance cards now pass
+> `signed: true` and the console balance rows use `<Money sign />`. Working tree re-verified
+> (`DriverDetailPage.tsx`, `driver_onboarding_screen.dart`, `driver_earnings_screen.dart`).
+
 ---
 
 ### NEW-26 — LOW — the console's deposit meter has no floor, and the mobile's does
@@ -966,6 +970,10 @@ The mobile clamps **both** ends; the console caps only the top. For a driver in 
 
 Reachable through the same legal arrears state as NEW-25, on the same card. One `Math.max(0, …)`
 closes it, and matching the mobile's `clamp(0, 1)` is the parity-correct form.
+
+> Resolution 2026-10-07: fixed at HEAD before this pass — `DriverDetailPage.tsx` clamps the meter
+> to `Math.max(0, …)`; the mobile already used `clamp(0.0, 1.0)`. Verified in the working tree; no
+> code change was needed this round.
 
 ## False positives I generated and killed (recorded so the method is auditable)
 
