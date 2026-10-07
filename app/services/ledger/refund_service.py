@@ -10,6 +10,12 @@ written at approval — the single point where value actually exits. A rejection
 releases the hold, again with no ledger entry. The identity above therefore holds
 in all three states, and `held_hkd` is the audit-visible "money in flight".
 
+Two kinds of claim exist since P2-2. A **full** claim (`is_partial = false`)
+holds the whole balance and is terminal on approval. A **partial** claim
+(`is_partial = true`) holds a requested subset; approval pays that subset out,
+releases the rest, and returns the driver to ACTIVE, so withdrawing part of the
+balance does not force them off the platform.
+
 Concurrency: the deposit row is taken `FOR UPDATE` before any balance arithmetic
 (same discipline as LedgerService), and the refund row is locked before its
 status is read, so two admins deciding the same request serialize instead of both
@@ -91,9 +97,19 @@ class RefundService:
         self,
         driver_profile: DriverProfile,
         note: str | None = None,
+        *,
+        amount_hkd: Decimal | int | str | None = None,
         min_amount_hkd: Decimal | int | str = Decimal("0"),
     ) -> RefundRequest:
-        """Refund the driver's whole available balance. Holds it; does not pay out."""
+        """Claim all — or, with `amount_hkd`, part — of the available balance.
+
+        Holds the claimed amount; does not pay out. Requesting suspends the
+        driver either way: money in flight must not race new dispatch, and the
+        weekly-fee exemption follows from US not ACTIVE. A partial claim
+        differs from a full claim only at decision time — approval of a partial
+        claim releases the unclaimed remainder and returns the driver to
+        ACTIVE, while a full claim is terminal.
+        """
         # Checked before the status gate: a driver with an open request is
         # SUSPENDED *because of that request*, so "already pending" is the
         # accurate message — "not ACTIVE" would be misleading.
@@ -125,28 +141,45 @@ class RefundService:
 
         deposit = await _lock_deposit(self.session, driver_profile.id)
 
-        amount = Decimal(deposit.balance_hkd)
+        balance = Decimal(deposit.balance_hkd)
         floor = Decimal(min_amount_hkd)
+        if amount_hkd is not None:
+            amount = Decimal(amount_hkd)
+            # A partial claim must be less than the whole balance, positive,
+            # and still worth the transfer fee. Equal to the balance is a full
+            # refund in disguise and keeps the old terminal semantics.
+            if amount >= balance:
+                raise BusinessRuleError(
+                    "amount must be less than the available balance for a partial refund",
+                    {"balance_hkd": str(balance), "amount_hkd": str(amount)},
+                )
+            is_partial = True
+        else:
+            amount = balance
+            is_partial = False
         # `amount <= 0` covers arrears; `amount < floor` is the configured
         # threshold below which a payout is not worth the transfer fee.
         if amount <= 0 or amount < floor:
             raise BusinessRuleError(
                 "nothing to refund",
-                {"balance_hkd": str(amount), "min_amount_hkd": str(floor)},
+                {"balance_hkd": str(balance), "min_amount_hkd": str(floor)},
             )
 
         # Hold the money: available -> held. No ledger entry (value has not left).
-        deposit.balance_hkd = Decimal("0")
+        deposit.balance_hkd = balance - amount
         deposit.held_hkd = Decimal(deposit.held_hkd) + amount
         deposit.is_fulfilled = False
 
         # Leaving ACTIVE stops dispatch and exempts the driver from weekly fees.
+        # A partial claim also leaves ACTIVE: money is in flight and the claimed
+        # amount is no longer available to settle fees.
         assert_driver_transition(driver_profile.status, DriverStatus.SUSPENDED)
         driver_profile.status = DriverStatus.SUSPENDED
 
         refund = RefundRequest(
             driver_profile_id=driver_profile.id,
             amount_hkd=amount,
+            is_partial=is_partial,
             status=RefundStatus.PENDING,
             note=note,
         )
@@ -170,7 +203,14 @@ class RefundService:
         admin_id,
         decision_note: str | None = None,
     ) -> RefundRequest:
-        """Approve (pay out, driver TERMINATED) or reject (release hold, driver ACTIVE).
+        """Approve or reject: full refunds terminate, partial ones reactivate.
+
+        A **full** refund is the driver leaving: approval pays out and moves
+        the driver to TERMINATED. A **partial** refund is a withdrawal while
+        staying on the platform: approval pays out the claimed amount and
+        returns the driver to ACTIVE (unless they were suspended for cause).
+        Rejecting releases the hold and returns the driver to ACTIVE in both
+        cases.
 
         `populate_existing` is required: without it SQLAlchemy may hand back the
         identity-map copy and skip the post-lock re-read, defeating the guard
@@ -239,11 +279,23 @@ class RefundService:
                     },
                 )
             refund.status = RefundStatus.APPROVED
-            # Paying out is terminal. Skip the transition if an admin already
-            # terminated the driver — the end state is the same.
-            if driver_profile.status != DriverStatus.TERMINATED:
-                assert_driver_transition(driver_profile.status, DriverStatus.TERMINATED)
-                driver_profile.status = DriverStatus.TERMINATED
+            if refund.is_partial:
+                # A partial withdrawal is *not* the driver leaving: they claimed
+                # part of the balance, so the remainder stays on the account and
+                # the driver returns to the road. Re-compute fulfilment against
+                # the deposit requirement, not the full balance.
+                deposit.is_fulfilled = Decimal(deposit.balance_hkd) >= Decimal(deposit.required_hkd)
+                # Only a refund-induced suspension is undone (mirrors the reject
+                # branch): a driver suspended for cause is left alone.
+                if driver_profile.status == DriverStatus.SUSPENDED:
+                    assert_driver_transition(driver_profile.status, DriverStatus.ACTIVE)
+                    driver_profile.status = DriverStatus.ACTIVE
+            else:
+                # Paying out is terminal. Skip the transition if an admin
+                # already terminated the driver — the end state is the same.
+                if driver_profile.status != DriverStatus.TERMINATED:
+                    assert_driver_transition(driver_profile.status, DriverStatus.TERMINATED)
+                    driver_profile.status = DriverStatus.TERMINATED
         else:
             deposit.is_fulfilled = Decimal(deposit.balance_hkd) >= Decimal(deposit.required_hkd)
             refund.status = RefundStatus.REJECTED

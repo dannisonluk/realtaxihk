@@ -61,7 +61,7 @@ async def decide_refund(
     admin: Principal = Depends(_require_finance),
     session: AsyncSession = Depends(get_session),
 ):
-    """Approve (pays out, driver TERMINATED) or reject (releases hold, driver ACTIVE).
+    """Approve (pays out; full refunds terminate, partials reactivate) or reject.
 
     Approval is the only path that moves money out: it writes the REFUND ledger
     entry keyed `refund:{id}`, so a double-click cannot pay twice. A second

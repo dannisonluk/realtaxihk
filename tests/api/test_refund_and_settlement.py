@@ -123,8 +123,11 @@ def active_driver(client):
     return _make_active(client, "+85293000001")
 
 
-def _request_refund(client, token: str, note: str = "") -> Response:
-    return client.post("/api/v1/drivers/me/refund/request", headers=_h(token), json={"note": note})
+def _request_refund(client, token: str, note: str = "", amount: str | None = None) -> Response:
+    body: dict = {"note": note}
+    if amount is not None:
+        body["amount_hkd"] = amount
+    return client.post("/api/v1/drivers/me/refund/request", headers=_h(token), json=body)
 
 
 # --------------------------------------------------------------------------- #
@@ -632,6 +635,101 @@ class TestRefundListing:
     def test_non_admin_cannot_list(self, client, active_driver):
         r = client.get("/api/v1/admin/refunds", headers=_h(active_driver["token"]))
         assert r.status_code == 403
+
+
+# --------------------------------------------------------------------------- #
+# refund — partial withdrawal (P2-2): claim part of the balance, stay ACTIVE
+# --------------------------------------------------------------------------- #
+
+
+class TestPartialRefund:
+    """A driver can claim less than the whole balance and keep driving.
+
+    Full refunds are the exit path (approval terminates). Partial refunds are
+    the withdrawal path: the claimed amount is held, approval pays it out and
+    returns the driver to ACTIVE, and the remainder stays on the account.
+    """
+
+    def test_partial_request_holds_only_the_claimed_amount(self, client, active_driver):
+        r = _request_refund(client, active_driver["token"], amount="200.00")
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["amount_hkd"] == "200.00"
+        assert body["is_partial"] is True
+
+        dep = _deposit(client, active_driver["token"])
+        assert dep["balance_hkd"] == "300.00"
+        assert dep["held_hkd"] == "200.00"
+        # The driver is off the road while money is in flight — same as a full
+        # refund, so pending money cannot race new trips.
+        me = client.get("/api/v1/drivers/me", headers=_h(active_driver["token"])).json()
+        assert me["status"] == "SUSPENDED"
+
+    def test_partial_approve_pays_claimed_and_reactivates(self, client, active_driver):
+        rid = _request_refund(client, active_driver["token"], amount="200.00").json()["id"]
+        r = client.post(
+            f"/api/v1/admin/refunds/{rid}/decision",
+            headers=_admin_headers(client),
+            json={"decision": "approve"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "APPROVED"
+        assert r.json()["is_partial"] is True
+
+        # 200 paid out; the remaining 300 returns to available.
+        dep = _deposit(client, active_driver["token"])
+        assert dep["balance_hkd"] == "300.00"
+        assert dep["held_hkd"] == "0.00"
+        me = client.get("/api/v1/drivers/me", headers=_h(active_driver["token"])).json()
+        assert me["status"] == "ACTIVE"
+
+        entries = client.get(
+            "/api/v1/drivers/me/ledger", headers=_h(active_driver["token"])
+        ).json()["items"]
+        assert entries[-1]["entry_type"] == "REFUND"
+        assert entries[-1]["amount_hkd"] == "-200.00"
+        assert entries[-1]["balance_after_hkd"] == "300.00"
+
+    def test_partial_reject_releases_hold_and_reactivates(self, client, active_driver):
+        rid = _request_refund(client, active_driver["token"], amount="200.00").json()["id"]
+        r = client.post(
+            f"/api/v1/admin/refunds/{rid}/decision",
+            headers=_admin_headers(client),
+            json={"decision": "reject"},
+        )
+        assert r.status_code == 200, r.text
+        dep = _deposit(client, active_driver["token"])
+        assert dep["balance_hkd"] == "500.00"
+        assert dep["held_hkd"] == "0.00"
+        me = client.get("/api/v1/drivers/me", headers=_h(active_driver["token"])).json()
+        assert me["status"] == "ACTIVE"
+
+    def test_amount_equal_to_balance_is_rejected(self, client, active_driver):
+        """An amount == balance is a full refund in disguise — use no amount."""
+        r = _request_refund(client, active_driver["token"], amount="500.00")
+        assert r.status_code == 400, r.text
+        assert "must be less than" in r.json()["message"]
+
+    def test_amount_above_balance_is_rejected(self, client, active_driver):
+        r = _request_refund(client, active_driver["token"], amount="999.00")
+        assert r.status_code == 400, r.text
+
+    def test_zero_or_negative_amount_is_rejected(self, client, active_driver):
+        r = _request_refund(client, active_driver["token"], amount="0")
+        assert r.status_code == 422, r.text
+        r = _request_refund(client, active_driver["token"], amount="-10.00")
+        assert r.status_code == 422, r.text
+
+    def test_full_refund_stream_is_unchanged(self, client, active_driver):
+        """Omitting amount keeps the legacy whole-balance semantics."""
+        r = _request_refund(client, active_driver["token"])
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["amount_hkd"] == "500.00"
+        assert body["is_partial"] is False
+        dep = _deposit(client, active_driver["token"])
+        assert dep["balance_hkd"] == "0.00"
+        assert dep["held_hkd"] == "500.00"
 
 
 # --------------------------------------------------------------------------- #

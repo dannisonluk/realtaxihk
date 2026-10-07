@@ -12,6 +12,7 @@ SUPPORT is exactly who takes that phone call."""
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
 from typing import Annotated
@@ -76,7 +77,9 @@ def _order_timeline(order: Order) -> list[dict]:
     return out
 
 
-def _unsettled_penalty(events: list[OrderEvent], cancellation_reason: str | None) -> dict | None:
+def _unsettled_penalty(
+    events: Sequence[OrderEvent], cancellation_reason: str | None
+) -> dict | None:
     """The passenger-side penalty that was recorded but not debited.
 
     The passenger has no wallet, so the P4 cancellation handler writes

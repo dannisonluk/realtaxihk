@@ -165,12 +165,14 @@ async def my_ledger(
 
 class RefundRequestIn(BaseModel):
     note: str = Field(default="", max_length=500)
+    amount_hkd: Decimal | None = Field(default=None, gt=0, le=100000)
 
 
 def _refund_out(r: RefundRequest) -> dict:
     return {
         "id": str(r.id),
         "amount_hkd": money_str(r.amount_hkd),
+        "is_partial": r.is_partial,
         "status": r.status.value,
         "note": r.note,
         "decision_note": r.decision_note,
@@ -185,11 +187,15 @@ async def request_refund(
     user: Principal = Depends(require_phone_current),
     session: AsyncSession = Depends(get_session),
 ):
-    """Ask to withdraw the whole remaining deposit.
+    """Ask to withdraw part or all of the remaining deposit.
 
-    The balance is *held*, not paid — an admin must approve before any money
-    leaves the platform. Requesting suspends the driver, which stops dispatch
-    and pauses the weekly service fee. At most one open request per driver.
+    The requested amount is *held*, not paid — an admin must approve before
+    any money leaves the platform. Requesting suspends the driver, which stops
+    dispatch and pauses the weekly service fee. At most one open request per
+    driver. Omitting `amount_hkd` withdraws the whole balance (unchanged
+    behaviour); passing an amount less than the balance is a partial
+    withdrawal and on approval the driver returns to ACTIVE instead of being
+    terminated.
     """
     profile = await DriverProfile.for_user(session, user.id)
     if profile is None:
@@ -197,6 +203,7 @@ async def request_refund(
     refund = await RefundService(session).request(
         profile,
         note=payload.note or None,
+        amount_hkd=payload.amount_hkd,
         min_amount_hkd=get_settings().refund_min_hkd,
     )
     return _refund_out(refund)

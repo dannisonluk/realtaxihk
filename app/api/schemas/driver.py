@@ -97,6 +97,7 @@ class RefundOut(BaseModel):
     id: str
     driver_profile_id: str
     amount_hkd: str
+    is_partial: bool
     status: str
     note: str | None
     decision_note: str | None
@@ -115,6 +116,7 @@ class RefundRequestOut(BaseModel):
 
     id: str
     amount_hkd: str
+    is_partial: bool
     status: str
     note: str | None
     decision_note: str | None

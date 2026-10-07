@@ -43,6 +43,7 @@ def _refund_out(r: RefundRequest) -> dict:
         "id": str(r.id),
         "driver_profile_id": str(r.driver_profile_id),
         "amount_hkd": money_str(Decimal(r.amount_hkd)),
+        "is_partial": r.is_partial,
         "status": r.status.value,
         "note": r.note,
         "decision_note": r.decision_note,

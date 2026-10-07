@@ -832,6 +832,10 @@ class RefundRequest(Base):
         UUID(as_uuid=True), ForeignKey("driver_profiles.id", ondelete="RESTRICT"), index=True
     )
     amount_hkd: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    # True when the driver claimed less than the whole balance (P2-2): the
+    # payout is the requested amount and the driver returns to ACTIVE on
+    # approval. A full refund (`False`) is terminal — approval terminates.
+    is_partial: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     status: Mapped[RefundStatus] = mapped_column(
         SAEnum(
             RefundStatus,
