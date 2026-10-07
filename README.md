@@ -704,15 +704,16 @@ mobile/           Flutter client (Android first) — see §4
 admin-web/        Web console, React + legacy — see §5
 
 alembic/          async migrations (postgis tables filtered via include_object)
-tests/            52 pytest files, grouped by what they need — and the only place
+tests/            60 pytest files, grouped by what they need — and the only place
                   migrations are actually run
-  api/              35 drive the HTTP surface (they take the `client` fixture)
+  api/              42 drive the HTTP surface (they take the `client` fixture)
   domain/            7 pure logic, no database (fare, money, bounds, totp)
-  infra/            10 guards over files and configuration (migration parity,
+  infra/            11 guards over files and configuration (migration parity,
                      pool arithmetic, backup, compose, `scripts/` root, contrast)
 scripts/          tooling, grouped by what you are doing
   ops/              operate a real environment — db_backup, create_admin,
-                    create_admin_account, create_reviewer_account, enrol_admin_totp
+                    create_admin_account, create_booking_account,
+                    create_reviewer_account, enrol_admin_totp, render_assetlinks
   verify/           produce a pass/fail verdict — audit_response_models, live_smoke,
                     security_probe + security_verify, prod_boot_drill, verify_api,
                     bench_location_pipeline, the three connection probes
