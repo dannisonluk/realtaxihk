@@ -68,7 +68,7 @@ export function RefundsPage() {
           </div>
           {approve ? (
             <p style={{ margin: 0, color: 'var(--danger)' }}>
-              {t('refunds.approveWarning')}
+              {refund.is_partial ? t('refunds.approvePartialWarning') : t('refunds.approveWarning')}
             </p>
           ) : (
             <p className="dim" style={{ margin: 0 }}>

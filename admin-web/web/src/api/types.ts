@@ -214,6 +214,8 @@ export interface RefundRow {
   id: string;
   driver_profile_id: string;
   amount_hkd: string;
+  /** True when the driver claimed less than the full balance (P2-2). */
+  is_partial: boolean;
   status: RefundStatus;
   note: string | null;
   /** The operator's note on the decision — distinct from the applicant's. */

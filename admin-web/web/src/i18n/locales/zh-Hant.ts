@@ -523,6 +523,7 @@ export const zhHant = {
     amount: '金額',
     driver: '司機',
     approveWarning: '批准會實際付出按金餘額，並終止該司機帳戶。此操作不可回復，而且同一筆申請只能批核一次。',
+    approvePartialWarning: '批准會付出所申請金額，解除其餘凍結資金，並將司機回復為 ACTIVE。此操作不可回復，而且同一筆申請只能批核一次。',
     rejectNote: '拒絕會解除按金凍結，司機帳戶回復啟用。',
     driverNote: '司機備註：{{note}}',
     reviewNote: '批核備註',

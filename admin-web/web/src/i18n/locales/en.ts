@@ -517,6 +517,8 @@ export const en = {
     driver: 'Driver',
     approveWarning:
       'Approving pays out the deposit balance and terminates the driver’s account. This cannot be undone, and a request can only be approved once.',
+    approvePartialWarning:
+      'Approving pays out the requested amount, releases the rest of the freeze, and returns the driver to ACTIVE. The decision cannot be undone, and a request can only be approved once.',
     rejectNote: 'Rejecting releases the deposit freeze and reactivates the driver’s account.',
     driverNote: 'Driver note: {{note}}',
     reviewNote: 'Review note',
