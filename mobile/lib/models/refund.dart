@@ -15,6 +15,7 @@ class RefundRequest {
   const RefundRequest({
     required this.id,
     required this.amountHkd,
+    required this.isPartial,
     required this.status,
     required this.note,
     required this.decisionNote,
@@ -27,6 +28,7 @@ class RefundRequest {
   factory RefundRequest.fromJson(Map<String, dynamic> json) => RefundRequest(
     id: asString(json['id'], 'refund.id'),
     amountHkd: Money.parse(json['amount_hkd']),
+    isPartial: asBoolOr(json['is_partial'], 'refund.is_partial', false),
     status: RefundStatus.fromWire(asString(json['status'], 'refund.status')),
     note: asStringOrNull(json['note'], 'refund.note'),
     decisionNote: asStringOrNull(json['decision_note'], 'refund.decision_note'),
@@ -38,6 +40,9 @@ class RefundRequest {
 
   final String id;
   final Money amountHkd;
+
+  /// True when the driver claimed less than the whole balance (P2-2).
+  final bool isPartial;
   final RefundStatus status;
   final String? note;
   final String? decisionNote;

@@ -1,3 +1,4 @@
+import '../core/format/money.dart';
 import '../core/network/api_client.dart';
 import '../models/driver.dart';
 import '../models/driver_attributes.dart';
@@ -44,13 +45,18 @@ class DriverRepository {
 
   /// `POST /drivers/me/refund/request` (201).
   ///
-  /// Holds the whole remaining balance and suspends the driver — no money moves
-  /// until an admin approves. At most one open request per driver, and the
-  /// balance must be at least `refund_min_hkd`.
-  Future<RefundRequest> requestRefund({String note = ''}) async {
+  /// Holds the balance and suspends the driver — no money moves until an admin
+  /// approves. At most one open request per driver, and the balance must be at
+  /// least `refund_min_hkd`. Pass `amountHkd` to withdraw part of the balance
+  /// while staying on the platform; omitting it withdraws the whole balance.
+  Future<RefundRequest> requestRefund({String note = '', Money? amountHkd}) async {
+    final Map<String, dynamic> data = <String, dynamic>{'note': note};
+    if (amountHkd != null) {
+      data['amount_hkd'] = amountHkd.canonical;
+    }
     final Map<String, dynamic> json = await _api.post(
       '/api/v1/drivers/me/refund/request',
-      data: <String, dynamic>{'note': note},
+      data: data,
     );
     return RefundRequest.fromJson(json);
   }

@@ -136,14 +136,34 @@ class _RefundSection extends ConsumerStatefulWidget {
 
 class _RefundSectionState extends ConsumerState<_RefundSection> {
   bool _busy = false;
+  final TextEditingController _amountController = TextEditingController();
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    super.dispose();
+  }
 
   Future<void> _request() async {
+    final String raw = _amountController.text.trim();
+    final Money? amount = raw.isEmpty ? null : Money.tryParse(raw);
+    // An unparseable amount must not be silently treated as "whole balance":
+    // that would make a typo turn into a full-refund request.
+    if (raw.isNotEmpty && (amount == null || amount.asDouble <= 0)) {
+      if (mounted) {
+        showInfo(context, '請輸入有效金額，或留空以退回全部按金。');
+      }
+      return;
+    }
+    final bool partial = amount != null;
     final bool confirmed = await confirmDestructive(
       context,
-      title: '申請退回按金？',
-      message:
-          '申請後會凍結整筆按金並暫停接單，每週服務費亦會暫停。'
-          '實際退款需要平台管理員批核，批核後帳戶會終止。',
+      title: partial ? '申請部分退回按金？' : '申請退回按金？',
+      message: partial
+          ? '申請後會凍結 HK\$${amount.display} 並暫停接單。'
+                '實際退款需要平台管理員批核，批核後會解除凍結並恢復接單。'
+          : '申請後會凍結整筆按金並暫停接單，每週服務費亦會暫停。'
+                '實際退款需要平台管理員批核，批核後帳戶會終止。',
       confirmLabel: '確認申請',
       cancelLabel: '取消',
     );
@@ -153,9 +173,9 @@ class _RefundSectionState extends ConsumerState<_RefundSection> {
 
     setState(() => _busy = true);
     try {
-      await ref.read(driverRepositoryProvider).requestRefund();
+      await ref.read(driverRepositoryProvider).requestRefund(amountHkd: amount);
       // A refund request is not just a status change: it *holds* the driver's
-      // whole balance and writes an internal ledger entry, so both the balance
+      // balance and writes an internal ledger entry, so both the balance
       // card and the ledger list are stale the moment it succeeds. Leaving
       // `ledgerProvider` cached showed the pre-request balance until a manual
       // pull-to-refresh — "did my money get taken" is the one question the
@@ -189,6 +209,21 @@ class _RefundSectionState extends ConsumerState<_RefundSection> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text('尚未申請過退款。', style: theme.textTheme.bodyMedium),
+            const SizedBox(height: AppTheme.space2),
+            Text(
+              '留空金額即退回全部按金並終止帳戶；輸入金額則只退回指定部分，批核後恢復接單。',
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: AppTheme.space3),
+            TextField(
+              controller: _amountController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: '退回金額（HKD，留空＝全數）',
+                prefixText: 'HK\$ ',
+                border: OutlineInputBorder(),
+              ),
+            ),
             const SizedBox(height: AppTheme.space3),
             OutlinedButton(onPressed: _busy ? null : _request, child: const Text('申請退回按金')),
           ],
@@ -216,10 +251,11 @@ class _RefundSectionState extends ConsumerState<_RefundSection> {
           if (refund.decisionNote != null && refund.decisionNote!.isNotEmpty)
             DetailRow(label: '批核備註', value: refund.decisionNote),
           const SizedBox(height: AppTheme.space2),
-          Text(switch (refund.status) {
-            RefundStatus.pending => '等待平台批核。批核前不會有任何款項變動。',
-            RefundStatus.approved => '已批核並完成退款，帳戶已終止。',
-            RefundStatus.rejected => '申請被拒絕，按金已解除凍結，帳戶回復啟用。',
+          Text(switch ((refund.status, refund.isPartial)) {
+            (RefundStatus.pending, _) => '等待平台批核。批核前不會有任何款項變動。',
+            (RefundStatus.approved, true) => '已批核並完成退款，按金已解除凍結，帳戶回復啟用。',
+            (RefundStatus.approved, false) => '已批核並完成退款，帳戶已終止。',
+            (RefundStatus.rejected, _) => '申請被拒絕，按金已解除凍結，帳戶回復啟用。',
           }, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ],
       ),

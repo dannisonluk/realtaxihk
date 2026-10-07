@@ -28,6 +28,23 @@ class Money implements Comparable<Money> {
     return Money(raw.toString());
   }
 
+  /// Parses user-entered HKD without accepting malformed input.
+  ///
+  /// Unlike [parse] — which trusts a server payload — this returns `null` for
+  /// anything that is not an optional-sign decimal with at most two places, so
+  /// the refund amount field can reject garbage before it reaches the wire.
+  static Money? tryParse(String raw) {
+    final String body = raw.trim();
+    if (body.isEmpty) {
+      return null;
+    }
+    if (!RegExp(r'^-?\d+(\.\d{1,2})?$').hasMatch(body)) {
+      return null;
+    }
+    final String normalized = body.contains('.') ? body : '$body.00';
+    return Money(normalized);
+  }
+
   /// The exact decimal string as the server sent it, e.g. `"184.50"`.
   final String canonical;
 

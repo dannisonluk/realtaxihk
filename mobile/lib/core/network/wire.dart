@@ -51,6 +51,16 @@ bool asBool(Object? value, String field) {
   throw MalformedResponseException('$field: expected a bool, got ${value.runtimeType}');
 }
 
+/// `asBool` with a default — for fields that joined the wire contract after
+/// old fixtures were recorded (P2-2 `is_partial`), where absence means the
+/// legacy value (`false`).
+bool asBoolOr(Object? value, String field, bool fallback) {
+  if (value == null) {
+    return fallback;
+  }
+  return asBool(value, field);
+}
+
 /// Accepts a JSON string (the normal case — see the library docstring) or a
 /// number, since a few endpoints build dicts by hand and JSON-encode natively.
 double asDouble(Object? value, String field) {
