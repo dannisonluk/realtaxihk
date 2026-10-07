@@ -167,6 +167,12 @@ from app.api.schemas.order import (
     PassengerDisputeOut,
     TripLocationOut,
 )
+from app.api.schemas.prebooking import (
+    DriverBookingPreferenceIn,
+    DriverBookingPreferenceOut,
+    LandmarkListOut,
+    LandmarkOut,
+)
 from app.api.schemas.premium import (
     PremiumDestinationListOut,
     PremiumDestinationOut,
@@ -211,6 +217,8 @@ __all__ = [
     "DisputeMessageOut",
     "DisputeResolveOut",
     "DisputeStatsOut",
+    "DriverBookingPreferenceIn",
+    "DriverBookingPreferenceOut",
     "DriverDetailOut",
     "DriverEnvironmentOut",
     "DriverFleetBlockOut",
@@ -242,6 +250,8 @@ __all__ = [
     "FleetSettlementRowOut",
     "FleetSettlementRunOut",
     "FleetViewOut",
+    "LandmarkListOut",
+    "LandmarkOut",
     "LedgerEntryOut",
     "LedgerPageOut",
     "LicenceDecisionOut",

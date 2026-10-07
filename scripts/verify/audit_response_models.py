@@ -94,6 +94,7 @@ INTENTIONALLY_UNREFERENCED = {
     "AdminAccountOut": "canonical account row; no route returns it yet",
     "AdminDepositOut": "base class of AdminDepositDetailOut",
     "ChallengeOut": "declared for symmetry; never returned (see admin_auth.py)",
+    "DriverBookingPreferenceIn": "input body; no response model",
     "ErrorEnvelope": "for router-level `responses=` blocks; not wired yet",
     "ListEnvelope": "generic base; typed list envelopes are used instead",
     "PageEnvelope": "generic base; typed page envelopes are used instead",

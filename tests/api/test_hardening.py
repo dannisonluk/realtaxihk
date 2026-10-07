@@ -265,6 +265,7 @@ class TestLifespanBackgroundJobs:
             assert sorted(j.get_name() for j in jobs) == [
                 "geo_sweep",
                 "pdpo_purge",
+                "prebook_broadcaster",
                 "recurring_mint",
                 "weekly_settlement",
             ]

@@ -317,25 +317,24 @@ def upgrade() -> None:
         sa.column("is_active", sa.Boolean()),
         sa.column("sort_order", sa.Integer()),
     )
-    op.bulk_insert(
-        landmarks,
-        [
-            {
-                "id": row["id"],
-                "code": row["code"],
-                "name_en": row["name_en"],
-                "name_zh": row["name_zh"],
-                "category": row["category"],
-                "location": sa.text(
-                    f"ST_SetSRID(ST_MakePoint({row['lng']}, {row['lat']}), 4326)::geography"
-                ),
-                "radius_m": row["radius_m"],
-                "is_active": True,
-                "sort_order": index,
-            }
-            for index, row in enumerate(_LANDMARKS, start=1)
-        ],
-    )
+    for index, row in enumerate(_LANDMARKS, start=1):
+        op.execute(
+            landmarks.insert().values(
+                {
+                    "id": row["id"],
+                    "code": row["code"],
+                    "name_en": row["name_en"],
+                    "name_zh": row["name_zh"],
+                    "category": row["category"],
+                    "location": sa.text(
+                        f"ST_SetSRID(ST_MakePoint({row['lng']}, {row['lat']}), 4326)::geography"
+                    ),
+                    "radius_m": row["radius_m"],
+                    "is_active": True,
+                    "sort_order": index,
+                }
+            )
+        )
 
     op.create_table(
         "driver_booking_preferences",

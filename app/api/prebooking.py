@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.schemas.prebooking import (
+from app.api.schemas import (
     DriverBookingPreferenceIn,
     DriverBookingPreferenceOut,
     LandmarkListOut,
