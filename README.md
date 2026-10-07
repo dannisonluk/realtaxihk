@@ -57,9 +57,9 @@ carries the passenger.
 |---|---|---|---|---|
 | 1 | **Backend** | `app/` | 141 files · 28,933 LOC | FastAPI async · PostgreSQL 16/PostGIS · Redis 7 · SQLAlchemy 2.0 · Alembic |
 | 2 | **Mobile** | `mobile/` | 93 Dart files · 19,481 LOC | Flutter 3.44 · Riverpod · go_router · Dio · flutter_secure_storage |
-| 3 | **Admin console** | `admin-web/` | 52 TS/TSX files · 18,067 LOC | React 18 + Vite + TypeScript (current) · hand-written ES modules (legacy) |
+| 3 | **Admin console** | `admin-web/` | 52 TS/TSX files · 18,237 LOC | React 18 + Vite + TypeScript (current) · hand-written ES modules (legacy) |
 
-Plus the glue that keeps them honest: `scripts/` (24 tools), `tests/` (61 files),
+Plus the glue that keeps them honest: `scripts/` (25 tools), `tests/` (61 files),
 `docs/` (14 living documents + `docs/archive/` for dated snapshots),
 `alembic/` (24 migrations), `deploy/`.
 
@@ -512,12 +512,12 @@ npm run typecheck && npx vitest run && npm run build
 > `--junit-xml=` is not optional here. On this dev host, read the printed
 > summary or the XML, never a pipeline exit code: when pytest is wrapped in a
 > shell pipeline (e.g. `| tail`), the wrapper's exit code is the last command's,
-> not pytest's. The 2026-10-07 full run printed `1283 passed`; treat that as the
+> not pytest's. The 2026-10-07 full run printed `1285 passed`; treat that as the
 > source of truth.
 >
 > `--junit-xml=` 不是可選項。本機要**只讀 XML／summary，不要依賴 pipeline exit
 > code**：pytest 被 pipe 包住時，exit code 係最尾嗰個指令（例如 `tail`）嘅值，
-> 唔係 pytest 嘅值。2026-10-07 全套實跑印出 `1283 passed`；以 print 出嚟嘅 summary
+> 唔係 pytest 嘅值。2026-10-07 全套實跑印出 `1285 passed`；以 print 出嚟嘅 summary
 > 或 XML 為準。
 >
 > The same shim blocks `npm run build`: Vite empties `dist/assets` before writing, and
@@ -533,14 +533,14 @@ npm run typecheck && npx vitest run && npm run build
 
 | Suite | Count | Covers |
 |---|---|---|
-|| `tests/`（61 個 `.py`；60 個 `test_*.py` + conftest） | **全套 1283 passed / 0 failed / 0 error**（單一 process 實跑，2026-10-07） | fare unit · per-module API · WS streaming · fleets/roster/settlement · backup retention + restore drill · console contrast · hardening regressions |
+|| `tests/`（61 個 `.py`；60 個 `test_*.py` + conftest） | **全套 1285 passed / 0 failed / 0 error**（單一 process 實跑，2026-10-07） | fare unit · per-module API · WS streaming · fleets/roster/settlement · backup retention + restore drill · console contrast · hardening regressions |
 | `mobile/tool/run_tests.dart` | **161** | Dart unit assertions |
 | `mobile/tool/verify_contract.dart` | **64 fixtures**（共 65 個 fixture json） | every wire shape, decoded by the real models |
-| `admin-web/web` (vitest) | **93** | page-level behaviour |
+| `admin-web/web` (vitest) | **96** | page-level behaviour |
 | `verify_ui.mjs` + `audit_layout.mjs` | PASS | real-browser E2E, layout, both themes |
 
 > 後端 pytest 狀態（2026-10-07）：**一次過 `pytest tests` 全套實跑全綠 =
-> 1283 passed / 0 failed / 0 error / 0 skipped**（印出 summary；見 §7.1 關於
+> 1285 passed / 0 failed / 0 error / 0 skipped**（印出 summary；見 §7.1 關於
 > pipeline exit code 嘅警告）。
 > 先前「一次過跑會中途中止、唔敢宣稱 full-suite 全綠」嘅情況**已經消失**。
 > 跑法：`docker compose up -d db redis` 之後

@@ -1,6 +1,6 @@
 # Fresh Backend Audit — realtaxihk (source/working tree)
 
-> Resolution Log 2026-10-07: F2–F4 and F6–F7 are fixed and covered by the full pytest run (`1283 passed`). F1 (Redis fail-open) remains an explicit production-design decision tracked in `docs/archive/AUDIT_2026-10-06.md`.
+> Resolution Log 2026-10-07: F2–F4 and F6–F7 are fixed and covered by the full pytest run (`1285 passed`). F1 (Redis fail-open) remains an explicit production-design decision tracked in `docs/archive/AUDIT_2026-10-06.md`.
 
 Level: source-only audit of `app/`, Alembic migrations, `pyproject.toml`, `Dockerfile`, `tests/`.
 Scope: auth, sessions, DB lifecycle, security, API contracts, stale comments, and observable test gaps.
