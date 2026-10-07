@@ -27,11 +27,11 @@
   `git rev-list --count origin/main..HEAD` —— 而 **0 的意思是 HEAD 等於
   origin/main**（即所有改動都未 commit），**不是**「都推上去了」。
 
-- **現時狀態**（2026-10-06 重新量測）：
+- **現時狀態**（2026-10-07 重新量測）：
   > ✅ **後端 `pytest` 全套一次過實跑全綠**（Docker Desktop 開住、`realtaxi-db` ＋
   > `realtaxi-redis` 兩隻 container 都 healthy）：
-  > `pytest tests -q --junit-xml=.tmp/final2.xml` = **1245 passed / 0 failed / 0 error /
-  > 0 skipped**（2026-10-06）。先前「一次過跑會中途中止、唔敢宣稱 full-suite 全綠」
+  > `pytest tests -q --junit-xml=.tmp/final4.xml` = **1272 passed / 0 failed / 0 error /
+  > 0 skipped**（2026-10-07）。先前「一次過跑會中途中止、唔敢宣稱 full-suite 全綠」
   > 嘅情況**已經消失** —— 現在單一 process 順序跑就穩定全綠。
   > ```
   > docker compose up -d db redis
@@ -46,10 +46,10 @@
   - **實跑得到**：`ruff check .` **All checks passed!**（全樹）· `ruff format --check .`
     **218 files already formatted** · `mypy app` **128 files / 0 errors** · `compileall app` rc=0 ·
     console `tsc --noEmit` **exit 0（乾淨）** · console vitest **87 passed（11 檔）** ·
-    Dart harness **155 passed / 0 failed** · `dart_check.py` **85 files / 0 diagnostics** ·
+    Dart harness **160 passed / 0 failed** · `dart_check.py` **85 files / 0 diagnostics** ·
     contract **64 fixtures decoded, 0 failure**（共 65 個 fixture json）·
     `audit_response_models.py` **OK（78 fixture blocks / 119 operations 全有 `response_model`）** ·
-    API **106 paths / 119 operations** · `alembic heads` **單一 head `b8d1f2a3c4e5`**（20 個 migration）。
+    API **106 paths / 119 operations** · `alembic heads` **單一 head `e6f7c3d9e5a9`**（22 個 migration）。
   - ✅ **現時無未修項。** 先前列為「未提交 WIP、未經同意去改」嘅 mobile
     `fixed_offers_screen.dart` `$` escape 問題，**已隨 WIP 收斂修好**：`dart_check.py`
     對 `mobile/lib` 現報 **0 diagnostics**。逐條歷史見
@@ -74,8 +74,8 @@
 
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **106 paths / 119 operations，全部有 `response_model`** · 128 檔 / 26,725 LOC · pytest 全套 **1245 / 0**（2026-10-06 單一 process 實跑） |
-| Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**29 個畫面**，三角色）；品牌資產由 `tool/gen_branding_assets.py` 由 `branding/source/` 的原圖產生 | ✅ 155 tests · 83 檔 / 17,948 LOC · APK 曾 BUILD SUCCESSFUL（2026-10-04；本機現時跑不完，見 §4C） |
+| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **106 paths / 119 operations，全部有 `response_model`** · 128 檔 / 26,725 LOC · pytest 全套 **1272 / 0**（2026-10-07 單一 process 實跑） |
+| Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**29 個畫面**，三角色）；品牌資產由 `tool/gen_branding_assets.py` 由 `branding/source/` 的原圖產生 | ✅ 160 tests · fixture contract OK · APK debug 已成功 build（2026-10-07，~183 MB） |
 | Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/legacy/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **87 vitest passed（11 檔）** · `tsc --noEmit` **exit 0** |
 
 一個 repo、三件完整交付物。定位：**Cap. 374D 合規的士資訊中介**（非的士營運商）。
@@ -101,7 +101,7 @@ uv run mypy                                            # types; no DB needed（�
 # tests/ 或 scripts/ 時，需要臨時 pyrightconfig.json：
 #   {"venvPath":".","venv":".venv","pythonVersion":"3.12"}   ← 用完即刪，不要入 repo
 npx --yes pyright@1.1.408 app/ scripts/ tests/         # 現為 0 errors
-uv run pytest -q --junit-xml=.tmp/final2.xml            # 全套 2026-10-06 實跑：1245 passed / 0 failed（需 Docker，見 §0）
+uv run pytest -q --junit-xml=.tmp/final4.xml            # 全套 2026-10-07 實跑：1272 passed / 0 failed（需 Docker，見 §0）
 uv run python scripts/verify/audit_response_models.py  # 78 塊 fixture vs response_model，0 遺失
 cd admin-web/web && npx tsc --noEmit && npm run build && npx vitest run --no-file-parallelism --pool=forks
 cd mobile && dart --packages=.dart_tool/package_config.json tool/run_tests.dart
@@ -111,9 +111,7 @@ cd mobile && dart --packages=.dart_tool/package_config.json tool/verify_contract
 # 品牌資產問的是「有沒有跟上原圖」，不是「能不能編譯」——不跑這條檢查就沒有人會發現
 .venv/Scripts/python mobile/tool/gen_branding_assets.py --check
 # 圖示、`assets:`、以及 Flutter plugin 集合，只有真正建置 APK 才驗得到：
-# dart_check 與 run_tests 看不到 res/，也看不到 Gradle 專案。而本機這條路
-# **現在跑不完**（kernel compiler 撞 ERROR_PIPE_BUSY 231，見 §7）——
-# 所以它現在的實際身份是「CI 的閘」，不是本機的閘。
+# 本機這條路 2026-10-07 已成功跑完（`flutter build apk --debug`，約 183 MB）。
 cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebug
 # 備份：不止跑 backup，還要跑 drill
 .venv/Scripts/python scripts/ops/db_backup.py backup
@@ -322,15 +320,14 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 ## 8. 一頁看完
 
 ```
-✅ 後端 106 paths / 119 ops / ruff+mypy 0 / 20 migrations 單一 head — 代碼層生產就緒
-   ✅ pytest 全套 1245/0/0（2026-10-06 單一 process 實跑）· 見 §0
+✅ 後端 106 paths / 119 ops / ruff+mypy 0 / 22 migrations 單一 head — 代碼層生產就緒
+   ✅ pytest 全套 1272/0/0（2026-10-07 單一 process 實跑）· 見 §0
 ✅ 登入改為 email + 密碼；電話只解鎖 call車（`PHONE_NOT_VERIFIED`）；鎖定回 401
 ✅ auth 三面 rate limit + Cloudflare Turnstile（prod 缺密鑰拒啟動）+ 受限審查者帳號
 ✅ App 已接新登入流程：三個入口分開、電話只解鎖 call車、四條 Turnstile 門都帶 token
-⚠️ APK build 在本機跑不完（`ERROR_PIPE_BUSY`）→ `webview_flutter` 與 `res/`／`assets:`
-   只有 CI 驗得到，而 CI 還沒在這些 commit 上跑過（見 §4C）
+✅ APK debug build 已在本機成功（2026-10-07，約 183 MB `mobile/build/.../app-debug.apk`）
 ✅ 現時無未修項（先前的 mobile `fixed_offers_screen.dart` `$` escape 已隨 WIP 收斂）
-✅ mobile 29 畫面 / 155 tests / 17,948 LOC            — 三角色完整
+✅ mobile 29 畫面 / 160 tests / 17,948 LOC            — 三角色完整
 ✅ mobile 排版閘（`dart format --set-exit-if-changed lib tool`）已修至 0 changed
    （HEAD/origin-main 原本 19 檔唔過 — 閘聲明咗但從未綠過）
 ✅ P4 首次對住「已 migrate 的 dev DB」跑過（原停在 `c1f2e3d4a5b6`，2026-10-06 升到
@@ -350,7 +347,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 ✅ P1-4 備份 script + 還原演練實跑 PASS（27 tests）
 ✅ TOTP 對 RFC 6238 / 4226 全部 16 條官方向量 PASS（實測）
 ✅ `app/models` 拆包：886 行 → 5 個 bounded-context 模組，零呼叫點改動
-✅ 全部 112 個 operation 都有 `response_model=`（audit script 實跑驗證）
+✅ 全部 127 個 operation 都有 `response_model=`（audit script 實跑驗證）
 ⚠️ push 未做 — 用戶指示「只需 commit」（見 §5）
 ⬜ 真正等 credentials 的只有 3 家 provider：Google Maps / FCM / WhatsApp
 ✅ 主機名已定：`hkfastdc.com`（單一 origin，2026-10-04）— §4A
