@@ -471,7 +471,7 @@ enforces that they agree**. This section is the mitigation.
 |---|---|---|
 | API → mobile | 63 fixtures captured from a **running** API, decoded by real Dart models | A renamed/removed field, before an APK is built |
 | API → console | TypeScript types in `api/`, `npm run typecheck` | A changed response shape at compile time |
-| Response shape → itself | `audit_response_models.py` vs captured fixtures (73 blocks) | A `response_model` that silently drops a field |
+| Response shape → itself | `audit_response_models.py` vs captured fixtures (81 blocks) | A `response_model` that silently drops a field |
 | DB schema → models | `test_migration_schema_parity.py` — the **only** test that runs migrations | Model/migration drift |
 | Enum shape → DB | `test_enum_check_constraints.py` + CHECK constraints | A value the app cannot read back |
 
@@ -512,12 +512,12 @@ npm run typecheck && npx vitest run && npm run build
 > `--junit-xml=` is not optional here. On this dev host, read the printed
 > summary or the XML, never a pipeline exit code: when pytest is wrapped in a
 > shell pipeline (e.g. `| tail`), the wrapper's exit code is the last command's,
-> not pytest's. The 2026-10-06 full run printed `1245 passed`; treat that as the
+> not pytest's. The 2026-10-07 full run printed `1283 passed`; treat that as the
 > source of truth.
 >
 > `--junit-xml=` 不是可選項。本機要**只讀 XML／summary，不要依賴 pipeline exit
 > code**：pytest 被 pipe 包住時，exit code 係最尾嗰個指令（例如 `tail`）嘅值，
-> 唔係 pytest 嘅值。2026-10-06 全套實跑印出 `1245 passed`；以 print 出嚟嘅 summary
+> 唔係 pytest 嘅值。2026-10-07 全套實跑印出 `1283 passed`；以 print 出嚟嘅 summary
 > 或 XML 為準。
 >
 > The same shim blocks `npm run build`: Vite empties `dist/assets` before writing, and
@@ -564,7 +564,7 @@ Per-test isolated Postgres databases (template clone) — no cross-test state.
 These answer questions, they do not just exercise code:
 
 ```bash
-.venv/Scripts/python scripts/verify/audit_response_models.py   # 73 blocks, OK
+.venv/Scripts/python scripts/verify/audit_response_models.py   # 81 blocks, OK
 .venv/Scripts/python scripts/verify/prod_boot_drill.py         # 12 fail-fast cases
 .venv/Scripts/python scripts/verify/live_smoke.py              # 9-check E2E
 .venv/Scripts/python scripts/verify/security_verify.py         # re-run every finding

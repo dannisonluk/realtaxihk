@@ -327,7 +327,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 ✅ App 已接新登入流程：三個入口分開、電話只解鎖 call車、四條 Turnstile 門都帶 token
 ✅ APK debug build 已在本機成功（2026-10-07，約 183 MB `mobile/build/.../app-debug.apk`）
 ✅ 現時無未修項（先前的 mobile `fixed_offers_screen.dart` `$` escape 已隨 WIP 收斂）
-✅ mobile 34 畫面 / 160 tests / 19,476 LOC        — 三角色完整
+✅ mobile 34 畫面 / 161 tests / 19,481 LOC        — 三角色完整
 ✅ mobile 排版閘（`dart format --set-exit-if-changed lib tool`）已修至 0 changed
    （HEAD/origin-main 原本 19 檔唔過 — 閘聲明咗但從未綠過）
 ✅ P4 首次對住「已 migrate 的 dev DB」跑過（原停在 `c1f2e3d4a5b6`，2026-10-06 升到
