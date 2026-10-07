@@ -25,7 +25,7 @@ from app.api.schemas import AdminOrderDetailOut, AdminOrderPageOut, ReceiptOut
 from app.core.db import get_session
 from app.core.deps import Principal, require_admin
 from app.core.money import meter_str, money_str
-from app.models import LedgerEntry, Order, OrderFareMode, OrderStatus
+from app.models import LedgerEntry, Order, OrderEvent, OrderEventType, OrderFareMode, OrderStatus
 from app.services.receipt.receipt_service import render_receipt_text
 
 router = APIRouter()
@@ -74,6 +74,29 @@ def _order_timeline(order: Order) -> list[dict]:
             }
         )
     return out
+
+
+def _unsettled_penalty(events: list[OrderEvent], cancellation_reason: str | None) -> dict | None:
+    """The passenger-side penalty that was recorded but not debited.
+
+    The passenger has no wallet, so the P4 cancellation handler writes
+    `PENALTY_CHARGED` with `settled: false` instead of a ledger row.  This is
+    the record an operator needs for an offline collection decision; it stays
+    out of the list row because it is per-order event JSON.
+    """
+    for event in reversed(events):
+        payload = event.payload or {}
+        if payload.get("settled") is False and payload.get("amount_hkd"):
+            return {
+                "amount_hkd": str(payload["amount_hkd"]),
+                "basis_hkd": str(payload.get("basis_hkd") or "0.00"),
+                "share_percent": str(payload.get("share_percent") or "100"),
+                "reason_code": payload.get("reason_code"),
+                "cancellation_reason": cancellation_reason,
+                "actor_kind": event.actor_kind,
+                "charged_at": event.created_at.isoformat() if event.created_at else None,
+            }
+    return None
 
 
 def _admin_order_out(order: Order) -> dict:
@@ -234,6 +257,21 @@ async def order_detail(
     if order is None:
         raise HTTPException(status_code=404, detail="order not found")
 
+    penalty_events = (
+        (
+            await session.execute(
+                select(OrderEvent)
+                .where(
+                    OrderEvent.order_id == order_id,
+                    OrderEvent.event == OrderEventType.PENALTY_CHARGED,
+                )
+                .order_by(OrderEvent.created_at.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+
     ledger_rows = (
         (
             await session.execute(
@@ -254,6 +292,7 @@ async def order_detail(
         "fare": order.fare_json,
         "broadcast_radius_km": meter_str(Decimal(order.broadcast_radius_km)),
         "timeline": _order_timeline(order),
+        "unsettled_penalty": _unsettled_penalty(penalty_events, order.cancellation_reason),
         "ledger": {"items": [_ledger_out(e) for e in ledger_rows]},
     }
 

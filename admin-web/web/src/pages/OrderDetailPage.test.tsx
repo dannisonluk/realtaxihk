@@ -96,6 +96,7 @@ function detail(overrides: Record<string, unknown> = {}) {
     receipt_requested: false,
     receipt_requested_at: null,
     ledger: { items: [], total: 0 },
+    unsettled_penalty: null,
     ...overrides,
   };
 }
@@ -343,6 +344,37 @@ describe('the order detail page', () => {
     expect(container.textContent).toContain('130.20');
     expect(container.textContent).toContain('車費收據 / Fare Receipt');
     expect(container.textContent).toContain('完全靜音 Silent ride');
+  });
+
+  it('shows a recorded but uncollected passenger penalty', async () => {
+    stubTransport(
+      detail({
+        status: 'CANCELLED',
+        unsettled_penalty: {
+          amount_hkd: '105.00',
+          basis_hkd: '105.00',
+          share_percent: '100',
+          reason_code: 'NO_SHOW',
+          cancellation_reason: 'NO_SHOW',
+          actor_kind: 'PASSENGER',
+          charged_at: '2026-09-02T10:02:00Z',
+        },
+      }),
+    );
+    await renderAndSettle(root);
+
+    expect(container.textContent).toContain(text('orderDetail.unsettledPenaltyLabel'));
+    expect(container.textContent).toContain(text('orderDetail.unsettledPenaltyTitle'));
+    expect(container.textContent).toContain('105.00');
+    expect(container.textContent).toContain('NO_SHOW');
+  });
+
+  it('does not offer a penalty card when none is recorded', async () => {
+    stubTransport(detail({ unsettled_penalty: null }));
+    await renderAndSettle(root);
+
+    expect(container.textContent).not.toContain(text('orderDetail.unsettledPenaltyLabel'));
+    expect(container.textContent).not.toContain(text('orderDetail.unsettledPenaltyTitle'));
   });
 
   // The one that stops an operator reading "the meter said $140 but the

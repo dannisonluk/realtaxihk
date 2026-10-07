@@ -710,6 +710,7 @@ export interface AdminOrderDetail extends AdminOrderRow {
   broadcast_radius_km: string;
   timeline: OrderTimelineStep[];
   ledger: { items: LedgerEntry[] };
+  unsettled_penalty: AdminUnsettledPenalty | null;
   requirements: OrderRequirements | null;
   payment_preference: string[];
   driver_payment_methods: string[];
@@ -718,6 +719,22 @@ export interface AdminOrderDetail extends AdminOrderRow {
   pickup_area: string | null;
   receipt_requested: boolean;
   receipt_requested_at: string | null;
+}
+
+/**
+ * `GET /admin/orders/{id}` — the passenger-side P4 penalty that is recorded
+ * but not debited. `settled: false` never leaves the server without this
+ * object, so an operator can see the owed amount before deciding an offline
+ * collection.
+ */
+export interface AdminUnsettledPenalty {
+  amount_hkd: string;
+  basis_hkd: string;
+  share_percent: string;
+  reason_code: string | null;
+  cancellation_reason: string | null;
+  actor_kind: string | null;
+  charged_at: string | null;
 }
 
 /**

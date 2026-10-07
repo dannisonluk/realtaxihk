@@ -1058,6 +1058,12 @@ export const en = {
     viewReceipt: 'View receipt',
     receiptTitle: 'Frozen receipt',
     noneRecorded: 'Not recorded',
+    unsettledPenaltyLabel: 'Unsettled passenger penalty',
+    unsettledPenaltyTitle: 'Recorded, not collected',
+    penaltyBasisLabel: 'Basis',
+    penaltyBasis: 'HK${{basis}} at {{share}}%',
+    penaltyReason: 'Reason: {{reason}}',
+    penaltyCharged: 'Charged at {{at}}',
   },
 
   // -------------------------------------------------- driver detail -----

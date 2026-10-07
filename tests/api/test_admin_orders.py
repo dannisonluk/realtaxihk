@@ -458,6 +458,58 @@ class TestDetail:
         assert body["timeline"][-1]["step"] == "cancelled"
         assert body["timeline"][-1]["elapsed_seconds"] == 180
 
+    async def test_detail_surfaces_an_unsettled_passenger_penalty(self, client, passenger):
+        """The P4 known gap, surfaced for an operator: recorded, owed, not debited.
+
+        The passenger has no wallet, so the cancel handler writes
+        `PENALTY_CHARGED` with `settled: false` instead of a ledger row. Until
+        there is passenger-side money, the console is where an operator finds
+        the amount owed and logs the collection.
+        """
+        created = datetime(2026, 9, 2, 10, 0, tzinfo=UTC)
+        oid = _make_order(
+            client,
+            passenger_id=passenger,
+            status="CANCELLED",
+            created_at=created,
+            cancelled_at=created + timedelta(minutes=2),
+            cancellation_reason="NO_SHOW",
+        )
+        client.exec_sql(
+            "INSERT INTO order_events (order_id, event, from_status, to_status, "
+            "actor_kind, actor_id, payload, created_at) VALUES "
+            "(CAST(:oid AS uuid), 'PENALTY_CHARGED', 'ACCEPTED', 'CANCELLED', "
+            "'PASSENGER', CAST(:actor AS uuid), CAST(:payload AS jsonb), "
+            "CAST(:at AS timestamptz))",
+            {
+                "oid": oid,
+                "actor": passenger,
+                "payload": json.dumps(
+                    {
+                        "entry_type": "CANCELLATION_PENALTY",
+                        "amount_hkd": "105.00",
+                        "share_percent": "100",
+                        "basis_hkd": "105.00",
+                        "reason_code": "NO_SHOW",
+                        "settled": False,
+                    }
+                ),
+                "at": created + timedelta(minutes=2),
+            },
+        )
+        body = client.get(f"/api/v1/admin/orders/{oid}", headers=client.admin_headers()).json()
+        penalty = body["unsettled_penalty"]
+        assert penalty is not None
+        assert penalty["amount_hkd"] == "105.00"
+        assert penalty["basis_hkd"] == "105.00"
+        assert penalty["share_percent"] == "100"
+        assert penalty["reason_code"] == "NO_SHOW"
+        assert penalty["actor_kind"] == "PASSENGER"
+        assert penalty["cancellation_reason"] == "NO_SHOW"
+        # The driver-side penalty is a real ledger row; the passenger side is
+        # not, which is exactly why the detail view surfaces it separately.
+        assert body["ledger"]["items"] == []
+
     async def test_unknown_order_is_a_404(self, client):
         r = client.get(f"/api/v1/admin/orders/{uuid.uuid4()}", headers=client.admin_headers())
         assert r.status_code == 404, r.text

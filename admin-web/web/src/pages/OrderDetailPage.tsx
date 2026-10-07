@@ -181,6 +181,34 @@ export function OrderDetailPage() {
         </Rows>
       </Card>
 
+      {data.unsettled_penalty ? (
+        <div style={{ marginTop: 16 }}>
+          <h2>{t('orderDetail.unsettledPenaltyLabel')}</h2>
+          <Card className="card--pad">
+            <div className="row-inline" style={{ marginBottom: 12 }}>
+              <Chip tone="danger">{t('orderDetail.unsettledPenaltyTitle')}</Chip>
+              <Money value={data.unsettled_penalty.amount_hkd} />
+            </div>
+            <Rows>
+              <DetailRow label={t('orderDetail.penaltyBasisLabel')}>
+                {t('orderDetail.penaltyBasis', {
+                  basis: data.unsettled_penalty.basis_hkd,
+                  share: data.unsettled_penalty.share_percent,
+                })}
+              </DetailRow>
+              <DetailRow label={t('orderDetail.penaltyReason')}>
+                {data.unsettled_penalty.reason_code ?? data.unsettled_penalty.cancellation_reason ?? '—'}
+              </DetailRow>
+              <DetailRow label={t('orderDetail.penaltyCharged')}>
+                {data.unsettled_penalty.charged_at
+                  ? formatTime(data.unsettled_penalty.charged_at, formatLocale)
+                  : '—'}
+              </DetailRow>
+            </Rows>
+          </Card>
+        </div>
+      ) : null}
+
       {receipt || receiptError ? (
         <div style={{ marginTop: 16 }}>
           <h2>{t('orderDetail.receiptTitle')}</h2>

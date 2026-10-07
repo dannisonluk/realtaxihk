@@ -1050,6 +1050,12 @@ export const zhHant = {
     viewReceipt: '查看收據',
     receiptTitle: '凍結收據',
     noneRecorded: '無記錄',
+    unsettledPenaltyLabel: '未收取乘客罰款',
+    unsettledPenaltyTitle: '已記錄，未收款',
+    penaltyBasisLabel: '基準',
+    penaltyBasis: 'HK${{basis}}，{{share}}%',
+    penaltyReason: '原因：{{reason}}',
+    penaltyCharged: '收取日期：{{at}}',
   },
 
   // -------------------------------------------------- driver detail -----

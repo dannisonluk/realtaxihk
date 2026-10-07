@@ -26,6 +26,7 @@ __all__ = [
     "AdminOrderRowOut",
     "AdminPasswordResetOut",
     "AdminRoleChangeOut",
+    "AdminUnsettledPenaltyOut",
     "AuditPageOut",
     "AuditRowOut",
     "DepositAdjustOut",
@@ -458,6 +459,24 @@ class AdminOrderRowOut(BaseModel):
     created_at: str | None
 
 
+class AdminUnsettledPenaltyOut(BaseModel):
+    """A passenger cancellation penalty that is recorded but not debited.
+
+    The P4 cancel handler writes `PENALTY_CHARGED` with `settled: false`
+    because the passenger has no wallet (Cap. 374D: the fare never passes
+    through the platform). Surfacing it here turns a raw JSONB read into an
+    operator decision record: how much is owed, on what basis, and why.
+    """
+
+    amount_hkd: str
+    basis_hkd: str
+    share_percent: str
+    reason_code: str | None
+    cancellation_reason: str | None
+    actor_kind: str | None
+    charged_at: str | None
+
+
 class AdminOrderPageOut(BaseModel):
     """`GET /admin/orders` — offset-paginated order table, newest first.
 
@@ -488,6 +507,11 @@ class AdminOrderDetailOut(AdminOrderRowOut):
     * `ledger` — the ledger entries referencing this order. Usually empty (a
       fare is not a ledger entry; only a penalty or a manual adjustment is),
       which is itself worth seeing.
+    * `unsettled_penalty` — the passenger-side `PENALTY_CHARGED` event with
+      `settled: false` (recorded, owed, not debited). The driver-side penalty
+      is a real ledger row and appears in `ledger` instead; the passenger has
+      no wallet, so the console surfaces the owed amount for an offline
+      collection decision.
     * `broadcast` — the radius the trip was offered within, so "why did nobody
       take it" is answerable.
 
@@ -515,6 +539,7 @@ class AdminOrderDetailOut(AdminOrderRowOut):
     broadcast_radius_km: str
     timeline: list[dict[str, Any]]
     ledger: dict[str, list[AdminLedgerRowOut]]
+    unsettled_penalty: AdminUnsettledPenaltyOut | None = None
     requirements: dict[str, Any] | None
     payment_preference: list[str]
     driver_payment_methods: list[str]
