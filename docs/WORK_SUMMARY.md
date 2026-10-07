@@ -233,6 +233,11 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
 - **premium / fixed-fare driver inbox**（2026-10-07）。司機 App 新增通知列表
   同 badge；後端用 Postgres durable row 做 source of truth，external push
   (WhatsApp/FCM) 保持範圍外。
+- **fresh audit 收尾輪**（2026-10-07）。admin F1–F7 全部核實已修（tsc 0、
+  vitest 93、build 0）；backend F2–F4 / F6–F7 收齊（`mark_explicit_commit`
+  消除 redundant commit，`4a8b055`）；mobile F2 補 `FormatException` 子型態
+  （`eb44777`）＋ regression test（`72756a4`，harness 160→161）。全套
+  pytest 1283 / 0、Dart 95/0、contract 64/64 已複核。
 
 ---
 
