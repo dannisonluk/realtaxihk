@@ -76,7 +76,7 @@
 |---|---|---|---|
 | 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **115 paths / 129 operations，全部有 `response_model`** · 141 檔 / 28,933 LOC · pytest 全套 **1283 / 0**（2026-10-07 單一 process 實跑） |
 | Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**34 個畫面**，三角色）；品牌資產由 `tool/gen_branding_assets.py` 由 `branding/source/` 的原圖產生 | ✅ 161 tests · fixture contract OK · APK debug 已成功 build（2026-10-07，~183 MB） |
-| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/legacy/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **93 vitest passed（14 檔）** · `tsc --noEmit` **exit 0** |
+| Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/legacy/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **94 vitest passed（14 檔）** · `tsc --noEmit` **exit 0** |
 
 一個 repo、三件完整交付物。定位：**Cap. 374D 合規的士資訊中介**（非的士營運商）。
 
@@ -343,7 +343,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 ✅ P4 首次對住「已 migrate 的 dev DB」跑過（原停在 `c1f2e3d4a5b6`，2026-10-06 升到
    `b8d1f2a3c4e5`）；契約 fixture 61 → 64，三個新狀態首次有解碼覆蓋
 ✅ `alembic check` drift 回到 baseline 9 項（修好 `recurring_rides` 漏 `length=` 那兩項）
-✅ admin-web React / 93 vitest / tsc exit 0 / UI verifier PASS
+✅ admin-web React / 94 vitest / tsc exit 0 / UI verifier PASS
 ✅ 後台治理：四級 RBAC（rank 比較、live row 為權威）+ 審計覆蓋金錢／狀態改動
 ✅ 後台新增：帳戶管理 / 訂單監控 / 結算預覽+confirm token+CSV / 爭議 / 主體搜尋 / 頭像上傳
 ✅ 後台實時地圖 `#/live`：Leaflet + OpenStreetMap（免金鑰、不計費）、15 秒輪詢；路由 code-split
@@ -357,7 +357,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 ✅ P1-4 備份 script + 還原演練實跑 PASS（27 tests）
 ✅ TOTP 對 RFC 6238 / 4226 全部 16 條官方向量 PASS（實測）
 ✅ `app/models` 拆包：886 行 → 5 個 bounded-context 模組，零呼叫點改動
-✅ 全部 127 個 operation 都有 `response_model=`（audit script 實跑驗證）
+✅ 全部 129 個 operation 都有 `response_model=`（audit script 實跑驗證）
 ⚠️ push 未做 — 用戶指示「只需 commit」（見 §5）
 ⬜ 真正等 credentials 的只有 3 家 provider：Google Maps / FCM / WhatsApp
 ✅ 主機名已定：`hkfastdc.com`（單一 origin，2026-10-04）— §4A
