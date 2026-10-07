@@ -41,6 +41,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.admin_cookies import read_refresh_cookie
 from app.core.db import get_session
 from app.core.security import decode_access_token
 from app.core.token_revocation import is_token_revoked
@@ -191,8 +192,8 @@ async def require_live_principal(
     return user
 
 
-async def require_live_admin_refresh_session(request: Request) -> None:
-    """The refresh cookie names a live, active `admin_accounts` row.
+async def require_live_admin_refresh_session(request: Request) -> str | None:
+    """Read and return the admin refresh cookie for cookie-authenticated routes.
 
     The admin `/refresh` and `/logout` routes authenticate with the HttpOnly
     refresh cookie rather than a bearer token, so `require_admin` does not fit:
@@ -201,21 +202,21 @@ async def require_live_admin_refresh_session(request: Request) -> None:
     it already loads the owning admin row live — `/refresh` re-reads
     `admin_accounts` and refuses a missing or disabled account.
 
-    This dependency does not re-do that lookup; the handler still performs it,
-    because the lookup and the rotation must share one transaction and one
-    `FOR UPDATE` lock. What it contributes is **declaration**. The route-table
-    audit in `tests/test_security_hardening.py` reads *declared* dependencies,
-    and a guard that lives only inside a function body is invisible to it — so
-    the next person adding a cookie-authenticated admin route would leave the
+    This dependency does not rotate or re-check the row; the handler still
+    performs that work, because the lookup and the rotation must share one
+    transaction and one `FOR UPDATE` lock. What it contributes is the cookie
+    read plus **declaration**. The route-table audit in
+    `tests/test_security_hardening.py` reads *declared* dependencies, and a
+    guard that lives only inside a function body is invisible to it — so the
+    next person adding a cookie-authenticated admin route would leave the
     audit green while shipping an unguarded endpoint. Same reasoning, and the
     same precedent, as `require_live_principal` above.
 
-    A no-op rather than a check is the honest shape here: the real check cannot
-    be hoisted without splitting the transaction. Declaring the guard the
-    handler performs is what keeps the audit's rule meaningful instead of
-    forcing it to grow a per-route exemption list, which would erode it.
+    Reading (and returning) the cookie here rather than in the handler body is
+    what keeps the declaration honest: the dependency has real behaviour, the
+    handler uses the value it returns, and the audit still means something.
     """
-    return None
+    return read_refresh_cookie(request)
 
 
 async def require_active_user(

@@ -48,7 +48,6 @@ from app.core.admin_cookies import (
     clear_session_cookie_headers,
     clear_session_cookies,
     read_csrf_header,
-    read_refresh_cookie,
     set_session_cookies,
 )
 from app.core.client_ip import client_ip
@@ -289,7 +288,7 @@ async def refresh_admin_session(
     request: Request,
     response: Response,
     session: AsyncSession = Depends(get_session),
-    _live: None = Depends(require_live_admin_refresh_session),
+    _live: str | None = Depends(require_live_admin_refresh_session),
 ):
     """Exchange the refresh cookie for a new access token.
 
@@ -305,7 +304,7 @@ async def refresh_admin_session(
     CSRF" on the wire — and drawing one would tell an attacker which of those
     they had achieved. The distinction lives in the log and the audit trail.
     """
-    raw_refresh = read_refresh_cookie(request)
+    raw_refresh = _live
     if not raw_refresh:
         raise HTTPException(status_code=401, detail="no refresh cookie")
 
@@ -361,7 +360,7 @@ async def logout(
     request: Request,
     response: Response,
     session: AsyncSession = Depends(get_session),
-    _live: None = Depends(require_live_admin_refresh_session),
+    _live: str | None = Depends(require_live_admin_refresh_session),
 ):
     """End the admin session: revoke every refresh token and the access epoch.
 
@@ -384,7 +383,7 @@ async def logout(
     cannot be abused, since a cookie the attacker cannot read is one they cannot
     have stolen by clearing it.
     """
-    raw_refresh = read_refresh_cookie(request)
+    raw_refresh = _live
     svc = AdminRefreshService(session)
     revoked = False
     admin_id = None
