@@ -14,8 +14,7 @@ detected and skipped. Logs mask phones (first raw group + last four, e.g.
 Environment:
     ALLOW_DEV_OTP       must be true (dev OTP auto-register/verify)
     APP_ENV             must not be a production environment
-    BOOKING_TEST_PASSWORD  optional; defaults to a deterministic dev-only
-                           fixture password. Never printed.
+    BOOKING_TEST_PASSWORD  required; minimum 12 characters. It is never printed.
     PASSENGER_PHONE / DRIVER_PHONE  optional env overrides
 """
 
@@ -28,21 +27,20 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings  # noqa: E402
-from app.core.db import close_redis, dispose_engine, get_redis, get_session_factory  # noqa: E402
-from app.core.exceptions import BusinessRuleError  # noqa: E402
-from app.core.phone import is_hk_phone  # noqa: E402
-from app.models.user import User  # noqa: E402
-from app.services.auth.account_service import AccountAuthService  # noqa: E402
-from app.services.auth.phone_binding_service import PhoneBindingService  # noqa: E402
+from app.core.config import get_settings
+from app.core.db import close_redis, dispose_engine, get_redis, get_session_factory
+from app.core.exceptions import BusinessRuleError
+from app.core.phone import is_hk_phone
+from app.models.user import User
+from app.services.auth.account_service import AccountAuthService
+from app.services.auth.phone_binding_service import PhoneBindingService
 
 DEFAULT_PASSENGER_PHONE = "+85291230001"
 DEFAULT_DRIVER_PHONE = "+85291230002"
 DEFAULT_PASSENGER_EMAIL = "booking.passenger@example.com"
 DEFAULT_DRIVER_EMAIL = "booking.driver@example.com"
-DEFAULT_DEV_PASSWORD = "Booking-Test-Passw0rd-9"
 # The dev OTP code documented in docs/QA_TEST_ENVIRONMENT.md for ALLOW_DEV_OTP.
 DEV_OTP_CODE = "123456"
 
@@ -131,9 +129,12 @@ async def main() -> int:
         print("both phones must be valid +852 numbers", file=sys.stderr)
         return 2
 
-    password = os.environ.get("BOOKING_TEST_PASSWORD", DEFAULT_DEV_PASSWORD)
-    if len(password) < 12:
-        print("BOOKING_TEST_PASSWORD must be at least 12 characters", file=sys.stderr)
+    password = os.environ.get("BOOKING_TEST_PASSWORD")
+    if not password or len(password) < 12:
+        print(
+            "BOOKING_TEST_PASSWORD is required and must be at least 12 characters",
+            file=sys.stderr,
+        )
         return 2
 
     factory = get_session_factory()

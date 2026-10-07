@@ -7,7 +7,7 @@ wire contract with mobile; `Order` imports them and stores their string values.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, time
 from enum import Enum
 from uuid import UUID
 
@@ -98,8 +98,8 @@ class DriverBookingPreference(Base):
     )
     categories: Mapped[list[str] | None] = mapped_column(ARRAY(String(24)), nullable=True)
     preferred_origin_area: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    available_from: Mapped[Time | None] = mapped_column(Time, nullable=True)
-    available_until: Mapped[Time | None] = mapped_column(Time, nullable=True)
+    available_from: Mapped[time | None] = mapped_column(Time, nullable=True)
+    available_until: Mapped[time | None] = mapped_column(Time, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

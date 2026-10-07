@@ -15,9 +15,11 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas.driver_notification import (
+    DriverNotificationOut,
     DriverNotificationPageOut,
     DriverNotificationReadOut,
     DriverNotificationsReadAllOut,
@@ -39,18 +41,18 @@ async def _require_driver(session: AsyncSession, user: Principal) -> DriverProfi
     return profile
 
 
-def _out(row: DriverNotification) -> dict:
-    return {
-        "id": row.id,
-        "order_id": str(row.order_id) if row.order_id else None,
-        "kind": row.kind,
-        "headline_zh": row.headline_zh,
-        "headline_en": row.headline_en,
-        "body_zh": row.body_zh,
-        "body_en": row.body_en,
-        "read": row.read_at is not None,
-        "created_at": row.created_at,
-    }
+def _out(row: DriverNotification) -> DriverNotificationOut:
+    return DriverNotificationOut(
+        id=row.id,
+        order_id=str(row.order_id) if row.order_id else None,
+        kind=row.kind,
+        headline_zh=row.headline_zh,
+        headline_en=row.headline_en,
+        body_zh=row.body_zh,
+        body_en=row.body_en,
+        read=row.read_at is not None,
+        created_at=row.created_at,
+    )
 
 
 @router.get("", response_model=DriverNotificationPageOut)
@@ -103,7 +105,8 @@ async def read_all_notifications(
         )
         .values(read_at=datetime.now(UTC))
     )
-    return DriverNotificationsReadAllOut(updated=result.rowcount or 0)
+    updated = result.rowcount if isinstance(result, CursorResult) else 0
+    return DriverNotificationsReadAllOut(updated=updated)
 
 
 @router.post("/{notification_id}/read", response_model=DriverNotificationReadOut)

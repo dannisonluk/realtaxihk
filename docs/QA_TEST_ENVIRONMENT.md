@@ -375,6 +375,8 @@ curl -s $API/identity/me -H "authorization: Bearer $TOKEN"
 ```bash
 # .env 或環境變數
 ALLOW_DEV_OTP=true
+# 本機 QA 自行設定、最少 12 字元；腳本不會把它寫入 repo 或印出來
+BOOKING_TEST_PASSWORD='<dev-only-password-12-plus>'
 
 .venv/Scripts/python.exe scripts/ops/create_booking_account.py
 # 預設：PASSENGER_PHONE=+85291230001 DRIVER_PHONE=+85291230002
