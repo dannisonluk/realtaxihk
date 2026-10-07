@@ -72,20 +72,21 @@ async def _ensure_account(
     session: AsyncSession,
     *,
     settings,
+    redis,
     label: str,
     phone: str,
     email: str,
     password: str,
 ) -> None:
     masked = _mask_phone(phone)
-    auth = AccountAuthService(session)
+    auth = AccountAuthService(session, redis)
     existing = await auth.find_by_email(email)
     if existing is not None and existing.phone_verified_at:
         print(f"[{label}] {masked}: already registered and verified — skipping")
         return
 
     if existing is None:
-        await auth.register(phone=phone, password=password)
+        await auth.register(email=email, password=password, phone_e164=phone, ip="127.0.0.1")
         await session.commit()
         print(f"[{label}] {masked}: account registered")
 
@@ -98,12 +99,12 @@ async def _ensure_account(
     if not user.phone_verified_at:
         binder = PhoneBindingService(session)
         try:
-            await binder.request(user=user, phone=phone)
+            await binder.request(user=user, phone_e164=phone)
         except BusinessRuleError as exc:
             if "cooldown" not in str(exc).lower():
                 raise
             print(f"[{label}] {masked}: OTP resend cooldown active, reusing existing code")
-        await binder.confirm(user=user, phone=phone, code=DEV_OTP_CODE)
+        await binder.confirm(user=user, phone_e164=phone, code=DEV_OTP_CODE)
         await session.commit()
         print(f"[{label}] {masked}: phone verified (dev OTP)")
     else:
@@ -118,7 +119,7 @@ async def main() -> int:
             file=sys.stderr,
         )
         return 2
-    if settings.environment and settings.environment.lower() in {"prod", "production"}:
+    if settings.app_env and settings.app_env.lower() in {"prod", "production"}:
         print("refusing to run against a production environment", file=sys.stderr)
         return 2
 
@@ -144,6 +145,7 @@ async def main() -> int:
             await _ensure_account(
                 session,
                 settings=settings,
+                redis=redis,
                 label="passenger",
                 phone=passenger_phone,
                 email=args.passenger_email,
@@ -152,13 +154,14 @@ async def main() -> int:
             await _ensure_account(
                 session,
                 settings=settings,
+                redis=redis,
                 label="driver",
                 phone=driver_phone,
                 email=args.driver_email,
                 password=password,
             )
     finally:
-        await close_redis(redis)
+        await close_redis()
         await dispose_engine()
     print(f"PASSENGER_PHONE={passenger_phone} DRIVER_PHONE={driver_phone}")
     return 0

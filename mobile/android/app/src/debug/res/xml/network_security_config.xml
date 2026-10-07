@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only network security config overlay.
+
+  The main config permits cleartext only to loopback/emulator hosts. This debug
+  overlay instead allows cleartext HTTP to any host, so a physical test device
+  can reach a local API at the developer machine's LAN address. It is never
+  merged into release builds.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
