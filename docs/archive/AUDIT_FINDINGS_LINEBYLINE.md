@@ -1211,6 +1211,12 @@ Notable because it is the highest-privilege path in the system. Verified sound:
 
 ## NEW-29 — MEDIUM — `.env.example` advertises a bind-address control that no code reads
 
+> **Resolution 2026-10-08**: fixed at HEAD before this pass. `.env.example` now says
+> `APP_HOST is deliberately NOT advertised: nothing in the app reads it`, and the
+> dead `app_host` / `app_port` Settings fields are gone; `APP_PORT` survives because
+> `docker-compose.yml:88` genuinely publishes `${APP_PORT:-8000}`. The example now
+> points operators at `APP_BIND_IP` (SEC-31), the one control that is real.
+
 `.env.example:7` ships `APP_HOST=0.0.0.0`, three lines above the real control at `:14`
 (`APP_BIND_IP=127.0.0.1`, carrying the SEC-31 comment). Nothing reads `APP_HOST`:
 
@@ -1234,6 +1240,10 @@ silently ignores its documented name is how the next misconfiguration gets writt
 meaning.
 
 ## NEW-30 — LOW — `turnstile_site_key` is documented as "served to the client"; nothing serves it
+
+> **Resolution 2026-10-08**: fixed at HEAD before this pass. The comment now says
+> `not served by this API; clients carry a build-time key`, so the sentence no
+> longer promises an endpoint that does not exist.
 
 `app/core/config.py:216` — `turnstile_site_key: str = ""  # served to the client; not a
 secret`. The comment is a contract, and it is unmet: every `site_key` in `app/` outside
