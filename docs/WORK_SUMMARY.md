@@ -162,9 +162,9 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
 | **P4 §3.6 預約服務（pre-booking）未實作** | 只有即時單。`SCHEDULED` 訂單（提前 2 小時至 3 天）、`landmarks` 表（地標＝終點）、司機預約偏好（`GET/PUT /drivers/me/booking-preferences`）與廣播前置視窗全部沒有 —— 程式碼中零引用 | 設計文件 §3.6 與 §4.0.3–4.0.5 已完成，但這是獨立的一個功能面（新表、新端點、新前端頁），與 in-trip 生命週期沒有耦合，所以先做生命週期那半。要做就照 §3.6 逐節落地；`IN_TRIP_REDESIGN.md` 的狀態標頭已如實標明這一點 |
 | **乘客違約罰款「有記錄、未收錢」** | 乘客在 `ACCEPTED` 之後取消，會寫 `PENALTY_CHARGED` 事件（`settled: false`）並設 15 分鐘冷靜期，但**錢沒有實際扣到** | `ledger_entries.driver_profile_id` 是 NOT NULL，而乘客沒有錢包 —— 收乘客的錢要先有乘客錢包／預授權。在沒有支付渠道之前，記錄 + 冷靜期是能做到的全部；admin 事後裁決仍可依事件記錄處理 |
 | **DECISION-3 的「補款後手動放行」未實作** | 負餘額會令 `grab` 回 423 `DEPOSIT_INSUFFICIENT`（已實作），但「補款後要等 admin 放行」那一步（`acceptance_unlocked_at`）未做 —— 現在是補款即自動恢復接單 | DECISION-3 有兩半，先做了會擋人的那一半。另一半做不做取決於風控政策（自動恢復對司機友善，手動放行對平台安全） |
-| **忘記密碼的連結是網頁 URL，App 沒有 deep link** | 電郵連結指向 `{PUBLIC_BASE_URL}/reset-password?token=…`。App 內的「忘記密碼」能寄出信件，但**開連結會開瀏覽器**，不會回到 App | 要讓連結回到 App 需要 Android App Links（`intent-filter` + `assetlinks.json`），而那要求已部署的 HTTPS 網域與簽署指紋。網頁那條路本身是完整的，不是半成品 |
+| **App 收得到 `reset-password` deep link，但 Android App Links 尚未驗證（部署側）** | 已加 Android `intent-filter`（`/reset-password`、`/magic`）、Flutter cold-start parser 與 token 預填畫面。**仍未做：把含真實簽署指紋的 `assetlinks.json` 放到 `https://hkfastdc.com/.well-known/assetlinks.json` 並等 Android 驗證** | 指紋只存在於 deployment 的 APK signing 產物，所以 repo 刻意不印／不提交。可用 `scripts/ops/render_assetlinks.py` 在部署時產生 |
 | **本機跑不完 APK build：`webview_flutter` 只算「已解析、未證明」** | Gradle 的 `:app:compileFlutterBuildDebug` 會叫 `flutter assemble`，而它要 spawn kernel compiler 與 native-assets hook，兩者都撞 `ERROR_PIPE_BUSY`（231）。所以 `res/`、`assets:`、plugin 集合在本機**沒有任何閘** | 231 是資源耗盡而非政策拒絕 —— 同一條命令在 2026-10-03 與 2026-10-04 00:44 成功過。CI 的 `flutter build apk --debug` 是唯一的閘，但**還沒在這些 commit 上跑過**。另注意 `dart pub get` **不會**重寫 `.flutter-plugins-dependencies`（只有 `flutter pub get` 會），那是 Gradle 決定要編哪些 plugin 子專案的依據 |
-| **沒有「一鍵造一個能叫車的帳號」的 ops 腳本** | 每次要新開一個能叫車的測試帳號，都要依序打 3 個端點（`/auth/register` → `/identity/phone/request` → `/identity/phone/confirm`，見 `QA_TEST_ENVIRONMENT.md` §6.4） | 刻意**先不做**：這 3 步走的正是正式流程，等於順手驗證了後端。**注意「審查者帳號」已有 ops 腳本**（`scripts/ops/create_reviewer_account.py`，有到期日、不能動錢，見 §6.6），但它解決的是「給外部審查者一個能登入的帳號」，**不是**這條。若日後要頻繁重跑，再加 `scripts/ops/` 腳本，但必須走 service 層而不是 `UPDATE users` |
+| **「一鍵造能叫車的測試帳號」已收斂，剩下的是跑在 QA env** | `scripts/ops/create_booking_account.py` 已用 service layer 走 `/auth/register` → `/identity/phone/request` → `/identity/phone/confirm` 對應的 auth services，**不是 SQL UPDATE**；預設 `+85291230001`（乘客）＋`+85291230002`（司機），已驗證的號碼會跳過。仍需在 `ALLOW_DEV_OTP=true` 的實際 QA env 跑一次證明可用 | 刻意走正式流程而非直接改 DB；driver onboarding（牌照／按金）仍由 App + `/drivers/register` + admin KYC 完成，腳本不偽造司機檔案 |
 ### D. 已結案（保留以免重複處理）
 
 - **Sentry 已接好**（`app/main.py`，`sentry_dsn` 有值就 init）。已補 `release`
@@ -194,6 +194,15 @@ cd mobile/android && FLUTTER_SUPPRESS_ANALYTICS=true ./gradlew :app:assembleDebu
   只存 SHA-256 digest、所有失敗同一句 400）。測試：
   `tests/api/test_password_flow.py`（22 條）；App 端見
   `change_password_screen.dart`、`forgot_password_screen.dart`。
+- **Android 密碼重設 deep-link scaffold + 一鍵 booking 帳號腳本**（2026-10-07）。
+  `mobile/android/app/src/main/AndroidManifest.xml` 加 AUTO_VERIFY VIEW
+  `https/http://hkfastdc.com/{reset-password,magic}`；`routing_rules.dart` 提供
+  無依賴 cold-start parser；新 `password_reset_screen.dart` 會預填 `token`。
+  部署時才執行 `scripts/ops/render_assetlinks.py`（需要 APK signing
+  `SHA256_CERT_FINGERPRINT`）並把 `assetlinks.json` 放到
+  `https://hkfastdc.com/.well-known/`。同日加
+  `scripts/ops/create_booking_account.py`，透過 auth service layer 種
+  `+85291230001`／`+85291230002` 已驗證帳號，見 `QA_TEST_ENVIRONMENT.md` §6.4a。
 - **P4 的 `interrupt` 補回後端 `(party, reason)` 校驗**（2026-10-06）。設計文件 §6.1 明寫
   「前端過濾是禮貌，後端校驗是授權」，但端點從未校驗：`InterruptIn` 沒有 validator、
   handler 只檢查 `OTHER` + note，所以乘客可以申報 `PASSENGER_MISCONDUCT`（自我指控），

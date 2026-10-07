@@ -64,7 +64,10 @@ def main() -> int:
     args = _arg_parser().parse_args()
     missing = [
         name
-        for name, value in (("PACKAGE_NAME", args.package_name), ("SHA256_CERT_FINGERPRINT", args.sha256_cert_fingerprint))
+        for name, value in (
+            ("PACKAGE_NAME", args.package_name),
+            ("SHA256_CERT_FINGERPRINT", args.sha256_cert_fingerprint),
+        )
         if not value
     ]
     if missing:

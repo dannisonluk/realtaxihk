@@ -356,7 +356,7 @@ curl -s $API/identity/phone/confirm -H "authorization: Bearer $TOKEN" \
 # → "verified": true, "phone_verified": true, "phone_reverify_due_at": "..."
 ```
 
-之後叫車就通了。驗一下：
+> 之後叫車就通了。驗一下：
 
 ```bash
 curl -s $API/identity/me -H "authorization: Bearer $TOKEN"
@@ -368,6 +368,40 @@ curl -s $API/identity/me -H "authorization: Bearer $TOKEN"
 > `phone_reverify_due_at` 的地方，而 `evaluate()` 把 NULL 期限讀成「已逾期」。只改一半
 > 會造出一列「電話已驗證、但立刻被判定逾期」的資料，症狀看起來毫不相關。
 
+### 6.4a 一鍵造乘客＋司機測試帳號（service layer）
+
+`scripts/ops/create_booking_account.py` 用 auth service layer 做上面三歩，不是 SQL UPDATE：
+
+```bash
+# .env 或環境變數
+ALLOW_DEV_OTP=true
+
+.venv/Scripts/python.exe scripts/ops/create_booking_account.py
+# 預設：PASSENGER_PHONE=+85291230001 DRIVER_PHONE=+85291230002
+# 可改用 --passenger-phone / --driver-phone（亦接受 PASSENGER_PHONE / DRIVER_PHONE env）
+```
+
+已註冊且已驗證的號碼會印「already registered and verified — skipping」，所以可重跑。
+Log 只印遮罩（例如 `+852****0001`）；密碼不放 argv，也不會印。**這只是兩個已驗證的
+user 帳號**，不是已通過 KYC 的司機 —— 司機檔案仍由 App `/drivers/register` ＋ admin KYC
+建立。部署側唯一未做的是在實際 QA env 跑一次證明可用。
+
+### 6.4b Android 密碼重設 App Links（部署側驗證）
+
+App 端已收 `/reset-password` 與 `/magic` 的 Android `intent-filter`
+（AUTO_VERIFY，`https/http://hkfastdc.com`），Flutter cold-start parser 會把
+`https://hkfastdc.com/reset-password?token=abc` 送到 `/password/reset` 並預填 token。
+**仍要做**的是部署時取得 APK signing `SHA256_CERT_FINGERPRINT`，執行：
+
+```bash
+PACKAGE_NAME=com.hkfastdc.mobile \
+SHA256_CERT_FINGERPRINT=AA:BB:... \
+.venv/Scripts/python.exe scripts/ops/render_assetlinks.py --site-host hkfastdc.com
+```
+
+並把輸出的 `assetlinks.json` 放到 `https://hkfastdc.com/.well-known/assetlinks.json`，
+然後在真機／Play Console 驗證 App Links。指紋不會寫入 repo。
+
 ### 6.5 App 的覆蓋範圍（2026-10-04 起：三個入口已分開）
 
 登入與電話驗證在 App 裡是分開的，電話驗證只是「解鎖叫車」的條件：
@@ -378,6 +412,7 @@ curl -s $API/identity/me -H "authorization: Bearer $TOKEN"
 | 主要登入（email + 密碼） | `/login` | ✅ |
 | 次要登入（已驗證號碼 + OTP） | `/login/phone` | ✅ |
 | 解鎖叫車（綁定並驗證電話） | `/phone/unlock` | ✅ |
+| 電郵重設密碼（deep link 預填 token） | `/password/reset` | ✅（App Link 待部署側驗證，見 6.4b） |
 
 `/phone/unlock` **刻意不放在 `/login` 之下**：`resolveRedirect` 會把已登入的使用者趕離
 所有 `/login` 路徑，而需要解鎖的正是「已登入但未驗證」的帳號 —— 放在那裡等於對唯一需要
@@ -404,8 +439,8 @@ App 不會在那裡假裝有一道牆。
 * **沒有補完個人資料的畫面。** `POST /identity/profile` 要 username／given name／family
   name，而 App 沒有任何地方呼叫它，所以註冊出來的帳號 `username IS NULL`。註冊刻意不收
   姓名 —— 那會在一個以「短」為目的的表格上加第四個必填欄位。
-* **沒有改密碼／忘記密碼流程。** 後端也沒有 `POST /auth/password/*`，所以這同時是後端
-  缺口，不只是 App 的。
+* **Android App Links 尚未在已部署網域驗證。** App 端 scaffold 已加，但
+  `assetlinks.json` 需要 deployment 的 APK signing 指紋，見 6.4b。
 * **Turnstile 的 WebView 沒有在真機驗證過**，`webview_flutter` 是否真的進得了 APK 也
   沒有在本機驗證過（本機的 Gradle build 跑不完，見
   [`../mobile/README.md`](../mobile/README.md) 的 Building an APK）。CI 的

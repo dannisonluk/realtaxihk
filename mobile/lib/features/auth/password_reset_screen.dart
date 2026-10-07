@@ -19,8 +19,7 @@ class PasswordResetScreen extends ConsumerStatefulWidget {
   final String? token;
 
   @override
-  ConsumerState<PasswordResetScreen> createState() =>
-      _PasswordResetScreenState();
+  ConsumerState<PasswordResetScreen> createState() => _PasswordResetScreenState();
 }
 
 class _PasswordResetScreenState extends ConsumerState<PasswordResetScreen> {
@@ -80,10 +79,7 @@ class _PasswordResetScreenState extends ConsumerState<PasswordResetScreen> {
           title: const Text('密碼已重設'),
           content: const Text('所有裝置已登出。請以新密碼重新登入。'),
           actions: <Widget>[
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('重新登入'),
-            ),
+            FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('重新登入')),
           ],
         ),
       );
@@ -116,9 +112,7 @@ class _PasswordResetScreenState extends ConsumerState<PasswordResetScreen> {
         children: <Widget>[
           Text(
             '設定新密碼。重設連結只能使用一次，且有時效。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: AppTheme.space4),
           _PasswordField(
@@ -140,9 +134,7 @@ class _PasswordResetScreenState extends ConsumerState<PasswordResetScreen> {
               padding: const EdgeInsets.only(top: AppTheme.space3),
               child: Text(
                 _error!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
               ),
             ),
           const SizedBox(height: AppTheme.space6),
