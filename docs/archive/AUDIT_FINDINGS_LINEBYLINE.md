@@ -1056,6 +1056,10 @@ endpoint was built for.
 `POST /api/v1/admin/auth/totp/enrol` with the username/password, renders the enrolment QR,
 and is pinned by `LoginPage.test.tsx` (`re-issues enrolment material…`).
 
+**Resolved 2026-10-07 (console contract)**: `admin-web/web/src/api/types.ts` now points at
+`scripts/verify/audit_response_models.py` and the mobile fixtures as the contract source;
+new endpoints/response fields are mirrored in the same commit as the contract update.
+
 ---
 
 ## Refuted in this pass (recorded so they are not re-raised)
