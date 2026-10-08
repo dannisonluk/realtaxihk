@@ -5,10 +5,10 @@ against it and silently drops any key the model does not declare. So the only
 question that matters is not "does the model look right" but "does every key a
 real response contains survive validation".
 
-This walks `mobile/test/fixtures/manifest.json` (route -> fixture), loads each
-fixture, and asserts its key set is a SUBSET of the corresponding model's
-fields. A missing field shows up here as data the API would delete from a live
-response.
+This walks the whole `mobile/test/fixtures` directory (plus the hard-coded
+MODEL_OF/LIST_WRAPPED/NESTED roster), loads each fixture, and asserts its key set
+is a SUBSET of the corresponding model's fields. A missing field shows up here
+as data the API would delete from a live response.
 
 It also runs a second, independent check: **every operation declares a
 `response_model=`, and every one of those models comes from

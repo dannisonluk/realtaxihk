@@ -3,7 +3,8 @@
 Two entry points:
 - `count(key, window_s)` increments and returns the new count. Use it when the
   counter is a *signal* (alerting, degradation) rather than a gate.
-- `allow(key, limit, window_s)` is the gate: True while under the limit.
+- `allow(key, limit, window_s)` is the gate: True while the request is at or
+  under the limit (the configured limit itself is allowed).
 
 SEC-08 exists because the only global OTP cap was a gate on a key shared by the
 whole platform — 500 requests from one attacker locked out every user. Callers

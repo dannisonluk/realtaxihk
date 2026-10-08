@@ -7,7 +7,7 @@ the single most important thing to know before editing this file:
 - `FareSnapshotOut` — `orders.fare_json`, frozen at order creation so a
   historical order stays auditable after a tariff change.
 
-They differ by four fields, and the difference is deliberate:
+They differ by six fields, and the difference is deliberate:
 
 | field            | estimate | snapshot | why |
 |---|---|---|---|

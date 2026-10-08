@@ -139,6 +139,33 @@ class TestWsAuth:
         ):
             pass
 
+    def test_ws_accepts_bearer_header_token(self, client):
+        """Native mobile sends the token in an Authorization header (dart:io
+        WebSocket has a header channel; the browser cannot). The server must
+        accept it without a ?token= query parameter."""
+        pax = _mk_user_token(client, "+85260000015")
+        oid = _mk_broadcasting_order(client, pax)
+        with client.websocket_connect(
+            f"ws://testserver/ws/trip/{oid}",
+            headers={"Authorization": f"Bearer {pax}"},
+        ):
+            pass
+
+    def test_ws_rejects_bad_bearer_header_token(self, client):
+        """A garbage bearer header is refused like a garbage query token."""
+        from starlette.websockets import WebSocketDisconnect
+
+        oid = _mk_broadcasting_order(client, _mk_user_token(client, "+85260000016"))
+        with (
+            pytest.raises(WebSocketDisconnect) as exc,
+            client.websocket_connect(
+                f"ws://testserver/ws/trip/{oid}",
+                headers={"Authorization": "Bearer junk.token.here"},
+            ),
+        ):
+            pass
+        assert exc.value.code == 4401
+
 
 class TestWsStreaming:
     def test_driver_push_passenger_receives(self, client):

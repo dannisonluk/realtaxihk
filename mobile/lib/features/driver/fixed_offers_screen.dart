@@ -11,10 +11,9 @@ import '../shared/widgets.dart';
 
 /// Driver-published fixed-fare offers (一口價).
 ///
-/// A driver names a route (destination area or premium destination, optionally
-/// with a pickup area) and the flat price they will do it for. The platform
-/// shows the offer to matching passengers and keeps the disclosed service fee
-/// as the spread; the price here is what the driver receives.
+/// The current creation UI names a destination area and a flat driver-received
+/// price. The wire model also carries premium-destination and pickup-area
+/// fields; they are shown if present but are not exposed by the create form.
 class FixedOffersScreen extends ConsumerStatefulWidget {
   const FixedOffersScreen({super.key});
 

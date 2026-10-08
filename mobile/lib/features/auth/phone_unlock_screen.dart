@@ -32,8 +32,8 @@ import 'phone_field.dart';
 ///    monthly deadline has passed the grace window. This must go through
 ///    `/identity/phone/reverify`, which accepts **only the number already on the
 ///    account**: the number cannot be changed in the same breath as clearing the
-///    block. Sending this case to `/phone/confirm` would silently turn a
-///    re-verification into a change of number.
+///    block. Sending this case to `/identity/phone/confirm` would silently turn
+///    a re-verification into a change of number.
 ///
 /// The raw number is never sent to the client — only `+852****1234` — so the user
 /// has to re-enter it even to re-verify. That is a consequence of the masking
@@ -338,7 +338,7 @@ class _SendStep extends StatelessWidget {
       children: <Widget>[
         Text(
           reverify
-              ? '重新驗證帳戶上的號碼（${maskedPhone ?? '—'}）。此步驟不接受其他號碼；如要更改號碼，請直接輸入新號碼並完成驗證。'
+              ? '重新驗證帳戶上的號碼（${maskedPhone ?? '—'}）。此步驟不接受其他號碼。'
               : '輸入要綁定的香港手機號碼，我們會以 WhatsApp 發送驗證碼。',
           style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
@@ -429,7 +429,7 @@ class _ConfirmStep extends StatelessWidget {
           onPressed: onResend,
           child: Text(cooldown > 0 ? '重新發送（$cooldown 秒）' : '重新發送驗證碼'),
         ),
-        TextButton(onPressed: busy ? null : onBack, child: const Text('更改號碼')),
+        TextButton(onPressed: busy ? null : onBack, child: const Text('返回重新輸入')),
       ],
     );
   }

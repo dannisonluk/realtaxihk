@@ -1,7 +1,7 @@
 """Admin authentication schemas — the three-step login state machine.
 
 The console authenticates with username + password + TOTP, a different flow from
-the passenger app's phone OTP (`app/api/admin_auth.py`). Two consequences show
+the passenger app's phone OTP (`app/api/auth.py`). Two consequences show
 up in the wire shapes below:
 
 1. **Step 1 never returns an access token.** `POST /admin/auth/login` returns a

@@ -31,7 +31,7 @@ produces "0 diagnostics" rather than an error:
    analysed yet". The completion signal is `$/analyzerStatus`: opening a document
    flips `isAnalyzing` to true and back to false. This script waits on that, and
    reports a harness failure if it never sees a status.
-3. **Opening all ~50 documents at once wedges it.** It keeps answering the
+3. **Opening all ~97 documents at once wedges it.** It keeps answering the
    status stream but never emits diagnostics. Open in small batches and wait for
    idle after each.
 

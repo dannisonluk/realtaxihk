@@ -16,7 +16,9 @@ import 'package:flutter/material.dart';
 /// * **Type.** The scale below is the iOS Dynamic Type table at the default
 ///   (`Large`) size — `typography.md › iOS, iPadOS Dynamic Type sizes`. Body is
 ///   17 pt, the platform default, and nothing interactive is smaller than 11 pt,
-///   the platform minimum. Sizes are converted to logical pixels 1:1 (Flutter's
+///   the platform minimum — with one documented exception: the navigation bar
+///   label renders at 10 pt (see `navigationBarTheme` below). Sizes are converted
+///   to logical pixels 1:1 (Flutter's
 ///   logical pixel is the iOS point on a correctly configured device).
 /// * **Colour.** The palette is the product's own: Cod Gray ink, pure white
 ///   paper, and a blue/teal/lavender/yellow fluid gradient inspired by the
@@ -288,6 +290,9 @@ abstract final class AppTheme {
       // The tab bar. iOS keeps it opaque and lightly tinted; `indicatorColor`
       // off keeps the selected state to the icon and label, which is what iOS
       // does, rather than Material's filled pill.
+      //
+      // The chromium background uses a translucent `chrome` token by design; this
+      // is the only place that deliberately breaks the "opaque nav bar" rule.
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: chrome,
         surfaceTintColor: Colors.transparent,

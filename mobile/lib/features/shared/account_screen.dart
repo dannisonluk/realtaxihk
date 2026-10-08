@@ -166,7 +166,7 @@ class AccountScreen extends ConsumerWidget {
     final bool confirmed = await confirmDestructive(
       context,
       title: '登出？',
-      message: '伺服器會撤銷所有 access token 及 refresh token，需要重新以驗證碼登入。',
+      message: '伺服器會撤銷所有 access token 及 refresh token，需要重新登入。',
       confirmLabel: '登出',
       cancelLabel: '取消',
     );

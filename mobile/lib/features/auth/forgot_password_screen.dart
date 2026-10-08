@@ -17,9 +17,9 @@ import '../shared/widgets.dart';
 /// and do not branch on [PasswordResetRequested.sent] either, because it is
 /// always true.
 ///
-/// The link in the email opens a **web** page (`{public_base_url}/reset-password`),
-/// not this app: the token is a URL query parameter and no mobile deep link is
-/// configured for it. That is a known gap, noted in `docs/WORK_SUMMARY.md`.
+/// The link in the email can open the **web** page
+/// (`{public_base_url}/reset-password`) or the in-app App Link route; the mobile
+/// router and cold-start parser both handle the reset path.
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key});
 

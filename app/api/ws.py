@@ -1,7 +1,10 @@
 """Module D — WebSocket live-trip channel: /ws/trip/{order_id}.
 
-Auth model (browser WS has no header channel):
-  ws://host/ws/trip/{order_id}?token=<access JWT>
+Auth model:
+- native mobile: `Authorization: Bearer <access JWT>` header
+  (`dart:io` WebSocket allows headers);
+- browser/web: `ws://host/ws/trip/{order_id}?token=<access JWT>` (no header
+  channel); the server accepts the query fallback for that case only.
 
 Authority rules:
 - passenger (order owner): read-only subscriber;
@@ -57,6 +60,17 @@ WS_UNKNOWN_ORDER = 4404
 WS_CAPACITY = 4408
 
 
+def _ws_bearer_token(ws: WebSocket) -> str | None:
+    """Extract the native-mobile token from an `Authorization: Bearer` header."""
+    header = ws.headers.get("authorization")
+    if not header:
+        return None
+    scheme, _, value = header.partition(" ")
+    if scheme.lower() != "bearer":
+        return None
+    return value.strip() or None
+
+
 @router.websocket("/ws/trip/{order_id}")
 async def trip_socket(
     ws: WebSocket,
@@ -79,7 +93,12 @@ async def trip_socket(
 
     # --- SEC-14: authorize first, accept second. Everything below this block
     # runs before the 101 upgrade, so a rejected client holds no server socket.
-    token = ws.query_params.get("token")
+    #
+    # Token sources: native mobile (dart:io IOWebSocketChannel) sends the token
+    # in an `Authorization: Bearer` header — the platform allows header
+    # channels; browsers do not, so the web channel still falls back to the
+    # documented `?token=` query parameter.
+    token = _ws_bearer_token(ws) or ws.query_params.get("token")
     if not token:
         await ws.close(code=WS_UNAUTHENTICATED)
         return

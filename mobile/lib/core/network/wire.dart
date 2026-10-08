@@ -133,7 +133,13 @@ Money? asMoneyOrNull(Object? value, String field) {
   if (value == null) {
     return null;
   }
-  return Money.parse(value as String);
+  if (value is String) {
+    return Money.parse(value);
+  }
+  if (value is num) {
+    return Money.parse(value);
+  }
+  throw MalformedResponseException('$field: expected money, got ${value.runtimeType}');
 }
 
 /// A list of enums decoded from their wire tokens.

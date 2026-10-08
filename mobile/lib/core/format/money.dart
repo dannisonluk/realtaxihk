@@ -94,7 +94,8 @@ class Money implements Comparable<Money> {
     return negative ? -total : total;
   }
 
-  /// Signed display with the HK$ prefix: `HK$184.50`, `+HK$500.00`.
+  /// Signed display with the HK$ prefix: `HK$500` (whole dollars trimmed by
+  /// [display]), `+HK$500` in the signed variant.
   String get hkd => 'HK\$$display';
 
   /// Two decimal places, always: `184.50`.
@@ -137,6 +138,9 @@ class Money implements Comparable<Money> {
 }
 
 /// Distance and duration helpers used by the request and trip screens.
+///
+/// `duration` renders human-friendly minutes (`42 min`, `1 h 5 min`), not an
+/// `m:ss` chip string.
 abstract final class Format {
   static final NumberFormat _km = NumberFormat('0.0');
 

@@ -73,10 +73,10 @@ class SecureTokenStore implements TokenStore {
       if (decoded is! Map<String, dynamic>) {
         return null;
       }
-      final String? access = decoded['access'] as String?;
-      final String? refresh = decoded['refresh'] as String?;
+      final Object? access = decoded['access'];
+      final Object? refresh = decoded['refresh'];
       final Object? userJson = decoded['user'];
-      if (access == null || refresh == null || userJson is! Map<String, dynamic>) {
+      if (access is! String || refresh is! String || userJson is! Map<String, dynamic>) {
         return null;
       }
       return AuthSession(

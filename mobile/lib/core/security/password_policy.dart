@@ -10,6 +10,12 @@
 /// The two implementations are kept in step by hand, so both spell the rules out
 /// rather than paraphrasing them. If `_assert_policy` changes, change this too.
 ///
+/// One deliberate asymmetry: the server normalises with
+/// `unicodedata.normalize('NFC')` before checking, and Dart's stdlib has no NFC,
+/// so a decomposed-form password can pass this hint and still be refused by the
+/// server. That is acceptable — this file is explicitly a hint, not the
+/// authority, and the server's refusal is the one that counts.
+///
 /// Length is counted in **code points** (`runes`), not UTF-16 units, because
 /// Python's `len` on a `str` counts code points. `'👍👍👍'.length` is 6 in Dart
 /// and 3 in Python; counting code units here would let a 6-emoji password pass

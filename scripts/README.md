@@ -35,7 +35,7 @@ A fresh console account is `SUPPORT`. Finance and account pages need
 
 | Script | What it does |
 |---|---|
-| `audit_response_models.py` | Walks `mobile/test/fixtures/manifest.json` and proves every key in every captured response survives its route's `response_model=`. |
+| `audit_response_models.py` | Walks every `mobile/test/fixtures` file and proves every key in every captured response survives its route's `response_model=`. |
 | `live_smoke.py` | Boots uvicorn and exercises modules A/B/C/D end to end, then self-terminates. |
 | `security_probe.py` | The original adversarial probe — proves each finding with a real request. |
 | `security_verify.py` | Re-runs every audit finding against a live server; prints PASS/FAIL per check. |

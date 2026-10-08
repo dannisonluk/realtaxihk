@@ -212,6 +212,11 @@ class PrebookingBroadcaster:
         pref: DriverBookingPreference | None,
         landmark: Landmark | None,
     ) -> bool:
+        """Category and availability matching for pre-book notifications.
+
+        `preferred_origin_area` is stored and echoed through the API but is not
+        consulted here today; only categories and availability gate the inbox.
+        """
         if pref is None or not pref.categories:
             return True
         if landmark is None:

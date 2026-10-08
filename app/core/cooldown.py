@@ -59,9 +59,9 @@ async def cooldown_remaining(redis, party: str, account_id) -> int:
     """Seconds left, or 0 when there is no cool-down.
 
     A Redis error is *not* swallowed into 0: the caller decides. Returning 0 on
-    error would fail open and let a defaulting party straight back in; the
-    routes treat an error as "no cool-down" deliberately, because a Redis
-    outage must not lock every honest user out of booking — see the call sites.
+    error would fail open; the routes deliberately map an error to "no
+    cool-down" so a Redis outage does not lock every honest user out of booking.
+    That choice is made at each call site, not here.
     """
     ttl = await redis.ttl(cooldown_key(party, account_id))
     return ttl if ttl and ttl > 0 else 0

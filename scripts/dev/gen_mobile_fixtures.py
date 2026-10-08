@@ -167,7 +167,7 @@ def reset_dev_state() -> None:
     the next run 409 on create. `fleet_memberships` and `fleet_settlement_runs`
     both cascade from `fleets`, so removing the fleet is enough.
 
-    Only the four throwaway fixture phones, and that one fleet, are touched.
+    Only the five throwaway fixture phones, and that one fleet, are touched.
     """
     import redis.asyncio as aioredis
     from sqlalchemy import delete, or_, select

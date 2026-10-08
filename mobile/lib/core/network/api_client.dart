@@ -377,6 +377,12 @@ class _AuthInterceptor extends Interceptor {
       // Network, timeout, 5xx: nothing says the session is dead. Preserve the
       // tokens so the next attempt can rotate instead of forcing a new login.
       return const _RefreshRetryable();
+    } on Exception {
+      // A malformed success body (e.g. missing `refresh.access_token`) is a
+      // contract bug, but letting MalformedResponseException escape the
+      // interceptor would surface a raw decode error instead of the 401 the
+      // caller was already handling. Keep the tokens; a later attempt retries.
+      return const _RefreshRetryable();
     }
   }
 }

@@ -2,7 +2,7 @@
  * UI verifier for the admin console.
  *
  * Drives the real console in a real browser against the real API, and fails if
- * anything a person would notice goes wrong. The console has 96 vitest unit
+ * anything a person would notice goes wrong. The console has 97 vitest unit
  * tests (14 files) for pure helpers and small UI states; this verifier exists
  * because those still do not cover the real browser, real API, and DOM layout.
  * The three classes of defect it catches that the unit tests do not:

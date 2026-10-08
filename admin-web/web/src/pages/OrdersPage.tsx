@@ -13,7 +13,7 @@
  *
  * * **`open_only` is a server-side filter, rendered as a toggle.** The list of
  *   statuses that count as "moving" is defined next to the enum in
- *   `app/api/admin.py`, and re-deriving it here would produce a page that
+ *   `app/api/admin/orders.py`, and re-deriving it here would produce a page that
  *   silently disagrees with the API the first time a status is added.
  * * **The row shows ids, not names.** Resolving a passenger id to a person is a
  *   separate, audited action — the search page is that action, and the driver

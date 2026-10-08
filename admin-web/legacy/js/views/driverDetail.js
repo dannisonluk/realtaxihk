@@ -9,7 +9,8 @@
  * **One call, not five.** The whole page comes from `GET
  * /admin/drivers/{id}`, composed server-side. A page that fired five
  * independent requests could render a half-true driver — statement loaded,
- * deposit not — and would have no way to say so. See `app/api/admin.py`.
+ * deposit not — and would have no way to say so. See the `app/api/admin/`
+ * package (`GET /admin/drivers/{id}` lives in the admin drivers router).
  *
  * **The actions are the same as the queue's, and for the same reason.** Review
  * moves the state machine (`approve` lands on `DEPOSIT_REQUIRED`, not on the
