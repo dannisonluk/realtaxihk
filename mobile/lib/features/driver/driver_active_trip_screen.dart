@@ -228,7 +228,7 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
       return;
     }
     // Guard the server's own bounds: a tick outside Hong Kong earns
-        // {"type":"error","code":"OUTSIDE_HK"} and burns a token for nothing.
+    // {"type":"error","code":"OUTSIDE_HK"} and burns a token for nothing.
     if (!LocationService.isInHongKong(position.latitude, position.longitude)) {
       return;
     }

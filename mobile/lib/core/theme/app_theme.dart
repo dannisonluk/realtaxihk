@@ -97,10 +97,7 @@ abstract final class AppTheme {
 
   static ColorScheme _scheme(Brightness brightness) {
     final bool isDark = brightness == Brightness.dark;
-    final ColorScheme base = ColorScheme.fromSeed(
-      seedColor: blue,
-      brightness: brightness,
-    );
+    final ColorScheme base = ColorScheme.fromSeed(seedColor: blue, brightness: brightness);
 
     if (isDark) {
       return base.copyWith(

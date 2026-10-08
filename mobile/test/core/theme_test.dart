@@ -34,9 +34,7 @@ void main() {
       MaterialApp(
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
-        home: FluidBackground(
-          child: const Scaffold(body: Text('hi')),
-        ),
+        home: FluidBackground(child: const Scaffold(body: Text('hi'))),
       ),
     );
     expect(find.text('hi'), findsOneWidget);
