@@ -156,7 +156,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml \
 落地。**改動該 format 等於重新引入這個洩漏。**
 
 > 附帶說明：cookie 的 `Secure` 旗標由**環境**決定
-> （`app/services/admin_refresh_service.py::cookies_are_secure`，prod 恆為 true），
+> （`app/services/admin/admin_refresh_service.py::cookies_are_secure`；實際
+> cookie 設定喺 `app/core/admin_cookies.py`，prod 恆為 true），
 > 不依賴請求的 scheme，所以這一項不會因為代理設定而失效。
 
 ## 連線池：三個數字是同一個決定

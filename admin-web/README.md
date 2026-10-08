@@ -72,7 +72,8 @@ things from the legacy build are load-bearing and were carried over deliberately
 3. **Hash routing** (`createHashRouter`) — the console is static files with no
    rewrite rule, so a History-API deep link would 404 before the app loaded.
 
-**Types are hand-written from `app/api/admin.py`**, which is the authority.
+**Types are hand-written from the `app/api/admin/` package** (plus `admin_auth.py`
+and `admin_licence.py`), which is the authority.
 Two things that are easy to get wrong:
 
 - **Money is a `string` on the wire** (the server formats it with `money_str`).
@@ -93,7 +94,7 @@ admin-web/web/
   vite.config.ts        base './', dev proxy for /api with a 3s upstream timeout
   tsconfig.json         strict + noUnusedLocals + noUncheckedIndexedAccess
   src/
-    api/                client, session, types (from app/api/admin.py), endpoints
+    api/                client, session, types (from app/api/admin/), endpoints
     app/                AppProvider, useLoad, useDialogs, Shell, routes
     components/         primitives (Card/Chip/Money/Percent), states, toasts
     lib/labels.ts       status vocabulary and the money/percent formatters
@@ -218,7 +219,7 @@ populated so the split-origin setup keeps working.
 
 ## Verifying it
 
-The console has 96 vitest unit tests (14 files), plus a browser UI verifier.
+The console has 97 vitest unit tests (14 files), plus a browser UI verifier.
 The unit tests cover pure helpers and focused React states; the verifier drives
 the real thing in a real browser against the real API.
 

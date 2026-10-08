@@ -10,9 +10,9 @@
 > 頭像上傳、六個後台畫面（`admin-web/web/src/pages/`）；未實作：工單系統、部分批量
 > 操作。總覽見 `docs/WORK_SUMMARY.md` §2.11。**行號引用已失效**：`app/models/` 已由
 > 單一 `__init__.py`（886 行）拆成 5 個 bounded-context 模組，
-> `app/models/__init__.py:<line>` 不再準確；檔案層級路徑（`app/api/admin.py` 等）仍有效 ——
-> 惟 `app/api/admin.py` 已於 2026-10-03 拆成 `app/api/admin/` 套件，見
-> `docs/archive/STRUCTURE_REVIEW.md` R1。
+> `app/models/__init__.py:<line>` 不再準確；`app/api/admin.py` 已於 2026-10-03 拆成
+> `app/api/admin/` 套件，見 `docs/archive/STRUCTURE_REVIEW.md` R1 —— 下文提到的
+> `app/api/admin.py` 一律讀作 `app/api/admin/` 套件。
 
 ---
 

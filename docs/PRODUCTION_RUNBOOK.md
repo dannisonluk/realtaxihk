@@ -207,7 +207,7 @@ cd /srv/realtaxihk && .venv/bin/python scripts/ops/db_backup.py verify
 
 ### code-side gap（仍有可能）
 - Migration rollback drill = ✅（2026-10-08 已在臨時 DB 實跑 `upgrade head → downgrade -1 → upgrade head`，三個步驟 rc=0；未動現有資料）
-- docs counters: full pytest 1295, mobile 161, admin vitest 97, fixtures 64
+- docs counters: full pytest 1304, mobile 161, admin vitest 97, fixtures 64
 
 ### 外部/vendor 需 owner 提供：
 

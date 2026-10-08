@@ -450,6 +450,10 @@ CREATE TABLE driver_booking_preferences (
 > **通知邏輯**：背景 job 只推送給符合 filter 的司機，**但不要把 filter 做成硬性限制** ——
 > 司機仍可在「附近訂單」看到所有單。Filter 用途是**主動通知**，不是**封鎖可見性**。
 >
+> ⚠️ **目前實作**：`preferred_origin_area` 已儲存同回傳，但通知比對只消費
+> `categories` 同 `available_from/until`；起點地區匹配尚未落地（見
+> `app/services/order/prebooking_service.py`）。
+>
 > ⚠️ **`varchar[]` 取捨**：查詢用 `categories && ARRAY['AIRPORT']`（`&&` 是「有交集」）。
 > 若未來需要「每個分類有不同設定」才改子表；現在只需一個布林過濾，用陣列是對的。
 
@@ -557,7 +561,8 @@ PUT  /api/v1/drivers/me/booking-preferences
 ```
 
 > **只影響主動通知，不影響可見性**（見 §3.6.5）。端點名用 `booking-preferences` 而非
-> `filters`，因為它是**偏好**不是**限制**；`categories` 是**終點**類別。
+> `filters`，因為它是**偏好**不是**限制**；`categories` 是**終點**類別。目前通知比對
+> 只使用 `categories` 同可用時段，`preferred_origin_area` 尚未做 start-area 匹配。
 
 #### 4.0.6 接單 / 開單的兩道閘門（DECISION-3 + DECISION-5）
 
@@ -951,11 +956,11 @@ P1 / P2 已確認：**行程生命週期事件從未被 publish**，
 | 8 | `cancel` 加 `reason_code` 校驗（到達後不可取消） | `app/api/orders.py` | 見 §5.2 |
 | 9 | **違約即時扣款 + 15 分鐘冷靜期** | `app/api/orders.py` + `app/core/cooldown.py` | Redis TTL key，見 DECISION-5 |
 | 10 | **保證金接單閘門**（餘額 < 0 → 423） | `app/api/orders.py`（`grab` 前） | 見 DECISION-3；**不改 `DriverStatus`** |
-| 11 | **`landmarks` 表（終點）+ 19 個種子 + `GET /landmarks`** | 新 `app/api/landmarks.py` + migration | 座標已驗證（含深圳灣口岸）；**落客位置待人手覆核**（DECISION-7） |
-| 12 | **預約單建立邏輯 + 背景廣播 job** | `app/api/orders.py` + `app/services/prebook_service.py` | 2h–3d 窗口，見 §3.6.4 |
+| 11 | **`landmarks` 表（終點）+ 19 個種子 + `GET /landmarks`** | `app/api/prebooking.py` ／ `app/services/order/prebooking_service.py` + migration | 座標已驗證（含深圳灣口岸）；**落客位置待人手覆核**（DECISION-7） |
+| 12 | **預約單建立邏輯 + 背景廣播 job** | `app/api/orders.py` + `app/services/order/prebooking_service.py` | 2h–3d 窗口，見 §3.6.4 |
 | 13 | **司機預約偏好** | `app/api/drivers.py` + `driver_booking_preferences` | 見 §3.6.5 |
 | 14 | admin dispute 端點（assign / resolve） | `app/api/admin/disputes.py`（原 `app/api/admin.py`，已拆包） | + `AdminAuditLog` + RBAC |
-| 15 | `order_events` 寫入 helper | 新 `app/services/order_event_service.py` | |
+| 15 | `order_events` 寫入 helper | `app/services/order/order_event_service.py` | |
 | 16 | 通知整合 | `app/services/trip_hub` | **依賴 P2** |
 | 17 | 乘客 / 司機 / admin 前端 | `mobile/...` + `admin-web/web/src/pages/` | |
 | 18 | badge 計數 + RBAC 接線 | `admin-web` 總覽 API + `Shell.tsx` | 依賴 P3 |

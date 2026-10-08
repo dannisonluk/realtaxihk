@@ -169,9 +169,9 @@ two are errors: AGP 9 deprecates the old DSL, but Flutter's template pins
 `android.newDsl=false`, so the old `android { }` block is still the supported
 path and the notice is a warning. The footer counts warnings and errors together.
 
-The Dart source is verified too: the four commands above. As of **2026-10-06** the
-numbers are `tool/dart_check.py` → **84 files opened, 0 with diagnostics**;
-`tool/run_tests.dart` → **153 cases, 0 failed**; `tool/verify_contract.dart`
+The Dart source is verified too: the four commands above. As of **2026-10-09** the
+numbers are `tool/dart_check.py` → **97 files opened, 0 with diagnostics**;
+`tool/run_tests.dart` → **161 cases, 0 failed**; `tool/verify_contract.dart`
 → **64 fixtures decoded, 0 failure** (65 fixture files on disk).
 
 What none of the four can see: `res/`, the `assets:` block, and the Flutter plugin
@@ -262,7 +262,7 @@ blob is only ever seen on Android 7.1 and below.
 `/openapi.json` **used to** type almost nothing: 28 paths, with all but one
 response schema published as `{}`, because every response was a hand-built dict
 in `app/api/*`. That has since been fixed — the API now declares a
-`response_model=` on all 89 operations and the spec carries 129 schemas (see
+`response_model=` on all 129 operations and the spec carries 129 schemas (see
 `docs/WORK_SUMMARY.md` §2.10) — but the Dart models below were written when the
 spec was empty, so they are an *assumption* about the wire format. An assumption
 checked only by reading the Python is not checked at all.
@@ -274,7 +274,7 @@ python ../scripts/dev/gen_mobile_fixtures.py      # boots the API, captures real
 dart --packages=.dart_tool/package_config.json tool/verify_contract.dart
 ```
 
-The generator writes **63** raw responses to `test/fixtures/`, each with the
+The generator writes **64** raw responses to `test/fixtures/`, each with the
 endpoint it came from in `manifest.json`. The verifier decodes every one with
 the **real** models, and fails if a fixture has no decoder or a decoder has no
 fixture — so a new endpoint cannot be added to the generator and quietly go
@@ -442,7 +442,7 @@ password login need no such switch, but they do need a Turnstile token once
 dart --packages=.dart_tool/package_config.json tool/run_tests.dart
 ```
 
-**149** cases over the code with no Flutter dependency: money and date formatting, the
+**161** cases over the code with no Flutter dependency: money and date formatting, the
 wire decoders, the enums, the error envelope, websocket frames, pagination, the
 models (including the fleet and profile shapes), the router redirect rules, the
 password policy, the HK phone format, and the Turnstile widget protocol.
@@ -518,9 +518,11 @@ it imports must not reach `package:flutter`.
   writes. Whether Cloudflare **accepts** the token additionally depends on the
   site key's allowed-domain list containing the host in `TURNSTILE_BASE_URL`.
 * Push notifications are not wired up; the trip screen polls instead.
-* **No change-password or forgotten-password flow.** There is no
-  `POST /auth/password/*` on the server either, so this is a backend gap as much
-  as a client one.
+* **Change-password and forgotten-password flows exist.** `POST /auth/password/*`,
+  the screens (`change_password_screen.dart`, `forgot_password_screen.dart`,
+  `password_reset_screen.dart`) and Android deep links for `/magic` and
+  `/reset-password` are all wired; the email-reset token opens the web page or
+  the in-app route.
 * ~~No profile-completion screen~~ — **closed.** `lib/features/shared/profile_setup_screen.dart`
   calls `POST /identity/profile` (username + given/family name + optional gender), offered
   from the account screen and the booking screen. It is deliberately **not** a gate: the

@@ -248,7 +248,7 @@ ROUND_HALF_UP。全專案的金額路徑都**明確**帶 `rounding=ROUND_HALF_UP
 
 **修法**：新增 `app/core/money.py::ratio_str()` —— half-up，但**不宣稱是錢**
 （`money_str` 用在衍生數字上等於對數字的身份說謊）。三處呼叫點與 `_ratio_2dp()`
-全部改走它。`tests/test_money_input_annotations.py` 用 AST 守住這個家族的註解型別。
+全部改走它。`tests/infra/test_money_input_annotations.py` 用 AST 守住這個家族的註解型別。
 
 **決策記錄（2026-10-04）**：用戶原先的意向是「金額保留原始數值、不做 rounding；
 若一定要 rounding 則偏好 HALF_EVEN」。實際情況是：
@@ -301,7 +301,7 @@ epsilon 內縮。
    CSRF double-submit；`/admin/auth/refresh` 與 `/admin/auth/logout` 已通）。
    詳見上文 SEV-1 條目與 `tests/api/test_admin_session_cookie.py`。
 2. ✅ **修 SEV-2 —— 已完成**（型別化 exception；locked 維持 401，見上文說明）。
-3. ✅ **`ruff format` 全樹套用 —— 已完成**（238 files already formatted；CI 已加
+3. ✅ **`ruff format` 全樹套用 —— 已完成**（239 files already formatted；CI 已加
    `ruff format --check` gate 防復發）。
 
 ### 短期

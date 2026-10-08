@@ -241,7 +241,7 @@
 | Admin console 無 refresh token | ✅ `/api/v1/admin/auth/refresh` 已通（HttpOnly cookie + CSRF double-submit），見 `SECURITY.md` SEV-1 |
 | Console TOTP 無 QR 圖 | ✅ `qrcode.react` 在本機渲染 SVG，secret 不經第三方；已用獨立解碼器驗證，見 `ADMIN_AUTH.md` 缺口 #1 |
 | `/auth/refresh` 對 admin token | ✅ 同第一項 |
-| `ruff format` 未過 | ✅ **全樹乾淨**：`ruff format --check .` = **238 files already formatted**；`ruff check .` = **All checks passed!**（2026-10-07 實跑）。先前的 1 條 E501（`admin-web/serve.py`）與 1 個未格式化檔（`scripts/dev/serve_and_run_browser.py`）已隨 sibling WIP 收斂而消失。CI 已加 `ruff format --check` gate 防復發 |
+| `ruff format` 未過 | ✅ **全樹乾淨**：`ruff format --check .` = **239 files already formatted**；`ruff check .` = **All checks passed!**（2026-10-08 實跑）。先前的 1 條 E501（`admin-web/serve.py`）與 1 個未格式化檔（`scripts/dev/serve_and_run_browser.py`）已隨 sibling WIP 收斂而消失。CI 已加 `ruff format --check` gate 防復發 |
 
 ---
 

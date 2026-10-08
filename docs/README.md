@@ -1,11 +1,11 @@
 # `docs/` — 文檔索引
 
-> **EN — Docs index.** Fifteen living documents plus an `archive/` of dated
+> **EN — Docs index.** Seventeen living documents plus an `archive/` of dated
 > snapshots. Start with `ARCHITECTURE.md` if you want to understand the system,
 > `DEVELOPMENT.md` if you are about to change it, and `WORK_SUMMARY.md` if you
 > need to know what is still outstanding.
 >
-> **中文摘要**：15 份現行文檔 + 一個放歷史快照的 `archive/`。要**理解系統**讀
+> **中文摘要**：17 份現行文檔 + 一個放歷史快照的 `archive/`。要**理解系統**讀
 > `ARCHITECTURE.md`；要**動手改**讀 `DEVELOPMENT.md`；要知道**還欠什麼**讀
 > `WORK_SUMMARY.md`。
 
@@ -33,6 +33,8 @@
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | **起點。** 一程車由叫車到收費的完整流程、錢在哪裡被改動、**23 條不變式清單**（每條都曾經是 bug）、值得學的教訓 | 導讀 |
 | [`DEVELOPMENT.md`](DEVELOPMENT.md) | 分層規範（後端／Flutter／React）、**12 條非顯而易見的後端行為怪癖**、lint gate、環境限制、方法論教訓 | 指南 |
 | [`WORK_SUMMARY.md`](WORK_SUMMARY.md) | 已建了什麼、實跑驗證了什麼、**還有什麼未做與為什麼**（§4 分憑證阻塞／刻意取捨） | 索引 |
+| [`MODULE_OVERVIEW.md`](MODULE_OVERVIEW.md) | 全系統逐模組清單、功能、依賴與模組間互動，方便用紙筆做 overall check | 總覽 |
+| [`SCAN_FINDINGS_2026-10-09.md`](SCAN_FINDINGS_2026-10-09.md) | 全檔掃描 snapshot：逐檔 code/comment 一致性核對、今次修正清單、剩餘刻意未改項 | 快照 |
 | [`SECURITY.md`](SECURITY.md) | 安全模型、已驗證的控制、SEV 分級發現、加固路線圖 | 報告 |
 | [`ADMIN_AUTH.md`](ADMIN_AUTH.md) | 管理員認證模型、三步登入狀態機、authenticator 選型、已知缺口 | 設計 |
 | [`ADMIN_CONSOLE_DESIGN.md`](ADMIN_CONSOLE_DESIGN.md) | 後台九大模組的設計（帳戶、訂單、結算、爭議、RBAC、分析、稽核、風控、工單）＋落地順序＋明確不建議做的事 | 設計 |
@@ -123,8 +125,8 @@
 | API surface | **115 paths / 129 operations** | `create_app().openapi()['paths']` |
 | response_model 覆蓋 | 119 exported／114 reachable；129 operations 全有 `response_model`；81 個 fixture block 全過 | `scripts/verify/audit_response_models.py` |
 | Alembic | **25** migrations · 單一 head `a7b3c1d2e4f6` | `alembic heads` / `ls alembic/versions/*.py` |
-| `tests/` | 61 個 `.py`（60 個 `test_*.py` + conftest · 1,071 個 `def test_`） | `grep -rho "def test_[a-zA-Z_0-9]*" tests/ \| wc -l` |
-| 後端 pytest | **全套 1295 passed / 0 failed / 0 error**（2026-10-08 單一 process 實跑，13m30s） | `uv run python -m pytest -q` |
+| `tests/` | 61 個 `.py`（60 個 `test_*.py` + conftest · 1,078 個 `def test_`） | `grep -rho "def test_[a-zA-Z_0-9]*" tests/ \| wc -l` |
+| 後端 pytest | **全套 1304 passed / 0 failed / 0 error**（2026-10-08 單一 process 實跑，16m07s） | `uv run python -m pytest -q` |
 | `mobile/lib` | 94 個 `.dart` · 19,863 LOC · **34** 個 `*_screen.dart` | `find mobile/lib -name "*.dart"` |
 | Dart harness | **161 passed / 0 failed** | `dart … tool/run_tests.dart` |
 | Dart LSP check | **97 files opened / 0 diagnostics** | `python mobile/tool/dart_check.py mobile` |
@@ -135,7 +137,7 @@
 
 > ✅ **後端測試 2026-10-08 全套一次過實跑全綠**（Docker Desktop 開住、`realtaxi-db` ＋
 > `realtaxi-redis` healthy）：`uv run python -m pytest -q` =
-> **1295 passed / 0 failed / 0 error / 0 skipped**（13m30s）。單一 process 順序跑穩定；
+> **1304 passed / 0 failed / 0 error / 0 skipped**（16m07s）。單一 process 順序跑穩定；
 > 先前「一次過跑會中途中止」的情況已消失。
 > ⚠️ 並行跑兩隻 pytest 仍不建議（爭同一 DB/Redis 資源）。**GEO index 已納入
 > `REDIS_KEY_NAMESPACE`**（`app/services/order/geo_service.py::geo_orders_key`），
