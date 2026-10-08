@@ -55,7 +55,7 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
       showInfo(context, '請輸入香港身份證號碼最後 4 位數字');
       return;
     }
-    if (plate.length < 4 || mark.length < 4) {
+    if (plate.length < 4) {
       showInfo(context, '請填寫的士證號及車輛登記號碼');
       return;
     }
