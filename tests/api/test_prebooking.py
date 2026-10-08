@@ -11,8 +11,10 @@ Covers the wire contract that is not exercised elsewhere:
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
+from app.services.infra.maintenance import MaintenanceService
 from app.services.order.prebooking_service import PrebookingBroadcaster
 
 _ORDER = {
@@ -245,6 +247,20 @@ class _NoopRedis:
     async def geoadd(self, *args, **kwargs):
         return 0
 
+    async def zrange(self, *args, **kwargs):
+        return []
+
+    async def zrem(self, *args, **kwargs):
+        return 0
+
+    async def delete(self, *args, **kwargs):
+        return 0
+
+
+class _FailingRedis(_NoopRedis):
+    async def geoadd(self, *args, **kwargs):
+        raise RuntimeError("redis down")
+
 
 def _h(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
@@ -438,8 +454,6 @@ class TestBroadcaster:
             {"oid": oid},
         )
         broadcaster = PrebookingBroadcaster(client.db_factory, _NoopRedis())
-        import asyncio
-
         changed = asyncio.run(broadcaster.run_due())
         assert changed >= 1
 
@@ -452,9 +466,36 @@ class TestBroadcaster:
         assert inbox.status_code == 200, inbox.text
         assert any(row["kind"] == "SCHEDULED" for row in inbox.json()["items"])
 
+    def test_release_commits_when_redis_index_fails(self, client):
+        passenger_token = _mk_passenger(client, "+85290000020")
+        landmark_id = _landmark_id(client)
+        r = client.post(
+            "/api/v1/orders",
+            headers=_h(passenger_token),
+            json={
+                **_ORDER,
+                "order_kind": "SCHEDULED",
+                "scheduled_pickup_at": _future(timedelta(hours=3)),
+                "dropoff_landmark_id": landmark_id,
+            },
+        )
+        assert r.status_code == 201, r.text
+        oid = r.json()["id"]
+        client.exec_sql(
+            "UPDATE orders SET prebook_visible_from = now() - interval '1 minute' WHERE id = :oid",
+            {"oid": oid},
+        )
+
+        asyncio.run(PrebookingBroadcaster(client.db_factory, _FailingRedis()).run_due())
+
+        detail = client.get(f"/api/v1/orders/{oid}", headers=_h(passenger_token))
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["status"] == "BROADCASTING"
+        assert detail.json()["prebook_state"] == "BROADCASTING"
+
     def test_grab_marks_scheduled_order_matched(self, client):
-        passenger_token = _mk_passenger(client, "+85210000011")
-        driver = _mk_active_driver(client, "+85210000012")
+        passenger_token = _mk_passenger(client, "+85290000011")
+        driver = _mk_active_driver(client, "+85290000012")
         landmark_id = _landmark_id(client)
         r = client.post(
             "/api/v1/orders",
@@ -477,3 +518,61 @@ class TestBroadcaster:
         assert r.status_code == 200, r.text
         detail = client.get(f"/api/v1/orders/{oid}", headers=_h(passenger_token))
         assert detail.json()["prebook_state"] == "MATCHED"
+
+
+class TestGeoSweep:
+    def _make_released_scheduled(self, client, passenger_phone: str):
+        passenger_token = _mk_passenger(client, passenger_phone)
+        landmark_id = _landmark_id(client)
+        r = client.post(
+            "/api/v1/orders",
+            headers=_h(passenger_token),
+            json={
+                **_ORDER,
+                "order_kind": "SCHEDULED",
+                "scheduled_pickup_at": _future(timedelta(hours=3)),
+                "dropoff_landmark_id": landmark_id,
+            },
+        )
+        assert r.status_code == 201, r.text
+        oid = r.json()["id"]
+        client.exec_sql(
+            "UPDATE orders SET status = 'BROADCASTING', "
+            "prebook_state = 'BROADCASTING', "
+            "created_at = now() - interval '3 days', "
+            "prebook_visible_from = now() - interval '1 minute' "
+            "WHERE id = :oid",
+            {"oid": oid},
+        )
+        return passenger_token, oid
+
+    def test_newly_released_scheduled_order_is_not_age_cancelled(self, client):
+        passenger_token, oid = self._make_released_scheduled(client, "+85290000021")
+
+        result = asyncio.run(
+            MaintenanceService(client.db_factory, _NoopRedis()).sweep_ghost_orders(30)
+        )
+        assert result["auto_cancelled"] == 0
+
+        detail = client.get(f"/api/v1/orders/{oid}", headers=_h(passenger_token))
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["status"] == "BROADCASTING"
+        assert detail.json()["prebook_state"] == "BROADCASTING"
+
+    def test_expired_scheduled_order_cancel_syncs_prebook_state(self, client):
+        passenger_token, oid = self._make_released_scheduled(client, "+85290000022")
+        client.exec_sql(
+            "UPDATE orders SET prebook_visible_from = now() - interval '31 minutes' "
+            "WHERE id = :oid",
+            {"oid": oid},
+        )
+
+        result = asyncio.run(
+            MaintenanceService(client.db_factory, _NoopRedis()).sweep_ghost_orders(30)
+        )
+        assert result["auto_cancelled"] == 1
+
+        detail = client.get(f"/api/v1/orders/{oid}", headers=_h(passenger_token))
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["status"] == "CANCELLED"
+        assert detail.json()["prebook_state"] == "EXPIRED"

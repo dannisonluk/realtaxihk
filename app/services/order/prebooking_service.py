@@ -10,6 +10,7 @@ unchanged, so this is recorded as an order event rather than a second status.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -33,6 +34,8 @@ from app.services.order.geo_service import GeoService
 from app.services.order.order_event_service import record_order_event
 
 __all__ = ["PREBOOK_LEAD_MINUTES", "PrebookingBroadcaster", "PrebookingService"]
+
+logger = logging.getLogger("realtaxihk.prebooking")
 
 PREBOOK_LEAD_MINUTES = 30
 PREBOOK_UPGRADE_RADIUS_KM = 6.0
@@ -140,9 +143,19 @@ class PrebookingBroadcaster:
                 point = self._order_point(order)
                 if point is not None:
                     lat, lng = point
-                    await GeoService(self._redis or get_redis()).index_order(
-                        str(order.id), lat, lng
-                    )
+                    # Fail-open on Redis, matching `nearby_orders`: a Geo
+                    # outage must not roll back the DB release (the broadcast
+                    # still happened), and the geo sweep's reconcile pass will
+                    # re-index what is missing once Redis is back.
+                    try:
+                        await GeoService(self._redis or get_redis()).index_order(
+                            str(order.id), lat, lng
+                        )
+                    except Exception:
+                        logger.exception(
+                            "prebook release: redis index skipped for order %s",
+                            order.id,
+                        )
                 changed += 1
             await session.commit()
             return changed

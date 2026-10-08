@@ -4,6 +4,9 @@ Geo ghosts: orders that left BROADCASTING (or expired the broadcast window)
 must not linger in the Redis GEO index — drivers would chase phantom orders.
 Sweeper reconciles the index against the DB and auto-cancels broadcasts that
 aged out (BROADCASTING -> CANCELLED is a legal transition; no penalty).
+Age anchors are per order kind: on-demand orders from `created_at`, scheduled
+orders from `prebook_visible_from` (the moment they actually entered the
+broadcast window).
 
 PDPO purges: OTP rows past retention; dead refresh tokens past retention.
 """
@@ -16,10 +19,18 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import CursorResult, delete, select, update
+from sqlalchemy import CursorResult, and_, delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.models import AdminRefreshToken, Order, OrderStatus, OtpCode, RefreshToken
+from app.models import (
+    AdminRefreshToken,
+    Order,
+    OrderKind,
+    OrderStatus,
+    OtpCode,
+    PrebookState,
+    RefreshToken,
+)
 from app.services.order.geo_service import geo_orders_key
 
 logger = logging.getLogger("realtaxihk.maintenance")
@@ -47,14 +58,27 @@ class MaintenanceService:
         auto_cancelled = 0
 
         async with self.session_factory() as session:
-            # 1) Auto-cancel broadcasts older than the window.
+            # 1) Auto-cancel broadcasts older than the window. On-demand orders
+            # broadcast at creation, so created_at is the right anchor; scheduled
+            # orders live as CREATED/PENDING until release, so the release time
+            # (prebook_visible_from) is the only anchor that cannot age out a
+            # just-released booking.
             cutoff = now - timedelta(minutes=max_broadcast_minutes)
             stale_ids: list[uuid.UUID] = list(
                 (
                     await session.execute(
                         select(Order.id).where(
                             Order.status == OrderStatus.BROADCASTING,
-                            Order.created_at < cutoff,
+                            or_(
+                                and_(
+                                    Order.prebook_visible_from.is_(None),
+                                    Order.created_at < cutoff,
+                                ),
+                                and_(
+                                    Order.prebook_visible_from.is_not(None),
+                                    Order.prebook_visible_from < cutoff,
+                                ),
+                            ),
                         )
                     )
                 )
@@ -71,6 +95,14 @@ class MaintenanceService:
                         cancellation_reason="broadcast expired",
                         updated_at=now,
                     )
+                )
+                await session.execute(
+                    update(Order)
+                    .where(
+                        Order.id.in_(stale_ids),
+                        Order.order_kind == OrderKind.SCHEDULED,
+                    )
+                    .values(prebook_state=PrebookState.EXPIRED)
                 )
                 await session.commit()
                 auto_cancelled = len(stale_ids)
