@@ -93,10 +93,10 @@
     system-ui, sans-serif;
 }
 
-/* ---- Primer dark ------------------------------------------------------ *
- * `canvas.default` #0d1117 (the "GitHub black"), `canvas.subtle` #161b22,
- * `canvas.inset` #010409, `border.default` #30363d, `fg.default` #c9d1d9,
- * `fg.muted` #8b949e. Declared once and applied by both the explicit
+/* ---- Cod Gray dark --------------------------------------------------- *
+ * A charcoal ramp rooted on Cod Gray #080808, raised in small steps to
+ * `surface` #0d0d0f, `surface-2` #141417 and `hover` #16161a, with the border
+ * at #2a2a30. Declared once and applied by both the explicit
  * `[data-theme="dark"]` and the `system`-plus-OS-dark media query so the two
  * cannot diverge.
  *
@@ -110,12 +110,12 @@
  * this at all, which is why `tool/check_contrast.py` checks it explicitly. */
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0d1117;
-  --surface: #161b22;
-  --surface-2: #21262d;
-  --border: #30363d;
+  --bg: #080808;
+  --surface: #0d0d0f;
+  --surface-2: #141417;
+  --border: #2a2a30;
   --text: #c9d1d9;
-  --text-dim: #8b949e;
+  --text-dim: #9aa3ad;
   --brand: #86daff;
   --brand-ink: #00344d;
   /* The brand blue again, but for *text*: the primary button uses dark ink on
@@ -125,16 +125,16 @@
   --warn: #f0c66b; /* attention */
   --danger: #ffab70; /* burnt amber — no red in the console */
   --focus: #86daff; /* bright-blue focus, matching the brand */
-  --hover: #1c2128;
-  --scrim: rgb(1 4 9 / 70%);
+  --hover: #16161a;
+  --scrim: rgb(8 8 8 / 70%);
   /* Lighter than the `--surface-2` track, so the selected segment reads as
      raised rather than as a hole. It cannot carry the state on its own -- the
-     whole grey ramp tops out near 2.3:1 before the segment's own text starts
-     failing -- so `--seg-edge` carries it. */
-  --seg-active: #3d444d;
-  --seg-edge: #6e7681;
+     grey ramp stays below 2:1 before the segment's own text starts failing --
+     so `--seg-edge` carries it. */
+  --seg-active: #27272e;
+  --seg-edge: #7a8494;
   --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 18px rgb(0 0 0 / 24%);
-  --shadow-lg: 0 8px 24px rgb(1 4 9 / 60%);
+  --shadow-lg: 0 8px 24px rgb(8 8 8 / 60%);
 }
 
 /* `system` is the only mode whose dark half is a media query. It must come
@@ -142,12 +142,12 @@
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"] {
     color-scheme: dark;
-    --bg: #0d1117;
-    --surface: #161b22;
-    --surface-2: #21262d;
-    --border: #30363d;
+    --bg: #080808;
+    --surface: #0d0d0f;
+    --surface-2: #141417;
+    --border: #2a2a30;
     --text: #c9d1d9;
-    --text-dim: #8b949e;
+    --text-dim: #9aa3ad;
     --brand: #86daff;
     --brand-ink: #00344d;
     /* The brand blue again, but for *text*: the primary button uses dark ink on
@@ -157,12 +157,12 @@
     --warn: #f0c66b; /* attention */
     --danger: #ffab70; /* burnt amber — no red in the console */
     --focus: #86daff; /* bright-blue focus, matching the brand */
-    --hover: #1c2128;
-    --scrim: rgb(1 4 9 / 70%);
-    --seg-active: #3d444d;
-    --seg-edge: #6e7681;
+    --hover: #16161a;
+    --scrim: rgb(8 8 8 / 70%);
+    --seg-active: #27272e;
+    --seg-edge: #7a8494;
     --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 18px rgb(0 0 0 / 24%);
-    --shadow-lg: 0 8px 24px rgb(1 4 9 / 60%);
+    --shadow-lg: 0 8px 24px rgb(8 8 8 / 60%);
   }
 }
 
@@ -488,12 +488,12 @@ body {
  *
  * This has to read as *raised* in both themes, and getting it wrong is easy:
  * the first attempt used `--surface` on a `--surface-2` track, which in the
- * dark palette is `#161b22` on `#21262d` — the selection came out *darker* than
+ * dark palette is `#0d0d0f` on `#141417` — the selection came out *darker* than
  * the track, so the pressed segment looked like a hole punched in the control
  * and all three segments appeared identical in a screenshot.
  *
  * The fix is a dedicated token rather than a borrowed surface: `--seg-active`
- * is white in light mode and a clearly lighter grey (`#30363d`) in dark, so the
+ * is white in light mode and a clearly lighter grey (`#27272e`) in dark, so the
  * segment always reads as the lit one. The border adds the edge that a
  * box-shadow alone cannot give on a dark background, and the shadow stays for
  * the light theme where it does work. */
