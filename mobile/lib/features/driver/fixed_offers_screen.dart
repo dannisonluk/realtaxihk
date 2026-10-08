@@ -161,16 +161,24 @@ class _FixedOffersScreenState extends ConsumerState<FixedOffersScreen> {
       ),
     );
     if (entered == null || entered.trim().isEmpty) return;
+    price.dispose();
+
+    final Money? amount = Money.tryParse(entered.trim());
+    if (amount == null || amount.isNegative || amount.isZero) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('請輸入有效的 HK\$ 一口價（大於 0）')));
+      }
+      return;
+    }
 
     setState(() => _busy = true);
     try {
       await ref
           .read(driverRepositoryProvider)
           .createFixedOffer(
-            FixedOfferCreateRequest(
-              destinationArea: selectedArea,
-              priceHkd: Money.parse(entered.trim()),
-            ),
+            FixedOfferCreateRequest(destinationArea: selectedArea, priceHkd: amount),
           );
       ref.invalidate(fixedOffersProvider);
       if (mounted) {

@@ -135,7 +135,7 @@ class _DriverActiveTripScreenState extends ConsumerState<DriverActiveTripScreen>
         },
       );
     } on ApiException catch (e) {
-      _onSocketDown(e.message);
+      _onSocketDown(e.message, retryable: e.isTransient);
     } on TripSocketClosed catch (e) {
       _onSocketDown(e.reason, retryable: e.retryable);
     }

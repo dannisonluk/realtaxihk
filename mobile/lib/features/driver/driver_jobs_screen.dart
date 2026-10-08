@@ -104,11 +104,26 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
   String _badgeText(int count) => count > 99 ? '99+' : '$count';
 
   Future<void> _toggleOnline(bool value) async {
-    setState(() => _online = value);
-    if (_me == null) {
+    if (_me == null && value) {
       await _locate();
+      if (!mounted) return;
+      if (_me == null) {
+        setState(() => _online = false);
+        return;
+      }
     }
+    setState(() => _online = value);
     await _push();
+  }
+
+  Future<void> _refreshNearby() async {
+    final MapPoint? me = _me;
+    if (me == null) return;
+    final NearbyFilter filter = ref.read(nearbyFilterProvider);
+    ref.invalidate(filteredNearbyOrdersProvider);
+    await ref.read(
+      filteredNearbyOrdersProvider((lat: me.lat, lng: me.lng, radiusKm: 3, filter: filter)).future,
+    );
   }
 
   Future<void> _grab(Order order) async {
@@ -270,7 +285,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
               if (data.items.isEmpty) {
                 final bool filtered = !filter.isEmpty;
                 return RefreshIndicator(
-                  onRefresh: () async => ref.invalidate(filteredNearbyOrdersProvider),
+                  onRefresh: _refreshNearby,
                   child: ListView(
                     children: <Widget>[
                       const SizedBox(height: 120),
@@ -292,7 +307,7 @@ class _DriverJobsScreenState extends ConsumerState<DriverJobsScreen> {
                 );
               }
               return RefreshIndicator(
-                onRefresh: () async => ref.invalidate(filteredNearbyOrdersProvider),
+                onRefresh: _refreshNearby,
                 child: ListView.separated(
                   padding: const EdgeInsets.all(AppTheme.space4),
                   itemCount: data.items.length,

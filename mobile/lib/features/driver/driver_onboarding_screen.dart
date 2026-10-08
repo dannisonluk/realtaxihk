@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -50,7 +51,7 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
     final String plate = _plate.text.trim();
     final String mark = _regMark.text.trim();
 
-    if (last4.length != 4) {
+    if (!RegExp(r'^\d{4}$').hasMatch(last4)) {
       showInfo(context, '請輸入香港身份證號碼最後 4 位數字');
       return;
     }
@@ -129,6 +130,7 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
           controller: _idLast4,
           keyboardType: TextInputType.number,
           maxLength: 4,
+          inputFormatters: <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly],
           decoration: const InputDecoration(
             labelText: '香港身份證最後 4 位',
             counterText: '',
