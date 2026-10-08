@@ -68,8 +68,8 @@ export function LicencePage() {
   const dialog = useFormDialog();
 
   const { data, error, loading, reload } = useLoad(
-    async () => {
-      const page = await endpoints.licence.list(client, { status: filter, limit: 100 });
+    async (signal) => {
+      const page = await endpoints.licence.list(client, { status: filter, limit: 100 }, signal);
       return page.items ?? [];
     },
     [client, filter],
@@ -252,7 +252,7 @@ function SubmissionDetail({
   submissionId: string;
 }) {
   const { data, error, loading, reload } = useLoad(
-    () => endpoints.licence.detail(client, submissionId, { ttl: 300 }),
+    (signal) => endpoints.licence.detail(client, submissionId, { ttl: 300 }, signal),
     [client, submissionId],
   );
 

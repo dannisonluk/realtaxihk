@@ -38,11 +38,11 @@ export function RefundsPage() {
   const dialog = useFormDialog();
 
   const { data, error, loading, reload } = useLoad(
-    async () => {
+    async (signal) => {
       const page = await endpoints.refunds.list(client, {
         status: filter ?? undefined,
         limit: 100,
-      });
+      }, signal);
       void refreshBadges();
       return page.items ?? [];
     },

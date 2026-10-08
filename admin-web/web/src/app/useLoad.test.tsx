@@ -9,7 +9,7 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function Harness({ loader }: { loader: () => Promise<string> }) {
+function Harness({ loader }: { loader: (signal: AbortSignal) => Promise<string> }) {
   const { data, error, loading, reload } = useLoad(loader, []);
 
   return (
@@ -22,6 +22,11 @@ function Harness({ loader }: { loader: () => Promise<string> }) {
       </button>
     </div>
   );
+}
+
+function DepHarness({ loader, seed }: { loader: (signal: AbortSignal) => Promise<string>; seed: number }) {
+  useLoad(loader, [seed]);
+  return null;
 }
 
 describe('useLoad', () => {
@@ -87,5 +92,32 @@ describe('useLoad', () => {
     await flush();
 
     expect(loader).toHaveBeenCalledTimes(2);
+  });
+
+  it('aborts the previous loader when dependencies change', async () => {
+    const signals: AbortSignal[] = [];
+    const loader = vi.fn(
+      (signal: AbortSignal) =>
+        new Promise<string>(() => {
+          signals.push(signal);
+        }),
+    );
+
+    await act(async () => {
+      root.render(<DepHarness loader={loader} seed={1} />);
+    });
+    await flush();
+
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(signals[0]?.aborted).toBe(false);
+
+    await act(async () => {
+      root.render(<DepHarness loader={loader} seed={2} />);
+    });
+    await flush();
+
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
   });
 });

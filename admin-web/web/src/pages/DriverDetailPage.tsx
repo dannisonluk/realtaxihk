@@ -39,7 +39,7 @@ export function DriverDetailPage() {
   const unlockDialog = useFormDialog();
 
   const { data, error, loading, reload } = useLoad(
-    () => endpoints.drivers.detail(client, driverId),
+    (signal) => endpoints.drivers.detail(client, driverId, undefined, signal),
     [client, driverId],
   );
 

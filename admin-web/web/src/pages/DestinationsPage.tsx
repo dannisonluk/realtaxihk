@@ -72,7 +72,7 @@ export function DestinationsPage() {
   const dialog = useFormDialog();
 
   const { data, error, loading, reload } = useLoad(
-    () => endpoints.destinations.list(client),
+    (signal) => endpoints.destinations.list(client, signal),
     [client],
   );
   const items = data?.items ?? [];

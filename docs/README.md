@@ -1,11 +1,11 @@
 # `docs/` — 文檔索引
 
-> **EN — Docs index.** Fourteen living documents plus an `archive/` of dated
+> **EN — Docs index.** Fifteen living documents plus an `archive/` of dated
 > snapshots. Start with `ARCHITECTURE.md` if you want to understand the system,
 > `DEVELOPMENT.md` if you are about to change it, and `WORK_SUMMARY.md` if you
 > need to know what is still outstanding.
 >
-> **中文摘要**：14 份現行文檔 + 一個放歷史快照的 `archive/`。要**理解系統**讀
+> **中文摘要**：15 份現行文檔 + 一個放歷史快照的 `archive/`。要**理解系統**讀
 > `ARCHITECTURE.md`；要**動手改**讀 `DEVELOPMENT.md`；要知道**還欠什麼**讀
 > `WORK_SUMMARY.md`。
 
@@ -44,6 +44,7 @@
 | [`LANDMARK_COORDINATES.md`](LANDMARK_COORDINATES.md) | 19 個地標落客座標（供人手覆核）＋深圳灣口岸港方口岸區的完整幾何分析與法律依據 | 參考資料 |
 | [`REALTIME_POSITION_COST.md`](REALTIME_POSITION_COST.md) | 一個 GPS tick 的成本實測、不同並發下的開銷、擴展天花板、5 項按投報率排序的優化 | 分析 |
 | [`FEATURE_EXPANSION_2026-10-05.md`](FEATURE_EXPANSION_2026-10-05.md) | 下一波產品功能的整合設計 backlog（取代舊的分散提案）；主要功能已落地，2026-10-08 已加「下一批候選功能」提案 | 設計+索引 |
+| [`TECHNICAL_OPTIMIZATION_BACKLOG.md`](TECHNICAL_OPTIMIZATION_BACKLOG.md) | 技術優化 backlog（CI 依賴審計、admin 載入中斷、Vite 升級、Android backup 等）—— 非功能性改善，與產品功能提案分開追蹤 | 索引 |
 
 > **「現行」與「帶日期」的界線**：現行文檔描述系統**今天**的樣子；帶日期的
 > snapshot 記的是**當天量到什麼**（含當天的 HEAD），按第 3 條守則**不追現況**。

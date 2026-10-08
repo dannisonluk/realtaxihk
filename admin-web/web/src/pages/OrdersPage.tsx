@@ -50,14 +50,14 @@ export function OrdersPage() {
   const [offset, setOffset] = useState(0);
 
   const { data, error, loading, reload } = useLoad(
-    () =>
+    (signal) =>
       endpoints.orders.list(client, {
         status: status === 'open' || status === '' ? undefined : status,
         openOnly: status === 'open',
         fareMode: fareMode === '' ? undefined : fareMode,
         limit: PAGE_SIZE,
         offset,
-      }),
+      }, signal),
     [client, status, fareMode, offset],
   );
 

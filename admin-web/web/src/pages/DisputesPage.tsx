@@ -62,20 +62,20 @@ function DisputeQueue() {
   const [severity, setSeverity] = useState('');
   const dialog = useFormDialog();
 
-  const { data, error, loading, reload } = useLoad(async () => {
+  const { data, error, loading, reload } = useLoad(async (signal) => {
     // Sequential — see `useLoad.ts`. The counts and the list are two calls, and
     // this environment intermittently accepts a connection and never answers it.
     const [page, stats] = await inOrder([
-      () =>
+      (s) =>
         endpoints.disputes.list(client, {
           openOnly,
           overdueOnly,
           unassignedOnly,
           severity: severity || undefined,
           limit: 100,
-        }),
-      () => endpoints.disputes.stats(client),
-    ] as const);
+        }, s),
+      (s) => endpoints.disputes.stats(client, s),
+    ] as const, signal);
     return { items: page.items ?? [], total: page.total ?? 0, stats };
   }, [client, openOnly, overdueOnly, unassignedOnly, severity]);
 
@@ -317,7 +317,7 @@ function DisputeDetailView({ disputeId }: { disputeId: string }) {
   const noteDialog = useFormDialog();
 
   const { data, error, loading, reload } = useLoad(
-    () => endpoints.disputes.detail(client, disputeId),
+    (signal) => endpoints.disputes.detail(client, disputeId, signal),
     [client, disputeId],
   );
 

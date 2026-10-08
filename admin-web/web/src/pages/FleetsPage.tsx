@@ -46,7 +46,7 @@ export function FleetsPage() {
   const dialog = useFormDialog();
 
   const { data, error, loading, reload } = useLoad(
-    () => endpoints.fleets.list(client, { status: filter ?? undefined, limit: 100 }),
+    (signal) => endpoints.fleets.list(client, { status: filter ?? undefined, limit: 100 }, signal),
     [client, filter],
   );
 

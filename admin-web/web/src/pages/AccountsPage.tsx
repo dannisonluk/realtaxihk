@@ -61,7 +61,7 @@ export function AccountsPage() {
   const [pendingId, setPendingId] = useState<string | null>(null);
 
   const { data, error, loading, reload } = useLoad(
-    () => endpoints.accounts.list(client),
+    (signal) => endpoints.accounts.list(client, signal),
     [client],
   );
 

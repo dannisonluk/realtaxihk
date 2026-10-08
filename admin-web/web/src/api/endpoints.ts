@@ -136,12 +136,12 @@ export const endpoints = {
       status?: DriverStatus;
       limit?: number;
       offset?: number;
-    } = {}) =>
+    } = {}, signal?: AbortSignal) =>
       client.get<Paged<AdminDriverRow>>('/api/v1/admin/drivers', {
         status_filter: status,
         limit,
         offset,
-      }),
+      }, signal),
     /**
      * One driver in full: profile, deposit, statement, refund history, fleet.
      *
@@ -151,11 +151,11 @@ export const endpoints = {
     detail: (client: ApiClient, driverId: string, { ledgerLimit = 50, refundLimit = 20 }: {
       ledgerLimit?: number;
       refundLimit?: number;
-    } = {}) =>
+    } = {}, signal?: AbortSignal) =>
       client.get<DriverProfileDetail>(`/api/v1/admin/drivers/${encodeURIComponent(driverId)}`, {
         ledger_limit: ledgerLimit,
         refund_limit: refundLimit,
-      }),
+      }, signal),
     /** `approve` -> DEPOSIT_REQUIRED, `reject`/`terminate` -> TERMINATED, `suspend` -> SUSPENDED. */
     review: (client: ApiClient, driverId: string, { decision, note = '' }: {
       decision: string;
@@ -237,12 +237,12 @@ export const endpoints = {
       status?: LicenceReviewStatus | 'all';
       limit?: number;
       offset?: number;
-    } = {}) =>
+    } = {}, signal?: AbortSignal) =>
       client.get<Paged<LicenceSubmissionRow>>('/api/v1/admin/licence/submissions', {
         status,
         limit,
         offset,
-      }),
+      }, signal),
     /**
      * One submission with its documents and **short-lived signed URLs**.
      *
@@ -250,10 +250,11 @@ export const endpoints = {
      * identity document must not sit in every poll of the queue. `ttl` is the
      * console's own countdown, capped at 900s server-side.
      */
-    detail: (client: ApiClient, submissionId: string, { ttl = 300 }: { ttl?: number } = {}) =>
+    detail: (client: ApiClient, submissionId: string, { ttl = 300 }: { ttl?: number } = {}, signal?: AbortSignal) =>
       client.get<LicenceSubmissionDetail>(
         `/api/v1/admin/licence/submissions/${encodeURIComponent(submissionId)}`,
         { ttl },
+        signal,
       ),
     /**
      * The decision. Terminal — a second call is refused.
@@ -276,12 +277,12 @@ export const endpoints = {
       status?: RefundStatus;
       limit?: number;
       offset?: number;
-    } = {}) =>
+    } = {}, signal?: AbortSignal) =>
       client.get<Paged<RefundRow>>('/api/v1/admin/refunds', {
         status_filter: status,
         limit,
         offset,
-      }),
+      }, signal),
     /** Approving is the only path that moves money out, and it terminates the driver. */
     decide: (client: ApiClient, refundId: string, { approve, note = '' }: {
       approve: boolean;
@@ -365,7 +366,7 @@ export const endpoints = {
       fareMode?: string;
       limit?: number;
       offset?: number;
-    } = {}) =>
+    } = {}, signal?: AbortSignal) =>
       client.get<Paged<AdminOrderRow>>('/api/v1/admin/orders', {
         status: filters.status,
         driver_id: filters.driverId,
@@ -376,14 +377,18 @@ export const endpoints = {
         fare_mode: filters.fareMode,
         limit: filters.limit ?? 50,
         offset: filters.offset ?? 0,
-      }),
+      }, signal),
     /**
      * One trip in full, with its frozen fare snapshot and server-computed
      * timeline. `fare` is `orders.fare_json`, **not** a recomputation — the
      * disputed amount is always the one the passenger was actually quoted.
      */
-    detail: (client: ApiClient, orderId: string) =>
-      client.get<AdminOrderDetail>(`/api/v1/admin/orders/${encodeURIComponent(orderId)}`),
+    detail: (client: ApiClient, orderId: string, signal?: AbortSignal) =>
+      client.get<AdminOrderDetail>(
+        `/api/v1/admin/orders/${encodeURIComponent(orderId)}`,
+        undefined,
+        signal,
+      ),
     /**
      * The frozen receipt document, read-only for operators.
      *
@@ -392,8 +397,8 @@ export const endpoints = {
      * browsing the console must not mutate an order. Orders without a frozen
      * receipt answer 404 here.
      */
-    receipt: (client: ApiClient, orderId: string) =>
-      client.get<OrderReceipt>(`/api/v1/admin/orders/${encodeURIComponent(orderId)}/receipt`),
+    receipt: (client: ApiClient, orderId: string, signal?: AbortSignal) =>
+      client.get<OrderReceipt>(`/api/v1/admin/orders/${encodeURIComponent(orderId)}/receipt`, undefined, signal),
   },
 
   /**
@@ -441,7 +446,7 @@ export const endpoints = {
       until?: string;
       limit?: number;
       offset?: number;
-    } = {}) =>
+    } = {}, signal?: AbortSignal) =>
       client.get<Paged<AuditRow>>('/api/v1/admin/audit', {
         event: filters.event,
         admin_id: filters.adminId,
@@ -452,7 +457,7 @@ export const endpoints = {
         until: filters.until,
         limit: filters.limit ?? 50,
         offset: filters.offset ?? 0,
-      }),
+      }, signal),
   },
 
   /**
@@ -465,7 +470,8 @@ export const endpoints = {
    */
   accounts: {
     /** The roster, plus the count the demote button depends on. */
-    list: (client: ApiClient) => client.get<AdminAccountPage>('/api/v1/admin/accounts'),
+    list: (client: ApiClient, signal?: AbortSignal) =>
+      client.get<AdminAccountPage>('/api/v1/admin/accounts', undefined, signal),
     /**
      * Create an account. It **cannot log in until it enrols TOTP** — the
      * response carries `totp_enrolment_pending: true` so that is stated rather
@@ -543,7 +549,7 @@ export const endpoints = {
       orderId?: string;
       limit?: number;
       offset?: number;
-    } = {}) =>
+    } = {}, signal?: AbortSignal) =>
       client.get<Paged<DisputeRow>>('/api/v1/admin/disputes', {
         status: filters.status,
         category: filters.category,
@@ -557,11 +563,16 @@ export const endpoints = {
         order_id: filters.orderId,
         limit: filters.limit ?? 50,
         offset: filters.offset ?? 0,
-      }),
+      }, signal),
     /** Header counts, computed server-side against one clock. */
-    stats: (client: ApiClient) => client.get<DisputeStats>('/api/v1/admin/disputes/stats'),
-    detail: (client: ApiClient, disputeId: string) =>
-      client.get<DisputeDetail>(`/api/v1/admin/disputes/${encodeURIComponent(disputeId)}`),
+    stats: (client: ApiClient, signal?: AbortSignal) =>
+      client.get<DisputeStats>('/api/v1/admin/disputes/stats', undefined, signal),
+    detail: (client: ApiClient, disputeId: string, signal?: AbortSignal) =>
+      client.get<DisputeDetail>(
+        `/api/v1/admin/disputes/${encodeURIComponent(disputeId)}`,
+        undefined,
+        signal,
+      ),
     /**
      * Open a case by hand. OPERATIONS or above.
      *
@@ -638,14 +649,14 @@ export const endpoints = {
    * subject's detail page, which is where identity is actually revealed.
    */
   search: {
-    query: (client: ApiClient, q: string, limit?: number) =>
-      client.get<SearchResponse>('/api/v1/admin/search', { q, limit }),
+    query: (client: ApiClient, q: string, limit?: number, signal?: AbortSignal) =>
+      client.get<SearchResponse>('/api/v1/admin/search', { q, limit }, signal),
   },
 
   /** Premium destinations — the admin-managed avatar-pinned map places. */
   destinations: {
-    list: (client: ApiClient) =>
-      client.get<PremiumDestinationPage>('/api/v1/admin/destinations'),
+    list: (client: ApiClient, signal?: AbortSignal) =>
+      client.get<PremiumDestinationPage>('/api/v1/admin/destinations', undefined, signal),
     create: (client: ApiClient, payload: {
       code: string;
       name_zh: string;
@@ -675,20 +686,21 @@ export const endpoints = {
       status?: string;
       limit?: number;
       offset?: number;
-    } = {}) =>
+    } = {}, signal?: AbortSignal) =>
       client.get<Paged<FleetRow>>('/api/v1/admin/fleets', {
         status_filter: status,
         limit,
         offset,
-      }),
+      }, signal),
     create: (client: ApiClient, payload: Record<string, unknown>) =>
       client.post<FleetRow>('/api/v1/admin/fleets', { body: payload }),
     update: (client: ApiClient, fleetId: string, payload: Record<string, unknown>) =>
       client.patch<FleetRow>(`/api/v1/admin/fleets/${encodeURIComponent(fleetId)}`, { body: payload }),
-    members: (client: ApiClient, fleetId: string, { includeLeft = false }: { includeLeft?: boolean } = {}) =>
+    members: (client: ApiClient, fleetId: string, { includeLeft = false }: { includeLeft?: boolean } = {}, signal?: AbortSignal) =>
       client.get<{ items: FleetMember[] }>(
         `/api/v1/admin/fleets/${encodeURIComponent(fleetId)}/members`,
         { include_left: includeLeft },
+        signal,
       ),
     addMember: (client: ApiClient, fleetId: string, { driverProfileId, memberRole = 'MEMBER' }: {
       driverProfileId: string;
@@ -701,10 +713,11 @@ export const endpoints = {
       client.del<null>(
         `/api/v1/admin/fleets/${encodeURIComponent(fleetId)}/members/${encodeURIComponent(driverProfileId)}`,
       ),
-    settlementHistory: (client: ApiClient, fleetId: string, { limit = 52 }: { limit?: number } = {}) =>
+    settlementHistory: (client: ApiClient, fleetId: string, { limit = 52 }: { limit?: number } = {}, signal?: AbortSignal) =>
       client.get<{ items: FleetSettlementRow[] }>(
         `/api/v1/admin/fleets/${encodeURIComponent(fleetId)}/settlement`,
         { limit },
+        signal,
       ),
     /** Idempotent per (fleet, ISO week). Rejected for a fleet that is not ACTIVE. */
     runSettlement: (client: ApiClient, fleetId: string, { period }: { period?: string } = {}) =>
@@ -717,10 +730,10 @@ export const endpoints = {
      * the docstring in `app/useLoad.ts` for why this codebase does not fan
      * requests out in parallel.
      */
-    detail: async (client: ApiClient, fleetId: string): Promise<FleetDetail> => {
-      const fleets = await endpoints.fleets.list(client, { limit: 100 });
-      const members = await endpoints.fleets.members(client, fleetId, { includeLeft: true });
-      const settlement = await endpoints.fleets.settlementHistory(client, fleetId);
+    detail: async (client: ApiClient, fleetId: string, signal?: AbortSignal): Promise<FleetDetail> => {
+      const fleets = await endpoints.fleets.list(client, { limit: 100 }, signal);
+      const members = await endpoints.fleets.members(client, fleetId, { includeLeft: true }, signal);
+      const settlement = await endpoints.fleets.settlementHistory(client, fleetId, undefined, signal);
       const fleet = fleets.items.find((row) => row.id === fleetId);
       if (!fleet) {
         throw new Error(i18n.t('errors.fleetNotFound', { id: fleetId }));
@@ -749,6 +762,7 @@ export const endpoints = {
         sortBy?: AnalyticsSortBy;
         sortDir?: SortDir;
       } = {},
+      signal?: AbortSignal,
     ) =>
       client.get<AnalyticsSummary>('/api/v1/admin/analytics', {
         from: filters.from,
@@ -757,31 +771,33 @@ export const endpoints = {
         taxi_type: filters.taxiType ?? undefined,
         sort_by: filters.sortBy,
         sort_dir: filters.sortDir,
-      }),
+      }, signal),
 
     heatmap: (
       client: ApiClient,
       filters: { from?: string; to?: string; taxiType?: string | null } = {},
+      signal?: AbortSignal,
     ) =>
       client.get<AnalyticsHeatmap>('/api/v1/admin/analytics/heatmap', {
         from: filters.from,
         to: filters.to,
         taxi_type: filters.taxiType ?? undefined,
-      }),
+      }, signal),
 
     operations: (
       client: ApiClient,
       filters: { from?: string; to?: string; taxiType?: string | null } = {},
+      signal?: AbortSignal,
     ) =>
       client.get<AnalyticsOperations>('/api/v1/admin/analytics/operations', {
         from: filters.from,
         to: filters.to,
         taxi_type: filters.taxiType ?? undefined,
-      }),
+      }, signal),
 
-    supply: (client: ApiClient, taxiType?: string | null) =>
+    supply: (client: ApiClient, taxiType?: string | null, signal?: AbortSignal) =>
       client.get<AnalyticsSupply>('/api/v1/admin/analytics/supply', {
         taxi_type: taxiType ?? undefined,
-      }),
+      }, signal),
   },
 };

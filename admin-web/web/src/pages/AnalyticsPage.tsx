@@ -124,23 +124,23 @@ export function AnalyticsPage() {
   const summaryFilters = { from, to, granularity, taxiType, sortBy, sortDir };
 
   const summary = useLoad<AnalyticsSummary>(
-    () => endpoints.analytics.summary(client, summaryFilters),
+    (signal) => endpoints.analytics.summary(client, summaryFilters, signal),
     [from, to, granularity, taxiType, sortBy, sortDir],
   );
 
   // The heat map ignores granularity and sort: it is always 24 hourly slots.
   const heatmap = useLoad<AnalyticsHeatmap>(
-    () => endpoints.analytics.heatmap(client, { from, to, taxiType }),
+    (signal) => endpoints.analytics.heatmap(client, { from, to, taxiType }, signal),
     [from, to, taxiType],
   );
 
   const operations = useLoad<AnalyticsOperations>(
-    () => endpoints.analytics.operations(client, { from, to, taxiType }),
+    (signal) => endpoints.analytics.operations(client, { from, to, taxiType }, signal),
     [from, to, taxiType],
   );
 
   const supply = useLoad<AnalyticsSupply>(
-    () => endpoints.analytics.supply(client, taxiType),
+    (signal) => endpoints.analytics.supply(client, taxiType, signal),
     [taxiType],
   );
 

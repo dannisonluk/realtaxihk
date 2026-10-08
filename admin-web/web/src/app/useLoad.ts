@@ -28,11 +28,16 @@ export interface Loadable<T> {
 /**
  * Run `load` on mount and whenever `deps` change, without racing.
  *
- * A late response from a superseded run is discarded, matching the vanilla
- * build's `renderToken` guard — otherwise a slow first load can overwrite a
- * newer one and the page shows stale data with no error.
+ * The loader receives an `AbortSignal`, so pages that pass it into API calls
+ * release their in-flight sockets when the run is superseded or the page
+ * unmounts. A late response from a superseded run is still discarded,
+ * matching the vanilla build's `renderToken` guard — otherwise a slow first
+ * load can overwrite a newer one and the page shows stale data with no error.
  */
-export function useLoad<T>(load: () => Promise<T>, deps: unknown[]): Loadable<T> {
+export function useLoad<T>(
+  load: (signal: AbortSignal) => Promise<T>,
+  deps: unknown[],
+): Loadable<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,13 +51,14 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[]): Loadable<T>
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     busyRef.current = true;
     setLoading(true);
     setError(null);
 
     void (async () => {
       try {
-        const result = await loadRef.current();
+        const result = await loadRef.current(controller.signal);
         if (cancelled) return;
         setData(result);
       } catch (cause) {
@@ -66,6 +72,7 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[]): Loadable<T>
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, nonce]);
@@ -85,12 +92,16 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[]): Loadable<T>
  * and the settlement page need; `Promise.all` is deliberately not offered,
  * because using it is the bug described at the top of this file.
  */
-export async function inOrder<T extends readonly (() => Promise<unknown>)[]>(
+export async function inOrder<
+  T extends readonly ((signal: AbortSignal) => Promise<unknown>)[],
+>(
   thunks: T,
+  signal?: AbortSignal,
 ): Promise<{ [K in keyof T]: Awaited<ReturnType<T[K]>> }> {
   const results: unknown[] = [];
+  const nextSignal = signal ?? new AbortController().signal;
   for (const thunk of thunks) {
-    results.push(await thunk());
+    results.push(await thunk(nextSignal));
   }
   return results as { [K in keyof T]: Awaited<ReturnType<T[K]>> };
 }

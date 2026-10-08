@@ -86,6 +86,9 @@ jobs:
       - name: Prod boot fail-fast drill
         run: uv run python scripts/verify/prod_boot_drill.py
 
+      - name: Dependency audit (pip-audit)
+        run: uvx pip-audit --path .venv --progress-spinner off -f json
+
       # Also not covered by pytest. It compares every captured response fixture
       # against the declared response_model — and `response_model=` is a filter,
       # not an annotation: FastAPI silently drops any key it does not declare.
@@ -238,3 +241,10 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # Production dependencies only. The full `npm audit` currently reports
+      # dev-only findings in the Vite toolchain (vite / vitest / source-map-js);
+      # those are tracked in docs/TECHNICAL_OPTIMIZATION_BACKLOG.md until the
+      # major-bump upgrade lands.
+      - name: Dependency audit (npm, production only)
+        run: npm audit --omit=dev --audit-level=high --json

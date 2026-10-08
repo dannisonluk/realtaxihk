@@ -30,17 +30,17 @@ export function DashboardPage() {
   const { client, setBadges } = useApp();
   const { t } = useI18n();
 
-  const { data, error, loading, reload } = useLoad<DashboardData>(async () => {
+  const { data, error, loading, reload } = useLoad<DashboardData>(async (signal) => {
     // Six calls, **sequential**, not parallel — see `useLoad.ts`. On a healthy
     // network the whole screen still resolves in well under a second.
     const [drivers, pendingKyc, refunds, pendingRefunds, fleets, activeFleets] = await inOrder([
-      () => endpoints.drivers.list(client, { limit: 1 }),
-      () => endpoints.drivers.list(client, { status: 'PENDING_KYC', limit: 1 }),
-      () => endpoints.refunds.list(client, { limit: 1 }),
-      () => endpoints.refunds.list(client, { status: 'PENDING', limit: 1 }),
-      () => endpoints.fleets.list(client, { limit: 100 }),
-      () => endpoints.fleets.list(client, { status: 'ACTIVE', limit: 100 }),
-    ] as const);
+      (s) => endpoints.drivers.list(client, { limit: 1 }, s),
+      (s) => endpoints.drivers.list(client, { status: 'PENDING_KYC', limit: 1 }, s),
+      (s) => endpoints.refunds.list(client, { limit: 1 }, s),
+      (s) => endpoints.refunds.list(client, { status: 'PENDING', limit: 1 }, s),
+      (s) => endpoints.fleets.list(client, { limit: 100 }, s),
+      (s) => endpoints.fleets.list(client, { status: 'ACTIVE', limit: 100 }, s),
+    ] as const, signal);
 
     const result: DashboardData = {
       driverTotal: drivers.total ?? 0,

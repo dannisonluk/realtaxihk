@@ -39,7 +39,7 @@ export function OrderDetailPage() {
   const labels = useLabels();
 
   const { data, error, loading, reload } = useLoad(
-    () => endpoints.orders.detail(client, orderId),
+    (signal) => endpoints.orders.detail(client, orderId, signal),
     [client, orderId],
   );
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null);

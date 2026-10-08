@@ -58,12 +58,12 @@ export function AuditPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const { data, error, loading, reload } = useLoad(
-    () =>
+    (signal) =>
       endpoints.audit.list(client, {
         event: event || undefined,
         limit: PAGE_SIZE,
         offset,
-      }),
+      }, signal),
     [client, event, offset],
   );
 

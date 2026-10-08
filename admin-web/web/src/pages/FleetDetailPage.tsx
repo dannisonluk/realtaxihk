@@ -65,13 +65,13 @@ export function FleetDetailPage() {
   const removeDialog = useFormDialog();
   const settleDialog = useConfirmDialog();
 
-  const { data, error, loading, reload } = useLoad(async (): Promise<FleetDetail> => {
+  const { data, error, loading, reload } = useLoad(async (signal): Promise<FleetDetail> => {
     // Sequential — see `useLoad.ts`. This page previously fired all three
     // together, which is three chances to land on the connection that the
     // server accepts and then never answers.
-    const page = await endpoints.fleets.list(client, { limit: 200 });
-    const members = await endpoints.fleets.members(client, fleetId, { includeLeft });
-    const history = await endpoints.fleets.settlementHistory(client, fleetId, { limit: 52 });
+    const page = await endpoints.fleets.list(client, { limit: 200 }, signal);
+    const members = await endpoints.fleets.members(client, fleetId, { includeLeft }, signal);
+    const history = await endpoints.fleets.settlementHistory(client, fleetId, { limit: 52 }, signal);
     const fleet = (page.items ?? []).find((item) => item.id === fleetId);
     if (!fleet) {
       throw new Error(t('fleetDetail.notFound'));
@@ -549,7 +549,7 @@ function AddMemberBody({
   const { t } = useI18n();
   const labels = useLabels();
   const { data, error, loading, reload } = useLoad(
-    () => endpoints.drivers.list(client, { status: 'ACTIVE', limit: 200 }),
+    (signal) => endpoints.drivers.list(client, { status: 'ACTIVE', limit: 200 }, signal),
     [client],
   );
 

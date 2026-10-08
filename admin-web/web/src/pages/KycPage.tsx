@@ -44,8 +44,8 @@ export function KycPage() {
   const dialog = useFormDialog();
 
   const { data, error, loading, reload } = useLoad(
-    async () => {
-      const page = await endpoints.drivers.list(client, { status: filter ?? undefined, limit: 100 });
+    async (signal) => {
+      const page = await endpoints.drivers.list(client, { status: filter ?? undefined, limit: 100 }, signal);
       // Keep the sidebar count honest after a review moves a driver out of the
       // queue. Best-effort: a failure here must not break the table.
       void refreshBadges();
