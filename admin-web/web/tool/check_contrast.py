@@ -9,7 +9,7 @@ that 15px/600 text needs. Nothing failed, because nothing was measuring.
 
 This reads `src/styles.css` (not `dist/`, so it runs without a build), resolves
 each theme's tokens, and computes the ratios. It is deliberately a *tool* rather
-than a test: `tests/test_console_contrast.py` runs it and asserts the exit code,
+than a test: `tests/infra/test_console_contrast.py` runs it and asserts the exit code,
 so the numbers live in one place and both a human and CI read the same ones.
 
 What it checks

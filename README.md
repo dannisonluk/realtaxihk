@@ -55,9 +55,9 @@ carries the passenger.
 
 | # | Deliverable | Path | Scale | Tech |
 |---|---|---|---|---|
-| 1 | **Backend** | `app/` | 141 files · 28,933 LOC | FastAPI async · PostgreSQL 16/PostGIS · Redis 7 · SQLAlchemy 2.0 · Alembic |
-| 2 | **Mobile** | `mobile/` | 93 Dart files · 19,481 LOC | Flutter 3.44 · Riverpod · go_router · Dio · flutter_secure_storage |
-| 3 | **Admin console** | `admin-web/` | 52 TS/TSX files · 18,237 LOC | React 18 + Vite + TypeScript (current) · hand-written ES modules (legacy) |
+| 1 | **Backend** | `app/` | 141 files · 29,111 LOC | FastAPI async · PostgreSQL 16/PostGIS · Redis 7 · SQLAlchemy 2.0 · Alembic |
+| 2 | **Mobile** | `mobile/` | 94 Dart files · 19,863 LOC | Flutter 3.44 · Riverpod · go_router · Dio · flutter_secure_storage |
+| 3 | **Admin console** | `admin-web/` | 52 TS/TSX files · 18,242 LOC | React 18 + Vite + TypeScript (current) · hand-written ES modules (legacy) |
 
 Plus the glue that keeps them honest: `scripts/` (25 tools), `tests/` (61 files),
 `docs/` (14 living documents + `docs/archive/` for dated snapshots),
@@ -409,7 +409,7 @@ settlement.
 
 ```
 admin-web/web/src/
-  pages/        21 pages — Kyc, Refunds, Settlement, Disputes, LiveMap, Orders,
+  pages/        18 pages — Kyc, Refunds, Settlement, Disputes, LiveMap, Orders,
                 DriverDetail, Fleets, FleetDetail, Licence, Accounts, Audit,
                 Search, Analytics, Login, Dashboard…
   api/          typed calls into the backend

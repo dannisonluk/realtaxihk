@@ -2,9 +2,10 @@
  * UI verifier for the admin console.
  *
  * Drives the real console in a real browser against the real API, and fails if
- * anything a person would notice goes wrong. This exists because the console has
- * no unit tests: it is DOM code, and DOM code that is only read is not verified.
- * The three classes of defect it catches that reading the source does not:
+ * anything a person would notice goes wrong. The console has 96 vitest unit
+ * tests (14 files) for pure helpers and small UI states; this verifier exists
+ * because those still do not cover the real browser, real API, and DOM layout.
+ * The three classes of defect it catches that the unit tests do not:
  *
  *   1. **A module that fails to load.** A typo in an import path, or a MIME type
  *      the browser refuses, leaves a blank page and one console error. Static

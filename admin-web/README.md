@@ -218,16 +218,9 @@ populated so the split-origin setup keeps working.
 
 ## Verifying it
 
-There are no unit tests for the console — it is DOM code, and DOM code that is only
-read is not verified. The verifier drives the real thing in a real browser against
-the real API.
-
-**It targets the React build only.** It used to be build-agnostic, and is not any
-more: the two builds now have different login flows. The React build signs in
-against `admin_accounts` with username + password + TOTP; the legacy build still
-posts to `/auth/otp/request` with a phone number and reads `#login-phone`. The
-verifier drives the former, so point `--base` at a server running the React build
-(the default; never pass `--legacy`).
+The console has 96 vitest unit tests (14 files), plus a browser UI verifier.
+The unit tests cover pure helpers and focused React states; the verifier drives
+the real thing in a real browser against the real API.
 
 ```bash
 .venv/Scripts/python.exe admin-web/serve.py --port 8081 &
@@ -266,11 +259,12 @@ fixed 248px sidebar. Nothing *errors* when that goes wrong. A label wraps to a
 second line, the row grows, and the list that fitted now scrolls.
 
 `audit_layout.mjs` measures geometry instead of eyeballing screenshots, over the
-full matrix the UI supports: **{zh-Hant, en} x {light, dark}**, at three viewport
-widths. Per render it checks document-level horizontal overflow, text clipped by an
-ancestor (with deliberate single-line ellipsis allow-listed by selector), elements
-that leave the viewport **without** a scrolling ancestor to contain them, and nav
-rows taller than the 44px target — i.e. a wrapped label.
+full matrix the UI supports: **{zh-Hant, en} x {light, dark}**, and each width is
+passed separately as `--width 380`, `--width 1024`, or `--width 1440`. Per render
+it checks document-level horizontal overflow, text clipped by an ancestor (with
+deliberate single-line ellipsis allow-listed by selector), elements that leave
+the viewport **without** a scrolling ancestor to contain them, and nav rows
+taller than the 44px target — i.e. a wrapped label.
 
 The API is stubbed at the network layer, so it needs no database — only a static
 server on the built console:
@@ -296,7 +290,8 @@ twelve screenshots of the sign-in form:
    load.** `sessionStorage` is per-document: seeding it and then navigating
    discards it. `addInitScript` runs before any module does.
 
-It also runs at three widths (`--width 380 / 1024 / 1440`). The narrow one is what
+It also runs at each width separately (`--width 380`, `--width 1024`, `--width
+1440`). The narrow one is what
 justifies the "scrolling ancestor" exemption above: a `table.data` on a 380px
 screen is genuinely wider than the viewport, and that is correct — `.table-wrap` is
 `overflow-x: auto`, so the table scrolls inside its own box and the page never

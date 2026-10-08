@@ -1,7 +1,7 @@
 /**
  * The HTTP client.
  *
- * Ported from `admin-web/js/api.js`, which mirrors
+ * Ported from `admin-web/legacy/js/api.js`, which mirrors
  * `mobile/lib/core/network/api_client.dart` deliberately: same refresh
  * strategy, same error envelope, so a bug fixed in one is a bug to check in the
  * other. The backend's error shape is `{code, message, details}` — **not**

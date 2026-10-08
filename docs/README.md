@@ -77,7 +77,7 @@
 | [`archive/SECURITY_AUDIT.md`](archive/SECURITY_AUDIT.md) | 安全審計：SEC-01..31 逐條、風險總表、含攻擊重現證據 | 2026-09-29 |
 | [`archive/PRODUCTION_READINESS.md`](archive/PRODUCTION_READINESS.md) | 上線就緒審計：4 bug / 7 P0 / 10 P1 / 10 P2 逐條狀態與修復記錄 | 2026-09-29 |
 | [`archive/CODE_REVIEW_2026-10-01.md`](archive/CODE_REVIEW_2026-10-01.md) | 深度程式碼審查（6 高 / 4 中 / 6 註釋級） | 2026-10-01 |
-| [`archive/CODE_REVIEW_2026-10-12.md`](archive/CODE_REVIEW_2026-10-12.md) | 全代碼庫逐行審閱（P0 / P1 / P2 + migrations + 前端），含已撤銷的誤報 | 2026-10-12 |
+| [`archive/CODE_REVIEW_2026-10-12.md`](archive/CODE_REVIEW_2026-10-12.md) | 全代碼庫逐行審閱（P0 / P1 / P2 + migrations + 前端），含已撤銷的誤報。**檔名日期為舊記錄誤植，git 記錄為 2026-10-02/03** | 2026-10-02/03 |
 | [`archive/AUDIT_FINDINGS_LINEBYLINE.md`](archive/AUDIT_FINDINGS_LINEBYLINE.md) | 逐行審計 findings log（2026-10-06 前嘅活文件，已由 fresh audit 取代） | 2026-10-04 ~ 10-06 |
 | [`archive/AUDIT_REPORT_2026-10-04.md`](archive/AUDIT_REPORT_2026-10-04.md) | 企業級全量審計報告 v4（修復輪） | 2026-10-04 |
 | [`archive/ERROR_SCAN_2026-10-05.md`](archive/ERROR_SCAN_2026-10-05.md) | 實跑式全專案錯誤掃描 gate 輸出 | 2026-10-05 |
@@ -85,6 +85,7 @@
 | [`archive/PRE_LAUNCH_CHECK_2026-10-06.md`](archive/PRE_LAUNCH_CHECK_2026-10-06.md) | 上線前 Final Check（5-agent 條件 Go；數字已過時，以 fresh audit 為準） | 2026-10-06 |
 | [`archive/UI_DESIGN_REVIEW_2026-10-02.md`](archive/UI_DESIGN_REVIEW_2026-10-02.md) | 管理後台 UI 設計審查（Apple HIG、對比度、無障礙） | 2026-10-02 |
 | [`archive/AUDIT_2026-10-06.md`](archive/AUDIT_2026-10-06.md) | **Fresh root-and-branch audit**：backend/mobile/admin findings + fix disposition + gates | 2026-10-06 |
+| [`archive/FULL_SCAN_2026-10-08.md`](archive/FULL_SCAN_2026-10-08.md) | 全倉逐行掃描 + 修復批次記錄，附各區塊 file:line | 2026-10-08 |
 | [`archive/AGENT_HANDOFF_multi-agent-2026-10-06.md`](archive/AGENT_HANDOFF_multi-agent-2026-10-06.md) | 多 agent 並行協作期的檔案認領與分工進度（該模式已結束，規則失效） | 2026-09 ~ 10-06 |
 
 > 詳見 [`archive/README.md`](archive/README.md)。
@@ -110,7 +111,7 @@
 
 ---
 
-## 量測基準（2026-10-06 實跑）
+## 量測基準（2026-10-06 基準；後端/mobile/admin 於 2026-10-08 更新）
 
 本表是**現行文檔引用的計數器的唯一來源**。改了架構或加了測試／畫面，先重跑下面的
 量法，再更新引用它的文檔（`../README.md`、`WORK_SUMMARY.md`）。
@@ -121,15 +122,15 @@
 | API surface | **115 paths / 129 operations** | `create_app().openapi()['paths']` |
 | response_model 覆蓋 | 119 exported／114 reachable；129 operations 全有 `response_model`；81 個 fixture block 全過 | `scripts/verify/audit_response_models.py` |
 | Alembic | **25** migrations · 單一 head `a7b3c1d2e4f6` | `alembic heads` / `ls alembic/versions/*.py` |
-| `tests/` | 61 個 `.py`（60 個 `test_*.py` + conftest · 1,068 個 `def test_`） | `grep -rho "def test_[a-zA-Z_0-9]*" tests/ \| wc -l` |
+| `tests/` | 61 個 `.py`（60 個 `test_*.py` + conftest · 1,071 個 `def test_`） | `grep -rho "def test_[a-zA-Z_0-9]*" tests/ \| wc -l` |
 | 後端 pytest | **全套 1292 passed / 0 failed / 0 error**（2026-10-08 單一 process 實跑，17m30s） | `uv run python -m pytest -q` |
-| `mobile/lib` | 93 個 `.dart` · 19,481 LOC · **34** 個 `*_screen.dart` | `find mobile/lib -name "*.dart"` |
+| `mobile/lib` | 94 個 `.dart` · 19,863 LOC · **34** 個 `*_screen.dart` | `find mobile/lib -name "*.dart"` |
 | Dart harness | **161 passed / 0 failed** | `dart … tool/run_tests.dart` |
 | Dart LSP check | **95 files opened / 0 diagnostics** | `python mobile/tool/dart_check.py mobile` |
 | Contract | **64** 個 fixture json；harness 解到 **64** 個 · 0 failure | `dart … tool/verify_contract.dart` |
-| `admin-web/web/src` | 52 個 `.ts/.tsx`（含 14 個 test 檔；非 test 38 個 · 18,237 LOC）· 18 個頁面 | `find admin-web/web/src -name "*.ts*" \| wc -l` |
+| `admin-web/web/src` | 52 個 `.ts/.tsx`（含 14 個 test 檔；非 test 38 個 · 14,849 LOC · 52 個含 test · 18,242 LOC）· 18 個頁面 | `find admin-web/web/src -name "*.ts*" \| wc -l` |
 | 後台 vitest | **96 passed（14 檔）** | `npx vitest run --no-file-parallelism --pool=forks` |
-| `scripts/` | 25 個 `.py` · 6,626 LOC | `find scripts -name "*.py"` |
+| `scripts/` | 25 個 `.py` · 6,629 LOC | `find scripts -name "*.py"` |
 
 > ✅ **後端測試 2026-10-08 全套一次過實跑全綠**（Docker Desktop 開住、`realtaxi-db` ＋
 > `realtaxi-redis` healthy）：`uv run python -m pytest -q` =

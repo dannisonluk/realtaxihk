@@ -2,13 +2,17 @@
 
 Why this exists
 ---------------
-On this machine the Dart VM cannot spawn subprocesses that use pipes: the spawn
-fails with Windows `ERROR_PIPE_BUSY` (231) at `process_win.cc:742`. Everything
-that shells out therefore dies at startup:
+On affected machines the Dart VM cannot spawn subprocesses that use pipes: the
+spawn fails with Windows `ERROR_PIPE_BUSY` (231) at `process_win.cc:742`.
+When that happens, everything that shells out dies at startup:
 
     flutter create / flutter run / flutter test   -> "CreateFile failed 231"
     dart analyze                                  -> same
     dart run / dart compile                       -> same (native-assets hooks)
+
+This harness exists as the fallback for those machines. On machines where
+`dart analyze` completes normally, the normal analyzer is the preferred gate;
+do not claim the fallback is generally required.
 
 The analysis server is an AOT snapshot that speaks LSP over stdio. Python *can*
 spawn it with pipes, so this drives it directly. It is the same engine

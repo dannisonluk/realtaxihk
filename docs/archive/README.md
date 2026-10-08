@@ -41,7 +41,7 @@
 | [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) | 網絡安全審計：風險總表、SEC-01..31 逐條（Critical / High / Medium / Low）、攻擊重現附錄 | 2026-09-29（含後續輪次） | [`../SECURITY.md`](../SECURITY.md) |
 | [`PRODUCTION_READINESS.md`](PRODUCTION_READINESS.md) | 上線就緒審計：掃描發現的 4 個真 bug、7 個 P0、10 個 P1、10 個 P2，逐條狀態與修復記錄、上線日 checklist | 2026-09-29 | [`../WORK_SUMMARY.md`](../WORK_SUMMARY.md) §4 |
 | [`CODE_REVIEW_2026-10-01.md`](CODE_REVIEW_2026-10-01.md) | 深度程式碼審查：6 高 / 4 中 / 6 註釋級，含並行測試互相干擾的證據 | 2026-10-01 | — |
-| [`CODE_REVIEW_2026-10-12.md`](CODE_REVIEW_2026-10-12.md) | 全代碼庫逐行審閱：P0 / P1 / P2 + migrations / 資料庫層 + 前端，含 **5 條已撤銷的誤報**（誤報本身是可複用教訓） | 2026-10-12 | [`../DEVELOPMENT.md`](../DEVELOPMENT.md) §6 |
+| [`CODE_REVIEW_2026-10-12.md`](CODE_REVIEW_2026-10-12.md) | 全代碼庫逐行審閱：P0 / P1 / P2 + migrations / 資料庫層 + 前端，含 **5 條已撤銷的誤報**（誤報本身是可複用教訓）。**檔名日期為舊記錄誤植，git 記錄為 2026-10-02/03** | 2026-10-02/03 | [`../DEVELOPMENT.md`](../DEVELOPMENT.md) §6 |
 | [`UI_DESIGN_REVIEW_2026-10-02.md`](UI_DESIGN_REVIEW_2026-10-02.md) | 管理後台 UI 設計審查（Apple HIG）：4 High / 8 Medium / 5 Low，對比度、無障礙、觸控目標、主題 token | 2026-10-02 | [`../ADMIN_CONSOLE_DESIGN.md`](../ADMIN_CONSOLE_DESIGN.md) |
 | [`AGENT_HANDOFF_multi-agent-2026-10-06.md`](AGENT_HANDOFF_multi-agent-2026-10-06.md) | **多 agent 並行協作期**的檔案認領約定、分工表與逐輪進度。協作模式已於 2026-10-06 結束（改為單一 agent 全權承接），檔內「認領」「唔好改另一 agent 嘅檔」等規則**全部失效**；保留只作歷史證據 | 2026-09 ~ 10-06 | [`../WORK_SUMMARY.md`](../WORK_SUMMARY.md) |
 | [`AUDIT_FINDINGS_LINEBYLINE.md`](AUDIT_FINDINGS_LINEBYLINE.md) | 逐行審計 findings log（活文件時期），已被 [`AUDIT_2026-10-06.md`](AUDIT_2026-10-06.md) 取代 | 2026-10-04 ~ 10-06 | [`../WORK_SUMMARY.md`](../WORK_SUMMARY.md) §4 |
@@ -49,7 +49,8 @@
 | [`ERROR_SCAN_2026-10-05.md`](ERROR_SCAN_2026-10-05.md) | 實跑式全專案錯誤掃描 | 2026-10-05 | [`AUDIT_2026-10-06.md`](AUDIT_2026-10-06.md) |
 | [`PRE_LAUNCH_CHECK_2026-10-06.md`](PRE_LAUNCH_CHECK_2026-10-06.md) | 上線前 Final Check（5-agent 條件 Go）；數字已過時 | 2026-10-06 | [`AUDIT_2026-10-06.md`](AUDIT_2026-10-06.md) |
 | [`STRUCTURE_REVIEW.md`](STRUCTURE_REVIEW.md) | 目錄佈局評估 + keyset cursor bug 背景 | 2026-10-06 前 | [`../DEVELOPMENT.md`](../DEVELOPMENT.md) |
-| [`AUDIT_2026-10-06.md`](AUDIT_2026-10-06.md) | **Fresh root-and-branch audit**：backend/mobile/admin findings、fix disposition、gate outputs | 2026-10-06 | [`../WORK_SUMMARY.md`](../WORK_SUMMARY.md) |
+| [`AUDIT_2026-10-06.md`](AUDIT_2026-10-06.md) | **Fresh root-and-branch audit**：backend/mobile/admin findings + fix disposition + gates | 2026-10-06 | [`../WORK_SUMMARY.md`](../WORK_SUMMARY.md) §4 |
+| [`FULL_SCAN_2026-10-08.md`](FULL_SCAN_2026-10-08.md) | **全倉逐行掃描 + 收尾修正**：backend/mobile/admin 三線 + 本輪 fix 記錄 | 2026-10-08 | [`../WORK_SUMMARY.md`](../WORK_SUMMARY.md) §4 |
 
 ---
 

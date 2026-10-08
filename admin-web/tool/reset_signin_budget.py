@@ -2,8 +2,10 @@
 
 Why this exists
 ---------------
-`admin-web/tool/verify_ui.mjs` logs in through the real OTP flow, against the real
-API. That flow is deliberately budgeted:
+`admin-web/tool/verify_ui.mjs` drives the React build through username +
+password + TOTP, not the legacy phone-OTP flow. The OTP budget below only
+matters when manually driving the legacy console; a React verifier run needs
+nothing cleared.
 
   - `otp_ip_rate_limit`     10 requests / 600s  per client address
   - `otp_phone_rate_limit`   5 requests / 3600s per phone number

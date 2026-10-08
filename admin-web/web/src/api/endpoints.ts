@@ -31,7 +31,6 @@ import type {
   AnalyticsSummary,
   AnalyticsSupply,
   AuditRow,
-  AuthTokens,
   DisputeDetail,
   DisputeMessage,
   DisputeResolveResult,
@@ -110,15 +109,6 @@ export const endpoints = {
       client.post<AdminSession>('/api/v1/admin/auth/totp/enrol/confirm', {
         body: { challenge_token: challengeToken, code },
         authenticated: false,
-      }),
-    requestOtp: (client: ApiClient, phone: string) =>
-      client.post<{ sent: boolean }>('/api/v1/auth/otp/request', {
-        body: { phone_e164: phone },
-        authenticated: false,
-      }),
-    verifyOtp: (client: ApiClient, phone: string, code: string) =>
-      client.post<AuthTokens>('/api/v1/auth/otp/verify', {
-        body: { phone_e164: phone, code },
       }),
     me: (client: ApiClient) => client.get<AdminIdentity>('/api/v1/auth/me'),
     /**

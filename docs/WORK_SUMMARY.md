@@ -74,7 +74,7 @@
 
 | 交付物 | 位置 | 技術 | 狀態 |
 |---|---|---|---|
-| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **115 paths / 129 operations，全部有 `response_model`** · 141 檔 / 28,933 LOC · pytest 全套 **1292 / 0**（2026-10-08 單一 process 實跑） |
+| 後端 API | `app/` | FastAPI (async) + SQLAlchemy 2.0 async + PostgreSQL 16/PostGIS + Redis 7 + Alembic | ✅ **115 paths / 129 operations，全部有 `response_model`** · 141 檔 / 29,111 LOC · pytest 全套 **1292 / 0**（2026-10-08 單一 process 實跑） |
 | Flutter App | `mobile/` | Flutter + Riverpod 3.4.3 + Dio + go_router 17（**34 個畫面**，三角色）；品牌資產由 `tool/gen_branding_assets.py` 由 `branding/source/` 的原圖產生 | ✅ 161 tests · fixture contract OK · APK debug 已成功 build（2026-10-07，~183 MB） |
 | Web 管理後台 | `admin-web/web/`（React + Vite）、`admin-web/legacy/`（legacy） | React + Vite（新版）、Vanilla JS（舊版） | ✅ **96 vitest passed（14 檔）** · `tsc --noEmit` **exit 0** |
 
@@ -350,7 +350,7 @@ fine-grained PAT 是**逐個 repo 授權**的，所以「token 屬於 dannisonlu
 ✅ App 已接新登入流程：三個入口分開、電話只解鎖 call車、四條 Turnstile 門都帶 token
 ✅ APK debug build 已在本機成功（2026-10-07，約 183 MB `mobile/build/.../app-debug.apk`）
 ✅ 現時無未修項（先前的 mobile `fixed_offers_screen.dart` `$` escape 已隨 WIP 收斂）
-✅ mobile 34 畫面 / 161 tests / 19,481 LOC        — 三角色完整
+✅ mobile 34 畫面 / 161 tests / 19,863 LOC        — 三角色完整
 ✅ mobile 排版閘（`dart format --set-exit-if-changed lib tool`）已修至 0 changed
    （HEAD/origin-main 原本 19 檔唔過 — 閘聲明咗但從未綠過）
 ✅ P4 首次對住「已 migrate 的 dev DB」跑過（原停在 `c1f2e3d4a5b6`，2026-10-06 升到
