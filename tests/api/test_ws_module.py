@@ -115,6 +115,30 @@ class TestWsAuth:
             pass
         assert exc.value.code == 4401
 
+    def test_ws_rejects_cross_origin_before_accept(self, client):
+        """SEC-33: a browser page from an untrusted origin cannot open the WS."""
+        from starlette.websockets import WebSocketDisconnect
+
+        oid = _mk_broadcasting_order(client, _mk_user_token(client, "+85260000013"))
+        with (
+            pytest.raises(WebSocketDisconnect) as exc,
+            client.websocket_connect(
+                _ws_url(client, f"/ws/trip/{oid}", "valid.token.not.checked"),
+                headers={"Origin": "https://evil.example"},
+            ),
+        ):
+            pass
+        assert exc.value.code == 4403
+
+    def test_ws_allows_configured_origin(self, client):
+        """A browser on one of the configured CORS origins may use the socket."""
+        oid = _mk_broadcasting_order(client, _mk_user_token(client, "+85260000014"))
+        with client.websocket_connect(
+            _ws_url(client, f"/ws/trip/{oid}", _mk_user_token(client, "+85260000014")),
+            headers={"Origin": "http://localhost:3000"},
+        ):
+            pass
+
 
 class TestWsStreaming:
     def test_driver_push_passenger_receives(self, client):

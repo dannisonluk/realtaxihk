@@ -42,7 +42,7 @@ The API must be up first, and the console is served as static files:
 
 ```bash
 # API on :8000 (see the root README for the full stack)
-.venv/Scripts/python.exe -m uvicorn app.main:app --port 8000
+.venv/Scripts/python.exe -m uvicorn app.main:app --port 8000 --no-access-log
 
 # the React console — build once, then serve (the default)
 cd admin-web/web && npm install && npm run build && cd ../..

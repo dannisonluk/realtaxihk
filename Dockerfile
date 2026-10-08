@@ -31,4 +31,4 @@ EXPOSE 8000
 # With it off, `request.client.host` is always the real peer, and the app's own
 # right-anchored `_client_ip()` + TRUSTED_PROXY_COUNT is the ONE place trust is
 # decided. Verified: with this flag the XFF bucket disappears from Redis.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers", "--no-access-log"]

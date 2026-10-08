@@ -14,6 +14,7 @@ from typing import Any, cast
 import pytest
 from pydantic import ValidationError
 from starlette.requests import Request
+from starlette.testclient import TestClient
 
 from app.core.config import Settings
 from app.core.exceptions import BusinessRuleError
@@ -948,6 +949,7 @@ class TestProxyHeaderTrust:
         return [
             root / "Dockerfile",
             root / "docker-compose.yml",
+            root / "docker-compose.prod.yml",
             *sorted((root / "scripts").glob("*.py")),
         ]
 
@@ -967,6 +969,25 @@ class TestProxyHeaderTrust:
             f"X-Forwarded-For can spoof the client IP below the app: {offenders}"
         )
 
+    def test_every_uvicorn_launch_point_disables_access_log(self):
+        """SEC-32: the WS auth token lives in the query string, so uvicorn's own
+        access log must stay off on every launch path.
+        """
+        offenders = []
+        for path in self._launch_files():
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8")
+            if "app.main:app" not in text:
+                continue  # not a launch point
+            if "--no-access-log" in text or "access_log=False" in text:
+                continue
+            offenders.append(path.name)
+        assert offenders == [], (
+            "these files launch the app with uvicorn's access log on, so the WS "
+            f"token query can reach disk/log collectors: {offenders}"
+        )
+
     def test_premise_uvicorn_trusts_the_header_from_loopback(self):
         """Pins the premise, so the reason for the flag stays verifiable rather
         than becoming folklore. If uvicorn changes this, re-check SEC-31."""
@@ -980,6 +1001,58 @@ class TestProxyHeaderTrust:
         assert trusted.get_trusted_client_address("203.0.113.7")[0] == "203.0.113.7"
         # And a value that is not a trusted host is not silently accepted as one.
         assert "203.0.113.7" not in trusted
+
+
+# --------------------------------------------------------------------------- #
+# SEC-34 — TrustedHost rejects spoofed Host headers before routes run
+# --------------------------------------------------------------------------- #
+class TestTrustedHostHeader:
+    def test_unknown_host_is_rejected_before_routes(self, client):
+        """Host-header injection / DNS-rebinding gets a plain 400 at the
+        middleware boundary, not a routed response."""
+        r = client.get("/health", headers={"host": "evil.example"})
+        assert r.status_code == 400
+
+    def test_configured_origin_host_is_allowed(self, client):
+        r = client.get("/health", headers={"host": "localhost:3000"})
+        assert r.status_code == 200
+
+    def test_prod_does_not_allow_testserver(self, monkeypatch):
+        from app.core.config import get_settings
+        from app.main import create_app
+
+        s = get_settings()
+        monkeypatch.setattr(s, "app_env", "prod", raising=False)
+        app = create_app()
+        with TestClient(app) as prod_client:
+            r = prod_client.get("/health", headers={"host": "testserver"})
+        assert r.status_code == 400
+
+
+# --------------------------------------------------------------------------- #
+# SEC-35 — admin console CSP stays in sync with its inline theme boot script
+# --------------------------------------------------------------------------- #
+class TestConsoleCsp:
+    def test_theme_boot_script_hash_is_pinned_in_nginx(self):
+        import base64
+        import hashlib
+        import re
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent.parent.parent
+        index = (root / "admin-web" / "web" / "index.html").read_text(encoding="utf-8")
+        nginx = (root / "deploy" / "nginx" / "hkfastdc.conf").read_text(encoding="utf-8")
+        match = re.search(r"<script>(.*?)</script>", index, re.S)
+        assert match is not None, "index.html must have exactly one inline script"
+        digest = (
+            base64.b64encode(hashlib.sha256(match.group(1).encode("utf-8")).digest())
+            .decode("ascii")
+            .rstrip("=")
+        )
+        assert f"'sha256-{digest}'" in nginx, (
+            "nginx CSP must hash the current theme boot script; update the "
+            "add_header Content-Security-Policy line when index.html changes."
+        )
 
 
 # --------------------------------------------------------------------------- #

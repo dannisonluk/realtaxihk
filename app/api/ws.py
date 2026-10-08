@@ -9,8 +9,8 @@ Authority rules:
   per tick (a suspended driver cannot keep streaming);
 - everyone else: denied at handshake (4403).
 
-Close codes: 4401 unauthenticated, 4403 forbidden, 4404 unknown order,
-4408 connection cap reached.
+Close codes: 4401 unauthenticated, 4403 forbidden (also cross-origin),
+4404 unknown order, 4408 connection cap reached.
 
 Protocol:
 - driver sends {"lat": float, "lng": float} → receives {"type":"ack"} per
@@ -19,9 +19,10 @@ Protocol:
 - the driver's own pump does NOT echo location ticks (direct ack instead),
   so the driver socket sees exactly one reply per sent tick.
 
-Security (SEC-14/16/18/30):
+Security (SEC-14/16/18/30/33):
 - authorization completes BEFORE `accept()`, so an unauthenticated client never
   gets a 101 upgrade or a server-side socket/task;
+- a non-allowlisted Origin is refused before the token is even read;
 - one shared `TripHub` (single Redis client) serves every socket, plus per-user
   and global connection caps, so one account cannot exhaust Redis's `maxclients`;
 - inbound ticks are throttled per connection (DB write + Pub/Sub publish per tick);
@@ -63,6 +64,18 @@ async def trip_socket(
     factory=Depends(get_session_factory),
 ):
     settings = get_settings()
+
+    # --- SEC-33: reject cross-origin WebSocket handshakes before auth/accept.
+    #
+    # The REST API already has an explicit CORS allowlist, but WebSocket is not
+    # governed by CORS. A browser page from an untrusted origin can open a WS to
+    # any host, so an Origin that is present must match the same allowlist the
+    # deployer already configured for the API. Native mobile clients do not send
+    # Origin and are allowed through — there is no browser to abuse.
+    origin = ws.headers.get("origin")
+    if origin and origin.rstrip("/") not in settings.cors_origins:
+        await ws.close(code=WS_FORBIDDEN)
+        return
 
     # --- SEC-14: authorize first, accept second. Everything below this block
     # runs before the 101 upgrade, so a rejected client holds no server socket.

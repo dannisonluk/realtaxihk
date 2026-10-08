@@ -19,10 +19,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_settings
@@ -334,9 +336,11 @@ def create_app() -> FastAPI:
                 logger.warning("prometheus_enabled=true but prometheus-client not installed")
 
     # Middleware order (last added = outermost):
-    #   CORS -> SecurityHeaders -> BodySizeLimit -> routes
-    # CORS is outermost so even a 413 from the body cap carries CORS headers;
-    # SecurityHeaders sits outside the body cap so the 413 gets hardened too.
+    #   TrustedHost -> CORS -> SecurityHeaders -> BodySizeLimit -> routes
+    # TrustedHost is outermost so a request with a bad Host header dies before
+    # it can toggle any other code path; CORS sits outside the body cap so even
+    # a 413 from the body limit carries CORS headers; SecurityHeaders sits
+    # outside the body cap so the 413 gets hardened too.
     if settings.max_request_body_bytes > 0:
         app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
     if settings.security_headers_enabled:
@@ -352,6 +356,19 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
     )
+    # TrustedHost guards against Host-header injection / DNS-rebinding via a
+    # made-up Host. The allowlist is derived from the settings the deployer is
+    # already forced to get right (PUBLIC_BASE_URL and CORS_ORIGINS), plus the
+    # loopback and internal-compose hosts that legitimate probes use. Nothing
+    # else needs configuring, so this cannot be forgotten during rollout.
+    allowed_hosts = {"127.0.0.1", "::1", "localhost", "api"}
+    if settings.app_env != "prod":
+        allowed_hosts.add("testserver")
+    for candidate in (settings.public_base_url, *settings.cors_origins):
+        hostname = urlsplit(candidate).hostname if candidate else None
+        if hostname:
+            allowed_hosts.add(hostname)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=sorted(allowed_hosts))
 
     return app
 

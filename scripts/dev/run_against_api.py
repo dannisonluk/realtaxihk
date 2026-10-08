@@ -72,6 +72,8 @@ api = subprocess.Popen(
         # SEC-31: never let uvicorn rewrite scope["client"] from X-Forwarded-For.
         # It trusts 127.0.0.1 by default, which makes the IP rate limit spoofable.
         "--no-proxy-headers",
+        # SEC-32: keep the WS token out of uvicorn's access log.
+        "--no-access-log",
         *UVICORN_EXTRA,
     ],
     cwd=ROOT,

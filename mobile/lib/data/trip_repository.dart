@@ -1,13 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' as dart_io;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 import 'package:web_socket_channel/io.dart' as io;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/config/app_config.dart';
 import '../core/network/api_client.dart';
 import '../core/network/api_exception.dart';
+import '../core/network/cert_pinning.dart';
 import '../models/trip.dart';
 
 /// The live-trip channel and its REST fallback.
@@ -71,12 +73,42 @@ class TripChannel {
   /// query parameter (`?token=…`).
   static TripChannel connect({required String orderId, required String accessToken}) {
     final Uri uri = AppConfig.tripSocket(orderId: orderId, accessToken: accessToken);
-    final WebSocketChannel channel = kIsWeb
-        ? WebSocketChannel.connect(uri)
-        : io.IOWebSocketChannel.connect(
-            uri.replace(queryParameters: const <String, String>{}),
-            headers: <String, String>{'Authorization': 'Bearer $accessToken'},
-          );
+    if (!kIsWeb) {
+      final Set<String> pins = parsePinnedFingerprints(AppConfig.apiCertSha256);
+      if (resolveCertPinMode(pinsConfigured: pins.isNotEmpty, releaseMode: kReleaseMode) ==
+          CertPinMode.misconfigured) {
+        throw StateError(
+          'API_CERT_SHA256 must be set in release builds so the live trip '
+          'WebSocket is certificate-pinned.',
+        );
+      }
+
+      final dart_io.HttpClient? pinningClient;
+      if (pins.isNotEmpty) {
+        // dart:io only calls badCertificateCallback after normal chain
+        // validation fails. An empty trust store forces that callback to run
+        // for every TLS handshake, so the SHA-256 pin is the single trust
+        // anchor for the WebSocket transport - exactly what REST pinning does.
+        pinningClient =
+            dart_io.HttpClient(context: dart_io.SecurityContext(withTrustedRoots: false))
+              ..badCertificateCallback = (dart_io.X509Certificate cert, String host, int port) {
+                return host == uri.host && matchesAnyPin(cert.der, pins);
+              };
+      } else {
+        pinningClient = null;
+      }
+
+      return TripChannel._(
+        orderId,
+        io.IOWebSocketChannel.connect(
+          uri.replace(queryParameters: const <String, String>{}),
+          headers: <String, String>{'Authorization': 'Bearer $accessToken'},
+          customClient: pinningClient,
+        ),
+      );
+    }
+
+    final WebSocketChannel channel = WebSocketChannel.connect(uri);
     return TripChannel._(orderId, channel);
   }
 

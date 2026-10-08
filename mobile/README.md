@@ -429,7 +429,7 @@ The code is never echoed in a response (`SEC-02`), so for local work the dev rai
 is what makes the OTP screens usable at all:
 
 ```bash
-ALLOW_DEV_OTP=true uvicorn app.main:app --port 8000
+ALLOW_DEV_OTP=true uvicorn app.main:app --port 8000 --no-access-log
 ```
 
 then use any `+852` number and the code `123456`. Registration and the email +

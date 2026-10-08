@@ -88,14 +88,34 @@ class AppConfig {
         'the loopback fallback is for development only.',
       );
     }
+    if (kReleaseMode && _apiOverride.startsWith('http://')) {
+      throw StateError(
+        'API_BASE_URL must use https:// in release builds; plaintext HTTP is '
+        'only allowed for local development. Got: $_apiOverride',
+      );
+    }
     return _apiOverride.isEmpty ? _devHost : _apiOverride;
   }
 
   static String get wsBaseUrl {
     if (_wsOverride.isNotEmpty) {
+      if (kReleaseMode && !_wsOverride.startsWith('wss://')) {
+        throw StateError(
+          'WS_BASE_URL must use wss:// in release builds; the token travels in '
+          'the query string and must never leave over plaintext. '
+          'Got: $_wsOverride',
+        );
+      }
       return _wsOverride;
     }
     final Uri base = Uri.parse(apiBaseUrl);
+    if (kReleaseMode && base.scheme != 'https') {
+      throw StateError(
+        'WS_BASE_URL cannot be derived from a non-https API_BASE_URL in '
+        'release builds; the token would travel over plaintext. '
+        'Got: $base',
+      );
+    }
     return base.replace(scheme: base.scheme == 'https' ? 'wss' : 'ws').toString();
   }
 

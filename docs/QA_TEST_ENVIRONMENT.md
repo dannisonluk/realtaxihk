@@ -300,7 +300,7 @@ flag 先係唯一接口。
 | 做法 | 步驟 | 適用 |
 |---|---|---|
 | **A（建議）** | `adb reverse tcp:8000 tcp:8000`，APK 用 `--dart-define=API_BASE_URL=http://127.0.0.1:8000` | USB 連著的實機。`adb reverse` 令手機上的 `127.0.0.1:8000` 轉到電腦，**完全不用改綁定** |
-| **B** | 自己起 `.venv/Scripts/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-proxy-headers`，APK 用 `--dart-define=API_BASE_URL=http://<區網 IP>:8000` | Wi-Fi、不想插線。要自己確認防火牆放行 8000 |
+| **B** | 自己起 `.venv/Scripts/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-proxy-headers --no-access-log`，APK 用 `--dart-define=API_BASE_URL=http://<區網 IP>:8000` | Wi-Fi、不想插線。要自己確認防火牆放行 8000 |
 
 `adb reverse` 在每次重新插線（或 adb 重啟）之後都要再下一次。
 

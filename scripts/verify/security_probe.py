@@ -167,6 +167,9 @@ def boot(env_overrides, log_name, cwd=None, extra_env=None):
             "--port",
             "8000",
             "--no-proxy-headers",
+            # SEC-32: no access log means no chance of the WS token query landing
+            # in a log collector.
+            "--no-access-log",
         ],
         stdout=log,
         stderr=subprocess.STDOUT,

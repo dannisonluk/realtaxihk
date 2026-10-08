@@ -182,6 +182,8 @@ def boot(extra_env: dict) -> subprocess.Popen:
             "--port",
             "8000",
             "--no-proxy-headers",
+            # SEC-32: keep the WS token out of uvicorn's access log.
+            "--no-access-log",
             "--log-level",
             "warning",
         ],

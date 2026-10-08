@@ -32,7 +32,9 @@ log = open(tmp / "uvicorn.log", "w", encoding="utf-8")  # noqa: SIM115
 # 127.0.0.1 by default and rewrites the client address before the app sees it, so
 # every IP rate limit became spoofable. The app's own TRUSTED_PROXY_COUNT is the
 # single place that decides whether to believe the header.
-config = uvicorn.Config("app.main:app", host=host, port=8000, log_level="info", proxy_headers=False)
+config = uvicorn.Config(
+    "app.main:app", host=host, port=8000, log_level="info", proxy_headers=False, access_log=False
+)
 server = uvicorn.Server(config)
 proc = subprocess.Popen(
     [
@@ -45,6 +47,9 @@ proc = subprocess.Popen(
         "--port",
         "8000",
         "--no-proxy-headers",
+        # SEC-32: the app's custom request log is sufficient; uvicorn's access
+        # log would also capture any query-string token.
+        "--no-access-log",
     ],
     stdout=log,
     stderr=subprocess.STDOUT,

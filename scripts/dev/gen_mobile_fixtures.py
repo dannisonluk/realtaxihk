@@ -554,6 +554,8 @@ def main() -> int:  # a linear script, not a library
             # SEC-31: without this, uvicorn trusts X-Forwarded-For from
             # 127.0.0.1 and the per-IP limits become spoofable.
             "--no-proxy-headers",
+            # SEC-32: keep the WS token out of uvicorn's access log.
+            "--no-access-log",
         ],
         cwd=ROOT,
         env={**os.environ, "ALLOW_DEV_OTP": "true"},

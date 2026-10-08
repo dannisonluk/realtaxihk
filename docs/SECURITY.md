@@ -99,6 +99,16 @@ scope = SCOPE_ADMIN if claims.get("scope") == SCOPE_ADMIN else SCOPE_USER
 - 所有伺服器資料經 React 自動轉義
 - `index.html` 有 `referrer: no-referrer` 與 `robots: noindex, nofollow`
 
+### 1.7 傳輸層加固（2026-10-08）
+
+| 控制 | 做法 | 驗證 |
+|---|---|---|
+| WS token 唔落 uvicorn log | 所有 `app.main:app` launch point 加 `--no-access-log` / `access_log=False`；nginx access log 本身用 `$uri` 唔帶 query | `tests/api/test_security_hardening.py::TestProxyHeaderTrust::test_every_uvicorn_launch_point_disables_access_log` |
+| WebSocket Origin allowlist | `Origin` 有值時必須命中 `CORS_ORIGINS`；native mobile 冇 `Origin` 仍可用；reject 發生喺 `accept()` 前（4403） | `tests/api/test_ws_module.py::TestWsAuth::test_ws_rejects_cross_origin_before_accept` |
+| Host-header injection / DNS rebinding | Starlette `TrustedHostMiddleware`，allowlist 由 `PUBLIC_BASE_URL` + `CORS_ORIGINS` + loopback/internal host 推導；prod 唔接受 `testserver` | `tests/api/test_security_hardening.py::TestTrustedHostHeader` |
+| Admin console CSP | inline theme boot script 用 SHA-256 hash allow；script 以外 same-origin；加 `X-Frame-Options: DENY`、`Permissions-Policy` | `tests/api/test_security_hardening.py::TestConsoleCsp` |
+| Mobile release 唔准 HTTP | release build 對 `API_BASE_URL` 要求 `https://`、`WS_BASE_URL` 要求 `wss://`；WS 用 SHA-256 pin + 空 system trust store 做單一 trust anchor | `dart analyze` + mobile 161 VM tests |
+
 ---
 
 ## 2. 已修復的發現

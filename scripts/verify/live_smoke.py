@@ -80,7 +80,16 @@ clear_rate_limits()
 # SEC-31: --no-proxy-headers so X-Forwarded-For cannot rewrite the client address
 # (uvicorn trusts it from 127.0.0.1 by default, which made IP limits spoofable).
 proc = subprocess.Popen(
-    [sys.executable, "-m", "uvicorn", "app.main:app", "--port", "8000", "--no-proxy-headers"],
+    [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--port",
+        "8000",
+        "--no-proxy-headers",
+        "--no-access-log",
+    ],
     env={**os.environ, "ALLOW_DEV_OTP": "true"},
     stdout=subprocess.DEVNULL,
     stderr=subprocess.DEVNULL,

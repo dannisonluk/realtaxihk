@@ -94,7 +94,7 @@ services:
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-proxy-headers
-                    --workers ${API_WORKERS:-1}"
+                    --workers ${API_WORKERS:-1} --no-access-log"
 
   db:
     # Spelled out even though 100 is the image default. The pool arithmetic

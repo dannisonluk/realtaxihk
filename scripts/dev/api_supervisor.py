@@ -96,6 +96,8 @@ def start(port: int, env: dict) -> subprocess.Popen:
             "asyncio",
             # SEC-31: never trust X-Forwarded-For from loopback.
             "--no-proxy-headers",
+            # SEC-32: uvicorn's own access log would include the WS token query.
+            "--no-access-log",
         ],
         cwd=ROOT,
         env=env,
