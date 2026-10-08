@@ -45,7 +45,7 @@
   > 計數器的量法統一記在 [`README.md`](README.md) 的「量測基準」表 —— 改架構後先重跑量法再改這裡。
   - **實跑得到**：`ruff check .` **All checks passed!**（全樹）· `ruff format --check .`
     **238 files already formatted** · `mypy app` **141 files / 0 errors** · `compileall app` rc=0 ·
-    console `tsc --noEmit` **exit 0（乾淨）** · console vitest **96 passed（14 檔）** ·
+    console `tsc --noEmit` **exit 0（乾淨）** · console vitest **97 passed（14 檔）** ·
     Dart harness **161 passed / 0 failed** · `dart_check.py` **97 files / 0 diagnostics** ·
     contract **64 fixtures decoded, 0 failure**（共 64 個 fixture json）·
     `audit_response_models.py` **OK（81 fixture blocks / 129 operations 全有 `response_model`）** ·

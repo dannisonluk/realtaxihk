@@ -140,7 +140,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml \
 
 如果成功，再正常 `up`.
 
-### 5.2 Drill（尚未做）
+### 5.2 Drill（✅ 已跑；2026-10-08 用臨時 DB，未動現有資料）
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
@@ -205,9 +205,9 @@ cd /srv/realtaxihk && .venv/bin/python scripts/ops/db_backup.py verify
 
 未含任何 remote host/details。
 
-### code-side gap (仍有可能)
-- Migration rollback drill = [ ]（`alembic downgrade -1` on copy）
-- docs counters: full pytest 1295, mobile 161, admin vitest 96, fixtures 64
+### code-side gap（仍有可能）
+- Migration rollback drill = ✅（2026-10-08 已在臨時 DB 實跑 `upgrade head → downgrade -1 → upgrade head`，三個步驟 rc=0；未動現有資料）
+- docs counters: full pytest 1295, mobile 161, admin vitest 97, fixtures 64
 
 ### 外部/vendor 需 owner 提供：
 
