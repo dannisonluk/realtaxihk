@@ -117,9 +117,9 @@ def test_the_chip_tint_is_an_srgb_lerp_not_a_lighten(tool: ModuleType) -> None:
     ("old", "new", "why"),
     [
         (
-            "--brand-text: #ff7b72;",
-            "--brand-text: #d2232a;",
-            "the dark brand text is back on the dark brand red (2.91:1 on --surface-2)",
+            "--brand-text: #aee7ff;",
+            "--brand-text: #0071cf;",
+            "the dark brand text is back on the light-mode brand blue (under 4.5:1 on dark)",
         ),
         (
             "color-scheme: light;",
@@ -199,4 +199,4 @@ def test_the_tool_reports_its_own_numbers(capsys: CaptureFixture) -> None:
     assert module.main() == 0
     out = capsys.readouterr().out
     assert "OK" in out
-    assert re.search(r"--brand-ink on --brand:\s+5\.23", out), out
+    assert re.search(r"--brand-ink on --brand:\s+8\.44", out), out

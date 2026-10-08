@@ -18,51 +18,51 @@ import 'package:flutter/material.dart';
 ///   17 pt, the platform default, and nothing interactive is smaller than 11 pt,
 ///   the platform minimum. Sizes are converted to logical pixels 1:1 (Flutter's
 ///   logical pixel is the iOS point on a correctly configured device).
-/// * **Colour.** Semantic system colours (`color.md › System colors`), so light
-///   and dark both get their intended values rather than one palette inverted.
-///   Money still uses the Hong Kong convention — **red up, green down** — which
-///   is the opposite of the US/EU default, so it lives here and not at the call
-///   site.
+/// * **Colour.** The palette is the product's own: Cod Gray ink, pure white
+///   paper, and a blue/teal/lavender/yellow fluid gradient inspired by the
+///   Apps SDK UI design language. Red is intentionally absent from the UI.
+///   Money uses lime/green for credit and amber for debit, so a state and a
+///   financial direction never borrow the same sign.
 /// * **Targets.** 44x44 pt default (`accessibility.md › Control size`). A theme
 ///   cannot enforce that, but the component themes set it where they can.
 /// * **Spacing.** A 4 pt grid with 16 pt as the standard content inset, matching
 ///   Apple's default margins.
 ///
 /// What is deliberately *not* here: a dynamic colour light/dark scheme is
-/// generated from the brand seed rather than hand-tuned per token. Apple warns
-/// against hard-coding system colour values (`color.md › System colors`: "Avoid
-/// hard-coding system color values in your app"), and `ColorScheme.fromSeed`
-/// already derives an accessible set for both appearances. The brand red is the
-/// one custom value, because it carries the product's identity and the taxi
-/// livery, and it is defined once with both appearances' worth of contrast in
-/// mind.
+/// generated from a seed and then pinned to the palette above rather than
+/// hand-tuned per token, so every semantic role stays accessible in both
+/// appearances.
 abstract final class AppTheme {
-  /// The brand red. HK's licensed urban taxi red is #D2232A; it is too dark to
-  /// carry a dark-mode primary, so the seed is lifted a little. The exact value
-  /// matters less than that it is defined once and derived from everywhere.
-  static const Color seed = Color(0xFFE23A3A);
+  /// The palette root. Cod Gray is the deep neutral used for dark backgrounds,
+  /// large core text and the minimal app mark; white supplies the opposite end.
+  static const Color ink = Color(0xFF080808);
+  static const Color paper = Color(0xFFFFFFFF);
 
-  /// Money up / credit. Hong Kong convention.
-  static const Color gain = Color(0xFFD32F2F);
+  /// Fluid AI palette: pale blue, teal, lavender and a bright accent.
+  static const Color blue = Color(0xFF0071CF);
+  static const Color paleBlue = Color(0xFF86DAFF);
+  static const Color teal = Color(0xFF00A6B8);
+  static const Color lavender = Color(0xFFC5BFEE);
+  static const Color lime = Color(0xFF8CE25A);
+  static const Color softYellow = Color(0xFFF4D35E);
 
-  /// Money down / debit. Hong Kong convention.
-  static const Color loss = Color(0xFF2E7D32);
+  /// Money up / credit. Lime/green keeps the direction without red.
+  static const Color gain = Color(0xFF0B8A4D);
+
+  /// Money down / debit. Amber, not red, keeps the direction readable.
+  static const Color loss = Color(0xFFB7791F);
 
   /// Waiting on a person. Distinct from both money colours so a pending state
   /// never reads as a gain or a loss.
-  static const Color pending = Color(0xFFF9A825);
+  static const Color pending = Color(0xFF5B8DEF);
 
   /// A trip that is happening right now — the passenger is aboard and the meter
   /// is running.
   ///
-  /// Deliberately **not** [gain]. That one is a money direction, and painting a
-  /// *state* with it made `IN_TRIP` render red — on the one screen a passenger
-  /// watches while it matters, a live trip read like a loss. The admin console
-  /// draws the same state `ok` (`lib/labels.ts`), so the two interfaces were
-  /// also contradicting each other about a state both of them show. The value is
-  /// the green already on screen today (see [loss]), so this changes what the
-  /// token means rather than introducing an unmeasured colour.
-  static const Color statusLive = Color(0xFF2E7D32);
+  /// Kept as a separate semantic token so a state is never visually conflated
+  /// with a money direction; it is green/lime in both themes because a live
+  /// trip should read as an active, positive state.
+  static const Color statusLive = Color(0xFF0B8A4D);
 
   // -- spacing ---------------------------------------------------------------
   //
@@ -95,15 +95,95 @@ abstract final class AppTheme {
 
   static ThemeData dark() => _build(Brightness.dark);
 
+  static ColorScheme _scheme(Brightness brightness) {
+    final bool isDark = brightness == Brightness.dark;
+    final ColorScheme base = ColorScheme.fromSeed(
+      seedColor: blue,
+      brightness: brightness,
+    );
+
+    if (isDark) {
+      return base.copyWith(
+        primary: paleBlue,
+        onPrimary: const Color(0xFF00344D),
+        primaryContainer: const Color(0xFF005A82),
+        onPrimaryContainer: const Color(0xFFCBE8FF),
+        secondary: const Color(0xFF7DE3F0),
+        onSecondary: const Color(0xFF00363D),
+        secondaryContainer: const Color(0xFF00515E),
+        onSecondaryContainer: const Color(0xFFA8EEF9),
+        tertiary: lavender,
+        onTertiary: const Color(0xFF30265D),
+        tertiaryContainer: const Color(0xFF504A87),
+        onTertiaryContainer: const Color(0xFFE7E2FF),
+        error: const Color(0xFFF0C66B),
+        onError: const Color(0xFF3C2900),
+        errorContainer: const Color(0xFF6D4F00),
+        onErrorContainer: const Color(0xFFFFE3A3),
+        surface: ink,
+        onSurface: const Color(0xFFF2F5F8),
+        surfaceDim: ink,
+        surfaceBright: const Color(0xFF252B30),
+        surfaceContainerLowest: const Color(0xFF060606),
+        surfaceContainerLow: const Color(0xFF101314),
+        surfaceContainer: const Color(0xFF15191B),
+        surfaceContainerHigh: const Color(0xFF1F2426),
+        surfaceContainerHighest: const Color(0xFF2A2F32),
+        onSurfaceVariant: const Color(0xFFBEC9D2),
+        outline: const Color(0xFF89959F),
+        outlineVariant: const Color(0xFF3E4750),
+        inverseSurface: const Color(0xFFF2F5F8),
+        onInverseSurface: ink,
+        inversePrimary: blue,
+        surfaceTint: paleBlue,
+      );
+    }
+
+    return base.copyWith(
+      primary: blue,
+      onPrimary: paper,
+      primaryContainer: const Color(0xFFCFE6FF),
+      onPrimaryContainer: const Color(0xFF001E35),
+      secondary: teal,
+      onSecondary: paper,
+      secondaryContainer: const Color(0xFFB6ECF7),
+      onSecondaryContainer: const Color(0xFF00363D),
+      tertiary: const Color(0xFF6A5AB5),
+      onTertiary: paper,
+      tertiaryContainer: const Color(0xFFE3DEFF),
+      onTertiaryContainer: const Color(0xFF271A57),
+      error: loss,
+      onError: paper,
+      errorContainer: const Color(0xFFFFE3A3),
+      onErrorContainer: const Color(0xFF3C2900),
+      surface: paper,
+      onSurface: ink,
+      surfaceDim: const Color(0xFFD5DBE2),
+      surfaceBright: paper,
+      surfaceContainerLowest: paper,
+      surfaceContainerLow: const Color(0xFFF5F8FB),
+      surfaceContainer: const Color(0xFFECF2F6),
+      surfaceContainerHigh: const Color(0xFFE6ECF1),
+      surfaceContainerHighest: const Color(0xFFE0E7ED),
+      onSurfaceVariant: const Color(0xFF44515D),
+      outline: const Color(0xFF6E7B89),
+      outlineVariant: const Color(0xFFC5D0D8),
+      inverseSurface: ink,
+      onInverseSurface: const Color(0xFFF6F7F8),
+      inversePrimary: const Color(0xFF8BD3FF),
+      surfaceTint: blue,
+    );
+  }
+
   static ThemeData _build(Brightness brightness) {
     final bool isDark = brightness == Brightness.dark;
-    final ColorScheme scheme = ColorScheme.fromSeed(seedColor: seed, brightness: brightness);
+    final ColorScheme scheme = _scheme(brightness);
 
-    // iOS grouped-list backgrounds. On iOS a grouped table sits on a slightly
-    // recessed background, with cards a step brighter on top of it. Material's
-    // `surface` maps cleanly onto that pair, so the distinction is expressed
-    // once here rather than by each screen choosing a grey.
-    final Color groupedBackground = scheme.surfaceContainerLowest;
+    // The page background is transparent so the global fluid gradient behind
+    // the Navigator shows through. Cards, sheets and fields stay opaque, which
+    // keeps reading surfaces clean while the page edge softens.
+    final Color groupedBackground = Colors.transparent;
+    final Color chrome = scheme.surface.withValues(alpha: isDark ? 0.76 : 0.86);
 
     return ThemeData(
       useMaterial3: true,
@@ -121,7 +201,7 @@ abstract final class AppTheme {
         // default with `centerTitle: false`, so only the surface and elevation
         // need stating.
         centerTitle: false,
-        backgroundColor: groupedBackground,
+        backgroundColor: chrome,
         foregroundColor: scheme.onSurface,
         elevation: 0,
         scrolledUnderElevation: 0.5,
@@ -212,7 +292,7 @@ abstract final class AppTheme {
       // off keeps the selected state to the icon and label, which is what iOS
       // does, rather than Material's filled pill.
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: scheme.surface,
+        backgroundColor: chrome,
         surfaceTintColor: Colors.transparent,
         indicatorColor: Colors.transparent,
         elevation: 0,
@@ -292,10 +372,10 @@ abstract final class AppTheme {
     );
   }
 
-  /// Colour for a signed amount, using the Hong Kong convention.
+  /// Colour for a signed amount.
   ///
-  /// Red means "up" here, which is the opposite of the US/EU reading. Defining
-  /// it in one place is what stops a ledger row and a receipt line disagreeing.
+  /// Credit is lime/green and debit is amber. The direction is defined in one
+  /// place so a ledger row and a receipt line can never disagree.
   static Color moneyColor(BuildContext context, num amount) {
     if (amount > 0) {
       return gain;

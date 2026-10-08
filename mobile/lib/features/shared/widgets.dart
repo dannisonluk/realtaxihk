@@ -259,8 +259,8 @@ class GroupedSection extends StatelessWidget {
   }
 }
 
-/// An amount, coloured by sign using the Hong Kong convention (red up, green
-/// down) — see [AppTheme.moneyColor].
+/// An amount, coloured by sign — see [AppTheme.moneyColor]. Credit is lime/
+/// green, debit amber; red is deliberately absent from the product.
 class MoneyText extends StatelessWidget {
   const MoneyText(this.money, {this.signed = false, this.style, this.showSymbol = true, super.key});
 

@@ -3,16 +3,12 @@
  *
  * Two layers, and the order matters:
  *
- *   1. The *palette* is GitHub's Primer. This console is a plain white-and-black
- *      admin surface — a list of orders, a queue of drivers, a table of money —
- *      and Primer is the most legible thing ever designed for exactly that job.
- *      Neutral greys carry the layout; exactly one chromatic colour (taxi red)
- *      is spent, on the brand and the active nav item. Everything else that has
- *      colour has it for a *reason*: red is the brand, green means "working as
- *      intended", amber means "a human has to look". The ledger's own direction
- *      is carried by the chip tone in `labels.ts#ENTRY_TONE` -- a top-up is
- *      green, a penalty is red -- which is the *account* convention, not the
- *      Hong Kong *stock* one.
+ *   1. The *palette* is a no-red console palette: neutral greys carry the
+ *      layout, bright blue is the brand and active nav item, teal/lime is
+ *      “working as intended”, amber means “a human has to look”. The ledger’s
+ *      own direction is carried by the chip tone in `labels.ts#ENTRY_TONE` --
+ *      a top-up is green, a penalty is amber -- which is the *account*
+ *      convention, not the Hong Kong *stock* one.
  *   2. The *structure* (type scale, 4pt spacing grid, 44px hit area) is the iOS
  *      Dynamic Type scale at the `Large` step, which is why the class names read
  *      `t-title1` / `t-body` rather than `text-lg`.
@@ -38,20 +34,20 @@
   --text: #24292f; /* fg.default */
   --text-dim: #57606a; /* fg.muted */
 
-  --brand: #d2232a; /* licensed urban-taxi red — the one chromatic accent */
+  --brand: #0071cf; /* bright blue — the one primary accent */
   --brand-ink: #ffffff;
 
-  /* The brand red again, but for *text*. Kept as its own token because the two
+  /* The brand blue again, but for *text*. Kept as its own token because the two
      need different values in the dark palette: `--brand` has to stay dark
      enough for white to sit on it (`.btn--primary`, the nav badge), while
      brand-coloured *text* has to be light enough to read on a dark surface.
      One token cannot do both, and pretending it could is what left the dark
      active nav item at 3.08:1. */
-  --brand-text: #d2232a;
+  --brand-text: #004a99;
 
-  --loss: #2e7d32;
+  --loss: #0a7040;
   --warn: #8f5f00; /* Primer attention.fg, darkened: #9a6700 inside a chip's own tint is 4.51:1 */
-  --danger: #a40e26; /* Primer danger.fg, darkened: #cf222e sat 1.02:1 from --brand, i.e. the same red */
+  --danger: #9a3412; /* burnt amber — red is deliberately unused in the console */
   --focus: #0969da; /* Primer accent.emphasis */
 
   /* Layout neutrals that are neither surface nor border but are used widely
@@ -120,15 +116,15 @@
   --border: #30363d;
   --text: #c9d1d9;
   --text-dim: #8b949e;
-  --brand: #d2232a;
-  --brand-ink: #ffffff;
-  /* Primer's dark red for text. `--brand` itself is not lightened, because
-     white on it is what makes the primary button legible (5.23:1). */
-  --brand-text: #ff7b72;
-  --loss: #3fb950; /* Primer success.fg */
-  --warn: #d29922; /* Primer attention.fg */
-  --danger: #f85149;
-  --focus: #2f81f7; /* Primer accent.emphasis on dark */
+  --brand: #86daff;
+  --brand-ink: #00344d;
+  /* The brand blue again, but for *text*: the primary button uses dark ink on
+     pale blue, so the two roles do not have to share a value. */
+  --brand-text: #aee7ff;
+  --loss: #6ee7a0; /* lime-green success */
+  --warn: #f0c66b; /* attention */
+  --danger: #ffab70; /* burnt amber — no red in the console */
+  --focus: #86daff; /* bright-blue focus, matching the brand */
   --hover: #1c2128;
   --scrim: rgb(1 4 9 / 70%);
   /* Lighter than the `--surface-2` track, so the selected segment reads as
@@ -152,13 +148,15 @@
     --border: #30363d;
     --text: #c9d1d9;
     --text-dim: #8b949e;
-    --brand: #d2232a;
-    --brand-ink: #ffffff;
-    --brand-text: #ff7b72;
-    --loss: #3fb950;
-    --warn: #d29922;
-    --danger: #f85149;
-    --focus: #2f81f7;
+    --brand: #86daff;
+    --brand-ink: #00344d;
+    /* The brand blue again, but for *text*: the primary button uses dark ink on
+       pale blue, so the two roles do not have to share a value. */
+    --brand-text: #aee7ff;
+    --loss: #6ee7a0; /* lime-green success */
+    --warn: #f0c66b; /* attention */
+    --danger: #ffab70; /* burnt amber — no red in the console */
+    --focus: #86daff; /* bright-blue focus, matching the brand */
     --hover: #1c2128;
     --scrim: rgb(1 4 9 / 70%);
     --seg-active: #3d444d;
@@ -177,8 +175,8 @@
     --text-dim: #3d444d;
     --border: #8c959f;
     --warn: #7d5100;
-    --danger: #8c0d20;
-    --brand-text: #a8161c;
+    --danger: #7a2c0d;
+    --brand-text: #003d78;
     --seg-edge: #424a53;
   }
   [data-theme="dark"] {
@@ -404,7 +402,7 @@ body {
  * The two console-wide preferences (theme, language) sit at the foot of the
  * sidebar as one unlabelled pair of segmented controls. They are preferences,
  * not navigation, so they are quieter than the nav above: a neutral track, the
- * selected segment raised on the surface colour, and no accent — the brand red
+ * selected segment raised on the surface colour, and no accent — the brand blue
  * belongs to the active page, and giving it to a theme toggle would make two
  * things look "current" at once.
  *
@@ -669,7 +667,7 @@ body {
 }
 .btn--primary:hover:not(:disabled) { filter: brightness(1.06); background: var(--brand); }
 
-/* Destructive is red-outlined, never a filled red slab: on a console that moves
+/* Destructive is amber-outlined, never a filled red slab: on a console that moves
    money, the dangerous action should be legible but not the most inviting thing
    on the page. */
 .btn--danger { border-color: var(--danger); color: var(--danger); background: var(--surface); }
@@ -1097,7 +1095,7 @@ table.data tbody tr:hover { background: var(--hover); }
 
 /* Waiting is *neutral*, not blue. `--focus` was doing double duty here -- the
    keyboard focus ring and "an available car" -- which is the one thing a
-   one-chromatic-colour console cannot afford. The map keeps red for "on a
+   one-chromatic-colour console cannot afford. The map keeps blue for "on a
    trip" and grey for everything else, and waiting vs stale is carried by
    opacity plus the row's own "Position stale" label. */
 .livemap__canvas .livemap__pin--idle {

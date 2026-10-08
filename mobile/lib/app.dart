@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/theme/app_theme.dart';
+import 'core/theme/fluid_background.dart';
 import 'router/app_router.dart';
 
 class HkfastdcApp extends ConsumerWidget {
@@ -19,6 +20,8 @@ class HkfastdcApp extends ConsumerWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: ThemeMode.system,
+      builder: (BuildContext context, Widget? child) =>
+          FluidBackground(child: child ?? const SizedBox.shrink()),
       routerConfig: router,
       locale: const Locale('zh', 'HK'),
       // Only the locales the app actually has copy for. `Locale('en')` used to

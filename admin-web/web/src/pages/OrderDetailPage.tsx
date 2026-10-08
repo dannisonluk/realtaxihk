@@ -222,7 +222,7 @@ export function OrderDetailPage() {
             </Card>
           ) : null}
           {receiptError ? (
-            <p className="dim" style={{ color: 'var(--danger, #b42318)' }}>
+            <p className="dim" style={{ color: 'var(--danger, #9a3412)' }}>
               {receiptError}
             </p>
           ) : null}
