@@ -118,7 +118,7 @@
 
 | 計數器 | 現值 | 怎樣量 |
 |---|---|---|
-| 後端 `app/` | 141 個 `.py` · 28,933 LOC | `find app -name "*.py" \| wc -l` |
+| 後端 `app/` | 141 個 `.py` · 29,111 LOC | `find app -name "*.py" \| wc -l` |
 | API surface | **115 paths / 129 operations** | `create_app().openapi()['paths']` |
 | response_model 覆蓋 | 119 exported／114 reachable；129 operations 全有 `response_model`；81 個 fixture block 全過 | `scripts/verify/audit_response_models.py` |
 | Alembic | **25** migrations · 單一 head `a7b3c1d2e4f6` | `alembic heads` / `ls alembic/versions/*.py` |
@@ -126,7 +126,7 @@
 | 後端 pytest | **全套 1292 passed / 0 failed / 0 error**（2026-10-08 單一 process 實跑，17m30s） | `uv run python -m pytest -q` |
 | `mobile/lib` | 94 個 `.dart` · 19,863 LOC · **34** 個 `*_screen.dart` | `find mobile/lib -name "*.dart"` |
 | Dart harness | **161 passed / 0 failed** | `dart … tool/run_tests.dart` |
-| Dart LSP check | **95 files opened / 0 diagnostics** | `python mobile/tool/dart_check.py mobile` |
+| Dart LSP check | **97 files opened / 0 diagnostics** | `python mobile/tool/dart_check.py mobile` |
 | Contract | **64** 個 fixture json；harness 解到 **64** 個 · 0 failure | `dart … tool/verify_contract.dart` |
 | `admin-web/web/src` | 52 個 `.ts/.tsx`（含 14 個 test 檔；非 test 38 個 · 14,849 LOC · 52 個含 test · 18,242 LOC）· 18 個頁面 | `find admin-web/web/src -name "*.ts*" \| wc -l` |
 | 後台 vitest | **96 passed（14 檔）** | `npx vitest run --no-file-parallelism --pool=forks` |
