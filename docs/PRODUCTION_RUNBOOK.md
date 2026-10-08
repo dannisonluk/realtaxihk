@@ -207,7 +207,7 @@ cd /srv/realtaxihk && .venv/bin/python scripts/ops/db_backup.py verify
 
 ### code-side gap (仍有可能)
 - Migration rollback drill = [ ]（`alembic downgrade -1` on copy）
-- docs counters: full pytest 1292, mobile 161, admin vitest 96, fixtures 64
+- docs counters: full pytest 1295, mobile 161, admin vitest 96, fixtures 64
 
 ### 外部/vendor 需 owner 提供：
 

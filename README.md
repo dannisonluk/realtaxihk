@@ -512,12 +512,12 @@ npm run typecheck && npx vitest run && npm run build
 > `--junit-xml=` is not optional here. On this dev host, read the printed
 > summary or the XML, never a pipeline exit code: when pytest is wrapped in a
 > shell pipeline (e.g. `| tail`), the wrapper's exit code is the last command's,
-> not pytest's. The 2026-10-08 full run printed `1292 passed`; treat that as the
+> not pytest's. The 2026-10-08 final fix run printed `1295 passed`; treat that as the
 > source of truth.
 >
 > `--junit-xml=` 不是可選項。本機要**只讀 XML／summary，不要依賴 pipeline exit
 > code**：pytest 被 pipe 包住時，exit code 係最尾嗰個指令（例如 `tail`）嘅值，
-> 唔係 pytest 嘅值。2026-10-08 全套實跑印出 `1292 passed`；以 print 出嚟嘅 summary
+> 唔係 pytest 嘅值。2026-10-08 最終修正後全套實跑印出 `1295 passed`；以 print 出嚟嘅 summary
 > 或 XML 為準。
 >
 > The same shim blocks `npm run build`: Vite empties `dist/assets` before writing, and
@@ -533,14 +533,14 @@ npm run typecheck && npx vitest run && npm run build
 
 | Suite | Count | Covers |
 |---|---|---|
-|| `tests/`（61 個 `.py`；60 個 `test_*.py` + conftest） | **全套 1292 passed / 0 failed / 0 error**（單一 process 實跑，2026-10-08） | fare unit · per-module API · WS streaming · fleets/roster/settlement · backup retention + restore drill · console contrast · hardening regressions |
+||| `tests/`（61 個 `.py`；60 個 `test_*.py` + conftest） | **全套 1295 passed / 0 failed / 0 error**（單一 process 實跑，2026-10-08） | fare unit · per-module API · WS streaming · fleets/roster/settlement · backup retention + restore drill · console contrast · hardening regressions |
 | `mobile/tool/run_tests.dart` | **161** | Dart unit assertions |
 | `mobile/tool/verify_contract.dart` | **64 fixtures**（manifest 64 個取名項） | every wire shape, decoded by the real models |
 | `admin-web/web` (vitest) | **96** | page-level behaviour |
 | `verify_ui.mjs` + `audit_layout.mjs` | PASS | real-browser E2E, layout, both themes |
 
 > 後端 pytest 狀態（2026-10-08）：**一次過 `pytest tests` 全套實跑全綠 =
-> 1292 passed / 0 failed / 0 error / 0 skipped**（印出 summary；見 §7.1 關於
+> 1295 passed / 0 failed / 0 error / 0 skipped**（印出 summary；見 §7.1 關於
 > pipeline exit code 嘅警告）。
 > 先前「一次過跑會中途中止、唔敢宣稱 full-suite 全綠」嘅情況**已經消失**。
 > 跑法：`docker compose up -d db redis` 之後
