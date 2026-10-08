@@ -217,6 +217,90 @@ GET    /api/v1/orders/nearby?fare_mode=FIXED&premium_destination=HKG_T1
 - Platform collection at order creation; all money stays per-trip and
   per-ledger-append.
 
+## 2026-10-08 Addendum — Next Candidate Features (Proposal Only)
+
+The phases above are implemented or partially implemented. The items below are
+**proposals for the next product wave**, not started work. They are ordered by
+expected value and by how cleanly they fit the existing Cap. 374D
+information-intermediary boundaries.
+
+### 1. Passenger saved places (常用地點)
+
+Passengers repeat the same home/work/airport pickups and dropoffs more than
+any other route. A saved-place list turns a multi-tap map form into a two-tap
+repeat ride and reduces coordinate-entry mistakes.
+
+- New `passenger_places` table: label, optional `is_home` / `is_work` flags,
+  PostGIS point, address text, owner passenger id, `updated_at`.
+- Endpoints: `GET/POST/PATCH/DELETE /me/places`; create/list is enough for v1.
+- Mobile: saved-place chips on `request_ride_screen.dart`, prefilled via the
+  existing `OrderCreateRequest` path; `trip_history_screen.dart` can offer
+  "save this route" after completion.
+- Privacy: places belong to one passenger, are never exposed to drivers in raw
+  form, and are deleted with the account.
+- Test surface: CRUD parity, max places per passenger, stale coordinate
+  handling, contract fixtures in Flutter/admin-web.
+
+### 2. Post-trip ratings and reviews (行程後評分)
+
+The platform has dispute flow but no ongoing feedback signal. A bilateral,
+post-completion rating gives matching and KYC review a usable quality signal
+without turning every trip into a moderation burden.
+
+- Backend: `trip_ratings` with one row per `(order_id, rater_role)`; rating
+  `1..5`, optional bilingual comment, `created_at`, no edits after a short
+  window.
+- Both passenger and driver must rate for the profile aggregate to move;
+  aggregates are anonymous and displayed as rounded averages only.
+- Admin console gets a moderation queue for reported/flagged reviews, reusing
+  the existing dispute/audit patterns.
+- Deliberately **not** a pre-trip driver score shown in a broadcast; that
+  would invite gaming before launch. Keep it aggregate-only at first.
+- Test surface: duplicate prevention, role pairing, anonymous aggregation,
+  admin flag/moderation, fixture parity.
+
+### 3. Passenger in-trip status page and trip sharing (乘客在途狀態)
+
+The driver already pushes location during an active trip. The passenger side
+can consume that with a low-cost status page: driver name/plate, current
+phase, ETA estimate, and a one-time share token for family/friends.
+
+- Backend: `GET /orders/{id}/trip-status` (passenger only) plus a short-lived,
+  revocable share token; no WebSocket change needed, so it follows the same
+  cost model documented in `REALTIME_POSITION_COST.md`.
+- Mobile: a passenger "in-trip" card that refreshes on a deliberate interval
+  (not continuous map streaming), with a share button that opens a read-only
+  URL.
+- Security: share token expires after trip end or on revoke; it exposes plate,
+  phase, and ETA but never passenger phone/name or payment data.
+- Test surface: passenger-only auth, token expiry/revocation, cost budget,
+  Flutter contract decode, share URL hardening.
+
+### 4. Driver weekly earnings summary and reconciliation export
+
+Driver earnings exist, but the next useful step is a driver-facing weekly
+summary that mirrors the admin settlement logic and can be exported for
+reconciliation.
+
+- Backend: `GET /drivers/me/earnings/summary?from=&to=` and
+  `GET /drivers/me/earnings/export.csv`; amounts reuse `app/core/money.py`
+  and ledger entry types, never recompute frozen snapshots.
+- Mobile: earnings screen already exists; add week selector, fare/fee/refund/
+  dispute line items, and CSV export.
+- This is deliberately **not** a payout channel. It is a read-only
+  reconciliation view until a real payment provider is connected.
+- Test surface: CSV escaping, date-bucket sums, ledger idempotency, response
+  model parity, admin export consistency.
+
+### Candidate ranking for launch
+
+| Rank | Feature | Why now | Main risk |
+|---|---|---|---|
+| 1 | Passenger saved places | Highest repeat-use win, small data surface | Geocoding quality |
+| 2 | Driver earnings summary/export | Uses existing ledger invariants, useful before payout | CSV/budget mismatch if not pinned |
+| 3 | Passenger trip status + share | Safety/UX value with existing position data | Token lifecycle abuse |
+| 4 | Post-trip ratings | Quality signal for matching | Moderation/gaming cost |
+
 ## Cross-Cutting Constraints
 
 1. Backend Pydantic schema, Flutter model, admin-web TS mirror, and fixtures
